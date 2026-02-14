@@ -2,6 +2,8 @@
 
 Backend MVP for a multi-tenant WhatsApp customer support agent built with FastAPI and hexagonal architecture.
 
+Meta onboarding and message lifecycle (E2E): `META_BACKEND_E2E_README.md`
+
 ## Tooling
 
 - Dependency manager: `uv`

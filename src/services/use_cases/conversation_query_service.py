@@ -21,6 +21,7 @@ class ConversationQueryService:
                 whatsapp_user_id=conversation.whatsapp_user_id,
                 last_message_preview=conversation.last_message_preview,
                 updated_at=conversation.updated_at,
+                control_mode=conversation.control_mode,
             )
             items.append(item)
 

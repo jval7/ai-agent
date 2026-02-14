@@ -23,3 +23,20 @@ def list_messages(
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> conversation_dto.MessageListResponseDTO:
     return container.conversation_query_service.list_messages(claims.tenant_id, conversation_id)
+
+
+@router.put(
+    "/{conversation_id}/control-mode",
+    response_model=conversation_dto.ConversationControlModeResponseDTO,
+)
+def update_control_mode(
+    conversation_id: str,
+    update_dto: conversation_dto.UpdateConversationControlModeDTO,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> conversation_dto.ConversationControlModeResponseDTO:
+    return container.conversation_control_service.update_control_mode(
+        claims=claims,
+        conversation_id=conversation_id,
+        update_dto=update_dto,
+    )

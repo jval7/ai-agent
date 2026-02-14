@@ -1,6 +1,7 @@
 import pydantic
 
 import src.domain.entities.agent_profile as agent_profile_entity
+import src.domain.entities.blacklist_entry as blacklist_entry_entity
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.tenant as tenant_entity
@@ -23,3 +24,6 @@ class InMemoryStoreSnapshot(pydantic.BaseModel):
     conversations: list[conversation_entity.Conversation]
     messages: list[message_entity.Message]
     processed_events: list[ProcessedEventSnapshot]
+    blacklist_entries: list[blacklist_entry_entity.BlacklistEntry] = pydantic.Field(
+        default_factory=list
+    )

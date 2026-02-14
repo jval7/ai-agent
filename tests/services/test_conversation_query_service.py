@@ -53,6 +53,7 @@ def test_list_conversations_returns_only_tenant_data() -> None:
 
     assert len(result.items) == 1
     assert result.items[0].conversation_id == "conv-1"
+    assert result.items[0].control_mode == "AI"
 
 
 def test_list_messages_raises_when_conversation_not_found_for_tenant() -> None:

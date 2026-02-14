@@ -9,7 +9,7 @@ class Message(pydantic.BaseModel):
     conversation_id: str
     tenant_id: str
     direction: typing.Literal["INBOUND", "OUTBOUND"]
-    role: typing.Literal["user", "assistant", "system"]
+    role: typing.Literal["user", "assistant", "system", "human_agent"]
     content: str
     provider_message_id: str | None
     created_at: datetime.datetime

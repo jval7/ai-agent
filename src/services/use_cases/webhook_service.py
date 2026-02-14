@@ -3,6 +3,7 @@ import src.domain.entities.message as message_entity
 import src.domain.entities.processed_webhook_event as processed_webhook_event_entity
 import src.domain.entities.whatsapp_user as whatsapp_user_entity
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
+import src.ports.blacklist_repository_port as blacklist_repository_port
 import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
@@ -23,6 +24,7 @@ class WebhookService:
         processed_webhook_event_repository: (
             processed_webhook_event_repository_port.ProcessedWebhookEventRepositoryPort
         ),
+        blacklist_repository: blacklist_repository_port.BlacklistRepositoryPort,
         agent_profile_repository: agent_profile_repository_port.AgentProfileRepositoryPort,
         llm_provider: llm_provider_port.LlmProviderPort,
         whatsapp_provider: whatsapp_provider_port.WhatsappProviderPort,
@@ -34,6 +36,7 @@ class WebhookService:
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._conversation_repository = conversation_repository
         self._processed_webhook_event_repository = processed_webhook_event_repository
+        self._blacklist_repository = blacklist_repository
         self._agent_profile_repository = agent_profile_repository
         self._llm_provider = llm_provider
         self._whatsapp_provider = whatsapp_provider
@@ -60,6 +63,10 @@ class WebhookService:
             tenant_id, event.provider_event_id
         )
         if event_exists:
+            return
+
+        if self._blacklist_repository.exists(tenant_id, event.whatsapp_user_id):
+            self._mark_event_processed(tenant_id, event.provider_event_id)
             return
 
         if connection.access_token is None or connection.phone_number_id is None:
@@ -91,7 +98,28 @@ class WebhookService:
                 updated_at=now_value,
                 last_message_preview=None,
                 message_ids=[],
+                control_mode="AI",
             )
+
+        if event.source == "OWNER_APP":
+            owner_message = message_entity.Message(
+                id=self._id_generator.new_id(),
+                conversation_id=conversation.id,
+                tenant_id=tenant_id,
+                direction="OUTBOUND",
+                role="human_agent",
+                content=event.message_text,
+                provider_message_id=event.message_id,
+                created_at=now_value,
+            )
+            self._conversation_repository.save_message(owner_message)
+            conversation.append_message(
+                owner_message.id, owner_message.content, owner_message.created_at
+            )
+            conversation.set_control_mode("HUMAN", owner_message.created_at)
+            self._conversation_repository.save_conversation(conversation)
+            self._mark_event_processed(tenant_id, event.provider_event_id)
+            return
 
         inbound_message = message_entity.Message(
             id=self._id_generator.new_id(),
@@ -107,11 +135,18 @@ class WebhookService:
         conversation.append_message(inbound_message.id, inbound_message.content, now_value)
         self._conversation_repository.save_conversation(conversation)
 
+        if conversation.control_mode == "HUMAN":
+            self._mark_event_processed(tenant_id, event.provider_event_id)
+            return
+
         history = self._conversation_repository.list_messages(tenant_id, conversation.id)
         history_messages = history[-self._context_message_limit :]
         llm_messages: list[llm_dto.ChatMessageDTO] = []
         for message in history_messages:
-            llm_message = llm_dto.ChatMessageDTO(role=message.role, content=message.content)
+            message_role = message.role
+            if message_role == "human_agent":
+                message_role = "assistant"
+            llm_message = llm_dto.ChatMessageDTO(role=message_role, content=message.content)
             llm_messages.append(llm_message)
 
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
@@ -148,8 +183,11 @@ class WebhookService:
         )
         self._conversation_repository.save_conversation(conversation)
 
+        self._mark_event_processed(tenant_id, event.provider_event_id)
+
+    def _mark_event_processed(self, tenant_id: str, provider_event_id: str) -> None:
         processed_event = processed_webhook_event_entity.ProcessedWebhookEvent(
-            provider_event_id=event.provider_event_id,
+            provider_event_id=provider_event_id,
             tenant_id=tenant_id,
             processed_at=self._clock.now(),
         )

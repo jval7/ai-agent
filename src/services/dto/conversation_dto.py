@@ -1,4 +1,5 @@
 import datetime
+import typing
 
 import pydantic
 
@@ -8,6 +9,7 @@ class ConversationSummaryDTO(pydantic.BaseModel):
     whatsapp_user_id: str
     last_message_preview: str | None
     updated_at: datetime.datetime
+    control_mode: typing.Literal["AI", "HUMAN"]
 
 
 class MessageDTO(pydantic.BaseModel):
@@ -25,3 +27,14 @@ class ConversationListResponseDTO(pydantic.BaseModel):
 
 class MessageListResponseDTO(pydantic.BaseModel):
     items: list[MessageDTO]
+
+
+class UpdateConversationControlModeDTO(pydantic.BaseModel):
+    control_mode: typing.Literal["AI", "HUMAN"]
+
+
+class ConversationControlModeResponseDTO(pydantic.BaseModel):
+    conversation_id: str
+    tenant_id: str
+    control_mode: typing.Literal["AI", "HUMAN"]
+    updated_at: datetime.datetime

@@ -3,6 +3,7 @@ import fastapi
 import src.entrypoints.web.exceptions.http_exception_handlers as http_exception_handlers
 import src.entrypoints.web.routers.agent_router as agent_router
 import src.entrypoints.web.routers.auth_router as auth_router
+import src.entrypoints.web.routers.blacklist_router as blacklist_router
 import src.entrypoints.web.routers.conversation_router as conversation_router
 import src.entrypoints.web.routers.dev_router as dev_router
 import src.entrypoints.web.routers.health_router as health_router
@@ -19,6 +20,7 @@ def create_app() -> fastapi.FastAPI:
     app.include_router(health_router.router)
     app.include_router(auth_router.router)
     app.include_router(agent_router.router)
+    app.include_router(blacklist_router.router)
     app.include_router(whatsapp_router.router)
     app.include_router(webhook_router.router)
     app.include_router(conversation_router.router)

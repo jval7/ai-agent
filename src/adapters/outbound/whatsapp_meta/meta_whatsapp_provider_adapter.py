@@ -116,6 +116,7 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
                 if not isinstance(change, dict):
                     continue
 
+                change_field = change.get("field")
                 value = change.get("value")
                 if not isinstance(value, dict):
                     continue
@@ -145,40 +146,84 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
                             contact_name_by_wa_id[wa_id] = profile_name
 
                 messages = value.get("messages")
-                if not isinstance(messages, list):
+                if isinstance(messages, list):
+                    for message in messages:
+                        if not isinstance(message, dict):
+                            continue
+
+                        message_type = message.get("type")
+                        if message_type != "text":
+                            continue
+
+                        whatsapp_user_id = message.get("from")
+                        message_id = message.get("id")
+                        text_payload = message.get("text")
+                        if not isinstance(text_payload, dict):
+                            continue
+                        text_body = text_payload.get("body")
+
+                        if not isinstance(whatsapp_user_id, str) or not whatsapp_user_id:
+                            continue
+                        if not isinstance(message_id, str) or not message_id:
+                            continue
+                        if not isinstance(text_body, str) or not text_body.strip():
+                            continue
+
+                        whatsapp_user_name = contact_name_by_wa_id.get(whatsapp_user_id)
+                        event = webhook_dto.IncomingMessageEventDTO(
+                            provider_event_id=message_id,
+                            phone_number_id=phone_number_id,
+                            whatsapp_user_id=whatsapp_user_id,
+                            whatsapp_user_name=whatsapp_user_name,
+                            message_id=message_id,
+                            message_type=message_type,
+                            source="CUSTOMER",
+                            message_text=text_body,
+                        )
+                        events.append(event)
+
+                if change_field != "smb_message_echoes":
                     continue
 
-                for message in messages:
-                    if not isinstance(message, dict):
+                message_echoes = value.get("message_echoes")
+                if not isinstance(message_echoes, list):
+                    continue
+
+                for message_echo in message_echoes:
+                    if not isinstance(message_echo, dict):
                         continue
 
-                    message_type = message.get("type")
-                    if message_type != "text":
-                        continue
-
-                    whatsapp_user_id = message.get("from")
-                    message_id = message.get("id")
-                    text_payload = message.get("text")
-                    if not isinstance(text_payload, dict):
-                        continue
-                    text_body = text_payload.get("body")
-
-                    if not isinstance(whatsapp_user_id, str) or not whatsapp_user_id:
-                        continue
+                    message_id = message_echo.get("id")
                     if not isinstance(message_id, str) or not message_id:
                         continue
-                    if not isinstance(text_body, str) or not text_body.strip():
+
+                    whatsapp_user_id = message_echo.get("to")
+                    if not isinstance(whatsapp_user_id, str) or not whatsapp_user_id:
                         continue
 
-                    whatsapp_user_name = contact_name_by_wa_id.get(whatsapp_user_id)
+                    message_type = message_echo.get("type")
+                    if not isinstance(message_type, str) or not message_type:
+                        continue
+
+                    message_text = f"[owner_app_non_text:{message_type}]"
+                    if message_type == "text":
+                        text_payload = message_echo.get("text")
+                        if not isinstance(text_payload, dict):
+                            continue
+                        text_body = text_payload.get("body")
+                        if not isinstance(text_body, str) or not text_body.strip():
+                            continue
+                        message_text = text_body
 
                     event = webhook_dto.IncomingMessageEventDTO(
                         provider_event_id=message_id,
                         phone_number_id=phone_number_id,
                         whatsapp_user_id=whatsapp_user_id,
-                        whatsapp_user_name=whatsapp_user_name,
+                        whatsapp_user_name=None,
                         message_id=message_id,
-                        message_text=text_body,
+                        message_type=message_type,
+                        source="OWNER_APP",
+                        message_text=message_text,
                     )
                     events.append(event)
 

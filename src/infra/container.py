@@ -1,4 +1,5 @@
 import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
+import src.adapters.outbound.inmemory.blacklist_repository_adapter as blacklist_repository_adapter
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.inmemory.memory_admin_adapter as memory_admin_adapter
 import src.adapters.outbound.inmemory.processed_webhook_event_repository_adapter as processed_webhook_event_repository_adapter
@@ -14,6 +15,8 @@ import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
 import src.services.use_cases.agent_service as agent_service
 import src.services.use_cases.auth_service as auth_service
+import src.services.use_cases.blacklist_service as blacklist_service
+import src.services.use_cases.conversation_control_service as conversation_control_service
 import src.services.use_cases.conversation_query_service as conversation_query_service
 import src.services.use_cases.memory_admin_service as memory_admin_service
 import src.services.use_cases.webhook_service as webhook_service
@@ -46,6 +49,9 @@ class AppContainer:
             conversation_repository_adapter.InMemoryConversationRepositoryAdapter(self.store)
         )
         self.processed_webhook_event_repository = processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
+            self.store
+        )
+        self.blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(
             self.store
         )
         self.memory_admin_adapter = memory_admin_adapter.InMemoryMemoryAdminAdapter(self.store)
@@ -97,6 +103,7 @@ class AppContainer:
             whatsapp_connection_repository=self.whatsapp_connection_repository,
             conversation_repository=self.conversation_repository,
             processed_webhook_event_repository=self.processed_webhook_event_repository,
+            blacklist_repository=self.blacklist_repository,
             agent_profile_repository=self.agent_profile_repository,
             llm_provider=self.llm_provider_adapter,
             whatsapp_provider=self.whatsapp_provider_adapter,
@@ -108,6 +115,14 @@ class AppContainer:
 
         self.conversation_query_service = conversation_query_service.ConversationQueryService(
             conversation_repository=self.conversation_repository,
+        )
+        self.conversation_control_service = conversation_control_service.ConversationControlService(
+            conversation_repository=self.conversation_repository,
+            clock=self.clock_adapter,
+        )
+        self.blacklist_service = blacklist_service.BlacklistService(
+            blacklist_repository=self.blacklist_repository,
+            clock=self.clock_adapter,
         )
         self.memory_admin_service = memory_admin_service.MemoryAdminService(
             memory_admin=self.memory_admin_adapter

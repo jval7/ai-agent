@@ -5,6 +5,7 @@ import pydantic
 
 import src.adapters.outbound.inmemory.store_snapshot as store_snapshot
 import src.domain.entities.agent_profile as agent_profile_entity
+import src.domain.entities.blacklist_entry as blacklist_entry_entity
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.tenant as tenant_entity
@@ -38,6 +39,9 @@ class InMemoryStore:
             tuple[str, str], whatsapp_user_entity.WhatsappUser
         ] = {}
         self.processed_events: set[tuple[str, str]] = set()
+        self.blacklist_by_tenant_and_wa_user: dict[
+            tuple[str, str], blacklist_entry_entity.BlacklistEntry
+        ] = {}
 
         self._load_from_disk()
 
@@ -125,6 +129,9 @@ class InMemoryStore:
             conversations=[item.model_copy(deep=True) for item in self.conversation_by_id.values()],
             messages=messages,
             processed_events=processed_event_items,
+            blacklist_entries=[
+                item.model_copy(deep=True) for item in self.blacklist_by_tenant_and_wa_user.values()
+            ],
         )
 
     def _restore_from_snapshot(self, snapshot: store_snapshot.InMemoryStoreSnapshot) -> None:
@@ -182,6 +189,14 @@ class InMemoryStore:
             event_key = (processed_event.tenant_id, processed_event.provider_event_id)
             self.processed_events.add(event_key)
 
+        for blacklist_entry in snapshot.blacklist_entries:
+            blacklist_entry_copy = blacklist_entry.model_copy(deep=True)
+            blacklist_key = (
+                blacklist_entry_copy.tenant_id,
+                blacklist_entry_copy.whatsapp_user_id,
+            )
+            self.blacklist_by_tenant_and_wa_user[blacklist_key] = blacklist_entry_copy
+
     def _clear_state(self) -> None:
         self.tenants_by_id = {}
         self.users_by_email = {}
@@ -195,3 +210,4 @@ class InMemoryStore:
         self.messages_by_conversation_id = {}
         self.whatsapp_user_by_tenant_and_id = {}
         self.processed_events = set()
+        self.blacklist_by_tenant_and_wa_user = {}
