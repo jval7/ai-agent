@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.env
+.make-flow/
+.coverage
+htmlcov/
+.DS_Store
+data/

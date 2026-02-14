@@ -1,0 +1,59 @@
+[project]
+name = "ai-agent"
+version = "0.1.0"
+description = "MVP backend for multi-tenant WhatsApp customer support agent"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0,<1.0.0",
+    "uvicorn[standard]>=0.34.0,<1.0.0",
+    "pydantic>=2.10.0,<3.0.0",
+    "httpx>=0.28.0,<1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0,<9.0.0",
+    "pytest-cov>=6.0.0,<7.0.0",
+    "ruff>=0.11.0,<1.0.0",
+    "mypy>=1.15.0,<2.0.0",
+    "bandit>=1.8.0,<2.0.0",
+    "pre-commit>=4.0.0,<5.0.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "S", "C4", "SIM", "RUF"]
+ignore = ["S101", "B008", "S105", "S106", "E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S106"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+follow_imports = "normal"
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+severity = ["LOW", "MEDIUM", "HIGH"]
+skips = ["B101", "B105", "B106"]
