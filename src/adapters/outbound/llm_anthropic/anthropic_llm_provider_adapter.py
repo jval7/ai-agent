@@ -68,8 +68,10 @@ class AnthropicLlmProviderAdapter(llm_provider_port.LlmProviderPort):
                 "network error calling anthropic"
             ) from error
         except httpx.HTTPStatusError as error:
+            status_code = error.response.status_code
+            provider_detail = self._extract_error_detail(error.response)
             raise service_exceptions.ExternalProviderError(
-                "anthropic rejected the request"
+                f"anthropic rejected the request (status={status_code}, detail={provider_detail})"
             ) from error
         except json.JSONDecodeError as error:
             raise service_exceptions.ExternalProviderError(
@@ -94,3 +96,29 @@ class AnthropicLlmProviderAdapter(llm_provider_port.LlmProviderPort):
                 return llm_dto.AgentReplyDTO(content=text_content.strip())
 
         raise service_exceptions.ExternalProviderError("anthropic returned no text blocks")
+
+    def _extract_error_detail(self, response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+        except json.JSONDecodeError:
+            text_value = response.text.strip()
+            if text_value:
+                return text_value[:280]
+            return "unknown error"
+
+        if not isinstance(payload, dict):
+            return "unknown error"
+
+        error_value = payload.get("error")
+        if not isinstance(error_value, dict):
+            return "unknown error"
+
+        message_value = error_value.get("message")
+        if isinstance(message_value, str) and message_value.strip():
+            return message_value.strip()
+
+        type_value = error_value.get("type")
+        if isinstance(type_value, str) and type_value.strip():
+            return type_value.strip()
+
+        return "unknown error"

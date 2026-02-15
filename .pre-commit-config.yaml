@@ -24,3 +24,26 @@ repos:
       - id: check-merge-conflict
       - id: end-of-file-fixer
       - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: frontend-lint
+        name: frontend-lint
+        entry: npm --prefix frontend run lint
+        language: system
+        pass_filenames: false
+      - id: frontend-format-check
+        name: frontend-format-check
+        entry: npm --prefix frontend run format:check
+        language: system
+        pass_filenames: false
+      - id: frontend-typecheck
+        name: frontend-typecheck
+        entry: npm --prefix frontend run typecheck
+        language: system
+        pass_filenames: false
+      - id: frontend-test
+        name: frontend-test
+        entry: npm --prefix frontend run test
+        language: system
+        pass_filenames: false

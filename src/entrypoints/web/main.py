@@ -1,4 +1,5 @@
 import fastapi
+import fastapi.middleware.cors as fastapi_cors
 
 import src.entrypoints.web.exceptions.http_exception_handlers as http_exception_handlers
 import src.entrypoints.web.routers.agent_router as agent_router
@@ -16,6 +17,13 @@ import src.infra.container as app_container
 def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(title="AI Agent WhatsApp MVP", version="0.1.0")
     app.state.container = app_container.AppContainer()
+    app.add_middleware(
+        fastapi_cors.CORSMiddleware,
+        allow_origins=app.state.container.settings.cors_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     app.include_router(health_router.router)
     app.include_router(auth_router.router)

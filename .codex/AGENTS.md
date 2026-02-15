@@ -3,6 +3,7 @@
 ## Reference Docs
 - Backend: `/Users/jhonvalderrama/Documents/repos/ai-agent/BACKEND_CONTEXT.md`
 - Frontend: `/Users/jhonvalderrama/Documents/repos/ai-agent/FRONTEND_PLAN.md`
+- UI workflow: frontend design iterations are capture-driven (user shares screenshots, implementation updates UI in code).
 
 ## Current Scope
 - Backend MVP only (FastAPI + hexagonal architecture).
@@ -75,4 +76,3 @@
 7. **Always use Pydantic**: Use Pydantic for all data models.
 8. **Specific exceptions**: Avoid catching generic `Exception`; catch specific exception types.
 9. **Follow the Zen of Python**.
-

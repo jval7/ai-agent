@@ -1,4 +1,4 @@
-# AI Agent MVP Backend
+# AI Agent MVP
 
 Backend MVP for a multi-tenant WhatsApp customer support agent built with FastAPI and hexagonal architecture.
 
@@ -12,12 +12,38 @@ Meta onboarding and message lifecycle (E2E): `META_BACKEND_E2E_README.md`
 - Security scan: `bandit`
 - Git hooks: `pre-commit`
 
+Frontend lives in `frontend/` and uses React + TypeScript strict + hexagonal folders.
+
 ## Quick start
 
 ```bash
 uv sync --group dev
 uv run pre-commit install
 uv run uvicorn src.entrypoints.web.main:app --reload
+```
+
+Frontend (separate terminal):
+
+```bash
+make fe-install
+make fe-dev
+```
+
+## Run with Docker
+
+```bash
+make docker-up-build
+```
+
+URLs:
+
+- Frontend: `http://localhost:5173`
+- Backend API: `http://localhost:8000`
+
+Stop containers:
+
+```bash
+make docker-down
 ```
 
 By default, domain state is persisted to `data/memory_store.json`. You can disable it by setting:
@@ -35,6 +61,12 @@ META_WEBHOOK_VERIFY_TOKEN=dev-meta-webhook-verify-token
 ```
 
 Configure that same value once in Meta for the webhook callback.
+
+OAuth callback return URL for browser redirect after Meta permissions:
+
+```bash
+FRONTEND_APP_BASE_URL=http://localhost:5173
+```
 
 For LLM responses, configure Anthropic:
 
@@ -71,3 +103,23 @@ uv run mypy src tests
 uv run bandit -c pyproject.toml -r src
 uv run pytest
 ```
+
+Full repo checks:
+
+```bash
+make checks
+```
+
+## Simulate WhatsApp inbound message (dev)
+
+You can simulate an inbound customer message through webhook parsing and then inspect the resulting conversation:
+
+```bash
+make simulate-whatsapp-message MESSAGE="Hola, necesito ayuda con mi pedido"
+```
+
+Optional vars:
+
+- `SIM_WA_USER_ID` (default: `573001234567`)
+- `SIM_WA_USER_NAME` (default: `Cliente Demo`)
+- `SIM_PROVIDER_MESSAGE_ID` (default: auto-generated)

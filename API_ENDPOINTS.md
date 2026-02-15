@@ -161,12 +161,16 @@ Este documento describe qué hace cada endpoint del backend.
 ### `GET /oauth/meta/callback`
 - Auth: no (redirección de Meta)
 - Qué hace: completa automáticamente Embedded Signup usando `code` + `state` del query string.
+- Comportamiento actual:
+  - éxito: redirige al frontend en `FRONTEND_APP_BASE_URL/inbox?meta_oauth=connected`
+  - error: redirige al frontend en `FRONTEND_APP_BASE_URL/onboarding/whatsapp?meta_oauth=error...`
+  - fallback: si `FRONTEND_APP_BASE_URL` está vacío, devuelve HTML de éxito/error.
 - Query params esperados:
   - `code`
   - `state`
 - Response:
-  - `200 HTML`: conexión completada
-  - `4xx/5xx HTML`: error de validación/estado/proveedor
+  - `303 Redirect` al frontend (default)
+  - `200/4xx/5xx HTML` solo en fallback
 - Uso recomendado:
   - Configurar esta ruta como `META_REDIRECT_URI` en Meta para evitar copy/paste manual de `code` y `state`.
 
