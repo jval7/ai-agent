@@ -77,6 +77,24 @@ ANTHROPIC_API_VERSION=2023-06-01
 ANTHROPIC_MAX_TOKENS=512
 ```
 
+## Logging
+
+Backend uses JSON logs to `stdout` with request correlation.
+
+- Incoming `X-Request-ID` is reused; if absent, backend generates one.
+- Every HTTP response includes `X-Request-ID`.
+- Unhandled exceptions return:
+  - `500`
+  - `{"detail":"internal server error","request_id":"<id>"}`
+- Traceback is logged only on server side.
+
+Environment flags:
+
+```bash
+LOG_LEVEL=INFO
+LOG_INCLUDE_REQUEST_SUMMARY=false
+```
+
 ## Landing for Meta review (separate deploy)
 
 Static landing files now live outside `src` in:

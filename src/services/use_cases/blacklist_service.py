@@ -1,10 +1,13 @@
 import src.domain.entities.blacklist_entry as blacklist_entry_entity
+import src.infra.logs as app_logs
 import src.ports.blacklist_repository_port as blacklist_repository_port
 import src.ports.clock_port as clock_port
 import src.services.constants as service_constants
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.blacklist_dto as blacklist_dto
 import src.services.exceptions as service_exceptions
+
+logger = app_logs.get_logger(__name__)
 
 
 class BlacklistService:
@@ -44,6 +47,20 @@ class BlacklistService:
         existing_entries = self._blacklist_repository.list_by_tenant(claims.tenant_id)
         for existing_entry in existing_entries:
             if existing_entry.whatsapp_user_id == upsert_dto.whatsapp_user_id:
+                logger.info(
+                    "blacklist.entry_added",
+                    extra={
+                        "event_data": app_logs.build_log_event(
+                            event_name="blacklist.entry_added",
+                            message="blacklist entry already existed",
+                            data={
+                                "tenant_id": existing_entry.tenant_id,
+                                "whatsapp_user_id": existing_entry.whatsapp_user_id,
+                                "created": False,
+                            },
+                        )
+                    },
+                )
                 return blacklist_dto.BlacklistEntryDTO(
                     tenant_id=existing_entry.tenant_id,
                     whatsapp_user_id=existing_entry.whatsapp_user_id,
@@ -56,6 +73,20 @@ class BlacklistService:
             created_at=self._clock.now(),
         )
         self._blacklist_repository.save(entry)
+        logger.info(
+            "blacklist.entry_added",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="blacklist.entry_added",
+                    message="blacklist entry added",
+                    data={
+                        "tenant_id": entry.tenant_id,
+                        "whatsapp_user_id": entry.whatsapp_user_id,
+                        "created": True,
+                    },
+                )
+            },
+        )
         return blacklist_dto.BlacklistEntryDTO(
             tenant_id=entry.tenant_id,
             whatsapp_user_id=entry.whatsapp_user_id,
@@ -65,6 +96,19 @@ class BlacklistService:
     def delete_entry(self, claims: auth_dto.TokenClaimsDTO, whatsapp_user_id: str) -> None:
         self._ensure_owner(claims)
         self._blacklist_repository.delete(claims.tenant_id, whatsapp_user_id)
+        logger.info(
+            "blacklist.entry_deleted",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="blacklist.entry_deleted",
+                    message="blacklist entry deleted",
+                    data={
+                        "tenant_id": claims.tenant_id,
+                        "whatsapp_user_id": whatsapp_user_id,
+                    },
+                )
+            },
+        )
 
     def _ensure_owner(self, claims: auth_dto.TokenClaimsDTO) -> None:
         if claims.role != service_constants.DEFAULT_OWNER_ROLE:

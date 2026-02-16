@@ -1,4 +1,5 @@
 import datetime
+import logging
 
 import pytest
 
@@ -12,6 +13,8 @@ import src.services.dto.auth_dto as auth_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.auth_service as auth_service
 import tests.fakes.fake_adapters as fake_adapters
+
+LOGGER_NAME = "src.services.use_cases.auth_service"
 
 
 def build_auth_service(
@@ -179,3 +182,66 @@ def test_logout_revokes_refresh_token() -> None:
 
     with pytest.raises(service_exceptions.AuthenticationError):
         service.refresh(auth_dto.RefreshTokenDTO(refresh_token=register_result.refresh_token))
+
+
+def test_register_emits_success_log_without_sensitive_fields(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    service, _, _, _, _ = build_auth_service(
+        ["tenant-1", "user-1", "access-jti-1", "refresh-jti-1"]
+    )
+    caplog.set_level(logging.INFO, logger=LOGGER_NAME)
+
+    service.register(
+        auth_dto.RegisterUserDTO(
+            tenant_name="Acme",
+            email="owner@acme.com",
+            password="supersecret",
+        )
+    )
+
+    event_names = [
+        record.__dict__.get("event_data", {}).get("event")
+        for record in caplog.records
+        if isinstance(record.__dict__.get("event_data"), dict)
+    ]
+    assert "auth.register.success" in event_names
+
+    for record in caplog.records:
+        event_data = record.__dict__.get("event_data")
+        if not isinstance(event_data, dict):
+            continue
+        assert "password" not in event_data
+        assert "access_token" not in event_data
+        assert "refresh_token" not in event_data
+
+
+def test_login_failure_emits_failed_log(caplog: pytest.LogCaptureFixture) -> None:
+    service, _, _, _, _ = build_auth_service(
+        [
+            "tenant-1",
+            "user-1",
+            "access-jti-1",
+            "refresh-jti-1",
+            "access-jti-2",
+            "refresh-jti-2",
+        ]
+    )
+    service.register(
+        auth_dto.RegisterUserDTO(
+            tenant_name="Acme",
+            email="owner@acme.com",
+            password="supersecret",
+        )
+    )
+    caplog.set_level(logging.WARNING, logger=LOGGER_NAME)
+
+    with pytest.raises(service_exceptions.AuthenticationError):
+        service.login(auth_dto.LoginDTO(email="owner@acme.com", password="wrongpassword"))
+
+    failure_events = [
+        record.__dict__.get("event_data", {}).get("event")
+        for record in caplog.records
+        if isinstance(record.__dict__.get("event_data"), dict)
+    ]
+    assert "auth.login.failed" in failure_events

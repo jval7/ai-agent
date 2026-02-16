@@ -47,14 +47,17 @@ class InMemoryTokenSession {
 vitestModule.describe("BackendApiAdapter", () => {
   vitestModule.it("maps login response to domain tokens", async () => {
     serverModule.server.use(
-      mswModule.http.post("http://api.test/v1/auth/login", () =>
-        mswModule.HttpResponse.json({
+      mswModule.http.post("http://api.test/v1/auth/login", ({ request }) => {
+        const requestId = request.headers.get("x-request-id");
+        vitestModule.expect(typeof requestId).toBe("string");
+        vitestModule.expect(requestId?.trim().length ?? 0).toBeGreaterThan(0);
+        return mswModule.HttpResponse.json({
           access_token: "access-1",
           refresh_token: "refresh-1",
           token_type: "bearer",
           expires_in_seconds: 1800
-        })
-      )
+        });
+      })
     );
 
     const tokenSession = new InMemoryTokenSession(null, null);
@@ -111,5 +114,29 @@ vitestModule.describe("BackendApiAdapter", () => {
     vitestModule.expect(getPromptCalls).toBe(2);
     vitestModule.expect(tokenSession.getAccessToken()).toBe("fresh-access");
     vitestModule.expect(tokenSession.getRefreshToken()).toBe("refresh-2");
+  });
+
+  vitestModule.it("maps backend request_id into ApiError", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/agent/system-prompt", () =>
+        mswModule.HttpResponse.json(
+          {
+            detail: "internal server error",
+            request_id: "req-123"
+          },
+          { status: 500 }
+        )
+      )
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    await vitestModule.expect(adapter.getSystemPrompt()).rejects.toMatchObject({
+      name: "ApiError",
+      statusCode: 500,
+      message: "internal server error",
+      requestId: "req-123"
+    });
   });
 });

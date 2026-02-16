@@ -22,6 +22,8 @@ class Settings(pydantic.BaseModel):
     anthropic_model: str
     anthropic_api_version: str
     anthropic_max_tokens: int
+    log_level: str
+    log_include_request_summary: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -56,6 +58,12 @@ class Settings(pydantic.BaseModel):
             anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
             anthropic_api_version=os.getenv("ANTHROPIC_API_VERSION", "2023-06-01"),
             anthropic_max_tokens=int(os.getenv("ANTHROPIC_MAX_TOKENS", "512")),
+            log_level=os.getenv("LOG_LEVEL", "INFO"),
+            log_include_request_summary=os.getenv(
+                "LOG_INCLUDE_REQUEST_SUMMARY",
+                "false",
+            ).lower()
+            == "true",
         )
 
     @staticmethod

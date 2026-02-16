@@ -2,6 +2,7 @@ import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.processed_webhook_event as processed_webhook_event_entity
 import src.domain.entities.whatsapp_user as whatsapp_user_entity
+import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.blacklist_repository_port as blacklist_repository_port
 import src.ports.clock_port as clock_port
@@ -14,6 +15,8 @@ import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.llm_dto as llm_dto
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
+
+logger = app_logs.get_logger(__name__)
 
 
 class WebhookService:
@@ -47,6 +50,16 @@ class WebhookService:
 
     def process_payload(self, payload: dict[str, object]) -> webhook_dto.WebhookEventResponseDTO:
         events = self._whatsapp_provider.parse_incoming_message_events(payload)
+        logger.info(
+            "webhook.received",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="webhook.received",
+                    message="webhook payload parsed",
+                    data={"event_count": len(events)},
+                )
+            },
+        )
         for event in events:
             self._process_event(event)
         return webhook_dto.WebhookEventResponseDTO(status="processed")
@@ -56,6 +69,19 @@ class WebhookService:
             event.phone_number_id
         )
         if connection is None:
+            logger.warning(
+                "webhook.event.skipped",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.event.skipped",
+                        message="webhook event skipped because phone number is not connected",
+                        data={
+                            "phone_number_id": event.phone_number_id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
             return
 
         tenant_id = connection.tenant_id
@@ -63,13 +89,52 @@ class WebhookService:
             tenant_id, event.provider_event_id
         )
         if event_exists:
+            logger.info(
+                "webhook.duplicate_skipped",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.duplicate_skipped",
+                        message="duplicate webhook event skipped",
+                        data={
+                            "tenant_id": tenant_id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
             return
 
         if self._blacklist_repository.exists(tenant_id, event.whatsapp_user_id):
+            logger.info(
+                "webhook.blacklist_blocked",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.blacklist_blocked",
+                        message="blacklisted whatsapp user skipped",
+                        data={
+                            "tenant_id": tenant_id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
             self._mark_event_processed(tenant_id, event.provider_event_id)
             return
 
         if connection.access_token is None or connection.phone_number_id is None:
+            logger.error(
+                "webhook.event.invalid_state",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.event.invalid_state",
+                        message="webhook event failed due to invalid connection state",
+                        data={
+                            "tenant_id": tenant_id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
             raise service_exceptions.InvalidStateError("whatsapp connection is missing credentials")
 
         now_value = self._clock.now()
@@ -119,6 +184,21 @@ class WebhookService:
             conversation.set_control_mode("HUMAN", owner_message.created_at)
             self._conversation_repository.save_conversation(conversation)
             self._mark_event_processed(tenant_id, event.provider_event_id)
+            logger.info(
+                "webhook.owner_handoff_human",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.owner_handoff_human",
+                        message="owner app message moved conversation to HUMAN mode",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation.id,
+                            "provider_event_id": event.provider_event_id,
+                            "message_type": event.message_type,
+                        },
+                    )
+                },
+            )
             return
 
         inbound_message = message_entity.Message(
@@ -137,6 +217,20 @@ class WebhookService:
 
         if conversation.control_mode == "HUMAN":
             self._mark_event_processed(tenant_id, event.provider_event_id)
+            logger.info(
+                "webhook.human_mode_skip_ai",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.human_mode_skip_ai",
+                        message="customer message persisted while conversation is in HUMAN mode",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation.id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
             return
 
         history = self._conversation_repository.list_messages(tenant_id, conversation.id)
@@ -158,14 +252,32 @@ class WebhookService:
             system_prompt=system_prompt,
             messages=llm_messages,
         )
-        llm_reply = self._llm_provider.generate_reply(llm_input)
-
-        outbound_message_provider_id = self._whatsapp_provider.send_text_message(
-            access_token=connection.access_token,
-            phone_number_id=connection.phone_number_id,
-            whatsapp_user_id=event.whatsapp_user_id,
-            text=llm_reply.content,
-        )
+        try:
+            llm_reply = self._llm_provider.generate_reply(llm_input)
+            outbound_message_provider_id = self._whatsapp_provider.send_text_message(
+                access_token=connection.access_token,
+                phone_number_id=connection.phone_number_id,
+                whatsapp_user_id=event.whatsapp_user_id,
+                text=llm_reply.content,
+            )
+        except service_exceptions.ExternalProviderError as error:
+            logger.error(
+                "webhook.ai_reply_failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.ai_reply_failed",
+                        message="ai reply generation or outbound send failed",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation.id,
+                            "provider_event_id": event.provider_event_id,
+                            "error_type": type(error).__name__,
+                            "error_message": str(error),
+                        },
+                    )
+                },
+            )
+            raise
 
         outbound_message = message_entity.Message(
             id=self._id_generator.new_id(),
@@ -184,6 +296,21 @@ class WebhookService:
         self._conversation_repository.save_conversation(conversation)
 
         self._mark_event_processed(tenant_id, event.provider_event_id)
+        logger.info(
+            "webhook.ai_reply_sent",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="webhook.ai_reply_sent",
+                    message="ai reply sent and persisted",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation.id,
+                        "provider_event_id": event.provider_event_id,
+                        "outbound_provider_message_id": outbound_message_provider_id,
+                    },
+                )
+            },
+        )
 
     def _mark_event_processed(self, tenant_id: str, provider_event_id: str) -> None:
         processed_event = processed_webhook_event_entity.ProcessedWebhookEvent(

@@ -1,4 +1,5 @@
 import datetime
+import logging
 
 import pytest
 
@@ -9,6 +10,8 @@ import src.services.dto.whatsapp_dto as whatsapp_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.whatsapp_onboarding_service as whatsapp_onboarding_service
 import tests.fakes.fake_adapters as fake_adapters
+
+LOGGER_NAME = "src.services.use_cases.whatsapp_onboarding_service"
 
 
 def build_onboarding_service(
@@ -138,3 +141,41 @@ def test_get_dev_verify_token_fails_when_token_is_missing() -> None:
 
     with pytest.raises(service_exceptions.InvalidStateError):
         service.get_dev_verify_token()
+
+
+def test_create_session_logs_session_created(caplog: pytest.LogCaptureFixture) -> None:
+    service, _ = build_onboarding_service(["state-1"])
+    caplog.set_level(logging.INFO, logger=LOGGER_NAME)
+
+    service.create_embedded_signup_session("tenant-1")
+
+    events = [
+        record.__dict__.get("event_data", {}).get("event")
+        for record in caplog.records
+        if isinstance(record.__dict__.get("event_data"), dict)
+    ]
+    assert "whatsapp.onboarding.session_created" in events
+
+
+def test_complete_state_mismatch_logs_failure(caplog: pytest.LogCaptureFixture) -> None:
+    service, provider = build_onboarding_service(["state-1"])
+    provider.credential_by_code["code-1"] = whatsapp_dto.EmbeddedSignupCredentialsDTO(
+        phone_number_id="phone-1",
+        business_account_id="business-1",
+        access_token="token-1",
+    )
+    service.create_embedded_signup_session("tenant-1")
+    caplog.set_level(logging.WARNING, logger=LOGGER_NAME)
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.complete_embedded_signup(
+            "tenant-1",
+            whatsapp_dto.EmbeddedSignupCompleteDTO(code="code-1", state="wrong-state"),
+        )
+
+    events = [
+        record.__dict__.get("event_data", {}).get("event")
+        for record in caplog.records
+        if isinstance(record.__dict__.get("event_data"), dict)
+    ]
+    assert "whatsapp.onboarding.failed" in events

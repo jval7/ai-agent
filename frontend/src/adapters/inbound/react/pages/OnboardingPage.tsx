@@ -2,8 +2,9 @@ import * as reactQueryModule from "@tanstack/react-query";
 
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
+import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
-import * as apiErrorModule from "@shared/http/api_error";
+import * as uiErrorModule from "@shared/http/ui_error";
 
 const queryKey = ["whatsapp-connection"] as const;
 
@@ -38,14 +39,10 @@ export function OnboardingPage() {
     }
   }
 
-  const errorMessage =
-    sessionMutation.error instanceof apiErrorModule.ApiError
-      ? sessionMutation.error.message
-      : connectionQuery.error instanceof apiErrorModule.ApiError
-        ? connectionQuery.error.message
-        : sessionMutation.error instanceof TypeError || connectionQuery.error instanceof TypeError
-          ? "No se pudo conectar con el backend."
-          : null;
+  const errorMessage = uiErrorModule.resolveUiErrorMessage([
+    sessionMutation.error,
+    connectionQuery.error
+  ]);
 
   return (
     <appShellModule.AppShell>
@@ -77,9 +74,7 @@ export function OnboardingPage() {
           ) : null}
 
           {errorMessage !== null ? (
-            <p className="mt-4 rounded-md bg-red-100 px-3 py-2 text-sm text-red-700">
-              {errorMessage}
-            </p>
+            <errorBannerModule.ErrorBanner className="mt-4" message={errorMessage} />
           ) : null}
 
           <div className="mt-6 flex gap-3">

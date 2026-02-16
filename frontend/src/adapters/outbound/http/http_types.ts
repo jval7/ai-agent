@@ -66,4 +66,5 @@ export interface BlacklistListApiResponse {
 
 export interface ApiErrorResponse {
   detail: string;
+  request_id?: string;
 }

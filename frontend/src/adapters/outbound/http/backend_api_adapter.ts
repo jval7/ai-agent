@@ -6,6 +6,7 @@ import type * as whatsappModel from "@domain/models/whatsapp";
 import type * as backendApiPort from "@ports/backend_api_port";
 import type * as tokenSessionPort from "@ports/token_session_port";
 import * as apiErrorModule from "@shared/http/api_error";
+import * as requestIdModule from "@shared/http/request_id";
 
 import type * as httpTypes from "./http_types";
 
@@ -14,6 +15,7 @@ interface RequestOptions {
   authRequired: boolean;
   body?: string;
   retryOnUnauthorized?: boolean;
+  requestId?: string;
 }
 
 export class BackendApiAdapter implements backendApiPort.BackendApiPort {
@@ -222,9 +224,11 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
 
   private async request<T>(path: string, options: RequestOptions): Promise<T> {
     const retryOnUnauthorized = options.retryOnUnauthorized ?? true;
+    const requestId = options.requestId ?? requestIdModule.createRequestId();
 
     const headers = new Headers();
     headers.set("Content-Type", "application/json");
+    headers.set("X-Request-ID", requestId);
 
     if (options.authRequired) {
       const accessToken = this.tokenSession.getAccessToken();
@@ -246,17 +250,18 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     if (response.status === 401 && options.authRequired && retryOnUnauthorized) {
       const refreshedToken = await this.refreshAccessTokenWithLock();
       if (refreshedToken === null) {
-        throw new apiErrorModule.ApiError(401, "token expired");
+        throw new apiErrorModule.ApiError(401, "token expired", requestId);
       }
 
       return this.request<T>(path, {
         ...options,
-        retryOnUnauthorized: false
+        retryOnUnauthorized: false,
+        requestId
       });
     }
 
     if (!response.ok) {
-      throw await this.parseError(response);
+      throw await this.parseError(response, requestId);
     }
 
     if (response.status === 204) {
@@ -303,10 +308,12 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
   }
 
   private async refreshTokens(refreshToken: string): Promise<httpTypes.AuthTokensApiResponse> {
+    const requestId = requestIdModule.createRequestId();
     const response = await fetch(`${this.baseUrl}/v1/auth/refresh`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "X-Request-ID": requestId
       },
       body: JSON.stringify({
         refresh_token: refreshToken
@@ -314,19 +321,24 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     });
 
     if (!response.ok) {
-      throw await this.parseError(response);
+      throw await this.parseError(response, requestId);
     }
 
     const payload = (await response.json()) as httpTypes.AuthTokensApiResponse;
     return payload;
   }
 
-  private async parseError(response: Response): Promise<apiErrorModule.ApiError> {
+  private async parseError(
+    response: Response,
+    fallbackRequestId: string
+  ): Promise<apiErrorModule.ApiError> {
     const fallbackMessage = `request failed with status ${response.status}`;
+    const requestIdFromHeader = response.headers.get("X-Request-ID");
+    const resolvedRequestId = normalizeRequestId(requestIdFromHeader) ?? fallbackRequestId;
     const contentType = response.headers.get("content-type") ?? "";
 
     if (!contentType.includes("application/json")) {
-      return new apiErrorModule.ApiError(response.status, fallbackMessage);
+      return new apiErrorModule.ApiError(response.status, fallbackMessage, resolvedRequestId);
     }
 
     let payload: Partial<httpTypes.ApiErrorResponse>;
@@ -334,16 +346,32 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       payload = (await response.json()) as Partial<httpTypes.ApiErrorResponse>;
     } catch (error: unknown) {
       if (error instanceof SyntaxError) {
-        return new apiErrorModule.ApiError(response.status, fallbackMessage);
+        return new apiErrorModule.ApiError(response.status, fallbackMessage, resolvedRequestId);
       }
       throw error;
     }
+
+    const requestIdFromBody =
+      typeof payload.request_id === "string" ? normalizeRequestId(payload.request_id) : null;
+    const finalRequestId = requestIdFromBody ?? resolvedRequestId;
+
     if (typeof payload.detail !== "string" || payload.detail.trim() === "") {
-      return new apiErrorModule.ApiError(response.status, fallbackMessage);
+      return new apiErrorModule.ApiError(response.status, fallbackMessage, finalRequestId);
     }
 
-    return new apiErrorModule.ApiError(response.status, payload.detail);
+    return new apiErrorModule.ApiError(response.status, payload.detail, finalRequestId);
   }
+}
+
+function normalizeRequestId(rawRequestId: string | null): string | null {
+  if (rawRequestId === null) {
+    return null;
+  }
+  const normalizedRequestId = rawRequestId.trim();
+  if (normalizedRequestId === "") {
+    return null;
+  }
+  return normalizedRequestId;
 }
 
 function mapAuthTokens(payload: httpTypes.AuthTokensApiResponse): authModel.AuthTokens {

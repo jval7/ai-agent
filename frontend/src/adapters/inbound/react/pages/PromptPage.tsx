@@ -4,7 +4,8 @@ import * as reactQueryModule from "@tanstack/react-query";
 
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
-import * as apiErrorModule from "@shared/http/api_error";
+import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
+import * as uiErrorModule from "@shared/http/ui_error";
 
 const queryKey = ["system-prompt"] as const;
 
@@ -32,14 +33,10 @@ export function PromptPage() {
     }
   });
 
-  const errorMessage =
-    updateMutation.error instanceof apiErrorModule.ApiError
-      ? updateMutation.error.message
-      : promptQuery.error instanceof apiErrorModule.ApiError
-        ? promptQuery.error.message
-        : updateMutation.error instanceof TypeError || promptQuery.error instanceof TypeError
-          ? "No se pudo conectar con el backend."
-          : null;
+  const errorMessage = uiErrorModule.resolveUiErrorMessage([
+    updateMutation.error,
+    promptQuery.error
+  ]);
 
   return (
     <appShellModule.AppShell>
@@ -58,9 +55,7 @@ export function PromptPage() {
         />
 
         {errorMessage !== null ? (
-          <p className="mt-3 rounded-md bg-red-100 px-3 py-2 text-sm text-red-700">
-            {errorMessage}
-          </p>
+          <errorBannerModule.ErrorBanner className="mt-3" message={errorMessage} />
         ) : null}
 
         <div className="mt-4 flex gap-3">

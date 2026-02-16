@@ -1,4 +1,5 @@
 import datetime
+import logging
 
 import pytest
 
@@ -9,6 +10,8 @@ import src.services.dto.blacklist_dto as blacklist_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.blacklist_service as blacklist_service
 import tests.fakes.fake_adapters as fake_adapters
+
+LOGGER_NAME = "src.services.use_cases.blacklist_service"
 
 
 def build_blacklist_service() -> blacklist_service.BlacklistService:
@@ -93,3 +96,23 @@ def test_blacklist_requires_owner_role() -> None:
 
     with pytest.raises(service_exceptions.AuthorizationError):
         service.delete_entry(non_owner_claims, "wa-user-1")
+
+
+def test_blacklist_logs_add_and_delete_events(caplog: pytest.LogCaptureFixture) -> None:
+    service = build_blacklist_service()
+    owner_claims = build_claims(role="owner")
+    caplog.set_level(logging.INFO, logger=LOGGER_NAME)
+
+    service.upsert_entry(
+        owner_claims,
+        blacklist_dto.UpsertBlacklistEntryDTO(whatsapp_user_id="wa-user-1"),
+    )
+    service.delete_entry(owner_claims, "wa-user-1")
+
+    events = [
+        record.__dict__.get("event_data", {}).get("event")
+        for record in caplog.records
+        if isinstance(record.__dict__.get("event_data"), dict)
+    ]
+    assert "blacklist.entry_added" in events
+    assert "blacklist.entry_deleted" in events

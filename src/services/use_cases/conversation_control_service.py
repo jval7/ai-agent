@@ -1,9 +1,12 @@
+import src.infra.logs as app_logs
 import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.services.constants as service_constants
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.conversation_dto as conversation_dto
 import src.services.exceptions as service_exceptions
+
+logger = app_logs.get_logger(__name__)
 
 
 class ConversationControlService:
@@ -33,6 +36,20 @@ class ConversationControlService:
         now_value = self._clock.now()
         conversation.set_control_mode(update_dto.control_mode, now_value)
         self._conversation_repository.save_conversation(conversation)
+        logger.info(
+            "conversation.control_mode_changed",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="conversation.control_mode_changed",
+                    message="conversation control mode changed",
+                    data={
+                        "tenant_id": conversation.tenant_id,
+                        "conversation_id": conversation.id,
+                        "control_mode": conversation.control_mode,
+                    },
+                )
+            },
+        )
 
         return conversation_dto.ConversationControlModeResponseDTO(
             conversation_id=conversation.id,

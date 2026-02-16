@@ -1,6 +1,7 @@
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.user as user_entity
+import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.clock_port as clock_port
 import src.ports.id_generator_port as id_generator_port
@@ -11,6 +12,8 @@ import src.ports.user_repository_port as user_repository_port
 import src.services.constants as service_constants
 import src.services.dto.auth_dto as auth_dto
 import src.services.exceptions as service_exceptions
+
+logger = app_logs.get_logger(__name__)
 
 
 class AuthService:
@@ -41,6 +44,19 @@ class AuthService:
     def register(self, register_dto: auth_dto.RegisterUserDTO) -> auth_dto.AuthTokensDTO:
         existing_user = self._user_repository.get_by_email(register_dto.email.lower())
         if existing_user is not None:
+            logger.warning(
+                "auth.register.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="auth.register.failed",
+                        message="register failed",
+                        data={
+                            "reason": "email_already_registered",
+                            "email_domain": self._resolve_email_domain(register_dto.email),
+                        },
+                    )
+                },
+            )
             raise service_exceptions.InvalidStateError("email is already registered")
 
         now_value = self._clock.now()
@@ -74,38 +90,164 @@ class AuthService:
         )
         self._agent_profile_repository.save(agent_profile)
 
-        return self._issue_auth_tokens(user)
+        auth_tokens = self._issue_auth_tokens(user)
+        logger.info(
+            "auth.register.success",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="auth.register.success",
+                    message="register succeeded",
+                    data={
+                        "tenant_id": tenant_id,
+                        "user_id": user_id,
+                        "role": user.role,
+                    },
+                )
+            },
+        )
+        return auth_tokens
 
     def login(self, login_dto: auth_dto.LoginDTO) -> auth_dto.AuthTokensDTO:
         user = self._user_repository.get_by_email(login_dto.email.lower())
         if user is None:
+            logger.warning(
+                "auth.login.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="auth.login.failed",
+                        message="login failed",
+                        data={
+                            "reason": "invalid_credentials",
+                            "email_domain": self._resolve_email_domain(login_dto.email),
+                        },
+                    )
+                },
+            )
             raise service_exceptions.AuthenticationError("invalid credentials")
 
         if not user.is_active:
+            logger.warning(
+                "auth.login.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="auth.login.failed",
+                        message="login failed",
+                        data={
+                            "reason": "inactive_user",
+                            "tenant_id": user.tenant_id,
+                            "user_id": user.id,
+                        },
+                    )
+                },
+            )
             raise service_exceptions.AuthenticationError("user is inactive")
 
         password_valid = self._password_hasher.verify_password(
             login_dto.password, user.password_hash
         )
         if not password_valid:
+            logger.warning(
+                "auth.login.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="auth.login.failed",
+                        message="login failed",
+                        data={
+                            "reason": "invalid_credentials",
+                            "tenant_id": user.tenant_id,
+                            "user_id": user.id,
+                        },
+                    )
+                },
+            )
             raise service_exceptions.AuthenticationError("invalid credentials")
 
-        return self._issue_auth_tokens(user)
+        auth_tokens = self._issue_auth_tokens(user)
+        logger.info(
+            "auth.login.success",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="auth.login.success",
+                    message="login succeeded",
+                    data={
+                        "tenant_id": user.tenant_id,
+                        "user_id": user.id,
+                        "role": user.role,
+                    },
+                )
+            },
+        )
+        return auth_tokens
 
     def refresh(self, refresh_dto: auth_dto.RefreshTokenDTO) -> auth_dto.AuthTokensDTO:
         claims = self._jwt_provider.decode(refresh_dto.refresh_token)
         if claims.token_kind != "refresh":
+            logger.warning(
+                "auth.refresh.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="auth.refresh.failed",
+                        message="refresh failed",
+                        data={
+                            "reason": "invalid_token_kind",
+                            "token_kind": claims.token_kind,
+                        },
+                    )
+                },
+            )
             raise service_exceptions.AuthenticationError("token is not a refresh token")
 
         user = self._user_repository.get_by_id(claims.sub)
         if user is None:
+            logger.warning(
+                "auth.refresh.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="auth.refresh.failed",
+                        message="refresh failed",
+                        data={
+                            "reason": "user_not_found",
+                            "tenant_id": claims.tenant_id,
+                            "user_id": claims.sub,
+                        },
+                    )
+                },
+            )
             raise service_exceptions.AuthenticationError("user not found")
 
         if user.tenant_id != claims.tenant_id:
+            logger.warning(
+                "auth.refresh.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="auth.refresh.failed",
+                        message="refresh failed",
+                        data={
+                            "reason": "tenant_mismatch",
+                            "tenant_id": claims.tenant_id,
+                            "user_id": claims.sub,
+                        },
+                    )
+                },
+            )
             raise service_exceptions.AuthenticationError("token tenant mismatch")
 
         self._jwt_provider.revoke_refresh_jti(claims.jti)
-        return self._issue_auth_tokens(user)
+        auth_tokens = self._issue_auth_tokens(user)
+        logger.info(
+            "auth.refresh.success",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="auth.refresh.success",
+                    message="refresh succeeded",
+                    data={
+                        "tenant_id": user.tenant_id,
+                        "user_id": user.id,
+                    },
+                )
+            },
+        )
+        return auth_tokens
 
     def logout(self, logout_dto: auth_dto.LogoutDTO) -> None:
         claims = self._jwt_provider.decode(logout_dto.refresh_token)
@@ -118,6 +260,13 @@ class AuthService:
         if claims.token_kind != "access":
             raise service_exceptions.AuthenticationError("token is not an access token")
         return claims
+
+    def _resolve_email_domain(self, email: str) -> str:
+        normalized_email = email.strip().lower()
+        email_segments = normalized_email.split("@", maxsplit=1)
+        if len(email_segments) != 2:
+            return ""
+        return email_segments[1]
 
     def _issue_auth_tokens(self, user: user_entity.User) -> auth_dto.AuthTokensDTO:
         access_claims = self._build_claims(

@@ -1,4 +1,5 @@
 import datetime
+import logging
 
 import pytest
 
@@ -10,6 +11,8 @@ import src.services.dto.conversation_dto as conversation_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.conversation_control_service as conversation_control_service
 import tests.fakes.fake_adapters as fake_adapters
+
+LOGGER_NAME = "src.services.use_cases.conversation_control_service"
 
 
 def build_service() -> tuple[
@@ -115,3 +118,36 @@ def test_update_control_mode_fails_when_conversation_not_found_or_other_tenant()
             conversation_id="conv-2",
             update_dto=conversation_dto.UpdateConversationControlModeDTO(control_mode="HUMAN"),
         )
+
+
+def test_update_control_mode_logs_control_mode_changed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    service, repository = build_service()
+    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    repository.save_conversation(
+        conversation_entity.Conversation(
+            id="conv-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            started_at=now_value,
+            updated_at=now_value,
+            last_message_preview="hello",
+            message_ids=[],
+            control_mode="AI",
+        )
+    )
+    caplog.set_level(logging.INFO, logger=LOGGER_NAME)
+
+    service.update_control_mode(
+        claims=build_claims(role="owner"),
+        conversation_id="conv-1",
+        update_dto=conversation_dto.UpdateConversationControlModeDTO(control_mode="HUMAN"),
+    )
+
+    events = [
+        record.__dict__.get("event_data", {}).get("event")
+        for record in caplog.records
+        if isinstance(record.__dict__.get("event_data"), dict)
+    ]
+    assert "conversation.control_mode_changed" in events

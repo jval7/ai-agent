@@ -66,6 +66,19 @@
 - Snapshot JSON configurable con `MEMORY_JSON_FILE_PATH` (default `data/memory_store.json`).
 - Reinicio conserva estado solo si snapshot está habilitado.
 
+## Logging y errores
+- Logging estructurado JSON en `stdout`.
+- Correlación por `X-Request-ID`:
+  - si llega desde cliente/proxy, se reutiliza;
+  - si no llega, se genera en middleware.
+- Todas las respuestas HTTP incluyen header `X-Request-ID`.
+- Errores no controlados en entrypoints:
+  - response `500` con body `{"detail":"internal server error","request_id":"..."}`,
+  - traceback completo solo en logs del servidor.
+- Config por env:
+  - `LOG_LEVEL` (default `INFO`)
+  - `LOG_INCLUDE_REQUEST_SUMMARY` (default `false`)
+
 ## Comandos útiles
 - Setup:
   - `uv sync --group dev`

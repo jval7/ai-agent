@@ -1,4 +1,5 @@
 import datetime
+import logging
 
 import pytest
 
@@ -15,6 +16,8 @@ import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.webhook_service as webhook_service
 import tests.fakes.fake_adapters as fake_adapters
+
+LOGGER_NAME = "src.services.use_cases.webhook_service"
 
 
 def build_webhook_service(
@@ -361,3 +364,49 @@ def test_process_payload_bubbles_llm_failures_without_marking_event_processed() 
     messages = conversation_repository.list_messages("tenant-1", conversation.id)
     assert len(messages) == 1
     assert messages[0].direction == "INBOUND"
+
+
+def test_process_payload_logs_blacklist_event(caplog: pytest.LogCaptureFixture) -> None:
+    (
+        service,
+        provider,
+        _,
+        _,
+        _,
+        blacklist_repository,
+    ) = build_webhook_service(["conversation-1", "in-msg-1", "out-msg-1"])
+    provider.events = [build_customer_text_event(provider_event_id="evt-blacklist")]
+    blacklist_repository.save(
+        blacklist_entry_entity.BlacklistEntry(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    caplog.set_level(logging.INFO, logger=LOGGER_NAME)
+
+    service.process_payload({})
+
+    events = [
+        record.__dict__.get("event_data", {}).get("event")
+        for record in caplog.records
+        if isinstance(record.__dict__.get("event_data"), dict)
+    ]
+    assert "webhook.blacklist_blocked" in events
+
+
+def test_process_payload_logs_ai_failure(caplog: pytest.LogCaptureFixture) -> None:
+    service, provider, llm_provider, _, _, _ = build_webhook_service(["conversation-1", "in-msg-1"])
+    provider.events = [build_customer_text_event()]
+    llm_provider.should_fail = True
+    caplog.set_level(logging.ERROR, logger=LOGGER_NAME)
+
+    with pytest.raises(service_exceptions.ExternalProviderError):
+        service.process_payload({})
+
+    events = [
+        record.__dict__.get("event_data", {}).get("event")
+        for record in caplog.records
+        if isinstance(record.__dict__.get("event_data"), dict)
+    ]
+    assert "webhook.ai_reply_failed" in events

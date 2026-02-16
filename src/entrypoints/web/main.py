@@ -2,6 +2,7 @@ import fastapi
 import fastapi.middleware.cors as fastapi_cors
 
 import src.entrypoints.web.exceptions.http_exception_handlers as http_exception_handlers
+import src.entrypoints.web.middleware.request_context_middleware as request_context_middleware
 import src.entrypoints.web.routers.agent_router as agent_router
 import src.entrypoints.web.routers.auth_router as auth_router
 import src.entrypoints.web.routers.blacklist_router as blacklist_router
@@ -12,17 +13,23 @@ import src.entrypoints.web.routers.oauth_router as oauth_router
 import src.entrypoints.web.routers.webhook_router as webhook_router
 import src.entrypoints.web.routers.whatsapp_router as whatsapp_router
 import src.infra.container as app_container
+import src.infra.logs as app_logs
 
 
 def create_app() -> fastapi.FastAPI:
     app = fastapi.FastAPI(title="AI Agent WhatsApp MVP", version="0.1.0")
     app.state.container = app_container.AppContainer()
+    app_logs.configure_logging(app.state.container.settings.log_level)
     app.add_middleware(
         fastapi_cors.CORSMiddleware,
         allow_origins=app.state.container.settings.cors_allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
+    )
+    app.add_middleware(
+        request_context_middleware.RequestContextMiddleware,
+        include_request_summary=app.state.container.settings.log_include_request_summary,
     )
 
     app.include_router(health_router.router)

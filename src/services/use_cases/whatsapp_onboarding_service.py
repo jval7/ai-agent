@@ -1,4 +1,5 @@
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
+import src.infra.logs as app_logs
 import src.ports.clock_port as clock_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
@@ -6,6 +7,8 @@ import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.dto.whatsapp_dto as whatsapp_dto
 import src.services.exceptions as service_exceptions
+
+logger = app_logs.get_logger(__name__)
 
 
 class WhatsappOnboardingService:
@@ -44,6 +47,19 @@ class WhatsappOnboardingService:
         self._whatsapp_connection_repository.save(connection)
 
         connect_url = self._whatsapp_provider.build_embedded_signup_url(state_token)
+        logger.info(
+            "whatsapp.onboarding.session_created",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="whatsapp.onboarding.session_created",
+                    message="embedded signup session created",
+                    data={
+                        "tenant_id": tenant_id,
+                        "has_existing_connection": existing_connection is not None,
+                    },
+                )
+            },
+        )
         return whatsapp_dto.EmbeddedSignupSessionResponseDTO(
             state=state_token,
             connect_url=connect_url,
@@ -56,9 +72,35 @@ class WhatsappOnboardingService:
     ) -> whatsapp_dto.WhatsappConnectionStatusDTO:
         connection = self._whatsapp_connection_repository.get_by_tenant_id(tenant_id)
         if connection is None:
+            logger.warning(
+                "whatsapp.onboarding.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="whatsapp.onboarding.failed",
+                        message="embedded signup completion failed",
+                        data={
+                            "tenant_id": tenant_id,
+                            "reason": "session_not_found",
+                        },
+                    )
+                },
+            )
             raise service_exceptions.EntityNotFoundError("embedded signup session not found")
 
         if connection.embedded_signup_state != complete_dto.state:
+            logger.warning(
+                "whatsapp.onboarding.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="whatsapp.onboarding.failed",
+                        message="embedded signup completion failed",
+                        data={
+                            "tenant_id": tenant_id,
+                            "reason": "state_mismatch",
+                        },
+                    )
+                },
+            )
             raise service_exceptions.InvalidStateError("embedded signup state mismatch")
 
         credentials = self._whatsapp_provider.exchange_code_for_credentials(complete_dto.code)
@@ -69,6 +111,18 @@ class WhatsappOnboardingService:
     ) -> whatsapp_dto.WhatsappConnectionStatusDTO:
         connection = self._whatsapp_connection_repository.get_by_embedded_signup_state(state)
         if connection is None:
+            logger.warning(
+                "whatsapp.onboarding.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="whatsapp.onboarding.failed",
+                        message="embedded signup completion by state failed",
+                        data={
+                            "reason": "state_not_found",
+                        },
+                    )
+                },
+            )
             raise service_exceptions.EntityNotFoundError("embedded signup state not found")
 
         credentials = self._whatsapp_provider.exchange_code_for_credentials(code)
@@ -90,6 +144,23 @@ class WhatsappOnboardingService:
             updated_at=now_value,
         )
         self._whatsapp_connection_repository.save(updated_connection)
+        logger.info(
+            "whatsapp.onboarding.completed",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="whatsapp.onboarding.completed",
+                    message="embedded signup completed",
+                    data={
+                        "tenant_id": updated_connection.tenant_id,
+                        "status": updated_connection.status,
+                        "has_phone_number_id": updated_connection.phone_number_id is not None,
+                        "has_business_account_id": (
+                            updated_connection.business_account_id is not None
+                        ),
+                    },
+                )
+            },
+        )
 
         return whatsapp_dto.WhatsappConnectionStatusDTO(
             tenant_id=updated_connection.tenant_id,
@@ -123,12 +194,51 @@ class WhatsappOnboardingService:
 
     def verify_webhook(self, verification_dto: webhook_dto.WebhookVerificationDTO) -> str:
         if verification_dto.mode != "subscribe":
+            logger.warning(
+                "whatsapp.webhook.verify.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="whatsapp.webhook.verify.failed",
+                        message="webhook verify failed",
+                        data={"reason": "invalid_mode"},
+                    )
+                },
+            )
             raise service_exceptions.AuthorizationError("invalid webhook mode")
 
         if not self._webhook_verify_token:
+            logger.warning(
+                "whatsapp.webhook.verify.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="whatsapp.webhook.verify.failed",
+                        message="webhook verify failed",
+                        data={"reason": "missing_verify_token"},
+                    )
+                },
+            )
             raise service_exceptions.InvalidStateError("META_WEBHOOK_VERIFY_TOKEN is required")
 
         if verification_dto.verify_token != self._webhook_verify_token:
+            logger.warning(
+                "whatsapp.webhook.verify.failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="whatsapp.webhook.verify.failed",
+                        message="webhook verify failed",
+                        data={"reason": "invalid_verify_token"},
+                    )
+                },
+            )
             raise service_exceptions.AuthorizationError("invalid verify token")
 
+        logger.info(
+            "whatsapp.webhook.verify.succeeded",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="whatsapp.webhook.verify.succeeded",
+                    message="webhook verify succeeded",
+                )
+            },
+        )
         return verification_dto.challenge

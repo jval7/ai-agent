@@ -2,8 +2,9 @@ import * as reactModule from "react";
 import * as reactRouterDomModule from "react-router-dom";
 
 import * as authContextModule from "@adapters/inbound/react/app/AuthContext";
+import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as authSharedModule from "@adapters/inbound/react/components/AuthShared";
-import * as apiErrorModule from "@shared/http/api_error";
+import * as uiErrorModule from "@shared/http/ui_error";
 
 const inputClassName =
   "h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base text-slate-800 placeholder:text-slate-400 focus:border-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-700/20 md:h-14 md:text-lg";
@@ -42,13 +43,11 @@ export function RegisterPage() {
       });
       navigate("/onboarding/whatsapp", { replace: true });
     } catch (error: unknown) {
-      if (error instanceof apiErrorModule.ApiError) {
-        setErrorMessage(error.message);
-      } else if (error instanceof TypeError) {
-        setErrorMessage("No se pudo conectar con el backend.");
-      } else {
+      const resolvedErrorMessage = uiErrorModule.resolveUiErrorMessage([error]);
+      if (resolvedErrorMessage === null) {
         throw error;
       }
+      setErrorMessage(resolvedErrorMessage);
     } finally {
       setIsSubmitting(false);
     }
@@ -145,9 +144,10 @@ export function RegisterPage() {
           </div>
 
           {errorMessage !== null ? (
-            <p className="rounded-xl bg-red-100 px-3 py-2 text-base font-medium text-red-700 md:text-[18px]">
-              {errorMessage}
-            </p>
+            <errorBannerModule.ErrorBanner
+              className="rounded-xl bg-red-100 px-3 py-2 text-base font-medium text-red-700 md:text-[18px]"
+              message={errorMessage}
+            />
           ) : null}
 
           <button
