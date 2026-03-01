@@ -4,7 +4,10 @@ import type * as agentModel from "@domain/models/agent";
 import type * as authModel from "@domain/models/auth";
 import type * as blacklistModel from "@domain/models/blacklist";
 import type * as conversationModel from "@domain/models/conversation";
+import type * as googleCalendarModel from "@domain/models/google_calendar";
+import type * as onboardingModel from "@domain/models/onboarding";
 import type * as backendApiPort from "@ports/backend_api_port";
+import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
 
 import * as authUseCaseModule from "./auth_use_case";
@@ -88,6 +91,25 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async createGoogleOauthSession(): Promise<googleCalendarModel.GoogleOauthSession> {
+    throw new Error("not used");
+  }
+
+  async getGoogleCalendarConnection(): Promise<googleCalendarModel.GoogleCalendarConnection> {
+    throw new Error("not used");
+  }
+
+  async getOnboardingStatus(): Promise<onboardingModel.OnboardingStatus> {
+    throw new Error("not used");
+  }
+
+  async getGoogleCalendarAvailability(
+    _fromIso: string,
+    _toIso: string
+  ): Promise<googleCalendarModel.GoogleCalendarAvailability> {
+    throw new Error("not used");
+  }
+
   async listConversations(): Promise<conversationModel.ConversationSummary[]> {
     throw new Error("not used");
   }
@@ -102,6 +124,26 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     _conversationId: string,
     _controlMode: "AI" | "HUMAN"
   ): Promise<conversationModel.ControlMode> {
+    throw new Error("not used");
+  }
+
+  async listSchedulingRequests(
+    _status?: schedulingModel.SchedulingRequestStatus
+  ): Promise<schedulingModel.SchedulingRequestSummary[]> {
+    throw new Error("not used");
+  }
+
+  async listConversationSchedulingRequests(
+    _conversationId: string
+  ): Promise<schedulingModel.SchedulingRequestSummary[]> {
+    throw new Error("not used");
+  }
+
+  async submitProfessionalSlots(
+    _conversationId: string,
+    _requestId: string,
+    _input: schedulingModel.SubmitProfessionalSlotsInput
+  ): Promise<schedulingModel.SubmitProfessionalSlotsResult> {
     throw new Error("not used");
   }
 

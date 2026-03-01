@@ -2,6 +2,9 @@ import type * as agentModel from "@domain/models/agent";
 import type * as authModel from "@domain/models/auth";
 import type * as blacklistModel from "@domain/models/blacklist";
 import type * as conversationModel from "@domain/models/conversation";
+import type * as googleCalendarModel from "@domain/models/google_calendar";
+import type * as onboardingModel from "@domain/models/onboarding";
+import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
 import type * as backendApiPort from "@ports/backend_api_port";
 import type * as tokenSessionPort from "@ports/token_session_port";
@@ -132,6 +135,82 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     };
   }
 
+  async createGoogleOauthSession(): Promise<googleCalendarModel.GoogleOauthSession> {
+    const payload = await this.request<httpTypes.GoogleOauthSessionApiResponse>(
+      "/v1/google-calendar/oauth/session",
+      {
+        method: "POST",
+        authRequired: true
+      }
+    );
+
+    return {
+      state: payload.state,
+      connectUrl: payload.connect_url
+    };
+  }
+
+  async getGoogleCalendarConnection(): Promise<googleCalendarModel.GoogleCalendarConnection> {
+    const payload = await this.request<httpTypes.GoogleCalendarConnectionApiResponse>(
+      "/v1/google-calendar/connection",
+      {
+        method: "GET",
+        authRequired: true
+      }
+    );
+
+    return {
+      tenantId: payload.tenant_id,
+      status: payload.status,
+      calendarId: payload.calendar_id,
+      professionalTimezone: payload.professional_timezone,
+      connectedAt: payload.connected_at
+    };
+  }
+
+  async getOnboardingStatus(): Promise<onboardingModel.OnboardingStatus> {
+    const payload = await this.request<httpTypes.OnboardingStatusApiResponse>(
+      "/v1/onboarding/status",
+      {
+        method: "GET",
+        authRequired: true
+      }
+    );
+
+    return {
+      whatsappConnected: payload.whatsapp_connected,
+      googleCalendarConnected: payload.google_calendar_connected,
+      ready: payload.ready
+    };
+  }
+
+  async getGoogleCalendarAvailability(
+    fromIso: string,
+    toIso: string
+  ): Promise<googleCalendarModel.GoogleCalendarAvailability> {
+    const queryParams = new URLSearchParams({
+      from: fromIso,
+      to: toIso
+    });
+    const payload = await this.request<httpTypes.GoogleCalendarAvailabilityApiResponse>(
+      `/v1/google-calendar/availability?${queryParams.toString()}`,
+      {
+        method: "GET",
+        authRequired: true
+      }
+    );
+
+    return {
+      tenantId: payload.tenant_id,
+      calendarId: payload.calendar_id,
+      timezone: payload.timezone,
+      busyIntervals: payload.busy_intervals.map((interval) => ({
+        startAt: interval.start_at,
+        endAt: interval.end_at
+      }))
+    };
+  }
+
   async listConversations(): Promise<conversationModel.ConversationSummary[]> {
     const payload = await this.request<httpTypes.ConversationListApiResponse>("/v1/conversations", {
       method: "GET",
@@ -220,6 +299,68 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       method: "DELETE",
       authRequired: true
     });
+  }
+
+  async listSchedulingRequests(
+    status?: schedulingModel.SchedulingRequestStatus
+  ): Promise<schedulingModel.SchedulingRequestSummary[]> {
+    const queryParams = new URLSearchParams();
+    if (status !== undefined) {
+      queryParams.set("status", status);
+    }
+    const queryString = queryParams.toString();
+    const path =
+      queryString.length > 0 ? `/v1/scheduling-requests?${queryString}` : "/v1/scheduling-requests";
+    const payload = await this.request<httpTypes.SchedulingRequestListApiResponse>(path, {
+      method: "GET",
+      authRequired: true
+    });
+
+    return payload.items.map(mapSchedulingRequestSummary);
+  }
+
+  async listConversationSchedulingRequests(
+    conversationId: string
+  ): Promise<schedulingModel.SchedulingRequestSummary[]> {
+    const payload = await this.request<httpTypes.SchedulingRequestListApiResponse>(
+      `/v1/conversations/${conversationId}/scheduling/requests`,
+      {
+        method: "GET",
+        authRequired: true
+      }
+    );
+
+    return payload.items.map(mapSchedulingRequestSummary);
+  }
+
+  async submitProfessionalSlots(
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.SubmitProfessionalSlotsInput
+  ): Promise<schedulingModel.SubmitProfessionalSlotsResult> {
+    const payload = await this.request<httpTypes.SubmitProfessionalSlotsApiResponse>(
+      `/v1/conversations/${conversationId}/scheduling/requests/${requestId}/professional-slots`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          slots: input.slots.map((slot) => ({
+            slot_id: slot.slotId,
+            start_at: slot.startAt,
+            end_at: slot.endAt,
+            timezone: slot.timezone
+          })),
+          professional_note: input.professionalNote
+        } satisfies httpTypes.SubmitProfessionalSlotsApiRequest)
+      }
+    );
+
+    return {
+      status: payload.status,
+      slotBatchId: payload.slot_batch_id,
+      outboundMessageId: payload.outbound_message_id,
+      assistantText: payload.assistant_text
+    };
   }
 
   private async request<T>(path: string, options: RequestOptions): Promise<T> {
@@ -379,5 +520,32 @@ function mapAuthTokens(payload: httpTypes.AuthTokensApiResponse): authModel.Auth
     accessToken: payload.access_token,
     refreshToken: payload.refresh_token,
     expiresInSeconds: payload.expires_in_seconds
+  };
+}
+
+function mapSchedulingRequestSummary(
+  payload: httpTypes.SchedulingRequestSummaryApiResponse
+): schedulingModel.SchedulingRequestSummary {
+  return {
+    requestId: payload.request_id,
+    conversationId: payload.conversation_id,
+    whatsappUserId: payload.whatsapp_user_id,
+    requestKind: payload.request_kind,
+    status: payload.status,
+    roundNumber: payload.round_number,
+    patientPreferenceNote: payload.patient_preference_note,
+    rejectionSummary: payload.rejection_summary,
+    professionalNote: payload.professional_note,
+    selectedSlotId: payload.selected_slot_id,
+    calendarEventId: payload.calendar_event_id,
+    createdAt: payload.created_at,
+    updatedAt: payload.updated_at,
+    slots: payload.slots.map((slot) => ({
+      slotId: slot.slot_id,
+      startAt: slot.start_at,
+      endAt: slot.end_at,
+      timezone: slot.timezone,
+      status: slot.status
+    }))
   };
 }

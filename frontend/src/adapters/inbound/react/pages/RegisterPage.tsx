@@ -41,7 +41,7 @@ export function RegisterPage() {
         email: email.trim(),
         password
       });
-      navigate("/onboarding/whatsapp", { replace: true });
+      navigate("/onboarding", { replace: true });
     } catch (error: unknown) {
       const resolvedErrorMessage = uiErrorModule.resolveUiErrorMessage([error]);
       if (resolvedErrorMessage === null) {

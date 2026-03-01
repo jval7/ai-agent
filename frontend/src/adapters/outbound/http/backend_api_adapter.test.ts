@@ -139,4 +139,131 @@ vitestModule.describe("BackendApiAdapter", () => {
       requestId: "req-123"
     });
   });
+
+  vitestModule.it("maps google calendar, onboarding and scheduling endpoints", async () => {
+    serverModule.server.use(
+      mswModule.http.post("http://api.test/v1/google-calendar/oauth/session", () => {
+        return mswModule.HttpResponse.json({
+          state: "state-1",
+          connect_url: "https://google.test/oauth"
+        });
+      }),
+      mswModule.http.get("http://api.test/v1/google-calendar/connection", () => {
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          status: "CONNECTED",
+          calendar_id: "primary",
+          professional_timezone: "America/Bogota",
+          connected_at: "2026-03-01T12:00:00Z"
+        });
+      }),
+      mswModule.http.get("http://api.test/v1/onboarding/status", () => {
+        return mswModule.HttpResponse.json({
+          whatsapp_connected: true,
+          google_calendar_connected: true,
+          ready: true
+        });
+      }),
+      mswModule.http.get("http://api.test/v1/google-calendar/availability", ({ request }) => {
+        const url = new URL(request.url);
+        vitestModule.expect(url.searchParams.get("from")).toBe("2026-03-01T00:00:00Z");
+        vitestModule.expect(url.searchParams.get("to")).toBe("2026-03-31T23:59:59Z");
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          calendar_id: "primary",
+          timezone: "America/Bogota",
+          busy_intervals: [
+            {
+              start_at: "2026-03-01T10:00:00Z",
+              end_at: "2026-03-01T11:00:00Z"
+            }
+          ]
+        });
+      }),
+      mswModule.http.get("http://api.test/v1/scheduling-requests", ({ request }) => {
+        const url = new URL(request.url);
+        vitestModule.expect(url.searchParams.get("status")).toBe("AWAITING_PROFESSIONAL_SLOTS");
+        return mswModule.HttpResponse.json({
+          items: [
+            {
+              request_id: "req-1",
+              conversation_id: "conv-1",
+              whatsapp_user_id: "wa-1",
+              request_kind: "INITIAL",
+              status: "AWAITING_PROFESSIONAL_SLOTS",
+              round_number: 1,
+              patient_preference_note: "prefiere tarde",
+              rejection_summary: null,
+              professional_note: null,
+              selected_slot_id: null,
+              calendar_event_id: null,
+              created_at: "2026-03-01T10:00:00Z",
+              updated_at: "2026-03-01T10:00:00Z",
+              slots: []
+            }
+          ]
+        });
+      }),
+      mswModule.http.get("http://api.test/v1/conversations/conv-1/scheduling/requests", () => {
+        return mswModule.HttpResponse.json({
+          items: []
+        });
+      }),
+      mswModule.http.post(
+        "http://api.test/v1/conversations/conv-1/scheduling/requests/req-1/professional-slots",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            slots: {
+              slot_id: string;
+              start_at: string;
+              end_at: string;
+              timezone: string;
+            }[];
+            professional_note: string | null;
+          };
+          vitestModule.expect(body.slots).toHaveLength(1);
+          vitestModule.expect(body.slots[0]?.slot_id).toBe("req-1_20260301_1000");
+          vitestModule.expect(body.professional_note).toBe("elige cualquiera");
+          return mswModule.HttpResponse.json({
+            status: "AWAITING_PATIENT_CHOICE",
+            slot_batch_id: "req-1",
+            outbound_message_id: "wamid-1",
+            assistant_text: "Listo, ya te mostré opciones."
+          });
+        }
+      )
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const googleSession = await adapter.createGoogleOauthSession();
+    const googleConnection = await adapter.getGoogleCalendarConnection();
+    const onboardingStatus = await adapter.getOnboardingStatus();
+    const availability = await adapter.getGoogleCalendarAvailability(
+      "2026-03-01T00:00:00Z",
+      "2026-03-31T23:59:59Z"
+    );
+    const requests = await adapter.listSchedulingRequests("AWAITING_PROFESSIONAL_SLOTS");
+    const conversationRequests = await adapter.listConversationSchedulingRequests("conv-1");
+    const submitResult = await adapter.submitProfessionalSlots("conv-1", "req-1", {
+      slots: [
+        {
+          slotId: "req-1_20260301_1000",
+          startAt: "2026-03-01T10:00:00Z",
+          endAt: "2026-03-01T11:00:00Z",
+          timezone: "America/Bogota"
+        }
+      ],
+      professionalNote: "elige cualquiera"
+    });
+
+    vitestModule.expect(googleSession.connectUrl).toBe("https://google.test/oauth");
+    vitestModule.expect(googleConnection.professionalTimezone).toBe("America/Bogota");
+    vitestModule.expect(onboardingStatus.ready).toBe(true);
+    vitestModule.expect(availability.busyIntervals).toHaveLength(1);
+    vitestModule.expect(requests[0]?.requestId).toBe("req-1");
+    vitestModule.expect(conversationRequests).toEqual([]);
+    vitestModule.expect(submitResult.outboundMessageId).toBe("wamid-1");
+  });
 });

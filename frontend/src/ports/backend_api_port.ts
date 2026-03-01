@@ -2,6 +2,9 @@ import type * as agentModel from "@domain/models/agent";
 import type * as authModel from "@domain/models/auth";
 import type * as blacklistModel from "@domain/models/blacklist";
 import type * as conversationModel from "@domain/models/conversation";
+import type * as googleCalendarModel from "@domain/models/google_calendar";
+import type * as onboardingModel from "@domain/models/onboarding";
+import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
 
 export interface BackendApiPort {
@@ -15,6 +18,13 @@ export interface BackendApiPort {
 
   createEmbeddedSignupSession(): Promise<whatsappModel.EmbeddedSignupSession>;
   getWhatsappConnection(): Promise<whatsappModel.WhatsappConnection>;
+  createGoogleOauthSession(): Promise<googleCalendarModel.GoogleOauthSession>;
+  getGoogleCalendarConnection(): Promise<googleCalendarModel.GoogleCalendarConnection>;
+  getOnboardingStatus(): Promise<onboardingModel.OnboardingStatus>;
+  getGoogleCalendarAvailability(
+    fromIso: string,
+    toIso: string
+  ): Promise<googleCalendarModel.GoogleCalendarAvailability>;
 
   listConversations(): Promise<conversationModel.ConversationSummary[]>;
   listConversationMessages(
@@ -28,4 +38,16 @@ export interface BackendApiPort {
   listBlacklist(): Promise<blacklistModel.BlacklistEntry[]>;
   addBlacklist(whatsappUserId: string): Promise<blacklistModel.BlacklistEntry>;
   removeBlacklist(whatsappUserId: string): Promise<void>;
+
+  listSchedulingRequests(
+    status?: schedulingModel.SchedulingRequestStatus
+  ): Promise<schedulingModel.SchedulingRequestSummary[]>;
+  listConversationSchedulingRequests(
+    conversationId: string
+  ): Promise<schedulingModel.SchedulingRequestSummary[]>;
+  submitProfessionalSlots(
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.SubmitProfessionalSlotsInput
+  ): Promise<schedulingModel.SubmitProfessionalSlotsResult>;
 }

@@ -4,7 +4,8 @@ import * as reactRouterDomModule from "react-router-dom";
 import * as authContextModule from "@adapters/inbound/react/app/AuthContext";
 
 const navLinks = [
-  { to: "/onboarding/whatsapp", label: "Onboarding" },
+  { to: "/onboarding", label: "Onboarding" },
+  { to: "/agenda", label: "Agenda" },
   { to: "/inbox", label: "Inbox" },
   { to: "/agent/prompt", label: "Prompt" }
 ];
