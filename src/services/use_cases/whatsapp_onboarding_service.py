@@ -133,6 +133,57 @@ class WhatsappOnboardingService:
         connection: whatsapp_connection_entity.WhatsappConnection,
         credentials: whatsapp_dto.EmbeddedSignupCredentialsDTO,
     ) -> whatsapp_dto.WhatsappConnectionStatusDTO:
+        logger.info(
+            "whatsapp.onboarding.provisioning_started",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="whatsapp.onboarding.provisioning_started",
+                    message="starting whatsapp cloud provisioning after oauth",
+                    data={
+                        "tenant_id": connection.tenant_id,
+                        "has_phone_number_id": credentials.phone_number_id != "",
+                        "has_business_account_id": credentials.business_account_id != "",
+                    },
+                )
+            },
+        )
+
+        try:
+            self._whatsapp_provider.subscribe_app_to_waba(
+                access_token=credentials.access_token,
+                business_account_id=credentials.business_account_id,
+            )
+            self._whatsapp_provider.register_phone_number(
+                access_token=credentials.access_token,
+                phone_number_id=credentials.phone_number_id,
+            )
+        except service_exceptions.ExternalProviderError as error:
+            logger.error(
+                "whatsapp.onboarding.provisioning_failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="whatsapp.onboarding.provisioning_failed",
+                        message="whatsapp cloud provisioning failed",
+                        data={
+                            "tenant_id": connection.tenant_id,
+                            "reason": str(error),
+                        },
+                    )
+                },
+            )
+            raise
+
+        logger.info(
+            "whatsapp.onboarding.provisioning_completed",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="whatsapp.onboarding.provisioning_completed",
+                    message="whatsapp cloud provisioning completed",
+                    data={"tenant_id": connection.tenant_id},
+                )
+            },
+        )
+
         now_value = self._clock.now()
         updated_connection = whatsapp_connection_entity.WhatsappConnection(
             tenant_id=connection.tenant_id,

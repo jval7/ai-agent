@@ -15,6 +15,14 @@ class WhatsappProviderPort(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def subscribe_app_to_waba(self, access_token: str, business_account_id: str) -> None:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def register_phone_number(self, access_token: str, phone_number_id: str) -> None:
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def send_text_message(
         self,
         access_token: str,

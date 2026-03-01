@@ -230,7 +230,7 @@ Este documento describe qué hace cada endpoint del backend.
   - resuelve tenant por `phone_number_id`
   - deduplica por `provider_event_id`
   - guarda mensaje inbound
-  - genera respuesta con Anthropic
+  - genera respuesta con Gemini
   - envía respuesta por WhatsApp
   - guarda outbound y marca evento procesado
 - Request body: payload oficial de Meta.

@@ -5,13 +5,24 @@
 - Stack: FastAPI + arquitectura hexagonal + persistencia in-memory con snapshot JSON.
 - Providers activos:
   - WhatsApp: Meta Cloud API.
-  - LLM: Anthropic (`ANTHROPIC_*`).
+  - LLM: Gemini en Vertex AI (`GEMINI_*`).
+
+## Reglas de Ingeniería Backend (Obligatorias)
+1. No usar `hasattr()` / `getattr()` ni reflexión similar.
+2. Importar módulos, no objetos directamente.
+3. Respetar arquitectura hexagonal y límites limpios.
+4. No usar `global`.
+5. Usar sintaxis de unión con `|` (`str | None`), no `Optional[str]`.
+6. Mantener imports al inicio del archivo.
+7. Usar Pydantic para modelos de datos.
+8. Capturar excepciones específicas (evitar `Exception` genérica salvo necesidad estricta para no cortar flujo principal).
+9. Seguir el Zen de Python.
 
 ## Estructura de capas
 - `src/entrypoints/web`: capa HTTP (routers, handlers, dependencias auth).
 - `src/services`: casos de uso y DTOs principales.
 - `src/ports`: contratos/interfaces para adapters.
-- `src/adapters/outbound`: implementaciones concretas (Meta, Anthropic, seguridad, in-memory).
+- `src/adapters/outbound`: implementaciones concretas (Meta, Gemini, seguridad, in-memory).
 - `src/domain`: entidades/agregados Pydantic.
 - `src/infra`: settings + wiring en `container.py`.
 
@@ -59,7 +70,7 @@
 - Si evento es cliente (`CUSTOMER`):
   - guarda inbound,
   - si conversación está en `HUMAN`, no responde IA,
-  - si está en `AI`, genera respuesta con Anthropic y envía por WhatsApp.
+  - si está en `AI`, genera respuesta con Gemini y envía por WhatsApp.
 
 ## Persistencia actual
 - Store in-memory compartido entre repositorios.

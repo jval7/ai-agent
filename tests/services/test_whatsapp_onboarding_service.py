@@ -59,6 +59,18 @@ def test_create_session_and_complete_embedded_signup() -> None:
     assert session_response.connect_url.endswith("state=state-1")
     assert complete_response.status == "CONNECTED"
     assert complete_response.phone_number_id == "phone-1"
+    assert provider.waba_subscriptions == [
+        {
+            "access_token": "token-1",
+            "business_account_id": "business-1",
+        }
+    ]
+    assert provider.phone_registrations == [
+        {
+            "access_token": "token-1",
+            "phone_number_id": "phone-1",
+        }
+    ]
 
 
 def test_verify_webhook_validates_verify_token() -> None:
@@ -105,6 +117,27 @@ def test_complete_embedded_signup_by_state_finishes_connection() -> None:
     assert result.tenant_id == "tenant-1"
     assert result.status == "CONNECTED"
     assert result.phone_number_id == "phone-1"
+
+
+def test_complete_embedded_signup_fails_when_meta_subscription_fails() -> None:
+    service, provider = build_onboarding_service(["state-1"])
+    provider.credential_by_code["code-1"] = whatsapp_dto.EmbeddedSignupCredentialsDTO(
+        phone_number_id="phone-1",
+        business_account_id="business-1",
+        access_token="token-1",
+    )
+    provider.should_fail_subscription = True
+    session_response = service.create_embedded_signup_session("tenant-1")
+
+    with pytest.raises(service_exceptions.ExternalProviderError):
+        service.complete_embedded_signup(
+            "tenant-1",
+            whatsapp_dto.EmbeddedSignupCompleteDTO(code="code-1", state=session_response.state),
+        )
+
+    status = service.get_connection_status("tenant-1")
+    assert status.status == "PENDING"
+    assert status.phone_number_id is None
 
 
 def test_complete_embedded_signup_by_state_fails_when_state_not_found() -> None:

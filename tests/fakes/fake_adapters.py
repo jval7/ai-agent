@@ -59,6 +59,10 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
         self.credential_by_code: dict[str, whatsapp_dto.EmbeddedSignupCredentialsDTO] = {}
         self.sent_messages: list[dict[str, str]] = []
         self.events: list[webhook_dto.IncomingMessageEventDTO] = []
+        self.waba_subscriptions: list[dict[str, str]] = []
+        self.phone_registrations: list[dict[str, str]] = []
+        self.should_fail_subscription = False
+        self.should_fail_phone_registration = False
 
     def build_embedded_signup_url(self, state: str) -> str:
         return f"https://example.test/embedded?state={state}"
@@ -68,6 +72,26 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
         if credentials is None:
             raise service_exceptions.ExternalProviderError("code not configured in fake provider")
         return credentials
+
+    def subscribe_app_to_waba(self, access_token: str, business_account_id: str) -> None:
+        if self.should_fail_subscription:
+            raise service_exceptions.ExternalProviderError("simulated subscribe failure")
+
+        payload = {
+            "access_token": access_token,
+            "business_account_id": business_account_id,
+        }
+        self.waba_subscriptions.append(payload)
+
+    def register_phone_number(self, access_token: str, phone_number_id: str) -> None:
+        if self.should_fail_phone_registration:
+            raise service_exceptions.ExternalProviderError("simulated phone register failure")
+
+        payload = {
+            "access_token": access_token,
+            "phone_number_id": phone_number_id,
+        }
+        self.phone_registrations.append(payload)
 
     def send_text_message(
         self,

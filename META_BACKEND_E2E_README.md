@@ -15,7 +15,8 @@ En backend (`.env`):
 
 - `META_APP_ID`, `META_APP_SECRET`, `META_REDIRECT_URI`
 - `META_WEBHOOK_VERIFY_TOKEN`
-- `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`, `ANTHROPIC_API_VERSION`, `ANTHROPIC_MAX_TOKENS`
+- `META_PHONE_REGISTRATION_PIN` (PIN de 6 digitos para `/{PHONE_NUMBER_ID}/register`)
+- `GEMINI_PROJECT_ID`, `GEMINI_LOCATION`, `GEMINI_MODEL`, `GEMINI_MAX_OUTPUT_TOKENS`
 
 ## 2) Onboarding de un tenant (empresa cliente)
 
@@ -27,7 +28,9 @@ En backend (`.env`):
    - `phone_number_id`
    - `business_account_id` (WABA)
    - `access_token`
-6. Backend marca conexión del tenant como `CONNECTED`.
+6. Backend suscribe la app a la WABA: `POST /{WABA_ID}/subscribed_apps`.
+7. Backend registra el numero para Cloud API: `POST /{PHONE_NUMBER_ID}/register` con `META_PHONE_REGISTRATION_PIN`.
+8. Backend marca conexión del tenant como `CONNECTED`.
 
 Clave multi-tenant: cada tenant queda mapeado por su `phone_number_id`.
 
@@ -39,7 +42,7 @@ Clave multi-tenant: cada tenant queda mapeado por su `phone_number_id`.
 4. Crea/recupera `WhatsappUser` + `Conversation`.
 5. Guarda mensaje inbound.
 6. Arma contexto: `system_prompt` del tenant + últimos N mensajes.
-7. Llama Anthropic (`LlmProviderPort.generate_reply`).
+7. Llama Gemini (`LlmProviderPort.generate_reply`).
 8. Envía respuesta por Meta `/{phone_number_id}/messages`.
 9. Guarda mensaje outbound y marca `provider_event_id` como procesado (dedupe).
 
@@ -59,3 +62,9 @@ Clave multi-tenant: cada tenant queda mapeado por su `phone_number_id`.
 - Historial: `GET /v1/conversations/{conversation_id}/messages`
 
 Si `phone_number_id` no está mapeado a un tenant, el evento inbound se ignora.
+
+## 6) Diferencia entre pasos Meta clave
+
+- `OAuth`: entrega permisos + IDs (`access_token`, `WABA_ID`, `PHONE_NUMBER_ID`).
+- `subscribed_apps`: habilita entrega de eventos inbound de esa WABA a tu app.
+- `register`: activa el numero para uso en Cloud API con PIN de verificacion.

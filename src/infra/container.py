@@ -7,7 +7,7 @@ import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.tenant_repository_adapter as tenant_repository_adapter
 import src.adapters.outbound.inmemory.user_repository_adapter as user_repository_adapter
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
-import src.adapters.outbound.llm_anthropic.anthropic_llm_provider_adapter as anthropic_llm_provider_adapter
+import src.adapters.outbound.llm_gemini.gemini_llm_provider_adapter as gemini_llm_provider_adapter
 import src.adapters.outbound.security.jwt_provider_adapter as jwt_provider_adapter
 import src.adapters.outbound.security.password_hasher_adapter as password_hasher_adapter
 import src.adapters.outbound.whatsapp_meta.meta_whatsapp_provider_adapter as meta_whatsapp_provider_adapter
@@ -65,11 +65,11 @@ class AppContainer:
         self.whatsapp_provider_adapter = meta_whatsapp_provider_adapter.MetaWhatsappProviderAdapter(
             settings=self.settings,
         )
-        self.llm_provider_adapter = anthropic_llm_provider_adapter.AnthropicLlmProviderAdapter(
-            api_key=self.settings.anthropic_api_key,
-            model=self.settings.anthropic_model,
-            api_version=self.settings.anthropic_api_version,
-            max_tokens=self.settings.anthropic_max_tokens,
+        self.llm_provider_adapter = gemini_llm_provider_adapter.GeminiLlmProviderAdapter(
+            project_id=self.settings.gemini_project_id,
+            location=self.settings.gemini_location,
+            model=self.settings.gemini_model,
+            max_output_tokens=self.settings.gemini_max_output_tokens,
         )
 
         self.auth_service = auth_service.AuthService(

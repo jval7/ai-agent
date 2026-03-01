@@ -11,6 +11,7 @@ __pycache__/
 htmlcov/
 .DS_Store
 data/
+.secrets/
 frontend/node_modules/
 frontend/dist/
 frontend/coverage/

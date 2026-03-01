@@ -62,19 +62,30 @@ META_WEBHOOK_VERIFY_TOKEN=dev-meta-webhook-verify-token
 
 Configure that same value once in Meta for the webhook callback.
 
+For post-OAuth Cloud API provisioning, configure a 6-digit phone registration PIN:
+
+```bash
+META_PHONE_REGISTRATION_PIN=123456
+```
+
+During embedded signup completion, backend now runs:
+
+- `POST /{WABA_ID}/subscribed_apps`
+- `POST /{PHONE_NUMBER_ID}/register`
+
 OAuth callback return URL for browser redirect after Meta permissions:
 
 ```bash
 FRONTEND_APP_BASE_URL=http://localhost:5173
 ```
 
-For LLM responses, configure Anthropic:
+For LLM responses with Gemini on Vertex AI, configure:
 
 ```bash
-ANTHROPIC_API_KEY=your_api_key
-ANTHROPIC_MODEL=claude-sonnet-4-20250514
-ANTHROPIC_API_VERSION=2023-06-01
-ANTHROPIC_MAX_TOKENS=512
+GEMINI_PROJECT_ID=your_gcp_project_id
+GEMINI_LOCATION=us-central1
+GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MAX_OUTPUT_TOKENS=512
 ```
 
 ## Logging

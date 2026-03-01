@@ -17,11 +17,12 @@ class Settings(pydantic.BaseModel):
     meta_app_secret: str
     meta_redirect_uri: str
     meta_webhook_verify_token: str
+    meta_phone_registration_pin: str
     meta_api_version: str
-    anthropic_api_key: str
-    anthropic_model: str
-    anthropic_api_version: str
-    anthropic_max_tokens: int
+    gemini_project_id: str
+    gemini_location: str
+    gemini_model: str
+    gemini_max_output_tokens: int
     log_level: str
     log_include_request_summary: bool
 
@@ -53,11 +54,15 @@ class Settings(pydantic.BaseModel):
                 "META_WEBHOOK_VERIFY_TOKEN",
                 "dev-meta-webhook-verify-token",
             ),
+            meta_phone_registration_pin=os.getenv("META_PHONE_REGISTRATION_PIN", ""),
             meta_api_version=os.getenv("META_API_VERSION", "v23.0"),
-            anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-            anthropic_model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
-            anthropic_api_version=os.getenv("ANTHROPIC_API_VERSION", "2023-06-01"),
-            anthropic_max_tokens=int(os.getenv("ANTHROPIC_MAX_TOKENS", "512")),
+            gemini_project_id=os.getenv("GEMINI_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", "")),
+            gemini_location=os.getenv(
+                "GEMINI_LOCATION",
+                os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
+            ),
+            gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+            gemini_max_output_tokens=int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "512")),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             log_include_request_summary=os.getenv(
                 "LOG_INCLUDE_REQUEST_SUMMARY",

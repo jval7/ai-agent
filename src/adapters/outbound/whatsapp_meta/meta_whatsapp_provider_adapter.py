@@ -57,6 +57,38 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
             access_token=access_token,
         )
 
+    def subscribe_app_to_waba(self, access_token: str, business_account_id: str) -> None:
+        subscribed_apps_url = f"https://graph.facebook.com/{self._settings.meta_api_version}/{business_account_id}/subscribed_apps"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response_payload = self._post_json(
+            url=subscribed_apps_url,
+            operation_label="subscribing app to waba",
+            headers=headers,
+            body={},
+        )
+        self._assert_success_flag(response_payload, "subscribing app to waba")
+
+    def register_phone_number(self, access_token: str, phone_number_id: str) -> None:
+        registration_pin = self._settings.meta_phone_registration_pin.strip()
+        if registration_pin == "":
+            raise service_exceptions.ExternalProviderError(
+                "META_PHONE_REGISTRATION_PIN is required"
+            )
+
+        register_url = f"https://graph.facebook.com/{self._settings.meta_api_version}/{phone_number_id}/register"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        body = {
+            "messaging_product": "whatsapp",
+            "pin": registration_pin,
+        }
+        response_payload = self._post_json(
+            url=register_url,
+            operation_label="registering phone number",
+            headers=headers,
+            body=body,
+        )
+        self._assert_success_flag(response_payload, "registering phone number")
+
     def send_text_message(
         self,
         access_token: str,
@@ -493,6 +525,11 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
                 f"network error while {operation_label}"
             ) from error
         except httpx.HTTPStatusError as error:
+            response_text = error.response.text.strip()
+            if response_text:
+                raise service_exceptions.ExternalProviderError(
+                    f"meta rejected request while {operation_label}: {response_text}"
+                ) from error
             raise service_exceptions.ExternalProviderError(
                 f"meta rejected request while {operation_label}"
             ) from error
@@ -507,3 +544,10 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
             )
 
         return payload
+
+    def _assert_success_flag(self, payload: dict[str, typing.Any], operation_label: str) -> None:
+        success = payload.get("success")
+        if success is not True:
+            raise service_exceptions.ExternalProviderError(
+                f"meta did not confirm success while {operation_label}"
+            )
