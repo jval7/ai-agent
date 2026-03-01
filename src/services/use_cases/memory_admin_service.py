@@ -9,3 +9,7 @@ class MemoryAdminService:
     def reset_memory(self) -> dev_dto.MemoryResetResponseDTO:
         self._memory_admin.reset_state()
         return dev_dto.MemoryResetResponseDTO(status="reset")
+
+    def reset_chat_memory(self) -> dev_dto.MemoryResetResponseDTO:
+        self._memory_admin.reset_chat_state()
+        return dev_dto.MemoryResetResponseDTO(status="chat_reset")

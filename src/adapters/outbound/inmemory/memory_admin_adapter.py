@@ -8,3 +8,6 @@ class InMemoryMemoryAdminAdapter(memory_admin_port.MemoryAdminPort):
 
     def reset_state(self) -> None:
         self._store.reset_state()
+
+    def reset_chat_state(self) -> None:
+        self._store.reset_chat_state()

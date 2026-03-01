@@ -20,6 +20,7 @@ SIM_PROVIDER_MESSAGE_ID ?=
 .PHONY: \
 	oauth-flow \
 	memory-reset \
+	chat-memory-reset \
 	static-checks \
 	fe-install \
 	fe-dev \
@@ -88,6 +89,30 @@ memory-reset:
 	@if [[ -f "$(MEMORY_JSON_FILE_PATH)" ]]; then \
 		rm -f "$(MEMORY_JSON_FILE_PATH)"; \
 		echo "Deleted $(MEMORY_JSON_FILE_PATH)"; \
+	else \
+		echo "Memory file not found: $(MEMORY_JSON_FILE_PATH)"; \
+	fi
+
+chat-memory-reset:
+	@if [[ -f "$(FLOW_DIR)/access_token" ]]; then \
+		access_token=$$(cat "$(FLOW_DIR)/access_token"); \
+		live_chat_reset_response=$$(curl -sS -X POST "$(API_BASE)/v1/dev/memory/chat/reset" \
+			-H "Authorization: Bearer $$access_token" || true); \
+		echo "Live chat reset response: $$live_chat_reset_response"; \
+	else \
+		echo "No access token in $(FLOW_DIR)/access_token; skipping live chat reset endpoint."; \
+	fi
+	@if [[ -z "$(MEMORY_JSON_FILE_PATH)" ]]; then \
+		echo "MEMORY_JSON_FILE_PATH is empty (persistence disabled). Nothing to delete."; \
+		exit 0; \
+	fi
+	@if [[ -f "$(MEMORY_JSON_FILE_PATH)" ]]; then \
+		command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }; \
+		tmp_memory_file=$$(mktemp); \
+		jq '.conversations = [] | .messages = [] | .scheduling_requests = [] | .processed_events = []' \
+			"$(MEMORY_JSON_FILE_PATH)" > "$$tmp_memory_file"; \
+		mv "$$tmp_memory_file" "$(MEMORY_JSON_FILE_PATH)"; \
+		echo "Cleared chat memory keys in $(MEMORY_JSON_FILE_PATH)"; \
 	else \
 		echo "Memory file not found: $(MEMORY_JSON_FILE_PATH)"; \
 	fi

@@ -102,3 +102,4 @@
 - Flujo OAuth local:
   - `make oauth-flow`
   - `make memory-reset`
+  - `make chat-memory-reset`

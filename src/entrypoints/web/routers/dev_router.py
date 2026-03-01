@@ -14,3 +14,11 @@ def reset_memory(
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> dev_dto.MemoryResetResponseDTO:
     return container.memory_admin_service.reset_memory()
+
+
+@router.post("/memory/chat/reset", response_model=dev_dto.MemoryResetResponseDTO)
+def reset_chat_memory(
+    _: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> dev_dto.MemoryResetResponseDTO:
+    return container.memory_admin_service.reset_chat_memory()

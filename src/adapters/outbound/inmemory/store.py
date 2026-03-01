@@ -59,6 +59,11 @@ class InMemoryStore:
             self._clear_state()
             self.flush()
 
+    def reset_chat_state(self) -> None:
+        with self.lock:
+            self._clear_chat_state()
+            self.flush()
+
     def flush(self) -> None:
         if self._persistence_file_path is None:
             return
@@ -255,12 +260,15 @@ class InMemoryStore:
         self.google_calendar_connection_by_tenant = {}
         self.google_calendar_connection_by_oauth_state = {}
         self.tenant_by_phone_number_id = {}
+        self._clear_chat_state()
+        self.whatsapp_user_by_tenant_and_id = {}
+        self.blacklist_by_tenant_and_wa_user = {}
+
+    def _clear_chat_state(self) -> None:
         self.conversation_by_tenant_and_wa_user = {}
         self.conversation_by_id = {}
         self.scheduling_request_by_id = {}
         self.scheduling_request_ids_by_tenant = {}
         self.scheduling_request_ids_by_conversation = {}
         self.messages_by_conversation_id = {}
-        self.whatsapp_user_by_tenant_and_id = {}
         self.processed_events = set()
-        self.blacklist_by_tenant_and_wa_user = {}
