@@ -78,6 +78,7 @@ def build_webhook_service(
         processed_webhook_event_repository=processed_repository,
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
+        scheduling_service=None,
         llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,

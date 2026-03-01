@@ -2,6 +2,7 @@ import typing
 
 import google.auth.exceptions as google_auth_exceptions
 import google.genai.errors as genai_errors
+import google.genai.types as genai_types
 import httpx
 from google import genai
 
@@ -32,10 +33,20 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
             raise service_exceptions.ExternalProviderError("GEMINI_LOCATION is required")
 
         request_contents = self._build_request_contents(prompt_input)
-        request_config = {
+        request_config: genai_types.GenerateContentConfigDict = {
             "system_instruction": prompt_input.system_prompt,
             "max_output_tokens": self._max_output_tokens,
         }
+        tools = self._build_tools(prompt_input)
+        if tools:
+            function_calling_config: genai_types.FunctionCallingConfigDict = {
+                "mode": genai_types.FunctionCallingConfigMode.AUTO,
+            }
+            tool_config: genai_types.ToolConfigDict = {
+                "function_calling_config": function_calling_config,
+            }
+            request_config["tools"] = tools
+            request_config["tool_config"] = tool_config
         client = self._get_client()
 
         try:
@@ -70,10 +81,14 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
                 f"gemini api error (status={error.code}, detail={detail})"
             ) from error
 
+        function_calls = self._extract_function_calls(response)
         reply_text = self._extract_reply_text(response)
-        if reply_text is None:
+        if reply_text is None and not function_calls:
             raise service_exceptions.ExternalProviderError("gemini returned empty content")
-        return llm_dto.AgentReplyDTO(content=reply_text)
+        return llm_dto.AgentReplyDTO(
+            content=reply_text if reply_text is not None else "",
+            function_calls=function_calls,
+        )
 
     def _get_client(self) -> genai.Client:
         if self._client is None:
@@ -98,7 +113,56 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
                     "parts": [{"text": message.content}],
                 }
             )
+
+        for function_result in prompt_input.function_call_results:
+            request_contents.append(
+                {
+                    "role": "model",
+                    "parts": [
+                        {
+                            "functionCall": {
+                                "name": function_result.function_call.name,
+                                "args": function_result.function_call.args,
+                                "id": function_result.function_call.call_id,
+                            }
+                        }
+                    ],
+                }
+            )
+            function_response_payload: dict[str, typing.Any] = {
+                "name": function_result.function_response.name,
+                "response": function_result.function_response.response,
+            }
+            if function_result.function_response.call_id is not None:
+                function_response_payload["id"] = function_result.function_response.call_id
+            request_contents.append(
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "functionResponse": function_response_payload,
+                        }
+                    ],
+                }
+            )
         return request_contents
+
+    def _build_tools(
+        self, prompt_input: llm_dto.GenerateReplyInputDTO
+    ) -> genai_types.ToolListUnionDict:
+        if not prompt_input.tools:
+            return []
+        function_declarations: list[genai_types.FunctionDeclarationDict] = []
+        for tool in prompt_input.tools:
+            function_declarations.append(
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters_json_schema": tool.parameters_json_schema,
+                }
+            )
+        tool_entry: genai_types.ToolDict = {"function_declarations": function_declarations}
+        return [tool_entry]
 
     def _extract_reply_text(self, response: typing.Any) -> str | None:
         response_text = response.text
@@ -123,6 +187,40 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
                 if normalized_part_text:
                     return normalized_part_text
         return None
+
+    def _extract_function_calls(self, response: typing.Any) -> list[llm_dto.FunctionCallDTO]:
+        function_calls: list[llm_dto.FunctionCallDTO] = []
+        response_function_calls = response.function_calls
+        if response_function_calls is None:
+            return function_calls
+
+        for function_call in response_function_calls:
+            if function_call is None:
+                continue
+            name = function_call.name
+            if not isinstance(name, str) or not name:
+                continue
+
+            args: dict[str, object] = {}
+            raw_args = function_call.args
+            if isinstance(raw_args, dict):
+                for key, value in raw_args.items():
+                    if isinstance(key, str):
+                        args[key] = typing.cast(object, value)
+
+            call_id = function_call.id
+            normalized_call_id: str | None = None
+            if isinstance(call_id, str) and call_id:
+                normalized_call_id = call_id
+
+            function_calls.append(
+                llm_dto.FunctionCallDTO(
+                    name=name,
+                    args=args,
+                    call_id=normalized_call_id,
+                )
+            )
+        return function_calls
 
     def _extract_api_error_detail(self, error: genai_errors.APIError) -> str:
         message = error.message

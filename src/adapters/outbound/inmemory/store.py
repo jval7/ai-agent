@@ -7,7 +7,9 @@ import src.adapters.outbound.inmemory.store_snapshot as store_snapshot
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.blacklist_entry as blacklist_entry_entity
 import src.domain.entities.conversation as conversation_entity
+import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.domain.entities.message as message_entity
+import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.user as user_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
@@ -29,11 +31,18 @@ class InMemoryStore:
         self.agent_profile_by_tenant: dict[str, agent_profile_entity.AgentProfile] = {}
         self.wa_connection_by_tenant: dict[str, whatsapp_connection_entity.WhatsappConnection] = {}
         self.connection_by_embedded_signup_state: dict[str, str] = {}
+        self.google_calendar_connection_by_tenant: dict[
+            str, google_calendar_connection_entity.GoogleCalendarConnection
+        ] = {}
+        self.google_calendar_connection_by_oauth_state: dict[str, str] = {}
         self.tenant_by_phone_number_id: dict[str, str] = {}
         self.conversation_by_tenant_and_wa_user: dict[
             tuple[str, str], conversation_entity.Conversation
         ] = {}
         self.conversation_by_id: dict[str, conversation_entity.Conversation] = {}
+        self.scheduling_request_by_id: dict[str, scheduling_request_entity.SchedulingRequest] = {}
+        self.scheduling_request_ids_by_tenant: dict[str, list[str]] = {}
+        self.scheduling_request_ids_by_conversation: dict[tuple[str, str], list[str]] = {}
         self.messages_by_conversation_id: dict[str, list[message_entity.Message]] = {}
         self.whatsapp_user_by_tenant_and_id: dict[
             tuple[str, str], whatsapp_user_entity.WhatsappUser
@@ -123,10 +132,17 @@ class InMemoryStore:
             whatsapp_connections=[
                 item.model_copy(deep=True) for item in self.wa_connection_by_tenant.values()
             ],
+            google_calendar_connections=[
+                item.model_copy(deep=True)
+                for item in self.google_calendar_connection_by_tenant.values()
+            ],
             whatsapp_users=[
                 item.model_copy(deep=True) for item in self.whatsapp_user_by_tenant_and_id.values()
             ],
             conversations=[item.model_copy(deep=True) for item in self.conversation_by_id.values()],
+            scheduling_requests=[
+                item.model_copy(deep=True) for item in self.scheduling_request_by_id.values()
+            ],
             messages=messages,
             processed_events=processed_event_items,
             blacklist_entries=[
@@ -150,17 +166,29 @@ class InMemoryStore:
             profile_copy = agent_profile.model_copy(deep=True)
             self.agent_profile_by_tenant[profile_copy.tenant_id] = profile_copy
 
-        for connection in snapshot.whatsapp_connections:
-            connection_copy = connection.model_copy(deep=True)
-            self.wa_connection_by_tenant[connection_copy.tenant_id] = connection_copy
-            if connection_copy.embedded_signup_state is not None:
-                self.connection_by_embedded_signup_state[connection_copy.embedded_signup_state] = (
-                    connection_copy.tenant_id
+        for whatsapp_connection in snapshot.whatsapp_connections:
+            whatsapp_connection_copy = whatsapp_connection.model_copy(deep=True)
+            self.wa_connection_by_tenant[whatsapp_connection_copy.tenant_id] = (
+                whatsapp_connection_copy
+            )
+            if whatsapp_connection_copy.embedded_signup_state is not None:
+                self.connection_by_embedded_signup_state[
+                    whatsapp_connection_copy.embedded_signup_state
+                ] = whatsapp_connection_copy.tenant_id
+            if whatsapp_connection_copy.phone_number_id is not None:
+                self.tenant_by_phone_number_id[whatsapp_connection_copy.phone_number_id] = (
+                    whatsapp_connection_copy.tenant_id
                 )
-            if connection_copy.phone_number_id is not None:
-                self.tenant_by_phone_number_id[connection_copy.phone_number_id] = (
-                    connection_copy.tenant_id
-                )
+
+        for google_connection in snapshot.google_calendar_connections:
+            google_connection_copy = google_connection.model_copy(deep=True)
+            self.google_calendar_connection_by_tenant[google_connection_copy.tenant_id] = (
+                google_connection_copy
+            )
+            if google_connection_copy.oauth_state is not None:
+                self.google_calendar_connection_by_oauth_state[
+                    google_connection_copy.oauth_state
+                ] = google_connection_copy.tenant_id
 
         for whatsapp_user in snapshot.whatsapp_users:
             whatsapp_user_copy = whatsapp_user.model_copy(deep=True)
@@ -172,6 +200,26 @@ class InMemoryStore:
             conversation_key = (conversation_copy.tenant_id, conversation_copy.whatsapp_user_id)
             self.conversation_by_id[conversation_copy.id] = conversation_copy
             self.conversation_by_tenant_and_wa_user[conversation_key] = conversation_copy
+
+        for request in snapshot.scheduling_requests:
+            request_copy = request.model_copy(deep=True)
+            self.scheduling_request_by_id[request_copy.id] = request_copy
+            tenant_request_ids = self.scheduling_request_ids_by_tenant.get(request_copy.tenant_id)
+            if tenant_request_ids is None:
+                tenant_request_ids = []
+                self.scheduling_request_ids_by_tenant[request_copy.tenant_id] = tenant_request_ids
+            tenant_request_ids.append(request_copy.id)
+
+            conversation_key = (request_copy.tenant_id, request_copy.conversation_id)
+            conversation_request_ids = self.scheduling_request_ids_by_conversation.get(
+                conversation_key
+            )
+            if conversation_request_ids is None:
+                conversation_request_ids = []
+                self.scheduling_request_ids_by_conversation[conversation_key] = (
+                    conversation_request_ids
+                )
+            conversation_request_ids.append(request_copy.id)
 
         for message in snapshot.messages:
             message_copy = message.model_copy(deep=True)
@@ -204,9 +252,14 @@ class InMemoryStore:
         self.agent_profile_by_tenant = {}
         self.wa_connection_by_tenant = {}
         self.connection_by_embedded_signup_state = {}
+        self.google_calendar_connection_by_tenant = {}
+        self.google_calendar_connection_by_oauth_state = {}
         self.tenant_by_phone_number_id = {}
         self.conversation_by_tenant_and_wa_user = {}
         self.conversation_by_id = {}
+        self.scheduling_request_by_id = {}
+        self.scheduling_request_ids_by_tenant = {}
+        self.scheduling_request_ids_by_conversation = {}
         self.messages_by_conversation_id = {}
         self.whatsapp_user_by_tenant_and_id = {}
         self.processed_events = set()

@@ -86,3 +86,57 @@ def meta_oauth_callback(
             "</body></html>"
         ),
     )
+
+
+@router.get("/oauth/google/callback", response_class=fastapi_responses.HTMLResponse)
+def google_oauth_callback(
+    code: str,
+    state: str,
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> fastapi.Response:
+    frontend_base_url = container.settings.frontend_app_base_url.strip()
+
+    try:
+        connection_status = container.google_calendar_onboarding_service.complete_oauth_by_state(
+            code=code,
+            state=state,
+        )
+    except service_exceptions.ServiceError as error:
+        if frontend_base_url:
+            redirect_url = _build_frontend_redirect_url(
+                frontend_base_url=frontend_base_url,
+                frontend_path="/onboarding/whatsapp",
+                query_params={
+                    "google_oauth": "error",
+                    "status": str(_resolve_status_code(error)),
+                    "reason": str(error),
+                },
+            )
+            return fastapi_responses.RedirectResponse(url=redirect_url, status_code=303)
+
+        status_code = _resolve_status_code(error)
+        return fastapi_responses.HTMLResponse(
+            status_code=status_code,
+            content=(
+                f"<html><body><h2>Google Calendar Connection Failed</h2><p>{error!s}</p></body></html>"
+            ),
+        )
+
+    if frontend_base_url:
+        redirect_url = _build_frontend_redirect_url(
+            frontend_base_url=frontend_base_url,
+            frontend_path="/inbox",
+            query_params={"google_oauth": "connected"},
+        )
+        return fastapi_responses.RedirectResponse(url=redirect_url, status_code=303)
+
+    return fastapi_responses.HTMLResponse(
+        status_code=200,
+        content=(
+            "<html><body><h2>Google Calendar Connected Successfully</h2>"
+            f"<p>Tenant: {connection_status.tenant_id}</p>"
+            f"<p>Calendar: {connection_status.calendar_id}</p>"
+            "<p>You can return to your app now.</p>"
+            "</body></html>"
+        ),
+    )

@@ -19,6 +19,9 @@ class Settings(pydantic.BaseModel):
     meta_webhook_verify_token: str
     meta_phone_registration_pin: str
     meta_api_version: str
+    google_oauth_client_id: str
+    google_oauth_client_secret: str
+    google_oauth_redirect_uri: str
     gemini_project_id: str
     gemini_location: str
     gemini_model: str
@@ -56,6 +59,9 @@ class Settings(pydantic.BaseModel):
             ),
             meta_phone_registration_pin=os.getenv("META_PHONE_REGISTRATION_PIN", ""),
             meta_api_version=os.getenv("META_API_VERSION", "v23.0"),
+            google_oauth_client_id=os.getenv("GOOGLE_OAUTH_CLIENT_ID", ""),
+            google_oauth_client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+            google_oauth_redirect_uri=os.getenv("GOOGLE_OAUTH_REDIRECT_URI", ""),
             gemini_project_id=os.getenv("GEMINI_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", "")),
             gemini_location=os.getenv(
                 "GEMINI_LOCATION",
