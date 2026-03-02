@@ -115,37 +115,45 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
                 }
             )
 
-        for function_result in prompt_input.function_call_results:
+        if prompt_input.function_call_results:
+            model_function_call_parts: list[dict[str, typing.Any]] = []
+            for function_result in prompt_input.function_call_results:
+                function_call_payload: dict[str, typing.Any] = {
+                    "name": function_result.function_call.name,
+                    "args": function_result.function_call.args,
+                }
+                if function_result.function_call.call_id is not None:
+                    function_call_payload["id"] = function_result.function_call.call_id
+                thought_signature = self._resolve_function_call_thought_signature(
+                    function_result.function_call
+                )
+                part_payload: dict[str, typing.Any] = {"functionCall": function_call_payload}
+                if thought_signature is not None:
+                    part_payload["thoughtSignature"] = thought_signature
+                model_function_call_parts.append(part_payload)
             request_contents.append(
                 {
                     "role": "model",
-                    "parts": [
-                        {
-                            "functionCall": {
-                                "name": function_result.function_call.name,
-                                "args": function_result.function_call.args,
-                                "id": function_result.function_call.call_id,
+                    "parts": model_function_call_parts,
+                }
+            )
+            for function_result in prompt_input.function_call_results:
+                function_response_payload: dict[str, typing.Any] = {
+                    "name": function_result.function_response.name,
+                    "response": function_result.function_response.response,
+                }
+                if function_result.function_response.call_id is not None:
+                    function_response_payload["id"] = function_result.function_response.call_id
+                request_contents.append(
+                    {
+                        "role": "user",
+                        "parts": [
+                            {
+                                "functionResponse": function_response_payload,
                             }
-                        }
-                    ],
-                }
-            )
-            function_response_payload: dict[str, typing.Any] = {
-                "name": function_result.function_response.name,
-                "response": function_result.function_response.response,
-            }
-            if function_result.function_response.call_id is not None:
-                function_response_payload["id"] = function_result.function_response.call_id
-            request_contents.append(
-                {
-                    "role": "user",
-                    "parts": [
-                        {
-                            "functionResponse": function_response_payload,
-                        }
-                    ],
-                }
-            )
+                        ],
+                    }
+                )
         return request_contents
 
     def _build_tools(
@@ -177,19 +185,35 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
         return None
 
     def _extract_function_calls(self, response: typing.Any) -> list[llm_dto.FunctionCallDTO]:
+        candidate_parts = self._extract_first_candidate_parts(response)
+        part_function_calls = self._extract_function_calls_from_candidate_parts(candidate_parts)
+        if part_function_calls:
+            return part_function_calls
+
         response_function_calls = response.function_calls
         if response_function_calls is not None:
             parsed_function_calls = self._normalize_function_calls(response_function_calls)
             if parsed_function_calls:
                 return parsed_function_calls
 
-        candidate_parts = self._extract_first_candidate_parts(response)
-        fallback_function_calls: list[typing.Any] = []
+        return []
+
+    def _extract_function_calls_from_candidate_parts(
+        self, candidate_parts: list[typing.Any]
+    ) -> list[llm_dto.FunctionCallDTO]:
+        function_calls: list[llm_dto.FunctionCallDTO] = []
         for part in candidate_parts:
-            part_function_call = part.function_call
-            if part_function_call is not None:
-                fallback_function_calls.append(part_function_call)
-        return self._normalize_function_calls(fallback_function_calls)
+            raw_function_call = part.function_call
+            if raw_function_call is None:
+                continue
+            thought_signature = self._normalize_thought_signature(part.thought_signature)
+            function_call = self._normalize_single_function_call(
+                raw_function_call,
+                thought_signature=thought_signature,
+            )
+            if function_call is not None:
+                function_calls.append(function_call)
+        return function_calls
 
     def _extract_first_candidate_parts(self, response: typing.Any) -> list[typing.Any]:
         candidates = response.candidates
@@ -210,50 +234,77 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
     ) -> list[llm_dto.FunctionCallDTO]:
         normalized_function_calls: list[llm_dto.FunctionCallDTO] = []
         for raw_function_call in raw_function_calls:
-            if raw_function_call is None:
-                continue
+            normalized_call = self._normalize_single_function_call(
+                raw_function_call,
+                thought_signature=None,
+            )
+            if normalized_call is not None:
+                normalized_function_calls.append(normalized_call)
+        return normalized_function_calls
 
-            name: str | None = None
-            raw_args: object = {}
-            call_id: str | None = None
+    def _normalize_single_function_call(
+        self,
+        raw_function_call: typing.Any,
+        thought_signature: bytes | None,
+    ) -> llm_dto.FunctionCallDTO | None:
+        if raw_function_call is None:
+            return None
 
-            if isinstance(raw_function_call, dict):
-                raw_name = raw_function_call.get("name")
+        name: str | None = None
+        raw_args: object = {}
+        call_id: str | None = None
+        raw_thought_signature: object = thought_signature
+
+        if isinstance(raw_function_call, dict):
+            raw_name = raw_function_call.get("name")
+            if isinstance(raw_name, str) and raw_name:
+                name = raw_name
+            raw_args = raw_function_call.get("args", {})
+            raw_call_id = raw_function_call.get("id")
+            if isinstance(raw_call_id, str) and raw_call_id:
+                call_id = raw_call_id
+            if raw_thought_signature is None:
+                raw_thought_signature = raw_function_call.get("thought_signature")
+        else:
+            try:
+                raw_name = raw_function_call.name
                 if isinstance(raw_name, str) and raw_name:
                     name = raw_name
-                raw_args = raw_function_call.get("args", {})
-                raw_call_id = raw_function_call.get("id")
+                raw_args = raw_function_call.args
+                raw_call_id = raw_function_call.id
                 if isinstance(raw_call_id, str) and raw_call_id:
                     call_id = raw_call_id
-            else:
-                try:
-                    raw_name = raw_function_call.name
-                    if isinstance(raw_name, str) and raw_name:
-                        name = raw_name
-                    raw_args = raw_function_call.args
-                    raw_call_id = raw_function_call.id
-                    if isinstance(raw_call_id, str) and raw_call_id:
-                        call_id = raw_call_id
-                except AttributeError:
-                    continue
+            except AttributeError:
+                return None
 
-            if name is None:
-                continue
+        if name is None:
+            return None
 
-            args: dict[str, object] = {}
-            if isinstance(raw_args, collections.abc.Mapping):
-                for key, value in raw_args.items():
-                    if isinstance(key, str):
-                        args[key] = typing.cast(object, value)
+        args: dict[str, object] = {}
+        if isinstance(raw_args, collections.abc.Mapping):
+            for key, value in raw_args.items():
+                if isinstance(key, str):
+                    args[key] = typing.cast(object, value)
 
-            normalized_function_calls.append(
-                llm_dto.FunctionCallDTO(
-                    name=name,
-                    args=args,
-                    call_id=call_id,
-                )
-            )
-        return normalized_function_calls
+        return llm_dto.FunctionCallDTO(
+            name=name,
+            args=args,
+            call_id=call_id,
+            thought_signature=self._normalize_thought_signature(raw_thought_signature),
+        )
+
+    def _normalize_thought_signature(self, raw_value: object) -> bytes | None:
+        if isinstance(raw_value, bytes) and raw_value:
+            return raw_value
+        return None
+
+    def _resolve_function_call_thought_signature(
+        self,
+        function_call: llm_dto.FunctionCallDTO,
+    ) -> bytes | None:
+        if function_call.thought_signature is not None:
+            return function_call.thought_signature
+        return None
 
     def _extract_api_error_detail(self, error: genai_errors.APIError) -> str:
         message = error.message

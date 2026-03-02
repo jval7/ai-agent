@@ -3,19 +3,17 @@ import datetime
 import src.domain.entities.message as message_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.infra.logs as app_logs
-import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
-import src.ports.llm_provider_port as llm_provider_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.constants as service_constants
 import src.services.dto.auth_dto as auth_dto
-import src.services.dto.llm_dto as llm_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.exceptions as service_exceptions
+import src.services.scheduling_slot_formatter as scheduling_slot_formatter
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.scheduling_service as scheduling_service
 
@@ -35,12 +33,8 @@ class SchedulingInboxService:
             whatsapp_connection_repository_port.WhatsappConnectionRepositoryPort
         ),
         whatsapp_provider: whatsapp_provider_port.WhatsappProviderPort,
-        llm_provider: llm_provider_port.LlmProviderPort,
-        agent_profile_repository: agent_profile_repository_port.AgentProfileRepositoryPort,
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
-        default_system_prompt: str,
-        context_message_limit: int,
     ) -> None:
         self._scheduling_repository = scheduling_repository
         self._scheduling_service = scheduling_service
@@ -48,12 +42,8 @@ class SchedulingInboxService:
         self._conversation_repository = conversation_repository
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._whatsapp_provider = whatsapp_provider
-        self._llm_provider = llm_provider
-        self._agent_profile_repository = agent_profile_repository
         self._id_generator = id_generator
         self._clock = clock
-        self._default_system_prompt = default_system_prompt
-        self._context_message_limit = context_message_limit
 
     def list_requests(
         self,
@@ -106,8 +96,15 @@ class SchedulingInboxService:
         if not valid_slots:
             raise service_exceptions.InvalidStateError("all submitted slots are unavailable")
 
+        ordered_slots = sorted(valid_slots, key=lambda item: item.start_at)
+        slot_options_map: dict[str, str] = {}
+        for index, slot in enumerate(ordered_slots, start=1):
+            slot_options_map[str(index)] = slot.id
+
         now_value = self._clock.now()
-        request.slots = valid_slots
+        request.slots = ordered_slots
+        request.slot_options_map = slot_options_map
+        request.selected_slot_id = None
         request.professional_note = submit_dto.professional_note
         request.set_status("AWAITING_PATIENT_CHOICE", now_value)
         self._scheduling_repository.save_request(request)
@@ -124,10 +121,9 @@ class SchedulingInboxService:
         if connection.access_token is None or connection.phone_number_id is None:
             raise service_exceptions.InvalidStateError("whatsapp connection is missing credentials")
 
-        assistant_text = self._build_resume_message_with_llm(
-            tenant_id=claims.tenant_id,
-            conversation_id=conversation_id,
-            slots=valid_slots,
+        assistant_text = self._build_resume_message(
+            slots=ordered_slots,
+            slot_options_map=slot_options_map,
         )
         outbound_provider_message_id = self._whatsapp_provider.send_text_message(
             access_token=connection.access_token,
@@ -174,50 +170,30 @@ class SchedulingInboxService:
             assistant_text=assistant_text,
         )
 
-    def _build_resume_message_with_llm(
+    def _build_resume_message(
         self,
-        tenant_id: str,
-        conversation_id: str,
         slots: list[scheduling_slot_entity.SchedulingSlot],
+        slot_options_map: dict[str, str],
     ) -> str:
-        history = self._conversation_repository.list_messages(tenant_id, conversation_id)
-        history_messages = history[-self._context_message_limit :]
-        llm_messages: list[llm_dto.ChatMessageDTO] = []
-        for message in history_messages:
-            message_role = message.role
-            if message_role == "human_agent":
-                message_role = "assistant"
-            llm_messages.append(llm_dto.ChatMessageDTO(role=message_role, content=message.content))
-
-        slot_lines: list[str] = []
+        slot_by_id: dict[str, scheduling_slot_entity.SchedulingSlot] = {}
         for slot in slots:
-            slot_lines.append(
-                f"- {slot.id}: {slot.start_at.isoformat()} -> {slot.end_at.isoformat()} ({slot.timezone})"
-            )
-        slot_list_text = "\n".join(slot_lines)
-        llm_messages.append(
-            llm_dto.ChatMessageDTO(
-                role="user",
-                content=(
-                    "Ya hay espacios disponibles. Presentalos de forma clara y natural al paciente y pide que elija uno.\n"
-                    f"Espacios:\n{slot_list_text}"
-                ),
-            )
-        )
+            slot_by_id[slot.id] = slot
 
-        system_prompt = self._default_system_prompt
-        agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
-        if agent_profile is not None:
-            system_prompt = agent_profile.system_prompt
-        llm_reply = self._llm_provider.generate_reply(
-            llm_dto.GenerateReplyInputDTO(
-                system_prompt=system_prompt,
-                messages=llm_messages,
+        lines = ["Tengo estos horarios disponibles:"]
+        for option_number in sorted(slot_options_map.keys(), key=int):
+            slot_id = slot_options_map[option_number]
+            slot_candidate = slot_by_id.get(slot_id)
+            if slot_candidate is None:
+                continue
+            lines.append(
+                scheduling_slot_formatter.format_slot_option_line(
+                    option_number=option_number,
+                    start_at=slot_candidate.start_at,
+                    timezone_name=slot_candidate.timezone,
+                )
             )
-        )
-        if not llm_reply.content.strip():
-            raise service_exceptions.ExternalProviderError("llm returned empty resume message")
-        return llm_reply.content
+        lines.append("Responde solo con el numero de la opcion que prefieres (por ejemplo: 2).")
+        return "\n".join(lines)
 
     def _validate_slot_duration(
         self,

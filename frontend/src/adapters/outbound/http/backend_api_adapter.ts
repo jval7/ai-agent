@@ -571,6 +571,7 @@ function mapSchedulingRequestSummary(
     patientPreferenceNote: payload.patient_preference_note,
     rejectionSummary: payload.rejection_summary,
     professionalNote: payload.professional_note,
+    slotOptionsMap: payload.slot_options_map,
     selectedSlotId: payload.selected_slot_id,
     calendarEventId: payload.calendar_event_id,
     createdAt: payload.created_at,

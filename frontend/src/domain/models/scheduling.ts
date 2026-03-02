@@ -6,7 +6,7 @@ export type SchedulingRequestStatus =
   | "BOOKED"
   | "HUMAN_HANDOFF";
 
-export type SchedulingSlotStatus = "PROPOSED" | "BOOKED" | "REJECTED" | "UNAVAILABLE";
+export type SchedulingSlotStatus = "PROPOSED" | "SELECTED" | "BOOKED" | "REJECTED" | "UNAVAILABLE";
 
 export interface SchedulingSlot {
   slotId: string;
@@ -26,6 +26,7 @@ export interface SchedulingRequestSummary {
   patientPreferenceNote: string;
   rejectionSummary: string | null;
   professionalNote: string | null;
+  slotOptionsMap: Record<string, string>;
   selectedSlotId: string | null;
   calendarEventId: string | null;
   createdAt: string;

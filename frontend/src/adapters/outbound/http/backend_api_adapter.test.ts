@@ -195,6 +195,7 @@ vitestModule.describe("BackendApiAdapter", () => {
               patient_preference_note: "prefiere tarde",
               rejection_summary: null,
               professional_note: null,
+              slot_options_map: {},
               selected_slot_id: null,
               calendar_event_id: null,
               created_at: "2026-03-01T10:00:00Z",

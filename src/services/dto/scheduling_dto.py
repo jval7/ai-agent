@@ -22,6 +22,7 @@ class SchedulingRequestSummaryDTO(pydantic.BaseModel):
     patient_preference_note: str
     rejection_summary: str | None
     professional_note: str | None
+    slot_options_map: dict[str, str]
     selected_slot_id: str | None
     calendar_event_id: str | None
     created_at: datetime.datetime

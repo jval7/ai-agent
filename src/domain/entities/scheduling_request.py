@@ -24,6 +24,7 @@ class SchedulingRequest(pydantic.BaseModel):
     rejection_summary: str | None
     professional_note: str | None
     slots: list[scheduling_slot_entity.SchedulingSlot]
+    slot_options_map: dict[str, str]
     selected_slot_id: str | None
     calendar_event_id: str | None
     created_at: datetime.datetime

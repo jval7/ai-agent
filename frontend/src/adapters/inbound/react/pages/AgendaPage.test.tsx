@@ -80,6 +80,7 @@ vitestModule.describe("AgendaPage", () => {
         patientPreferenceNote: "prefiere tarde",
         rejectionSummary: null,
         professionalNote: null,
+        slotOptionsMap: {},
         selectedSlotId: null,
         calendarEventId: null,
         createdAt: "2026-03-01T00:00:00Z",

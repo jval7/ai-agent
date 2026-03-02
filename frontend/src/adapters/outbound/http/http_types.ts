@@ -117,7 +117,7 @@ export interface SchedulingSlotApiResponse {
   start_at: string;
   end_at: string;
   timezone: string;
-  status: "PROPOSED" | "BOOKED" | "REJECTED" | "UNAVAILABLE";
+  status: "PROPOSED" | "SELECTED" | "BOOKED" | "REJECTED" | "UNAVAILABLE";
 }
 
 export interface SchedulingRequestSummaryApiResponse {
@@ -130,6 +130,7 @@ export interface SchedulingRequestSummaryApiResponse {
   patient_preference_note: string;
   rejection_summary: string | null;
   professional_note: string | null;
+  slot_options_map: Record<string, string>;
   selected_slot_id: string | null;
   calendar_event_id: string | null;
   created_at: string;

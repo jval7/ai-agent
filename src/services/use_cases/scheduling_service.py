@@ -71,6 +71,25 @@ class SchedulingService:
             tenant_id,
             conversation_id,
         )
+        open_request = self._find_open_request(existing_requests)
+        if open_request is not None:
+            logger.info(
+                "scheduling.request_reused",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="scheduling.request_reused",
+                        message="existing open scheduling request reused",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation_id,
+                            "request_id": open_request.id,
+                            "status": open_request.status,
+                        },
+                    )
+                },
+            )
+            return self._to_summary_dto(open_request)
+
         round_number = len(existing_requests) + 1
         request = scheduling_request_entity.SchedulingRequest(
             id=self._id_generator.new_id(),
@@ -84,6 +103,7 @@ class SchedulingService:
             rejection_summary=input_dto.rejection_summary,
             professional_note=None,
             slots=[],
+            slot_options_map={},
             selected_slot_id=None,
             calendar_event_id=None,
             created_at=now_value,
@@ -107,6 +127,19 @@ class SchedulingService:
         )
         return self._to_summary_dto(request)
 
+    def _find_open_request(
+        self,
+        requests: list[scheduling_request_entity.SchedulingRequest],
+    ) -> scheduling_request_entity.SchedulingRequest | None:
+        open_requests: list[scheduling_request_entity.SchedulingRequest] = []
+        for request in requests:
+            if request.status in ("AWAITING_PROFESSIONAL_SLOTS", "AWAITING_PATIENT_CHOICE"):
+                open_requests.append(request)
+        if not open_requests:
+            return None
+        sorted_open_requests = sorted(open_requests, key=lambda item: item.updated_at, reverse=True)
+        return sorted_open_requests[0]
+
     def confirm_selected_slot_and_create_event(
         self,
         tenant_id: str,
@@ -125,7 +158,7 @@ class SchedulingService:
                 "scheduling request is not waiting for patient choice"
             )
 
-        selected_slot = self._find_available_slot(request, input_dto.slot_id)
+        selected_slot = self._find_selectable_slot(request, input_dto.slot_id)
         if selected_slot is None:
             raise service_exceptions.InvalidStateError("selected slot is not available")
 
@@ -169,6 +202,56 @@ class SchedulingService:
             calendar_event_id=event.event_id,
             remaining_slot_ids=[],
         )
+
+    def select_slot_for_confirmation(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        request_id: str,
+        slot_id: str,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+        if request.conversation_id != conversation_id:
+            raise service_exceptions.AuthorizationError(
+                "scheduling request does not belong to conversation"
+            )
+        if request.status != "AWAITING_PATIENT_CHOICE":
+            raise service_exceptions.InvalidStateError(
+                "scheduling request is not waiting for patient choice"
+            )
+
+        selected_slot = self._find_selectable_slot(request, slot_id)
+        if selected_slot is None:
+            raise service_exceptions.InvalidStateError("selected slot is not available")
+
+        now_value = self._clock.now()
+        for slot in request.slots:
+            if slot.id == selected_slot.id:
+                slot.status = "SELECTED"
+            elif slot.status == "SELECTED":
+                slot.status = "PROPOSED"
+
+        request.selected_slot_id = selected_slot.id
+        request.updated_at = now_value
+        self._scheduling_repository.save_request(request)
+        logger.info(
+            "scheduling.slot_selected",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.slot_selected",
+                    message="patient slot selection persisted",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "request_id": request.id,
+                        "slot_id": selected_slot.id,
+                    },
+                )
+            },
+        )
+        return self._to_summary_dto(request)
 
     def handoff_to_human(
         self,
@@ -216,13 +299,13 @@ class SchedulingService:
             "control_mode": "HUMAN",
         }
 
-    def _find_available_slot(
+    def _find_selectable_slot(
         self,
         request: scheduling_request_entity.SchedulingRequest,
         slot_id: str,
     ) -> scheduling_slot_entity.SchedulingSlot | None:
         for slot in request.slots:
-            if slot.id == slot_id and slot.status == "PROPOSED":
+            if slot.id == slot_id and slot.status in ("PROPOSED", "SELECTED"):
                 return slot
         return None
 
@@ -246,6 +329,9 @@ class SchedulingService:
             if slot.id == selected_slot.id:
                 slot.status = "UNAVAILABLE"
                 break
+
+        if request.selected_slot_id == selected_slot.id:
+            request.selected_slot_id = None
 
         remaining_slot_ids = self._list_remaining_slot_ids(request)
         if remaining_slot_ids:
@@ -291,6 +377,7 @@ class SchedulingService:
             patient_preference_note=request.patient_preference_note,
             rejection_summary=request.rejection_summary,
             professional_note=request.professional_note,
+            slot_options_map=request.slot_options_map,
             selected_slot_id=request.selected_slot_id,
             calendar_event_id=request.calendar_event_id,
             created_at=request.created_at,

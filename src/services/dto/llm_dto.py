@@ -16,6 +16,7 @@ class FunctionCallDTO(pydantic.BaseModel):
     name: str
     args: dict[str, object]
     call_id: str | None
+    thought_signature: bytes | None = None
 
 
 class FunctionResponseDTO(pydantic.BaseModel):

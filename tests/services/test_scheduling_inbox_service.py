@@ -2,13 +2,11 @@ import datetime
 
 import pytest
 
-import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
-import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
@@ -51,12 +49,8 @@ def build_services() -> tuple[
     calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
         store
     )
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
     clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
     id_generator = fake_adapters.SequenceIdGenerator(["msg-1", "msg-2", "msg-3"])
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="assistant resume reply")
     whatsapp_provider = fake_adapters.FakeWhatsappProvider()
     google_provider = fake_adapters.FakeGoogleCalendarProvider()
     google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
@@ -79,12 +73,8 @@ def build_services() -> tuple[
         conversation_repository=conversation_repository,
         whatsapp_connection_repository=whatsapp_connection_repository,
         whatsapp_provider=whatsapp_provider,
-        llm_provider=llm_provider,
-        agent_profile_repository=agent_profile_repository,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
     )
 
     conversation_repository.save_conversation(
@@ -126,13 +116,6 @@ def build_services() -> tuple[
             connected_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         )
     )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="custom prompt",
-            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
-        )
-    )
     scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-1",
@@ -146,6 +129,7 @@ def build_services() -> tuple[
             rejection_summary=None,
             professional_note=None,
             slots=[],
+            slot_options_map={},
             selected_slot_id=None,
             calendar_event_id=None,
             created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
@@ -176,10 +160,14 @@ def test_submit_professional_slots_resumes_conversation() -> None:
 
     assert response.status == "AWAITING_PATIENT_CHOICE"
     assert len(whatsapp_provider.sent_messages) == 1
+    assert "de enero a las" in whatsapp_provider.sent_messages[0]["text"]
+    assert "America/Bogota" in whatsapp_provider.sent_messages[0]["text"]
+    assert "T10:00:00" not in whatsapp_provider.sent_messages[0]["text"]
     saved = repository.get_request_by_id("tenant-1", "req-1")
     assert saved is not None
     assert saved.status == "AWAITING_PATIENT_CHOICE"
     assert len(saved.slots) == 1
+    assert saved.slot_options_map == {"1": "slot-1"}
 
 
 def test_submit_professional_slots_rejects_non_60_min_slots() -> None:

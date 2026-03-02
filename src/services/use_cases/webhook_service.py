@@ -1,9 +1,6 @@
-import datetime
-import json
 import re
 import time
 import typing
-import zoneinfo
 
 import pydantic
 
@@ -11,6 +8,7 @@ import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.processed_webhook_event as processed_webhook_event_entity
+import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.domain.entities.whatsapp_user as whatsapp_user_entity
 import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
@@ -27,6 +25,7 @@ import src.services.dto.llm_dto as llm_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
+import src.services.scheduling_slot_formatter as scheduling_slot_formatter
 import src.services.use_cases.scheduling_service as scheduling_service
 
 logger = app_logs.get_logger(__name__)
@@ -47,10 +46,6 @@ class ResolvedConfirmSelection(pydantic.BaseModel):
     patient_profile: ResolvedPatientProfile
     patient_exists: bool
     whatsapp_user_id: str
-
-
-class SlotSelectionResolution(pydantic.BaseModel):
-    slot_id: str | None
 
 
 class WebhookService:
@@ -93,6 +88,7 @@ class WebhookService:
         self._email_pattern = re.compile(
             r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$"
         )
+        self._numeric_pattern = re.compile(r"^\d+$")
         if sleep_seconds is not None:
             self._sleep_seconds = sleep_seconds
         else:
@@ -270,6 +266,67 @@ class WebhookService:
             )
             return
 
+        slot_selection_retry_text = self._enforce_required_numeric_slot_selection(
+            tenant_id=tenant_id,
+            conversation_id=conversation.id,
+            latest_user_text=inbound_message.content,
+        )
+        if slot_selection_retry_text is not None:
+            self._send_assistant_message(
+                connection=connection,
+                conversation_id=conversation.id,
+                tenant_id=tenant_id,
+                whatsapp_user_id=event.whatsapp_user_id,
+                text=slot_selection_retry_text,
+            )
+            self._mark_event_processed(tenant_id, event.provider_event_id)
+            logger.info(
+                "webhook.slot_selection_retry_sent",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.slot_selection_retry_sent",
+                        message="customer must choose a slot option by number before continuing",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation.id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
+            return
+
+        waiting_professional_approval_text = (
+            self._build_waiting_for_professional_approval_message_if_needed(
+                tenant_id=tenant_id,
+                conversation_id=conversation.id,
+            )
+        )
+        if waiting_professional_approval_text is not None:
+            self._send_assistant_message(
+                connection=connection,
+                conversation_id=conversation.id,
+                tenant_id=tenant_id,
+                whatsapp_user_id=event.whatsapp_user_id,
+                text=waiting_professional_approval_text,
+            )
+            self._mark_event_processed(tenant_id, event.provider_event_id)
+            logger.info(
+                "webhook.awaiting_professional_slots_reply_sent",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.awaiting_professional_slots_reply_sent",
+                        message="customer message answered while waiting professional slot approval",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation.id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
+            return
+
         history = self._conversation_repository.list_messages(tenant_id, conversation.id)
         history_messages = history[-self._context_message_limit :]
         llm_messages: list[llm_dto.ChatMessageDTO] = []
@@ -291,9 +348,10 @@ class WebhookService:
                 llm_messages=llm_messages,
                 known_patient=known_patient,
             )
-            outbound_message_provider_id = self._whatsapp_provider.send_text_message(
-                access_token=connection.access_token,
-                phone_number_id=connection.phone_number_id,
+            outbound_message_provider_id = self._send_assistant_message(
+                connection=connection,
+                conversation_id=conversation.id,
+                tenant_id=tenant_id,
                 whatsapp_user_id=event.whatsapp_user_id,
                 text=assistant_text,
             )
@@ -316,29 +374,6 @@ class WebhookService:
             )
             raise
 
-        outbound_message = message_entity.Message(
-            id=self._id_generator.new_id(),
-            conversation_id=conversation.id,
-            tenant_id=tenant_id,
-            direction="OUTBOUND",
-            role="assistant",
-            content=assistant_text,
-            provider_message_id=outbound_message_provider_id,
-            created_at=self._clock.now(),
-        )
-        self._conversation_repository.save_message(outbound_message)
-        latest_conversation = self._conversation_repository.get_conversation_by_id(
-            tenant_id, conversation.id
-        )
-        if latest_conversation is None:
-            raise service_exceptions.EntityNotFoundError("conversation not found")
-        latest_conversation.append_message(
-            outbound_message.id,
-            outbound_message.content,
-            outbound_message.created_at,
-        )
-        self._conversation_repository.save_conversation(latest_conversation)
-
         self._mark_event_processed(tenant_id, event.provider_event_id)
         logger.info(
             "webhook.ai_reply_sent",
@@ -355,6 +390,46 @@ class WebhookService:
                 )
             },
         )
+
+    def _send_assistant_message(
+        self,
+        connection: whatsapp_connection_entity.WhatsappConnection,
+        conversation_id: str,
+        tenant_id: str,
+        whatsapp_user_id: str,
+        text: str,
+    ) -> str:
+        if connection.access_token is None or connection.phone_number_id is None:
+            raise service_exceptions.InvalidStateError("whatsapp connection is missing credentials")
+        outbound_message_provider_id = self._whatsapp_provider.send_text_message(
+            access_token=connection.access_token,
+            phone_number_id=connection.phone_number_id,
+            whatsapp_user_id=whatsapp_user_id,
+            text=text,
+        )
+        outbound_message = message_entity.Message(
+            id=self._id_generator.new_id(),
+            conversation_id=conversation_id,
+            tenant_id=tenant_id,
+            direction="OUTBOUND",
+            role="assistant",
+            content=text,
+            provider_message_id=outbound_message_provider_id,
+            created_at=self._clock.now(),
+        )
+        self._conversation_repository.save_message(outbound_message)
+        latest_conversation = self._conversation_repository.get_conversation_by_id(
+            tenant_id, conversation_id
+        )
+        if latest_conversation is None:
+            raise service_exceptions.EntityNotFoundError("conversation not found")
+        latest_conversation.append_message(
+            outbound_message.id,
+            outbound_message.content,
+            outbound_message.created_at,
+        )
+        self._conversation_repository.save_conversation(latest_conversation)
+        return outbound_message_provider_id
 
     def _generate_reply_with_tools(
         self,
@@ -405,6 +480,11 @@ class WebhookService:
                             ),
                         )
                     )
+                    if (
+                        function_call.name == "request_schedule_approval"
+                        and function_response_payload.get("status") == "AWAITING_PROFESSIONAL_SLOTS"
+                    ):
+                        return self._build_waiting_for_professional_approval_message()
                 continue
 
             if llm_reply.content.strip():
@@ -636,11 +716,7 @@ class WebhookService:
         )
         resolved_slot_id = tool_input_dto.slot_id
         if resolved_slot_id is None:
-            resolved_slot_id = self._resolve_slot_id_from_context(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                request=target_request,
-            )
+            resolved_slot_id = self._resolve_slot_id_for_confirmation(target_request)
         resolved_patient_profile, patient_exists = self._resolve_patient_profile_for_confirmation(
             tenant_id=tenant_id,
             whatsapp_user_id=target_request.whatsapp_user_id,
@@ -692,119 +768,141 @@ class WebhookService:
             "provided slot_id does not match active scheduling requests"
         )
 
-    def _resolve_slot_id_from_context(
+    def _resolve_slot_id_for_confirmation(
         self,
-        tenant_id: str,
-        conversation_id: str,
         request: scheduling_dto.SchedulingRequestSummaryDTO,
     ) -> str:
-        ordered_proposed_slots = self._list_ordered_proposed_slots(request)
-        if len(ordered_proposed_slots) == 1:
-            first_slot = ordered_proposed_slots[0]
-            return first_slot.slot_id
-
-        recent_user_messages = self._list_recent_user_message_texts(tenant_id, conversation_id)
-        if not recent_user_messages:
-            raise service_exceptions.InvalidStateError(
-                "slot selection is ambiguous; ask patient to choose one specific slot"
-            )
-
-        slot_id = self._resolve_slot_id_with_llm(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            ordered_proposed_slots=ordered_proposed_slots,
-            recent_user_messages=recent_user_messages,
-        )
-        if slot_id is not None:
-            return slot_id
+        if request.selected_slot_id is not None and self._request_contains_proposed_slot(
+            request=request,
+            slot_id=request.selected_slot_id,
+        ):
+            return request.selected_slot_id
 
         raise service_exceptions.InvalidStateError(
-            "slot selection is ambiguous; ask patient to choose one specific slot"
+            "slot selection is required; ask patient to choose a slot option number"
         )
 
-    def _resolve_slot_id_with_llm(
+    def _enforce_required_numeric_slot_selection(
         self,
         tenant_id: str,
         conversation_id: str,
-        ordered_proposed_slots: list[scheduling_dto.SchedulingSlotDTO],
-        recent_user_messages: list[str],
+        latest_user_text: str,
     ) -> str | None:
-        slot_lines: list[str] = []
-        for index, slot in enumerate(ordered_proposed_slots, start=1):
-            slot_local_start = self._to_slot_local_datetime(slot)
-            slot_local_end = slot.end_at.astimezone(slot_local_start.tzinfo)
-            slot_lines.append(
-                f"- index: {index}; slot_id: {slot.slot_id}; "
-                f"start_local: {slot_local_start.isoformat()}; "
-                f"end_local: {slot_local_end.isoformat()}; "
-                f"timezone: {slot.timezone}"
-            )
+        if self._scheduling_service is None:
+            return None
 
-        chronological_user_messages = list(reversed(recent_user_messages[:12]))
-        user_message_lines: list[str] = []
-        for index, message in enumerate(chronological_user_messages, start=1):
-            user_message_lines.append(f"- user_{index}: {message}")
-
-        resolver_user_prompt = (
-            "Selecciona el slot_id que mejor corresponde a la eleccion del paciente.\n\n"
-            "Slots disponibles:\n"
-            f"{chr(10).join(slot_lines)}\n\n"
-            "Mensajes recientes del paciente (orden cronologico):\n"
-            f"{chr(10).join(user_message_lines)}\n\n"
-            "Responde solo JSON valido con una de estas formas:\n"
-            '{"slot_id":"<slot_id_valido>"}\n'
-            '{"slot_id":null}'
-        )
-        resolver_system_prompt = (
-            "Eres un resolvedor semantico de seleccion de horarios para agendamiento.\n"
-            "El paciente puede escribir de cualquier forma, incluyendo lenguaje natural, "
-            "numero, palabra, abreviaciones o referencias indirectas.\n"
-            "Tu tarea es elegir un unico slot_id entre los slots disponibles.\n"
-            "Si no hay evidencia suficiente o hay ambiguedad real, responde slot_id null.\n"
-            "No inventes slots y no agregues texto fuera del JSON."
-        )
-        resolver_input = llm_dto.GenerateReplyInputDTO(
-            system_prompt=resolver_system_prompt,
-            messages=[llm_dto.ChatMessageDTO(role="user", content=resolver_user_prompt)],
-            tools=[],
-            function_call_results=[],
-        )
-        resolver_reply = self._request_llm_reply_with_retry(
+        active_request = self._find_single_active_request_waiting_patient_choice(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
-            llm_input=resolver_input,
         )
-        if resolver_reply.function_calls:
+        if active_request is None:
+            return None
+        if active_request.selected_slot_id is not None:
             return None
 
-        resolution = self._parse_slot_selection_resolution(resolver_reply.content)
-        if resolution is None:
-            return None
-        if resolution.slot_id is None:
-            return None
+        slot_id = self._resolve_slot_id_from_option_number(
+            request=active_request,
+            latest_user_text=latest_user_text,
+        )
+        if slot_id is None:
+            return self._build_slot_selection_retry_message(active_request)
 
-        for slot in ordered_proposed_slots:
-            if slot.slot_id == resolution.slot_id:
-                return resolution.slot_id
+        try:
+            self._scheduling_service.select_slot_for_confirmation(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                request_id=active_request.request_id,
+                slot_id=slot_id,
+            )
+        except service_exceptions.ServiceError:
+            return self._build_slot_selection_retry_message(active_request)
         return None
 
-    def _parse_slot_selection_resolution(
+    def _resolve_slot_id_from_option_number(
         self,
-        llm_content: str,
-    ) -> SlotSelectionResolution | None:
-        normalized_content = llm_content.strip()
-        if normalized_content == "":
+        request: scheduling_dto.SchedulingRequestSummaryDTO,
+        latest_user_text: str,
+    ) -> str | None:
+        normalized_text = latest_user_text.strip()
+        if not self._numeric_pattern.fullmatch(normalized_text):
             return None
-        try:
-            parsed_payload = json.loads(normalized_content)
-        except json.JSONDecodeError:
+        option_number = str(int(normalized_text))
+        selected_slot_id = request.slot_options_map.get(option_number)
+        if selected_slot_id is None:
             return None
-        if not isinstance(parsed_payload, dict):
+        if not self._request_contains_proposed_slot(request=request, slot_id=selected_slot_id):
             return None
-        try:
-            return SlotSelectionResolution.model_validate(parsed_payload)
-        except pydantic.ValidationError:
+        return selected_slot_id
+
+    def _build_slot_selection_retry_message(
+        self,
+        request: scheduling_dto.SchedulingRequestSummaryDTO,
+    ) -> str:
+        slot_by_id: dict[str, scheduling_dto.SchedulingSlotDTO] = {}
+        for slot in request.slots:
+            slot_by_id[slot.slot_id] = slot
+
+        lines = ["Para continuar, elige un horario respondiendo solo con el numero de opcion."]
+        for option_number in sorted(request.slot_options_map.keys(), key=int):
+            slot_id = request.slot_options_map[option_number]
+            slot_candidate = slot_by_id.get(slot_id)
+            if slot_candidate is None:
+                continue
+            if slot_candidate.status not in ("PROPOSED", "SELECTED"):
+                continue
+            lines.append(
+                scheduling_slot_formatter.format_slot_option_line(
+                    option_number=option_number,
+                    start_at=slot_candidate.start_at,
+                    timezone_name=slot_candidate.timezone,
+                )
+            )
+        lines.append("Ejemplo: 2")
+        return "\n".join(lines)
+
+    def _build_waiting_for_professional_approval_message_if_needed(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> str | None:
+        if self._scheduling_service is None:
             return None
+
+        request_list = self._scheduling_service.list_requests_by_conversation(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        for request in request_list.items:
+            if request.status == "AWAITING_PROFESSIONAL_SLOTS":
+                return self._build_waiting_for_professional_approval_message()
+        return None
+
+    def _build_waiting_for_professional_approval_message(self) -> str:
+        return (
+            "Ya envie tu solicitud al profesional y estoy esperando su aprobacion de horarios.\n\n"
+            "En cuanto me comparta opciones, te las enviare por aqui para que elijas una con su numero."
+        )
+
+    def _find_single_active_request_waiting_patient_choice(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO | None:
+        if self._scheduling_service is None:
+            return None
+
+        request_list = self._scheduling_service.list_requests_by_conversation(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        active_requests: list[scheduling_dto.SchedulingRequestSummaryDTO] = []
+        for request in request_list.items:
+            if request.status == "AWAITING_PATIENT_CHOICE":
+                active_requests.append(request)
+
+        if len(active_requests) != 1:
+            return None
+        return active_requests[0]
 
     def _resolve_patient_profile_for_confirmation(
         self,
@@ -1047,47 +1145,15 @@ class WebhookService:
             return normalized_provided_phone
         return self._normalize_patient_text(fallback_patient_phone)
 
-    def _list_ordered_proposed_slots(
-        self,
-        request: scheduling_dto.SchedulingRequestSummaryDTO,
-    ) -> list[scheduling_dto.SchedulingSlotDTO]:
-        proposed_slots: list[scheduling_dto.SchedulingSlotDTO] = []
-        for slot in request.slots:
-            if slot.status == "PROPOSED":
-                proposed_slots.append(slot)
-        return sorted(proposed_slots, key=lambda item: item.start_at)
-
-    def _list_recent_user_message_texts(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-    ) -> list[str]:
-        messages = self._conversation_repository.list_messages(tenant_id, conversation_id)
-        user_messages: list[str] = []
-        for message in reversed(messages):
-            if message.role == "user":
-                user_messages.append(message.content)
-        return user_messages
-
-    def _to_slot_local_datetime(
-        self,
-        slot: scheduling_dto.SchedulingSlotDTO,
-    ) -> datetime.datetime:
-        timezone_name = slot.timezone.strip()
-        if timezone_name == "":
-            return slot.start_at
-        try:
-            slot_timezone = zoneinfo.ZoneInfo(timezone_name)
-        except zoneinfo.ZoneInfoNotFoundError:
-            return slot.start_at
-        return slot.start_at.astimezone(slot_timezone)
-
     def _request_contains_proposed_slot(
         self,
         request: scheduling_dto.SchedulingRequestSummaryDTO,
         slot_id: str,
     ) -> bool:
-        return any(slot.slot_id == slot_id and slot.status == "PROPOSED" for slot in request.slots)
+        return any(
+            slot.slot_id == slot_id and slot.status in ("PROPOSED", "SELECTED")
+            for slot in request.slots
+        )
 
     def _confirm_selected_slot_with_retry(
         self,
@@ -1232,7 +1298,8 @@ class WebhookService:
                     "patient_first_name, patient_last_name, patient_email, patient_phone, patient_age, consultation_reason y patient_location. "
                     "patient_phone puede tomarse del numero de WhatsApp si ya esta disponible. "
                     "No pidas todos los datos en un solo mensaje. "
-                    "Si request_id o slot_id no se incluyen, el backend intentara resolverlos automaticamente cuando no haya ambiguedad."
+                    "La eleccion del horario se hace por numero de opcion y el backend persiste esa seleccion. "
+                    "Si slot_id no se incluye, el backend usara el slot ya seleccionado por el paciente."
                 ),
                 parameters_json_schema={
                     "type": "object",

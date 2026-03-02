@@ -143,12 +143,8 @@ class AppContainer:
             conversation_repository=self.conversation_repository,
             whatsapp_connection_repository=self.whatsapp_connection_repository,
             whatsapp_provider=self.whatsapp_provider_adapter,
-            llm_provider=self.llm_provider_adapter,
-            agent_profile_repository=self.agent_profile_repository,
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
-            default_system_prompt=self.settings.default_system_prompt,
-            context_message_limit=self.settings.conversation_context_messages,
         )
 
         self.webhook_service = webhook_service.WebhookService(

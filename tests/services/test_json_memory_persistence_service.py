@@ -182,6 +182,7 @@ def test_calendar_and_scheduling_state_persist_across_restart() -> None:
                         status="PROPOSED",
                     )
                 ],
+                slot_options_map={"1": "slot-1"},
                 selected_slot_id=None,
                 calendar_event_id=None,
                 created_at=now_value,
