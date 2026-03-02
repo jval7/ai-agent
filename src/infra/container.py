@@ -4,6 +4,7 @@ import src.adapters.outbound.inmemory.blacklist_repository_adapter as blacklist_
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.inmemory.memory_admin_adapter as memory_admin_adapter
+import src.adapters.outbound.inmemory.patient_repository_adapter as patient_repository_adapter
 import src.adapters.outbound.inmemory.processed_webhook_event_repository_adapter as processed_webhook_event_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
@@ -24,6 +25,7 @@ import src.services.use_cases.conversation_query_service as conversation_query_s
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.memory_admin_service as memory_admin_service
 import src.services.use_cases.onboarding_status_service as onboarding_status_service
+import src.services.use_cases.patient_query_service as patient_query_service
 import src.services.use_cases.scheduling_inbox_service as scheduling_inbox_service
 import src.services.use_cases.scheduling_service as scheduling_service
 import src.services.use_cases.webhook_service as webhook_service
@@ -68,6 +70,9 @@ class AppContainer:
             self.store
         )
         self.memory_admin_adapter = memory_admin_adapter.InMemoryMemoryAdminAdapter(self.store)
+        self.patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(
+            self.store
+        )
 
         self.password_hasher_adapter = password_hasher_adapter.Pbkdf2PasswordHasherAdapter()
         self.jwt_provider_adapter = jwt_provider_adapter.Hs256JwtProviderAdapter(
@@ -149,6 +154,7 @@ class AppContainer:
         self.webhook_service = webhook_service.WebhookService(
             whatsapp_connection_repository=self.whatsapp_connection_repository,
             conversation_repository=self.conversation_repository,
+            patient_repository=self.patient_repository,
             processed_webhook_event_repository=self.processed_webhook_event_repository,
             blacklist_repository=self.blacklist_repository,
             agent_profile_repository=self.agent_profile_repository,
@@ -178,4 +184,7 @@ class AppContainer:
         self.onboarding_status_service = onboarding_status_service.OnboardingStatusService(
             whatsapp_onboarding_service=self.whatsapp_onboarding_service,
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
+        )
+        self.patient_query_service = patient_query_service.PatientQueryService(
+            patient_repository=self.patient_repository,
         )

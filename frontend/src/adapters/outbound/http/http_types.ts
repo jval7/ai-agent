@@ -95,6 +95,23 @@ export interface BlacklistListApiResponse {
   items: BlacklistEntryApiResponse[];
 }
 
+export interface PatientApiResponse {
+  tenant_id: string;
+  whatsapp_user_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  age: number;
+  consultation_reason: string;
+  location: string;
+  phone: string;
+  created_at: string;
+}
+
+export interface PatientListApiResponse {
+  items: PatientApiResponse[];
+}
+
 export interface SchedulingSlotApiResponse {
   slot_id: string;
   start_at: string;

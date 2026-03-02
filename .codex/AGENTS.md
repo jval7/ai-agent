@@ -19,6 +19,7 @@ Los detalles específicos de backend/frontend viven en archivos de contexto dedi
 - Preferir cambios pequeños, reversibles y con intención clara.
 - Validar supuestos en el código antes de editar.
 - Para librerías terceras: inspeccionar implementación primero; si no alcanza, ir a documentación oficial.
+- Para entradas de usuario en lenguaje libre (por ejemplo, elección de horarios), priorizar interpretación semántica con LLM en lugar de parseo rígido con strings o números quemados; usar lógica determinística solo para validar la salida estructural.
 - Mantener este archivo corto y estable; poner detalles cambiantes en los archivos de contexto dedicados.
 
 ## Criterio de Hecho (Por Defecto)

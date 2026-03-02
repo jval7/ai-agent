@@ -1,14 +1,15 @@
 import datetime
+import json
 import re
 import time
 import typing
-import unicodedata
 import zoneinfo
 
 import pydantic
 
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
+import src.domain.entities.patient as patient_entity
 import src.domain.entities.processed_webhook_event as processed_webhook_event_entity
 import src.domain.entities.whatsapp_user as whatsapp_user_entity
 import src.infra.logs as app_logs
@@ -18,6 +19,7 @@ import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.llm_provider_port as llm_provider_port
+import src.ports.patient_repository_port as patient_repository_port
 import src.ports.processed_webhook_event_repository_port as processed_webhook_event_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
@@ -30,11 +32,33 @@ import src.services.use_cases.scheduling_service as scheduling_service
 logger = app_logs.get_logger(__name__)
 
 
+class ResolvedPatientProfile(pydantic.BaseModel):
+    first_name: str
+    last_name: str
+    email: str
+    age: int
+    consultation_reason: str
+    location: str
+    phone: str
+
+
+class ResolvedConfirmSelection(pydantic.BaseModel):
+    confirm_input_dto: scheduling_dto.ConfirmSelectedSlotInputDTO
+    patient_profile: ResolvedPatientProfile
+    patient_exists: bool
+    whatsapp_user_id: str
+
+
+class SlotSelectionResolution(pydantic.BaseModel):
+    slot_id: str | None
+
+
 class WebhookService:
     def __init__(
         self,
         whatsapp_connection_repository: whatsapp_connection_repository_port.WhatsappConnectionRepositoryPort,
         conversation_repository: conversation_repository_port.ConversationRepositoryPort,
+        patient_repository: patient_repository_port.PatientRepositoryPort,
         processed_webhook_event_repository: (
             processed_webhook_event_repository_port.ProcessedWebhookEventRepositoryPort
         ),
@@ -51,6 +75,7 @@ class WebhookService:
     ) -> None:
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._conversation_repository = conversation_repository
+        self._patient_repository = patient_repository
         self._processed_webhook_event_repository = processed_webhook_event_repository
         self._blacklist_repository = blacklist_repository
         self._agent_profile_repository = agent_profile_repository
@@ -64,6 +89,10 @@ class WebhookService:
         self._max_function_call_iterations = 4
         self._google_network_retry_backoff_seconds = [1.0, 2.0, 4.0]
         self._llm_empty_content_retry_backoff_seconds = [0.5, 1.0]
+        self._professional_signature = "Psi. Alejandra Escobar"
+        self._email_pattern = re.compile(
+            r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+$"
+        )
         if sleep_seconds is not None:
             self._sleep_seconds = sleep_seconds
         else:
@@ -249,6 +278,10 @@ class WebhookService:
             if message_role == "human_agent":
                 message_role = "assistant"
             llm_messages.append(llm_dto.ChatMessageDTO(role=message_role, content=message.content))
+        known_patient = self._patient_repository.get_by_whatsapp_user(
+            tenant_id=tenant_id,
+            whatsapp_user_id=event.whatsapp_user_id,
+        )
 
         try:
             assistant_text = self._generate_reply_with_tools(
@@ -256,6 +289,7 @@ class WebhookService:
                 conversation_id=conversation.id,
                 whatsapp_user_id=event.whatsapp_user_id,
                 llm_messages=llm_messages,
+                known_patient=known_patient,
             )
             outbound_message_provider_id = self._whatsapp_provider.send_text_message(
                 access_token=connection.access_token,
@@ -328,11 +362,16 @@ class WebhookService:
         conversation_id: str,
         whatsapp_user_id: str,
         llm_messages: list[llm_dto.ChatMessageDTO],
+        known_patient: patient_entity.Patient | None,
     ) -> str:
         system_prompt = self._default_system_prompt
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
         if agent_profile is not None:
             system_prompt = agent_profile.system_prompt
+        system_prompt = self._build_system_prompt_with_patient_context(
+            base_system_prompt=system_prompt,
+            known_patient=known_patient,
+        )
 
         tool_definitions = self._build_tool_definitions()
         function_call_results: list[llm_dto.FunctionCallResultDTO] = []
@@ -373,6 +412,27 @@ class WebhookService:
             continue
 
         raise service_exceptions.ExternalProviderError("llm returned empty content")
+
+    def _build_system_prompt_with_patient_context(
+        self,
+        base_system_prompt: str,
+        known_patient: patient_entity.Patient | None,
+    ) -> str:
+        if known_patient is None:
+            return base_system_prompt
+        patient_context_lines = [
+            "Known patient profile (reuse this context and avoid asking repeated data):",
+            f"- patient_first_name: {known_patient.first_name}",
+            f"- patient_last_name: {known_patient.last_name}",
+            f"- patient_email: {known_patient.email}",
+            f"- patient_age: {known_patient.age}",
+            f"- consultation_reason: {known_patient.consultation_reason}",
+            f"- patient_location: {known_patient.location}",
+            f"- patient_phone: {known_patient.phone}",
+            "If patient data is already known and still valid, do not ask for it again.",
+        ]
+        patient_context = "\n".join(patient_context_lines)
+        return f"{base_system_prompt}\n\n{patient_context}"
 
     def _request_llm_reply_with_retry(
         self,
@@ -465,16 +525,24 @@ class WebhookService:
                         function_call.args
                     )
                 )
-                confirm_input_dto = self._resolve_confirm_selected_slot_input(
+                resolved_confirm_selection = self._resolve_confirm_selected_slot_input(
                     tenant_id=tenant_id,
                     conversation_id=conversation_id,
                     tool_input_dto=confirm_tool_input_dto,
                 )
-                return self._confirm_selected_slot_with_retry(
+                confirm_result = self._confirm_selected_slot_with_retry(
                     tenant_id=tenant_id,
                     conversation_id=conversation_id,
-                    confirm_input_dto=confirm_input_dto,
+                    confirm_input_dto=resolved_confirm_selection.confirm_input_dto,
                 )
+                if confirm_result.get("status") == "BOOKED":
+                    self._create_patient_after_successful_booking(
+                        tenant_id=tenant_id,
+                        whatsapp_user_id=resolved_confirm_selection.whatsapp_user_id,
+                        patient_profile=resolved_confirm_selection.patient_profile,
+                        patient_exists=resolved_confirm_selection.patient_exists,
+                    )
+                return confirm_result
 
             if function_call.name == "handoff_to_human":
                 if self._scheduling_service is None:
@@ -533,7 +601,7 @@ class WebhookService:
         tenant_id: str,
         conversation_id: str,
         tool_input_dto: scheduling_dto.ConfirmSelectedSlotToolInputDTO,
-    ) -> scheduling_dto.ConfirmSelectedSlotInputDTO:
+    ) -> ResolvedConfirmSelection:
         if self._scheduling_service is None:
             raise service_exceptions.InvalidStateError("scheduling service is not configured")
 
@@ -573,10 +641,25 @@ class WebhookService:
                 conversation_id=conversation_id,
                 request=target_request,
             )
+        resolved_patient_profile, patient_exists = self._resolve_patient_profile_for_confirmation(
+            tenant_id=tenant_id,
+            whatsapp_user_id=target_request.whatsapp_user_id,
+            tool_input_dto=tool_input_dto,
+            default_patient_phone=target_request.whatsapp_user_id,
+        )
+        event_summary = self._build_event_summary_for_confirmation(
+            resolved_patient_profile=resolved_patient_profile
+        )
 
-        return scheduling_dto.ConfirmSelectedSlotInputDTO(
-            request_id=target_request.request_id,
-            slot_id=resolved_slot_id,
+        return ResolvedConfirmSelection(
+            confirm_input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
+                request_id=target_request.request_id,
+                slot_id=resolved_slot_id,
+                event_summary=event_summary,
+            ),
+            patient_profile=resolved_patient_profile,
+            patient_exists=patient_exists,
+            whatsapp_user_id=target_request.whatsapp_user_id,
         )
 
     def _select_target_request_for_confirmation(
@@ -620,29 +703,349 @@ class WebhookService:
             first_slot = ordered_proposed_slots[0]
             return first_slot.slot_id
 
-        latest_user_text = self._get_latest_user_message_text(tenant_id, conversation_id)
-        if latest_user_text is None:
+        recent_user_messages = self._list_recent_user_message_texts(tenant_id, conversation_id)
+        if not recent_user_messages:
             raise service_exceptions.InvalidStateError(
                 "slot selection is ambiguous; ask patient to choose one specific slot"
             )
 
-        option_number = self._extract_option_number(
-            latest_user_text=latest_user_text,
-            max_option_number=len(ordered_proposed_slots),
-        )
-        if option_number is not None:
-            return ordered_proposed_slots[option_number - 1].slot_id
-
-        slot_id_by_datetime = self._resolve_slot_id_from_datetime_mention(
+        slot_id = self._resolve_slot_id_with_llm(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
             ordered_proposed_slots=ordered_proposed_slots,
-            latest_user_text=latest_user_text,
+            recent_user_messages=recent_user_messages,
         )
-        if slot_id_by_datetime is not None:
-            return slot_id_by_datetime
+        if slot_id is not None:
+            return slot_id
 
         raise service_exceptions.InvalidStateError(
             "slot selection is ambiguous; ask patient to choose one specific slot"
         )
+
+    def _resolve_slot_id_with_llm(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        ordered_proposed_slots: list[scheduling_dto.SchedulingSlotDTO],
+        recent_user_messages: list[str],
+    ) -> str | None:
+        slot_lines: list[str] = []
+        for index, slot in enumerate(ordered_proposed_slots, start=1):
+            slot_local_start = self._to_slot_local_datetime(slot)
+            slot_local_end = slot.end_at.astimezone(slot_local_start.tzinfo)
+            slot_lines.append(
+                f"- index: {index}; slot_id: {slot.slot_id}; "
+                f"start_local: {slot_local_start.isoformat()}; "
+                f"end_local: {slot_local_end.isoformat()}; "
+                f"timezone: {slot.timezone}"
+            )
+
+        chronological_user_messages = list(reversed(recent_user_messages[:12]))
+        user_message_lines: list[str] = []
+        for index, message in enumerate(chronological_user_messages, start=1):
+            user_message_lines.append(f"- user_{index}: {message}")
+
+        resolver_user_prompt = (
+            "Selecciona el slot_id que mejor corresponde a la eleccion del paciente.\n\n"
+            "Slots disponibles:\n"
+            f"{chr(10).join(slot_lines)}\n\n"
+            "Mensajes recientes del paciente (orden cronologico):\n"
+            f"{chr(10).join(user_message_lines)}\n\n"
+            "Responde solo JSON valido con una de estas formas:\n"
+            '{"slot_id":"<slot_id_valido>"}\n'
+            '{"slot_id":null}'
+        )
+        resolver_system_prompt = (
+            "Eres un resolvedor semantico de seleccion de horarios para agendamiento.\n"
+            "El paciente puede escribir de cualquier forma, incluyendo lenguaje natural, "
+            "numero, palabra, abreviaciones o referencias indirectas.\n"
+            "Tu tarea es elegir un unico slot_id entre los slots disponibles.\n"
+            "Si no hay evidencia suficiente o hay ambiguedad real, responde slot_id null.\n"
+            "No inventes slots y no agregues texto fuera del JSON."
+        )
+        resolver_input = llm_dto.GenerateReplyInputDTO(
+            system_prompt=resolver_system_prompt,
+            messages=[llm_dto.ChatMessageDTO(role="user", content=resolver_user_prompt)],
+            tools=[],
+            function_call_results=[],
+        )
+        resolver_reply = self._request_llm_reply_with_retry(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            llm_input=resolver_input,
+        )
+        if resolver_reply.function_calls:
+            return None
+
+        resolution = self._parse_slot_selection_resolution(resolver_reply.content)
+        if resolution is None:
+            return None
+        if resolution.slot_id is None:
+            return None
+
+        for slot in ordered_proposed_slots:
+            if slot.slot_id == resolution.slot_id:
+                return resolution.slot_id
+        return None
+
+    def _parse_slot_selection_resolution(
+        self,
+        llm_content: str,
+    ) -> SlotSelectionResolution | None:
+        normalized_content = llm_content.strip()
+        if normalized_content == "":
+            return None
+        try:
+            parsed_payload = json.loads(normalized_content)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(parsed_payload, dict):
+            return None
+        try:
+            return SlotSelectionResolution.model_validate(parsed_payload)
+        except pydantic.ValidationError:
+            return None
+
+    def _resolve_patient_profile_for_confirmation(
+        self,
+        tenant_id: str,
+        whatsapp_user_id: str,
+        tool_input_dto: scheduling_dto.ConfirmSelectedSlotToolInputDTO,
+        default_patient_phone: str | None,
+    ) -> tuple[ResolvedPatientProfile, bool]:
+        existing_patient = self._patient_repository.get_by_whatsapp_user(
+            tenant_id=tenant_id,
+            whatsapp_user_id=whatsapp_user_id,
+        )
+        if existing_patient is not None:
+            self._log_existing_patient_mismatch(
+                tenant_id=tenant_id,
+                whatsapp_user_id=whatsapp_user_id,
+                existing_patient=existing_patient,
+                tool_input_dto=tool_input_dto,
+            )
+            return (
+                ResolvedPatientProfile(
+                    first_name=existing_patient.first_name,
+                    last_name=existing_patient.last_name,
+                    email=existing_patient.email,
+                    age=existing_patient.age,
+                    consultation_reason=existing_patient.consultation_reason,
+                    location=existing_patient.location,
+                    phone=existing_patient.phone,
+                ),
+                True,
+            )
+
+        patient_first_name = self._normalize_patient_text(tool_input_dto.patient_first_name)
+        if patient_first_name is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: patient_first_name; ask only for the patient's first name now"
+            )
+
+        patient_last_name = self._normalize_patient_text(tool_input_dto.patient_last_name)
+        if patient_last_name is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: patient_last_name; ask only for the patient's last name now"
+            )
+
+        patient_email = self._normalize_patient_text(tool_input_dto.patient_email)
+        if patient_email is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: patient_email; ask only for the patient's email now"
+            )
+        if not self._email_pattern.fullmatch(patient_email):
+            raise service_exceptions.InvalidStateError(
+                "patient_email is invalid; ask only for a valid email now"
+            )
+
+        patient_phone = self._resolve_patient_phone(
+            provided_patient_phone=tool_input_dto.patient_phone,
+            fallback_patient_phone=default_patient_phone,
+        )
+        if patient_phone is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: patient_phone; ask only for the patient's phone number now"
+            )
+
+        patient_age = self._normalize_patient_age(tool_input_dto.patient_age)
+        if patient_age is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: patient_age; ask only for the patient's age now"
+            )
+        if patient_age < 1 or patient_age > 120:
+            raise service_exceptions.InvalidStateError(
+                "patient_age is invalid; ask only for age as a whole number between 1 and 120"
+            )
+
+        consultation_reason = self._normalize_patient_text(tool_input_dto.consultation_reason)
+        if consultation_reason is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: consultation_reason; ask only for the consultation reason now"
+            )
+
+        patient_location = self._normalize_patient_text(tool_input_dto.patient_location)
+        if patient_location is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: patient_location; ask only for the patient's location now"
+            )
+
+        return (
+            ResolvedPatientProfile(
+                first_name=patient_first_name,
+                last_name=patient_last_name,
+                email=patient_email,
+                age=patient_age,
+                consultation_reason=consultation_reason,
+                location=patient_location,
+                phone=patient_phone,
+            ),
+            False,
+        )
+
+    def _build_event_summary_for_confirmation(
+        self,
+        resolved_patient_profile: ResolvedPatientProfile,
+    ) -> str:
+        return (
+            f"{resolved_patient_profile.first_name} {resolved_patient_profile.last_name}"
+            f"/ {self._professional_signature}"
+        )
+
+    def _log_existing_patient_mismatch(
+        self,
+        tenant_id: str,
+        whatsapp_user_id: str,
+        existing_patient: patient_entity.Patient,
+        tool_input_dto: scheduling_dto.ConfirmSelectedSlotToolInputDTO,
+    ) -> None:
+        mismatched_fields: list[str] = []
+
+        normalized_first_name = self._normalize_patient_text(tool_input_dto.patient_first_name)
+        if (
+            normalized_first_name is not None
+            and normalized_first_name != existing_patient.first_name
+        ):
+            mismatched_fields.append("patient_first_name")
+
+        normalized_last_name = self._normalize_patient_text(tool_input_dto.patient_last_name)
+        if normalized_last_name is not None and normalized_last_name != existing_patient.last_name:
+            mismatched_fields.append("patient_last_name")
+
+        normalized_email = self._normalize_patient_text(tool_input_dto.patient_email)
+        if normalized_email is not None and normalized_email != existing_patient.email:
+            mismatched_fields.append("patient_email")
+
+        normalized_phone = self._normalize_patient_text(tool_input_dto.patient_phone)
+        if normalized_phone is not None and normalized_phone != existing_patient.phone:
+            mismatched_fields.append("patient_phone")
+
+        normalized_age = self._normalize_patient_age(tool_input_dto.patient_age)
+        if normalized_age is not None and normalized_age != existing_patient.age:
+            mismatched_fields.append("patient_age")
+
+        normalized_reason = self._normalize_patient_text(tool_input_dto.consultation_reason)
+        if (
+            normalized_reason is not None
+            and normalized_reason != existing_patient.consultation_reason
+        ):
+            mismatched_fields.append("consultation_reason")
+
+        normalized_location = self._normalize_patient_text(tool_input_dto.patient_location)
+        if normalized_location is not None and normalized_location != existing_patient.location:
+            mismatched_fields.append("patient_location")
+
+        if not mismatched_fields:
+            return
+
+        logger.info(
+            "webhook.patient.mismatch_ignored",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="webhook.patient.mismatch_ignored",
+                    message="incoming patient data differs from stored profile; stored profile is kept",
+                    data={
+                        "tenant_id": tenant_id,
+                        "whatsapp_user_id": whatsapp_user_id,
+                        "mismatched_fields": sorted(set(mismatched_fields)),
+                    },
+                )
+            },
+        )
+
+    def _create_patient_after_successful_booking(
+        self,
+        tenant_id: str,
+        whatsapp_user_id: str,
+        patient_profile: ResolvedPatientProfile,
+        patient_exists: bool,
+    ) -> None:
+        if patient_exists:
+            return
+
+        existing_patient = self._patient_repository.get_by_whatsapp_user(
+            tenant_id=tenant_id,
+            whatsapp_user_id=whatsapp_user_id,
+        )
+        if existing_patient is not None:
+            return
+
+        patient = patient_entity.Patient(
+            tenant_id=tenant_id,
+            whatsapp_user_id=whatsapp_user_id,
+            first_name=patient_profile.first_name,
+            last_name=patient_profile.last_name,
+            email=patient_profile.email,
+            age=patient_profile.age,
+            consultation_reason=patient_profile.consultation_reason,
+            location=patient_profile.location,
+            phone=patient_profile.phone,
+            created_at=self._clock.now(),
+        )
+        self._patient_repository.save(patient)
+        logger.info(
+            "webhook.patient.created",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="webhook.patient.created",
+                    message="patient record created after booking confirmation",
+                    data={
+                        "tenant_id": tenant_id,
+                        "whatsapp_user_id": whatsapp_user_id,
+                    },
+                )
+            },
+        )
+
+    def _normalize_patient_text(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized_value = value.strip()
+        if normalized_value == "":
+            return None
+        return normalized_value
+
+    def _normalize_patient_age(self, value: int | str | None) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, int):
+            return value
+        normalized_value = value.strip()
+        if normalized_value == "":
+            return None
+        if not normalized_value.isdigit():
+            return None
+        return int(normalized_value)
+
+    def _resolve_patient_phone(
+        self,
+        provided_patient_phone: str | None,
+        fallback_patient_phone: str | None,
+    ) -> str | None:
+        normalized_provided_phone = self._normalize_patient_text(provided_patient_phone)
+        if normalized_provided_phone is not None:
+            return normalized_provided_phone
+        return self._normalize_patient_text(fallback_patient_phone)
 
     def _list_ordered_proposed_slots(
         self,
@@ -654,169 +1057,17 @@ class WebhookService:
                 proposed_slots.append(slot)
         return sorted(proposed_slots, key=lambda item: item.start_at)
 
-    def _get_latest_user_message_text(
+    def _list_recent_user_message_texts(
         self,
         tenant_id: str,
         conversation_id: str,
-    ) -> str | None:
+    ) -> list[str]:
         messages = self._conversation_repository.list_messages(tenant_id, conversation_id)
+        user_messages: list[str] = []
         for message in reversed(messages):
             if message.role == "user":
-                return message.content
-        return None
-
-    def _extract_option_number(
-        self,
-        latest_user_text: str,
-        max_option_number: int,
-    ) -> int | None:
-        normalized_text = self._normalize_text(latest_user_text)
-        exact_match = re.fullmatch(r"\s*(\d{1,2})\s*", normalized_text)
-        if exact_match is not None:
-            value = int(exact_match.group(1))
-            if 1 <= value <= max_option_number:
-                return value
-
-        labeled_match = re.search(
-            r"\b(opcion|numero|nro|#)\s*(\d{1,2})\b",
-            normalized_text,
-        )
-        if labeled_match is None:
-            return None
-
-        value = int(labeled_match.group(2))
-        if 1 <= value <= max_option_number:
-            return value
-        return None
-
-    def _resolve_slot_id_from_datetime_mention(
-        self,
-        ordered_proposed_slots: list[scheduling_dto.SchedulingSlotDTO],
-        latest_user_text: str,
-    ) -> str | None:
-        normalized_text = self._normalize_text(latest_user_text)
-        mentioned_date_parts = self._extract_mentioned_date_parts(normalized_text)
-        mentioned_days = self._extract_mentioned_days(normalized_text)
-        mentioned_time_parts = self._extract_mentioned_time_parts(normalized_text)
-
-        if not mentioned_date_parts and not mentioned_days and not mentioned_time_parts:
-            return None
-
-        candidate_slot_ids: list[str] = []
-        for slot in ordered_proposed_slots:
-            slot_local_start = self._to_slot_local_datetime(slot)
-            if mentioned_date_parts:
-                date_candidate = (slot_local_start.day, slot_local_start.month)
-                if date_candidate not in mentioned_date_parts:
-                    continue
-            elif mentioned_days:
-                if slot_local_start.day not in mentioned_days:
-                    continue
-            if mentioned_time_parts and not self._slot_matches_any_time_mention(
-                slot_local_start=slot_local_start,
-                time_mentions=mentioned_time_parts,
-            ):
-                continue
-            candidate_slot_ids.append(slot.slot_id)
-
-        if len(candidate_slot_ids) == 1:
-            return candidate_slot_ids[0]
-        return None
-
-    def _extract_mentioned_date_parts(
-        self,
-        normalized_text: str,
-    ) -> set[tuple[int, int]]:
-        month_by_name = {
-            "enero": 1,
-            "febrero": 2,
-            "marzo": 3,
-            "abril": 4,
-            "mayo": 5,
-            "junio": 6,
-            "julio": 7,
-            "agosto": 8,
-            "septiembre": 9,
-            "setiembre": 9,
-            "octubre": 10,
-            "noviembre": 11,
-            "diciembre": 12,
-        }
-        date_parts: set[tuple[int, int]] = set()
-        for match in re.finditer(r"\b(\d{1,2})\s+de\s+([a-z]+)\b", normalized_text):
-            day = int(match.group(1))
-            month_name = match.group(2)
-            month = month_by_name.get(month_name)
-            if month is None:
-                continue
-            if 1 <= day <= 31:
-                date_parts.add((day, month))
-        return date_parts
-
-    def _extract_mentioned_days(
-        self,
-        normalized_text: str,
-    ) -> set[int]:
-        days: set[int] = set()
-        for match in re.finditer(r"\bel\s+(\d{1,2})\b", normalized_text):
-            day = int(match.group(1))
-            if 1 <= day <= 31:
-                days.add(day)
-        return days
-
-    def _extract_mentioned_time_parts(
-        self,
-        normalized_text: str,
-    ) -> list[tuple[int, int, str | None]]:
-        time_parts: list[tuple[int, int, str | None]] = []
-        for match in re.finditer(
-            r"(?:a\s+las|a\s+la|las)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
-            normalized_text,
-        ):
-            hour = int(match.group(1))
-            minute = 0
-            if match.group(2) is not None:
-                minute = int(match.group(2))
-            meridiem = match.group(3)
-            if 0 <= hour <= 23 and 0 <= minute <= 59:
-                time_parts.append((hour, minute, meridiem))
-        return time_parts
-
-    def _slot_matches_any_time_mention(
-        self,
-        slot_local_start: datetime.datetime,
-        time_mentions: list[tuple[int, int, str | None]],
-    ) -> bool:
-        for hour, minute, meridiem in time_mentions:
-            if self._slot_matches_time_mention(slot_local_start, hour, minute, meridiem):
-                return True
-        return False
-
-    def _slot_matches_time_mention(
-        self,
-        slot_local_start: datetime.datetime,
-        hour: int,
-        minute: int,
-        meridiem: str | None,
-    ) -> bool:
-        if slot_local_start.minute != minute:
-            return False
-
-        if meridiem is None:
-            slot_hour_12 = slot_local_start.hour % 12
-            if slot_hour_12 == 0:
-                slot_hour_12 = 12
-            return hour == slot_local_start.hour or hour == slot_hour_12
-
-        normalized_hour = hour
-        if meridiem == "am":
-            if hour == 12:
-                normalized_hour = 0
-        else:
-            if hour < 12:
-                normalized_hour = hour + 12
-
-        return slot_local_start.hour == normalized_hour
+                user_messages.append(message.content)
+        return user_messages
 
     def _to_slot_local_datetime(
         self,
@@ -830,13 +1081,6 @@ class WebhookService:
         except zoneinfo.ZoneInfoNotFoundError:
             return slot.start_at
         return slot.start_at.astimezone(slot_timezone)
-
-    def _normalize_text(self, value: str) -> str:
-        lowered_value = value.lower()
-        normalized_value = unicodedata.normalize("NFD", lowered_value)
-        return "".join(
-            character for character in normalized_value if unicodedata.category(character) != "Mn"
-        )
 
     def _request_contains_proposed_slot(
         self,
@@ -983,6 +1227,11 @@ class WebhookService:
                 name="confirm_selected_slot_and_create_event",
                 description=(
                     "Confirma un horario elegido por el paciente y crea el evento en Google Calendar. "
+                    "Si el perfil del paciente ya existe en contexto, reutilizalo y no repitas preguntas innecesarias. "
+                    "Si el perfil no existe, antes de llamar esta tool recolecta paso a paso y en mensajes separados: "
+                    "patient_first_name, patient_last_name, patient_email, patient_phone, patient_age, consultation_reason y patient_location. "
+                    "patient_phone puede tomarse del numero de WhatsApp si ya esta disponible. "
+                    "No pidas todos los datos en un solo mensaje. "
                     "Si request_id o slot_id no se incluyen, el backend intentara resolverlos automaticamente cuando no haya ambiguedad."
                 ),
                 parameters_json_schema={
@@ -990,6 +1239,13 @@ class WebhookService:
                     "properties": {
                         "request_id": {"type": "string"},
                         "slot_id": {"type": "string"},
+                        "patient_first_name": {"type": "string"},
+                        "patient_last_name": {"type": "string"},
+                        "patient_email": {"type": "string"},
+                        "patient_phone": {"type": "string"},
+                        "patient_age": {"type": ["integer", "string"]},
+                        "consultation_reason": {"type": "string"},
+                        "patient_location": {"type": "string"},
                     },
                     "required": [],
                     "additionalProperties": False,
@@ -998,7 +1254,8 @@ class WebhookService:
             llm_dto.FunctionDeclarationDTO(
                 name="handoff_to_human",
                 description=(
-                    "Pasa la conversacion a modo humano cuando el paciente solicita un tema no relacionado o requiere atencion manual."
+                    "Pasa la conversacion a modo humano solo cuando el paciente solicita "
+                    "explicitamente la intervencion de una persona humana."
                 ),
                 parameters_json_schema={
                     "type": "object",

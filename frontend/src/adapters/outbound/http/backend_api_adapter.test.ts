@@ -209,6 +209,38 @@ vitestModule.describe("BackendApiAdapter", () => {
           items: []
         });
       }),
+      mswModule.http.get("http://api.test/v1/patients", () => {
+        return mswModule.HttpResponse.json({
+          items: [
+            {
+              tenant_id: "tenant-1",
+              whatsapp_user_id: "wa-1",
+              first_name: "Jane",
+              last_name: "Doe",
+              email: "jane@example.com",
+              age: 29,
+              consultation_reason: "Ansiedad",
+              location: "Bogota",
+              phone: "573001112233",
+              created_at: "2026-03-01T10:00:00Z"
+            }
+          ]
+        });
+      }),
+      mswModule.http.get("http://api.test/v1/patients/wa-1", () => {
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          whatsapp_user_id: "wa-1",
+          first_name: "Jane",
+          last_name: "Doe",
+          email: "jane@example.com",
+          age: 29,
+          consultation_reason: "Ansiedad",
+          location: "Bogota",
+          phone: "573001112233",
+          created_at: "2026-03-01T10:00:00Z"
+        });
+      }),
       mswModule.http.post(
         "http://api.test/v1/conversations/conv-1/scheduling/requests/req-1/professional-slots",
         async ({ request }) => {
@@ -246,6 +278,8 @@ vitestModule.describe("BackendApiAdapter", () => {
     );
     const requests = await adapter.listSchedulingRequests("AWAITING_PROFESSIONAL_SLOTS");
     const conversationRequests = await adapter.listConversationSchedulingRequests("conv-1");
+    const patients = await adapter.listPatients();
+    const patient = await adapter.getPatient("wa-1");
     const submitResult = await adapter.submitProfessionalSlots("conv-1", "req-1", {
       slots: [
         {
@@ -264,6 +298,8 @@ vitestModule.describe("BackendApiAdapter", () => {
     vitestModule.expect(availability.busyIntervals).toHaveLength(1);
     vitestModule.expect(requests[0]?.requestId).toBe("req-1");
     vitestModule.expect(conversationRequests).toEqual([]);
+    vitestModule.expect(patients[0]?.firstName).toBe("Jane");
+    vitestModule.expect(patient.location).toBe("Bogota");
     vitestModule.expect(submitResult.outboundMessageId).toBe("wamid-1");
   });
 });

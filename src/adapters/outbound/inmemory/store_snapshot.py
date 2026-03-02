@@ -5,6 +5,7 @@ import src.domain.entities.blacklist_entry as blacklist_entry_entity
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.domain.entities.message as message_entity
+import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.user as user_entity
@@ -28,6 +29,7 @@ class InMemoryStoreSnapshot(pydantic.BaseModel):
         google_calendar_connection_entity.GoogleCalendarConnection
     ] = pydantic.Field(default_factory=list)
     whatsapp_users: list[whatsapp_user_entity.WhatsappUser] = pydantic.Field(default_factory=list)
+    patients: list[patient_entity.Patient] = pydantic.Field(default_factory=list)
     conversations: list[conversation_entity.Conversation] = pydantic.Field(default_factory=list)
     scheduling_requests: list[scheduling_request_entity.SchedulingRequest] = pydantic.Field(
         default_factory=list

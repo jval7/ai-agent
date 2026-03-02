@@ -1,6 +1,7 @@
 import * as reactRouterDomModule from "react-router-dom";
 
 import * as agendaPageModule from "@adapters/inbound/react/pages/AgendaPage";
+import * as clientsPageModule from "@adapters/inbound/react/pages/ClientsPage";
 import * as inboxPageModule from "@adapters/inbound/react/pages/InboxPage";
 import * as loginPageModule from "@adapters/inbound/react/pages/LoginPage";
 import * as onboardingPageModule from "@adapters/inbound/react/pages/OnboardingPage";
@@ -68,6 +69,16 @@ export function AppRouter() {
             </protectedRouteModule.ProtectedRoute>
           }
           path="/inbox"
+        />
+        <reactRouterDomModule.Route
+          element={
+            <protectedRouteModule.ProtectedRoute>
+              <onboardingReadyRouteModule.OnboardingReadyRoute>
+                <clientsPageModule.ClientsPage />
+              </onboardingReadyRouteModule.OnboardingReadyRoute>
+            </protectedRouteModule.ProtectedRoute>
+          }
+          path="/clientes"
         />
         <reactRouterDomModule.Route
           element={

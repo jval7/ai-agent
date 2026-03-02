@@ -12,6 +12,7 @@ import src.entrypoints.web.routers.google_calendar_router as google_calendar_rou
 import src.entrypoints.web.routers.health_router as health_router
 import src.entrypoints.web.routers.oauth_router as oauth_router
 import src.entrypoints.web.routers.onboarding_router as onboarding_router
+import src.entrypoints.web.routers.patient_router as patient_router
 import src.entrypoints.web.routers.scheduling_router as scheduling_router
 import src.entrypoints.web.routers.webhook_router as webhook_router
 import src.entrypoints.web.routers.whatsapp_router as whatsapp_router
@@ -44,6 +45,7 @@ def create_app() -> fastapi.FastAPI:
     app.include_router(onboarding_router.router)
     app.include_router(webhook_router.router)
     app.include_router(conversation_router.router)
+    app.include_router(patient_router.router)
     app.include_router(scheduling_router.router)
     app.include_router(oauth_router.router)
     if app.state.container.settings.enable_dev_endpoints:

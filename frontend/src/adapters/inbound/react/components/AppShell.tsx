@@ -7,6 +7,7 @@ const navLinks = [
   { to: "/onboarding", label: "Onboarding" },
   { to: "/agenda", label: "Agenda" },
   { to: "/inbox", label: "Inbox" },
+  { to: "/clientes", label: "Clientes" },
   { to: "/agent/prompt", label: "Prompt" }
 ];
 

@@ -138,6 +138,7 @@ def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
+            event_summary="Jane Doe/ Psi. Alejandra Escobar",
         ),
     )
 
@@ -148,7 +149,7 @@ def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
 
 
 def test_confirm_selected_slot_creates_event_when_available() -> None:
-    service, repository, _ = build_service(["req-1"])
+    service, repository, provider = build_service(["req-1"])
     request = service.request_schedule_approval(
         tenant_id="tenant-1",
         conversation_id="conv-1",
@@ -180,11 +181,13 @@ def test_confirm_selected_slot_creates_event_when_available() -> None:
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
+            event_summary="Jane Doe/ Psi. Alejandra Escobar",
         ),
     )
 
     assert result.status == "BOOKED"
     assert result.calendar_event_id == "event-1"
+    assert provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
 
 
 def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None:
@@ -225,6 +228,7 @@ def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
+            event_summary="Jane Doe/ Psi. Alejandra Escobar",
         ),
     )
 

@@ -284,6 +284,52 @@ Este documento describe qué hace cada endpoint del backend.
 
 ---
 
+## Patients
+
+### `GET /v1/patients`
+- Auth: sí (owner)
+- Qué hace: lista pacientes registrados del tenant autenticado, ordenados por `created_at` descendente.
+- Response body:
+```json
+{
+  "items": [
+    {
+      "tenant_id": "...",
+      "whatsapp_user_id": "573001234567",
+      "first_name": "Jane",
+      "last_name": "Doe",
+      "email": "jane@example.com",
+      "age": 29,
+      "consultation_reason": "Ansiedad",
+      "location": "Bogota",
+      "phone": "573001234567",
+      "created_at": "2026-03-02T00:44:28Z"
+    }
+  ]
+}
+```
+
+### `GET /v1/patients/{whatsapp_user_id}`
+- Auth: sí (owner)
+- Qué hace: retorna el detalle de un paciente por `whatsapp_user_id`.
+- Response body:
+```json
+{
+  "tenant_id": "...",
+  "whatsapp_user_id": "573001234567",
+  "first_name": "Jane",
+  "last_name": "Doe",
+  "email": "jane@example.com",
+  "age": 29,
+  "consultation_reason": "Ansiedad",
+  "location": "Bogota",
+  "phone": "573001234567",
+  "created_at": "2026-03-02T00:44:28Z"
+}
+```
+
+---
+
 ## Flujo mínimo recomendado (manual)
 
 1. `POST /v1/auth/register`

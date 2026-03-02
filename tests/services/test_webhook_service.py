@@ -7,11 +7,13 @@ import pytest
 import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.inmemory.blacklist_repository_adapter as blacklist_repository_adapter
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
+import src.adapters.outbound.inmemory.patient_repository_adapter as patient_repository_adapter
 import src.adapters.outbound.inmemory.processed_webhook_event_repository_adapter as processed_webhook_event_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.blacklist_entry as blacklist_entry_entity
+import src.domain.entities.patient as patient_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.services.dto.llm_dto as llm_dto
 import src.services.dto.webhook_dto as webhook_dto
@@ -25,6 +27,7 @@ LOGGER_NAME = "src.services.use_cases.webhook_service"
 def build_webhook_service(
     id_values: list[str],
     sleep_seconds: typing.Callable[[float], None] | None = None,
+    existing_patient: patient_entity.Patient | None = None,
 ) -> tuple[
     webhook_service.WebhookService,
     fake_adapters.FakeWhatsappProvider,
@@ -49,6 +52,7 @@ def build_webhook_service(
     agent_profile_repository = (
         agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
     )
+    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
 
     now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     connection_repository.save(
@@ -69,6 +73,8 @@ def build_webhook_service(
             updated_at=now_value,
         )
     )
+    if existing_patient is not None:
+        patient_repository.save(existing_patient)
 
     provider = fake_adapters.FakeWhatsappProvider()
     llm_provider = fake_adapters.FakeLlmProvider(reply_content="assistant reply")
@@ -78,6 +84,7 @@ def build_webhook_service(
     service = webhook_service.WebhookService(
         whatsapp_connection_repository=connection_repository,
         conversation_repository=conversation_repository,
+        patient_repository=patient_repository,
         processed_webhook_event_repository=processed_repository,
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
@@ -162,6 +169,40 @@ def test_process_payload_creates_conversation_and_outbound_reply() -> None:
     messages = conversation_repository.list_messages("tenant-1", conversation.id)
     assert len(messages) == 2
     assert processed_repository.exists("tenant-1", "evt-1")
+
+
+def test_process_payload_injects_known_patient_context_into_system_prompt() -> None:
+    known_patient = patient_entity.Patient(
+        tenant_id="tenant-1",
+        whatsapp_user_id="wa-user-1",
+        first_name="Jane",
+        last_name="Doe",
+        email="jane@example.com",
+        age=29,
+        consultation_reason="Ansiedad",
+        location="Bogota",
+        phone="573001112233",
+        created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+    )
+    (
+        service,
+        provider,
+        llm_provider,
+        _,
+        _,
+        _,
+    ) = build_webhook_service(
+        ["conversation-1", "in-msg-1", "out-msg-1"],
+        existing_patient=known_patient,
+    )
+    provider.events = [build_customer_text_event()]
+
+    service.process_payload({})
+
+    assert len(llm_provider.calls) == 1
+    assert "Known patient profile" in llm_provider.calls[0].system_prompt
+    assert "patient_first_name: Jane" in llm_provider.calls[0].system_prompt
+    assert "patient_location: Bogota" in llm_provider.calls[0].system_prompt
 
 
 def test_process_payload_dedupes_same_event() -> None:

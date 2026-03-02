@@ -137,6 +137,7 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         )
         self.busy_intervals: list[google_calendar_dto.GoogleCalendarBusyIntervalDTO] = []
         self.created_events: list[google_calendar_dto.GoogleCalendarEventDTO] = []
+        self.created_event_summaries: list[str] = []
         self.busy_interval_errors: list[service_exceptions.ExternalProviderError] = []
         self.create_event_errors: list[service_exceptions.ExternalProviderError] = []
 
@@ -196,7 +197,7 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         del access_token
         del calendar_id
         del timezone
-        del summary
+        self.created_event_summaries.append(summary)
         event = google_calendar_dto.GoogleCalendarEventDTO(
             event_id=f"event-{len(self.created_events) + 1}",
             start_at=start_at,

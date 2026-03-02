@@ -139,11 +139,14 @@ class SchedulingService:
             return self._mark_selected_slot_conflict(request, selected_slot, now_value)
 
         try:
+            normalized_summary = input_dto.event_summary.strip()
+            if not normalized_summary:
+                raise service_exceptions.InvalidStateError("event summary cannot be empty")
             event = self._google_calendar_onboarding_service.create_event(
                 tenant_id=tenant_id,
                 start_at=selected_slot.start_at,
                 end_at=selected_slot.end_at,
-                summary="Sesion agendada",
+                summary=normalized_summary,
             )
         except service_exceptions.ExternalProviderError as error:
             if self._is_google_conflict_error(str(error)):

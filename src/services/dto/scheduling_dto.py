@@ -77,11 +77,19 @@ class RequestScheduleApprovalInputDTO(pydantic.BaseModel):
 class ConfirmSelectedSlotInputDTO(pydantic.BaseModel):
     request_id: str
     slot_id: str
+    event_summary: str
 
 
 class ConfirmSelectedSlotToolInputDTO(pydantic.BaseModel):
     request_id: str | None = None
     slot_id: str | None = None
+    patient_first_name: str | None = None
+    patient_last_name: str | None = None
+    patient_email: str | None = None
+    patient_phone: str | None = None
+    patient_age: int | str | None = None
+    consultation_reason: str | None = None
+    patient_location: str | None = None
 
 
 class ConfirmSelectedSlotResponseDTO(pydantic.BaseModel):

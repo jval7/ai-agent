@@ -4,6 +4,7 @@ import tempfile
 
 import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
+import src.adapters.outbound.inmemory.patient_repository_adapter as patient_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.tenant_repository_adapter as tenant_repository_adapter
@@ -12,6 +13,7 @@ import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as 
 import src.adapters.outbound.security.jwt_provider_adapter as jwt_provider_adapter
 import src.adapters.outbound.security.password_hasher_adapter as password_hasher_adapter
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
+import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.services.dto.auth_dto as auth_dto
@@ -139,6 +141,9 @@ def test_calendar_and_scheduling_state_persist_across_restart() -> None:
         first_scheduling_repository = (
             scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(first_store)
         )
+        first_patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(
+            first_store
+        )
 
         first_calendar_repository.save(
             google_calendar_connection_entity.GoogleCalendarConnection(
@@ -183,6 +188,20 @@ def test_calendar_and_scheduling_state_persist_across_restart() -> None:
                 updated_at=now_value,
             )
         )
+        first_patient_repository.save(
+            patient_entity.Patient(
+                tenant_id="tenant-1",
+                whatsapp_user_id="wa-user-1",
+                first_name="Jane",
+                last_name="Doe",
+                email="jane@example.com",
+                age=29,
+                consultation_reason="Ansiedad",
+                location="Bogota",
+                phone="573001112233",
+                created_at=now_value,
+            )
+        )
 
         second_store = in_memory_store.InMemoryStore(persistence_file_path=snapshot_path)
         second_calendar_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
@@ -191,9 +210,13 @@ def test_calendar_and_scheduling_state_persist_across_restart() -> None:
         second_scheduling_repository = (
             scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(second_store)
         )
+        second_patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(
+            second_store
+        )
 
         restored_connection = second_calendar_repository.get_by_tenant_id("tenant-1")
         restored_request = second_scheduling_repository.get_request_by_id("tenant-1", "req-1")
+        restored_patient = second_patient_repository.get_by_whatsapp_user("tenant-1", "wa-user-1")
 
         assert restored_connection is not None
         assert restored_connection.status == "CONNECTED"
@@ -203,3 +226,5 @@ def test_calendar_and_scheduling_state_persist_across_restart() -> None:
         assert restored_request.status == "AWAITING_PATIENT_CHOICE"
         assert len(restored_request.slots) == 1
         assert restored_request.slots[0].id == "slot-1"
+        assert restored_patient is not None
+        assert restored_patient.first_name == "Jane"

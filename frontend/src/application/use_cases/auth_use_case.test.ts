@@ -6,6 +6,7 @@ import type * as blacklistModel from "@domain/models/blacklist";
 import type * as conversationModel from "@domain/models/conversation";
 import type * as googleCalendarModel from "@domain/models/google_calendar";
 import type * as onboardingModel from "@domain/models/onboarding";
+import type * as patientModel from "@domain/models/patient";
 import type * as backendApiPort from "@ports/backend_api_port";
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
@@ -157,6 +158,14 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
 
   async removeBlacklist(_whatsappUserId: string): Promise<void> {
     return;
+  }
+
+  async listPatients(): Promise<patientModel.Patient[]> {
+    throw new Error("not used");
+  }
+
+  async getPatient(_whatsappUserId: string): Promise<patientModel.Patient> {
+    throw new Error("not used");
   }
 }
 

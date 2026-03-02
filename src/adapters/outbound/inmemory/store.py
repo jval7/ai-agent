@@ -9,6 +9,7 @@ import src.domain.entities.blacklist_entry as blacklist_entry_entity
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.domain.entities.message as message_entity
+import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.user as user_entity
@@ -47,6 +48,7 @@ class InMemoryStore:
         self.whatsapp_user_by_tenant_and_id: dict[
             tuple[str, str], whatsapp_user_entity.WhatsappUser
         ] = {}
+        self.patient_by_tenant_and_wa_user: dict[tuple[str, str], patient_entity.Patient] = {}
         self.processed_events: set[tuple[str, str]] = set()
         self.blacklist_by_tenant_and_wa_user: dict[
             tuple[str, str], blacklist_entry_entity.BlacklistEntry
@@ -144,6 +146,9 @@ class InMemoryStore:
             whatsapp_users=[
                 item.model_copy(deep=True) for item in self.whatsapp_user_by_tenant_and_id.values()
             ],
+            patients=[
+                item.model_copy(deep=True) for item in self.patient_by_tenant_and_wa_user.values()
+            ],
             conversations=[item.model_copy(deep=True) for item in self.conversation_by_id.values()],
             scheduling_requests=[
                 item.model_copy(deep=True) for item in self.scheduling_request_by_id.values()
@@ -199,6 +204,11 @@ class InMemoryStore:
             whatsapp_user_copy = whatsapp_user.model_copy(deep=True)
             user_key = (whatsapp_user_copy.tenant_id, whatsapp_user_copy.id)
             self.whatsapp_user_by_tenant_and_id[user_key] = whatsapp_user_copy
+
+        for patient in snapshot.patients:
+            patient_copy = patient.model_copy(deep=True)
+            patient_key = (patient_copy.tenant_id, patient_copy.whatsapp_user_id)
+            self.patient_by_tenant_and_wa_user[patient_key] = patient_copy
 
         for conversation in snapshot.conversations:
             conversation_copy = conversation.model_copy(deep=True)
@@ -262,6 +272,7 @@ class InMemoryStore:
         self.tenant_by_phone_number_id = {}
         self._clear_chat_state()
         self.whatsapp_user_by_tenant_and_id = {}
+        self.patient_by_tenant_and_wa_user = {}
         self.blacklist_by_tenant_and_wa_user = {}
 
     def _clear_chat_state(self) -> None:

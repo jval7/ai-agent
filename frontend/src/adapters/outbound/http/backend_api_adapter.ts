@@ -4,6 +4,7 @@ import type * as blacklistModel from "@domain/models/blacklist";
 import type * as conversationModel from "@domain/models/conversation";
 import type * as googleCalendarModel from "@domain/models/google_calendar";
 import type * as onboardingModel from "@domain/models/onboarding";
+import type * as patientModel from "@domain/models/patient";
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
 import type * as backendApiPort from "@ports/backend_api_port";
@@ -301,6 +302,25 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     });
   }
 
+  async listPatients(): Promise<patientModel.Patient[]> {
+    const payload = await this.request<httpTypes.PatientListApiResponse>("/v1/patients", {
+      method: "GET",
+      authRequired: true
+    });
+    return payload.items.map(mapPatient);
+  }
+
+  async getPatient(whatsappUserId: string): Promise<patientModel.Patient> {
+    const payload = await this.request<httpTypes.PatientApiResponse>(
+      `/v1/patients/${whatsappUserId}`,
+      {
+        method: "GET",
+        authRequired: true
+      }
+    );
+    return mapPatient(payload);
+  }
+
   async listSchedulingRequests(
     status?: schedulingModel.SchedulingRequestStatus
   ): Promise<schedulingModel.SchedulingRequestSummary[]> {
@@ -520,6 +540,21 @@ function mapAuthTokens(payload: httpTypes.AuthTokensApiResponse): authModel.Auth
     accessToken: payload.access_token,
     refreshToken: payload.refresh_token,
     expiresInSeconds: payload.expires_in_seconds
+  };
+}
+
+function mapPatient(payload: httpTypes.PatientApiResponse): patientModel.Patient {
+  return {
+    tenantId: payload.tenant_id,
+    whatsappUserId: payload.whatsapp_user_id,
+    firstName: payload.first_name,
+    lastName: payload.last_name,
+    email: payload.email,
+    age: payload.age,
+    consultationReason: payload.consultation_reason,
+    location: payload.location,
+    phone: payload.phone,
+    createdAt: payload.created_at
   };
 }
 
