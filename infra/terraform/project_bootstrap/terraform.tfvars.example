@@ -1,0 +1,17 @@
+project_id         = "ai-agent-dev-12345"
+project_name       = "AI Agent Dev"
+billing_account_id = "000000-000000-000000"
+
+# For personal account, keep both as null.
+org_id    = null
+folder_id = null
+
+labels = {
+  env   = "dev"
+  owner = "jhon"
+}
+
+enable_apis = [
+  "calendar-json.googleapis.com",
+  "secretmanager.googleapis.com",
+]

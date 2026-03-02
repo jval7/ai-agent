@@ -49,10 +49,13 @@ class FakeLlmProvider(llm_provider_port.LlmProviderPort):
         self.calls: list[llm_dto.GenerateReplyInputDTO] = []
         self.should_fail = False
         self.queued_replies: list[llm_dto.AgentReplyDTO] = []
+        self.queued_errors: list[service_exceptions.ExternalProviderError] = []
 
     def generate_reply(self, prompt_input: llm_dto.GenerateReplyInputDTO) -> llm_dto.AgentReplyDTO:
         if self.should_fail:
             raise service_exceptions.ExternalProviderError("simulated llm failure")
+        if self.queued_errors:
+            raise self.queued_errors.pop(0)
         self.calls.append(prompt_input)
         if self.queued_replies:
             return self.queued_replies.pop(0)

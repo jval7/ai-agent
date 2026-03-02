@@ -15,3 +15,10 @@ data/
 frontend/node_modules/
 frontend/dist/
 frontend/coverage/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+**/tfplan
+**/*.tfplan

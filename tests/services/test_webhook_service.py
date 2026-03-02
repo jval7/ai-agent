@@ -1,5 +1,6 @@
 import datetime
 import logging
+import typing
 
 import pytest
 
@@ -12,6 +13,7 @@ import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as 
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.blacklist_entry as blacklist_entry_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
+import src.services.dto.llm_dto as llm_dto
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.webhook_service as webhook_service
@@ -22,6 +24,7 @@ LOGGER_NAME = "src.services.use_cases.webhook_service"
 
 def build_webhook_service(
     id_values: list[str],
+    sleep_seconds: typing.Callable[[float], None] | None = None,
 ) -> tuple[
     webhook_service.WebhookService,
     fake_adapters.FakeWhatsappProvider,
@@ -85,6 +88,7 @@ def build_webhook_service(
         clock=clock,
         default_system_prompt="default prompt",
         context_message_limit=8,
+        sleep_seconds=sleep_seconds,
     )
 
     return (
@@ -340,6 +344,81 @@ def test_process_payload_resumes_ai_after_manual_mode_switch_back_to_ai() -> Non
     messages = conversation_repository.list_messages("tenant-1", refreshed_conversation.id)
     assert len(messages) == 4
     assert processed_repository.exists("tenant-1", "evt-customer-2")
+
+
+def test_process_payload_retries_empty_llm_response_and_succeeds() -> None:
+    retry_delays: list[float] = []
+
+    def capture_sleep(seconds: float) -> None:
+        retry_delays.append(seconds)
+
+    (
+        service,
+        provider,
+        llm_provider,
+        conversation_repository,
+        processed_repository,
+        _,
+    ) = build_webhook_service(
+        ["conversation-1", "in-msg-1", "out-msg-1"],
+        sleep_seconds=capture_sleep,
+    )
+    provider.events = [build_customer_text_event()]
+    llm_provider.queued_errors = [
+        service_exceptions.ExternalProviderError("gemini returned empty content")
+    ]
+    llm_provider.queued_replies = [llm_dto.AgentReplyDTO(content="assistant after retry")]
+
+    service.process_payload({})
+
+    assert len(provider.sent_messages) == 1
+    assert provider.sent_messages[0]["text"] == "assistant after retry"
+    assert retry_delays == [0.5]
+    assert processed_repository.exists("tenant-1", "evt-1")
+    conversation = conversation_repository.get_conversation_by_whatsapp_user(
+        "tenant-1", "wa-user-1"
+    )
+    assert conversation is not None
+    messages = conversation_repository.list_messages("tenant-1", conversation.id)
+    assert len(messages) == 2
+
+
+def test_process_payload_raises_after_exhausting_empty_llm_response_retries() -> None:
+    retry_delays: list[float] = []
+
+    def capture_sleep(seconds: float) -> None:
+        retry_delays.append(seconds)
+
+    (
+        service,
+        provider,
+        llm_provider,
+        conversation_repository,
+        processed_repository,
+        _,
+    ) = build_webhook_service(
+        ["conversation-1", "in-msg-1"],
+        sleep_seconds=capture_sleep,
+    )
+    provider.events = [build_customer_text_event()]
+    llm_provider.queued_errors = [
+        service_exceptions.ExternalProviderError("gemini returned empty content"),
+        service_exceptions.ExternalProviderError("gemini returned empty content"),
+        service_exceptions.ExternalProviderError("gemini returned empty content"),
+    ]
+
+    with pytest.raises(service_exceptions.ExternalProviderError):
+        service.process_payload({})
+
+    assert retry_delays == [0.5, 1.0]
+    assert not processed_repository.exists("tenant-1", "evt-1")
+    conversation = conversation_repository.get_conversation_by_whatsapp_user(
+        "tenant-1", "wa-user-1"
+    )
+    assert conversation is not None
+    messages = conversation_repository.list_messages("tenant-1", conversation.id)
+    assert len(messages) == 1
+    assert messages[0].direction == "INBOUND"
 
 
 def test_process_payload_bubbles_llm_failures_without_marking_event_processed() -> None:

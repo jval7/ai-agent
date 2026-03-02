@@ -199,7 +199,7 @@ class SchedulingInboxService:
             llm_dto.ChatMessageDTO(
                 role="user",
                 content=(
-                    "El profesional ya envio espacios disponibles. Presentalos de forma clara al paciente y pide que elija uno.\n"
+                    "Ya hay espacios disponibles. Presentalos de forma clara y natural al paciente y pide que elija uno.\n"
                     f"Espacios:\n{slot_list_text}"
                 ),
             )

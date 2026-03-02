@@ -68,15 +68,20 @@ class ProfessionalSubmitSlotsResponseDTO(pydantic.BaseModel):
 
 
 class RequestScheduleApprovalInputDTO(pydantic.BaseModel):
-    request_kind: typing.Literal["INITIAL", "RETRY"]
+    request_kind: typing.Literal["INITIAL", "RETRY"] = "INITIAL"
     patient_preference_note: str
-    hard_constraints: list[str]
-    rejection_summary: str | None
+    hard_constraints: list[str] = pydantic.Field(default_factory=list)
+    rejection_summary: str | None = None
 
 
 class ConfirmSelectedSlotInputDTO(pydantic.BaseModel):
     request_id: str
     slot_id: str
+
+
+class ConfirmSelectedSlotToolInputDTO(pydantic.BaseModel):
+    request_id: str | None = None
+    slot_id: str | None = None
 
 
 class ConfirmSelectedSlotResponseDTO(pydantic.BaseModel):

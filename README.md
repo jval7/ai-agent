@@ -88,6 +88,18 @@ GEMINI_MODEL=gemini-2.5-flash
 GEMINI_MAX_OUTPUT_TOKENS=512
 ```
 
+## Hybrid OAuth (Terraform)
+
+Si quieres manejar Google OAuth con esquema hibrido (client manual + secretos/permisos por IaC):
+
+- Revisa: `infra/terraform/hybrid_oauth/README.md`
+
+## GCP Project Bootstrap (Terraform)
+
+Si quieres crear un proyecto nuevo de GCP con Terraform (cuenta principal, sin service account por ahora):
+
+- Revisa: `infra/terraform/project_bootstrap/README.md`
+
 ## Logging
 
 Backend uses JSON logs to `stdout` with request correlation.

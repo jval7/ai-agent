@@ -1,3 +1,4 @@
+import collections.abc
 import typing
 
 import google.auth.exceptions as google_auth_exceptions
@@ -165,62 +166,94 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
         return [tool_entry]
 
     def _extract_reply_text(self, response: typing.Any) -> str | None:
-        response_text = response.text
-        if isinstance(response_text, str):
-            normalized_text = response_text.strip()
-            if normalized_text:
-                return normalized_text
-
-        if response.candidates is None:
-            return None
-
-        for candidate in response.candidates:
-            if candidate is None or candidate.content is None:
+        candidate_parts = self._extract_first_candidate_parts(response)
+        for part in candidate_parts:
+            part_text = part.text
+            if not isinstance(part_text, str):
                 continue
-            if candidate.content.parts is None:
-                continue
-            for part in candidate.content.parts:
-                part_text = part.text
-                if not isinstance(part_text, str):
-                    continue
-                normalized_part_text = part_text.strip()
-                if normalized_part_text:
-                    return normalized_part_text
+            normalized_part_text = part_text.strip()
+            if normalized_part_text:
+                return normalized_part_text
         return None
 
     def _extract_function_calls(self, response: typing.Any) -> list[llm_dto.FunctionCallDTO]:
-        function_calls: list[llm_dto.FunctionCallDTO] = []
         response_function_calls = response.function_calls
-        if response_function_calls is None:
-            return function_calls
+        if response_function_calls is not None:
+            parsed_function_calls = self._normalize_function_calls(response_function_calls)
+            if parsed_function_calls:
+                return parsed_function_calls
 
-        for function_call in response_function_calls:
-            if function_call is None:
+        candidate_parts = self._extract_first_candidate_parts(response)
+        fallback_function_calls: list[typing.Any] = []
+        for part in candidate_parts:
+            part_function_call = part.function_call
+            if part_function_call is not None:
+                fallback_function_calls.append(part_function_call)
+        return self._normalize_function_calls(fallback_function_calls)
+
+    def _extract_first_candidate_parts(self, response: typing.Any) -> list[typing.Any]:
+        candidates = response.candidates
+        if candidates is None:
+            return []
+        if not candidates:
+            return []
+
+        first_candidate = candidates[0]
+        if first_candidate is None or first_candidate.content is None:
+            return []
+        if first_candidate.content.parts is None:
+            return []
+        return list(first_candidate.content.parts)
+
+    def _normalize_function_calls(
+        self, raw_function_calls: list[typing.Any]
+    ) -> list[llm_dto.FunctionCallDTO]:
+        normalized_function_calls: list[llm_dto.FunctionCallDTO] = []
+        for raw_function_call in raw_function_calls:
+            if raw_function_call is None:
                 continue
-            name = function_call.name
-            if not isinstance(name, str) or not name:
+
+            name: str | None = None
+            raw_args: object = {}
+            call_id: str | None = None
+
+            if isinstance(raw_function_call, dict):
+                raw_name = raw_function_call.get("name")
+                if isinstance(raw_name, str) and raw_name:
+                    name = raw_name
+                raw_args = raw_function_call.get("args", {})
+                raw_call_id = raw_function_call.get("id")
+                if isinstance(raw_call_id, str) and raw_call_id:
+                    call_id = raw_call_id
+            else:
+                try:
+                    raw_name = raw_function_call.name
+                    if isinstance(raw_name, str) and raw_name:
+                        name = raw_name
+                    raw_args = raw_function_call.args
+                    raw_call_id = raw_function_call.id
+                    if isinstance(raw_call_id, str) and raw_call_id:
+                        call_id = raw_call_id
+                except AttributeError:
+                    continue
+
+            if name is None:
                 continue
 
             args: dict[str, object] = {}
-            raw_args = function_call.args
-            if isinstance(raw_args, dict):
+            if isinstance(raw_args, collections.abc.Mapping):
                 for key, value in raw_args.items():
                     if isinstance(key, str):
                         args[key] = typing.cast(object, value)
 
-            call_id = function_call.id
-            normalized_call_id: str | None = None
-            if isinstance(call_id, str) and call_id:
-                normalized_call_id = call_id
-
-            function_calls.append(
+            normalized_function_calls.append(
                 llm_dto.FunctionCallDTO(
                     name=name,
                     args=args,
-                    call_id=normalized_call_id,
+                    call_id=call_id,
                 )
             )
-        return function_calls
+        return normalized_function_calls
 
     def _extract_api_error_detail(self, error: genai_errors.APIError) -> str:
         message = error.message

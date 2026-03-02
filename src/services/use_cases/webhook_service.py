@@ -1,5 +1,9 @@
+import datetime
+import re
 import time
 import typing
+import unicodedata
+import zoneinfo
 
 import pydantic
 
@@ -59,6 +63,7 @@ class WebhookService:
         self._context_message_limit = context_message_limit
         self._max_function_call_iterations = 4
         self._google_network_retry_backoff_seconds = [1.0, 2.0, 4.0]
+        self._llm_empty_content_retry_backoff_seconds = [0.5, 1.0]
         if sleep_seconds is not None:
             self._sleep_seconds = sleep_seconds
         else:
@@ -338,7 +343,11 @@ class WebhookService:
                 tools=tool_definitions,
                 function_call_results=function_call_results,
             )
-            llm_reply = self._llm_provider.generate_reply(llm_input)
+            llm_reply = self._request_llm_reply_with_retry(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                llm_input=llm_input,
+            )
             if llm_reply.function_calls:
                 for function_call in llm_reply.function_calls:
                     function_response_payload = self._execute_function_call(
@@ -361,7 +370,50 @@ class WebhookService:
 
             if llm_reply.content.strip():
                 return llm_reply.content
-            break
+            continue
+
+        raise service_exceptions.ExternalProviderError("llm returned empty content")
+
+    def _request_llm_reply_with_retry(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        llm_input: llm_dto.GenerateReplyInputDTO,
+    ) -> llm_dto.AgentReplyDTO:
+        max_attempts = len(self._llm_empty_content_retry_backoff_seconds) + 1
+        for attempt in range(max_attempts):
+            try:
+                llm_reply = self._llm_provider.generate_reply(llm_input)
+                if llm_reply.function_calls:
+                    return llm_reply
+                if llm_reply.content.strip():
+                    return llm_reply
+                raise service_exceptions.ExternalProviderError("llm returned empty content")
+            except service_exceptions.ExternalProviderError as error:
+                error_message = str(error)
+                if not self._is_llm_empty_content_error(error_message):
+                    raise
+
+                if attempt >= len(self._llm_empty_content_retry_backoff_seconds):
+                    raise
+
+                delay_seconds = self._llm_empty_content_retry_backoff_seconds[attempt]
+                logger.warning(
+                    "webhook.llm.retry_empty_content",
+                    extra={
+                        "event_data": app_logs.build_log_event(
+                            event_name="webhook.llm.retry_empty_content",
+                            message="retrying llm generation because provider returned empty content",
+                            data={
+                                "tenant_id": tenant_id,
+                                "conversation_id": conversation_id,
+                                "attempt": attempt + 1,
+                                "delay_seconds": delay_seconds,
+                            },
+                        )
+                    },
+                )
+                self._sleep_seconds(delay_seconds)
 
         raise service_exceptions.ExternalProviderError("llm returned empty content")
 
@@ -373,6 +425,20 @@ class WebhookService:
         function_call: llm_dto.FunctionCallDTO,
     ) -> dict[str, object]:
         try:
+            logger.info(
+                "webhook.llm.function_call_received",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.llm.function_call_received",
+                        message="llm requested function execution",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation_id,
+                            "function_name": function_call.name,
+                        },
+                    )
+                },
+            )
             if function_call.name == "request_schedule_approval":
                 if self._scheduling_service is None:
                     return {"error": "scheduling service is not configured"}
@@ -394,8 +460,15 @@ class WebhookService:
             if function_call.name == "confirm_selected_slot_and_create_event":
                 if self._scheduling_service is None:
                     return {"error": "scheduling service is not configured"}
-                confirm_input_dto = scheduling_dto.ConfirmSelectedSlotInputDTO.model_validate(
-                    function_call.args
+                confirm_tool_input_dto = (
+                    scheduling_dto.ConfirmSelectedSlotToolInputDTO.model_validate(
+                        function_call.args
+                    )
+                )
+                confirm_input_dto = self._resolve_confirm_selected_slot_input(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    tool_input_dto=confirm_tool_input_dto,
                 )
                 return self._confirm_selected_slot_with_retry(
                     tenant_id=tenant_id,
@@ -421,9 +494,356 @@ class WebhookService:
 
             return {"error": f"unknown function: {function_call.name}"}
         except pydantic.ValidationError as error:
+            logger.warning(
+                "webhook.llm.function_call_validation_error",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.llm.function_call_validation_error",
+                        message="function call validation failed",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation_id,
+                            "function_name": function_call.name,
+                            "error_message": str(error),
+                        },
+                    )
+                },
+            )
             return {"error": str(error)}
         except service_exceptions.ServiceError as error:
+            logger.warning(
+                "webhook.llm.function_call_service_error",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.llm.function_call_service_error",
+                        message="function call failed due service error",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation_id,
+                            "function_name": function_call.name,
+                            "error_message": str(error),
+                        },
+                    )
+                },
+            )
             return {"error": str(error)}
+
+    def _resolve_confirm_selected_slot_input(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        tool_input_dto: scheduling_dto.ConfirmSelectedSlotToolInputDTO,
+    ) -> scheduling_dto.ConfirmSelectedSlotInputDTO:
+        if self._scheduling_service is None:
+            raise service_exceptions.InvalidStateError("scheduling service is not configured")
+
+        request_list = self._scheduling_service.list_requests_by_conversation(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        active_requests: list[scheduling_dto.SchedulingRequestSummaryDTO] = []
+        for request in request_list.items:
+            if request.status == "AWAITING_PATIENT_CHOICE":
+                active_requests.append(request)
+
+        if not active_requests:
+            raise service_exceptions.InvalidStateError(
+                "no scheduling request awaiting patient choice"
+            )
+
+        candidate_requests = active_requests
+        if tool_input_dto.request_id is not None:
+            candidate_requests = []
+            for request in active_requests:
+                if request.request_id == tool_input_dto.request_id:
+                    candidate_requests.append(request)
+            if not candidate_requests:
+                raise service_exceptions.InvalidStateError(
+                    "provided request_id is not awaiting patient choice"
+                )
+
+        target_request = self._select_target_request_for_confirmation(
+            candidate_requests=candidate_requests,
+            requested_slot_id=tool_input_dto.slot_id,
+        )
+        resolved_slot_id = tool_input_dto.slot_id
+        if resolved_slot_id is None:
+            resolved_slot_id = self._resolve_slot_id_from_context(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                request=target_request,
+            )
+
+        return scheduling_dto.ConfirmSelectedSlotInputDTO(
+            request_id=target_request.request_id,
+            slot_id=resolved_slot_id,
+        )
+
+    def _select_target_request_for_confirmation(
+        self,
+        candidate_requests: list[scheduling_dto.SchedulingRequestSummaryDTO],
+        requested_slot_id: str | None,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        if requested_slot_id is None:
+            if len(candidate_requests) == 1:
+                return candidate_requests[0]
+            raise service_exceptions.InvalidStateError(
+                "multiple scheduling requests are waiting for confirmation"
+            )
+
+        matching_requests: list[scheduling_dto.SchedulingRequestSummaryDTO] = []
+        for request in candidate_requests:
+            if self._request_contains_proposed_slot(request, requested_slot_id):
+                matching_requests.append(request)
+
+        if len(matching_requests) == 1:
+            return matching_requests[0]
+        if len(matching_requests) > 1:
+            raise service_exceptions.InvalidStateError(
+                "slot_id matches multiple scheduling requests"
+            )
+        if len(candidate_requests) == 1:
+            return candidate_requests[0]
+
+        raise service_exceptions.InvalidStateError(
+            "provided slot_id does not match active scheduling requests"
+        )
+
+    def _resolve_slot_id_from_context(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        request: scheduling_dto.SchedulingRequestSummaryDTO,
+    ) -> str:
+        ordered_proposed_slots = self._list_ordered_proposed_slots(request)
+        if len(ordered_proposed_slots) == 1:
+            first_slot = ordered_proposed_slots[0]
+            return first_slot.slot_id
+
+        latest_user_text = self._get_latest_user_message_text(tenant_id, conversation_id)
+        if latest_user_text is None:
+            raise service_exceptions.InvalidStateError(
+                "slot selection is ambiguous; ask patient to choose one specific slot"
+            )
+
+        option_number = self._extract_option_number(
+            latest_user_text=latest_user_text,
+            max_option_number=len(ordered_proposed_slots),
+        )
+        if option_number is not None:
+            return ordered_proposed_slots[option_number - 1].slot_id
+
+        slot_id_by_datetime = self._resolve_slot_id_from_datetime_mention(
+            ordered_proposed_slots=ordered_proposed_slots,
+            latest_user_text=latest_user_text,
+        )
+        if slot_id_by_datetime is not None:
+            return slot_id_by_datetime
+
+        raise service_exceptions.InvalidStateError(
+            "slot selection is ambiguous; ask patient to choose one specific slot"
+        )
+
+    def _list_ordered_proposed_slots(
+        self,
+        request: scheduling_dto.SchedulingRequestSummaryDTO,
+    ) -> list[scheduling_dto.SchedulingSlotDTO]:
+        proposed_slots: list[scheduling_dto.SchedulingSlotDTO] = []
+        for slot in request.slots:
+            if slot.status == "PROPOSED":
+                proposed_slots.append(slot)
+        return sorted(proposed_slots, key=lambda item: item.start_at)
+
+    def _get_latest_user_message_text(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> str | None:
+        messages = self._conversation_repository.list_messages(tenant_id, conversation_id)
+        for message in reversed(messages):
+            if message.role == "user":
+                return message.content
+        return None
+
+    def _extract_option_number(
+        self,
+        latest_user_text: str,
+        max_option_number: int,
+    ) -> int | None:
+        normalized_text = self._normalize_text(latest_user_text)
+        exact_match = re.fullmatch(r"\s*(\d{1,2})\s*", normalized_text)
+        if exact_match is not None:
+            value = int(exact_match.group(1))
+            if 1 <= value <= max_option_number:
+                return value
+
+        labeled_match = re.search(
+            r"\b(opcion|numero|nro|#)\s*(\d{1,2})\b",
+            normalized_text,
+        )
+        if labeled_match is None:
+            return None
+
+        value = int(labeled_match.group(2))
+        if 1 <= value <= max_option_number:
+            return value
+        return None
+
+    def _resolve_slot_id_from_datetime_mention(
+        self,
+        ordered_proposed_slots: list[scheduling_dto.SchedulingSlotDTO],
+        latest_user_text: str,
+    ) -> str | None:
+        normalized_text = self._normalize_text(latest_user_text)
+        mentioned_date_parts = self._extract_mentioned_date_parts(normalized_text)
+        mentioned_days = self._extract_mentioned_days(normalized_text)
+        mentioned_time_parts = self._extract_mentioned_time_parts(normalized_text)
+
+        if not mentioned_date_parts and not mentioned_days and not mentioned_time_parts:
+            return None
+
+        candidate_slot_ids: list[str] = []
+        for slot in ordered_proposed_slots:
+            slot_local_start = self._to_slot_local_datetime(slot)
+            if mentioned_date_parts:
+                date_candidate = (slot_local_start.day, slot_local_start.month)
+                if date_candidate not in mentioned_date_parts:
+                    continue
+            elif mentioned_days:
+                if slot_local_start.day not in mentioned_days:
+                    continue
+            if mentioned_time_parts and not self._slot_matches_any_time_mention(
+                slot_local_start=slot_local_start,
+                time_mentions=mentioned_time_parts,
+            ):
+                continue
+            candidate_slot_ids.append(slot.slot_id)
+
+        if len(candidate_slot_ids) == 1:
+            return candidate_slot_ids[0]
+        return None
+
+    def _extract_mentioned_date_parts(
+        self,
+        normalized_text: str,
+    ) -> set[tuple[int, int]]:
+        month_by_name = {
+            "enero": 1,
+            "febrero": 2,
+            "marzo": 3,
+            "abril": 4,
+            "mayo": 5,
+            "junio": 6,
+            "julio": 7,
+            "agosto": 8,
+            "septiembre": 9,
+            "setiembre": 9,
+            "octubre": 10,
+            "noviembre": 11,
+            "diciembre": 12,
+        }
+        date_parts: set[tuple[int, int]] = set()
+        for match in re.finditer(r"\b(\d{1,2})\s+de\s+([a-z]+)\b", normalized_text):
+            day = int(match.group(1))
+            month_name = match.group(2)
+            month = month_by_name.get(month_name)
+            if month is None:
+                continue
+            if 1 <= day <= 31:
+                date_parts.add((day, month))
+        return date_parts
+
+    def _extract_mentioned_days(
+        self,
+        normalized_text: str,
+    ) -> set[int]:
+        days: set[int] = set()
+        for match in re.finditer(r"\bel\s+(\d{1,2})\b", normalized_text):
+            day = int(match.group(1))
+            if 1 <= day <= 31:
+                days.add(day)
+        return days
+
+    def _extract_mentioned_time_parts(
+        self,
+        normalized_text: str,
+    ) -> list[tuple[int, int, str | None]]:
+        time_parts: list[tuple[int, int, str | None]] = []
+        for match in re.finditer(
+            r"(?:a\s+las|a\s+la|las)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?",
+            normalized_text,
+        ):
+            hour = int(match.group(1))
+            minute = 0
+            if match.group(2) is not None:
+                minute = int(match.group(2))
+            meridiem = match.group(3)
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                time_parts.append((hour, minute, meridiem))
+        return time_parts
+
+    def _slot_matches_any_time_mention(
+        self,
+        slot_local_start: datetime.datetime,
+        time_mentions: list[tuple[int, int, str | None]],
+    ) -> bool:
+        for hour, minute, meridiem in time_mentions:
+            if self._slot_matches_time_mention(slot_local_start, hour, minute, meridiem):
+                return True
+        return False
+
+    def _slot_matches_time_mention(
+        self,
+        slot_local_start: datetime.datetime,
+        hour: int,
+        minute: int,
+        meridiem: str | None,
+    ) -> bool:
+        if slot_local_start.minute != minute:
+            return False
+
+        if meridiem is None:
+            slot_hour_12 = slot_local_start.hour % 12
+            if slot_hour_12 == 0:
+                slot_hour_12 = 12
+            return hour == slot_local_start.hour or hour == slot_hour_12
+
+        normalized_hour = hour
+        if meridiem == "am":
+            if hour == 12:
+                normalized_hour = 0
+        else:
+            if hour < 12:
+                normalized_hour = hour + 12
+
+        return slot_local_start.hour == normalized_hour
+
+    def _to_slot_local_datetime(
+        self,
+        slot: scheduling_dto.SchedulingSlotDTO,
+    ) -> datetime.datetime:
+        timezone_name = slot.timezone.strip()
+        if timezone_name == "":
+            return slot.start_at
+        try:
+            slot_timezone = zoneinfo.ZoneInfo(timezone_name)
+        except zoneinfo.ZoneInfoNotFoundError:
+            return slot.start_at
+        return slot.start_at.astimezone(slot_timezone)
+
+    def _normalize_text(self, value: str) -> str:
+        lowered_value = value.lower()
+        normalized_value = unicodedata.normalize("NFD", lowered_value)
+        return "".join(
+            character for character in normalized_value if unicodedata.category(character) != "Mn"
+        )
+
+    def _request_contains_proposed_slot(
+        self,
+        request: scheduling_dto.SchedulingRequestSummaryDTO,
+        slot_id: str,
+    ) -> bool:
+        return any(slot.slot_id == slot_id and slot.status == "PROPOSED" for slot in request.slots)
 
     def _confirm_selected_slot_with_retry(
         self,
@@ -533,12 +953,16 @@ class WebhookService:
         normalized_message = error_message.lower()
         return "network error" in normalized_message or "timeout" in normalized_message
 
+    def _is_llm_empty_content_error(self, error_message: str) -> bool:
+        normalized_message = error_message.lower()
+        return "empty content" in normalized_message
+
     def _build_tool_definitions(self) -> list[llm_dto.FunctionDeclarationDTO]:
         return [
             llm_dto.FunctionDeclarationDTO(
                 name="request_schedule_approval",
                 description=(
-                    "Crea o reintenta una solicitud de agendamiento para que el profesional revise preferencias del paciente."
+                    "Crea o reintenta la busqueda de disponibilidad de agenda segun las preferencias del paciente."
                 ),
                 parameters_json_schema={
                     "type": "object",
@@ -551,14 +975,15 @@ class WebhookService:
                         },
                         "rejection_summary": {"type": ["string", "null"]},
                     },
-                    "required": ["request_kind", "patient_preference_note", "hard_constraints"],
+                    "required": ["patient_preference_note"],
                     "additionalProperties": False,
                 },
             ),
             llm_dto.FunctionDeclarationDTO(
                 name="confirm_selected_slot_and_create_event",
                 description=(
-                    "Confirma un horario elegido por el paciente y crea el evento en Google Calendar."
+                    "Confirma un horario elegido por el paciente y crea el evento en Google Calendar. "
+                    "Si request_id o slot_id no se incluyen, el backend intentara resolverlos automaticamente cuando no haya ambiguedad."
                 ),
                 parameters_json_schema={
                     "type": "object",
@@ -566,7 +991,7 @@ class WebhookService:
                         "request_id": {"type": "string"},
                         "slot_id": {"type": "string"},
                     },
-                    "required": ["request_id", "slot_id"],
+                    "required": [],
                     "additionalProperties": False,
                 },
             ),
