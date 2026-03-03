@@ -13,16 +13,46 @@ import * as dateUtilsModule from "@shared/utils/date";
 const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
 const googleCalendarConnectionQueryKey = ["google-calendar-connection"] as const;
 
-const schedulingTabs: { status: schedulingModel.SchedulingRequestStatus; label: string }[] = [
+interface SchedulingTabConfig {
+  status: schedulingModel.SchedulingRequestStatus;
+  label: string;
+}
+
+interface SchedulingTabGroup {
+  groupId: "CONSULTATION" | "CALENDAR";
+  title: string;
+  helperText: string;
+  tabs: SchedulingTabConfig[];
+}
+
+const consultationTabs: SchedulingTabConfig[] = [
   { status: "AWAITING_CONSULTATION_REVIEW", label: "Pendiente validar motivo" },
   { status: "AWAITING_CONSULTATION_DETAILS", label: "Esperando más detalle" },
+  { status: "CONSULTATION_REJECTED", label: "Motivo rechazado" }
+];
+
+const calendarTabs: SchedulingTabConfig[] = [
   { status: "COLLECTING_PREFERENCES", label: "Recolectando preferencias" },
   { status: "AWAITING_PROFESSIONAL_SLOTS", label: "Pendientes de slots" },
   { status: "AWAITING_PATIENT_CHOICE", label: "Esperando paciente" },
-  { status: "CONSULTATION_REJECTED", label: "Motivo rechazado" },
-  { status: "CANCELLED", label: "Canceladas" },
   { status: "BOOKED", label: "Agendadas" },
+  { status: "CANCELLED", label: "Canceladas" },
   { status: "HUMAN_HANDOFF", label: "Human handoff" }
+];
+
+const schedulingTabGroups: SchedulingTabGroup[] = [
+  {
+    groupId: "CONSULTATION",
+    title: "Motivos de consulta",
+    helperText: "Valida el motivo clínico y solicita detalle adicional si aplica.",
+    tabs: consultationTabs
+  },
+  {
+    groupId: "CALENDAR",
+    title: "Calendario y agenda",
+    helperText: "Gestiona preferencias, slots disponibles y resultado de agendamiento.",
+    tabs: calendarTabs
+  }
 ];
 
 const weekDayLabels = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -126,6 +156,14 @@ export function AgendaPage() {
   const [submitSuccessMessage, setSubmitSuccessMessage] = reactModule.useState<string | null>(null);
 
   const allRequests = requestsQuery.data ?? [];
+  const requestCountByStatus = reactModule.useMemo(() => {
+    const countMap = new Map<schedulingModel.SchedulingRequestStatus, number>();
+    allRequests.forEach((request) => {
+      const currentCount = countMap.get(request.status) ?? 0;
+      countMap.set(request.status, currentCount + 1);
+    });
+    return countMap;
+  }, [allRequests]);
   const filteredRequests = reactModule.useMemo(() => {
     return allRequests.filter((request) => request.status === activeTab);
   }, [allRequests, activeTab]);
@@ -365,25 +403,38 @@ export function AgendaPage() {
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {schedulingTabs.map((tab) => (
-            <button
-              className={[
-                "rounded-md border px-3 py-2 text-sm font-semibold",
-                activeTab === tab.status
-                  ? "border-brand-teal bg-teal-50 text-brand-teal"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-              ].join(" ")}
-              key={tab.status}
-              onClick={() => {
-                setActiveTab(tab.status);
-                setSubmitSuccessMessage(null);
-                setLocalSubmitErrorMessage(null);
-              }}
-              type="button"
+        <div className="grid gap-3 xl:grid-cols-2">
+          {schedulingTabGroups.map((group) => (
+            <section
+              className="rounded-xl border border-slate-200 bg-white p-3"
+              key={group.groupId}
             >
-              {tab.label} ({allRequests.filter((request) => request.status === tab.status).length})
-            </button>
+              <header className="mb-3">
+                <h3 className="text-sm font-semibold text-brand-ink">{group.title}</h3>
+                <p className="text-xs text-slate-500">{group.helperText}</p>
+              </header>
+              <div className="flex flex-wrap gap-2">
+                {group.tabs.map((tab) => (
+                  <button
+                    className={[
+                      "rounded-md border px-3 py-2 text-sm font-semibold",
+                      activeTab === tab.status
+                        ? "border-brand-teal bg-teal-50 text-brand-teal"
+                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                    ].join(" ")}
+                    key={tab.status}
+                    onClick={() => {
+                      setActiveTab(tab.status);
+                      setSubmitSuccessMessage(null);
+                      setLocalSubmitErrorMessage(null);
+                    }}
+                    type="button"
+                  >
+                    {tab.label} ({requestCountByStatus.get(tab.status) ?? 0})
+                  </button>
+                ))}
+              </div>
+            </section>
           ))}
         </div>
       </section>

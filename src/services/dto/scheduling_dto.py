@@ -86,11 +86,7 @@ class RequestScheduleApprovalInputDTO(pydantic.BaseModel):
 
 class SubmitConsultationReasonForReviewToolInputDTO(pydantic.BaseModel):
     request_id: str | None = None
-    patient_first_name: str | None = None
-    patient_last_name: str | None = None
-    patient_age: int | str | None = None
     consultation_reason: str | None = None
-    consultation_details: str | None = None
 
 
 class ConsultationReviewDecisionDTO(pydantic.BaseModel):
@@ -113,6 +109,8 @@ class ConfirmSelectedSlotInputDTO(pydantic.BaseModel):
 class ConfirmSelectedSlotToolInputDTO(pydantic.BaseModel):
     request_id: str | None = None
     slot_id: str | None = None
+    patient_full_name: str | None = None
+    # Legacy compatibility fields; prefer patient_full_name.
     patient_first_name: str | None = None
     patient_last_name: str | None = None
     patient_email: str | None = None

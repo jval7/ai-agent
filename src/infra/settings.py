@@ -26,6 +26,13 @@ class Settings(pydantic.BaseModel):
     gemini_location: str
     gemini_model: str
     gemini_max_output_tokens: int
+    langsmith_tracing_enabled: bool
+    langsmith_project: str
+    langsmith_api_key: str | None
+    langsmith_endpoint: str | None
+    langsmith_workspace_id: str | None
+    langsmith_environment: str | None
+    langsmith_tags: list[str]
     log_level: str
     log_include_request_summary: bool
 
@@ -75,6 +82,22 @@ class Settings(pydantic.BaseModel):
             ),
             gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
             gemini_max_output_tokens=int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "512")),
+            langsmith_tracing_enabled=os.getenv("LANGSMITH_TRACING_ENABLED", "false").lower()
+            == "true",
+            langsmith_project=os.getenv("LANGSMITH_PROJECT", "ai-agent-dev"),
+            langsmith_api_key=cls._normalize_optional_text(
+                os.getenv("LANGSMITH_API_KEY", os.getenv("LANGCHAIN_API_KEY", ""))
+            ),
+            langsmith_endpoint=cls._normalize_optional_text(
+                os.getenv("LANGSMITH_ENDPOINT", os.getenv("LANGCHAIN_ENDPOINT", ""))
+            ),
+            langsmith_workspace_id=cls._normalize_optional_text(
+                os.getenv("LANGSMITH_WORKSPACE_ID", "")
+            ),
+            langsmith_environment=cls._normalize_optional_text(
+                os.getenv("LANGSMITH_ENVIRONMENT", "local")
+            ),
+            langsmith_tags=cls._parse_csv_env(os.getenv("LANGSMITH_TAGS", "ai-agent")),
             log_level=os.getenv("LOG_LEVEL", "INFO"),
             log_include_request_summary=os.getenv(
                 "LOG_INCLUDE_REQUEST_SUMMARY",
@@ -91,3 +114,10 @@ class Settings(pydantic.BaseModel):
             if normalized_item:
                 parsed_items.append(normalized_item)
         return parsed_items
+
+    @staticmethod
+    def _normalize_optional_text(raw_value: str) -> str | None:
+        normalized_value = raw_value.strip()
+        if normalized_value:
+            return normalized_value
+        return None

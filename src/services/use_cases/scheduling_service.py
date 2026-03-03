@@ -78,6 +78,18 @@ class SchedulingService:
             request_id=input_dto.request_id,
         )
         if request is None:
+            active_scheduling_request = self._find_latest_request_by_statuses(
+                requests=existing_requests,
+                statuses=(
+                    "COLLECTING_PREFERENCES",
+                    "AWAITING_PROFESSIONAL_SLOTS",
+                    "AWAITING_PATIENT_CHOICE",
+                ),
+            )
+            if active_scheduling_request is not None:
+                raise service_exceptions.InvalidStateError(
+                    "consultation reason already approved; continue with scheduling preferences and call request_schedule_approval"
+                )
             request = scheduling_request_entity.SchedulingRequest(
                 id=self._id_generator.new_id(),
                 tenant_id=tenant_id,
@@ -101,36 +113,13 @@ class SchedulingService:
             raise service_exceptions.InvalidStateError(
                 "cannot submit consultation reason for a closed scheduling request"
             )
-
-        patient_first_name = self._coalesce_patient_text(
-            primary=input_dto.patient_first_name,
-            fallback=request.patient_first_name,
-        )
-        if patient_first_name is None:
+        if request.status in ("COLLECTING_PREFERENCES", "AWAITING_PROFESSIONAL_SLOTS"):
             raise service_exceptions.InvalidStateError(
-                "missing required patient data: patient_first_name; ask only for the patient's first name now"
+                "consultation reason already approved; continue with scheduling preferences and call request_schedule_approval"
             )
-
-        patient_last_name = self._coalesce_patient_text(
-            primary=input_dto.patient_last_name,
-            fallback=request.patient_last_name,
-        )
-        if patient_last_name is None:
+        if request.status == "AWAITING_PATIENT_CHOICE":
             raise service_exceptions.InvalidStateError(
-                "missing required patient data: patient_last_name; ask only for the patient's last name now"
-            )
-
-        patient_age = self._coalesce_patient_age(
-            primary=input_dto.patient_age,
-            fallback=request.patient_age,
-        )
-        if patient_age is None:
-            raise service_exceptions.InvalidStateError(
-                "missing required patient data: patient_age; ask only for the patient's age now"
-            )
-        if patient_age < 1 or patient_age > 120:
-            raise service_exceptions.InvalidStateError(
-                "patient_age is invalid; ask only for age as a whole number between 1 and 120"
+                "schedule options are already available; ask the patient to choose one numbered slot"
             )
 
         consultation_reason = self._coalesce_patient_text(
@@ -142,20 +131,7 @@ class SchedulingService:
                 "missing required patient data: consultation_reason; ask only for the consultation reason now"
             )
 
-        consultation_details = self._coalesce_patient_text(
-            primary=input_dto.consultation_details,
-            fallback=request.consultation_details,
-        )
-        if consultation_details is None:
-            raise service_exceptions.InvalidStateError(
-                "missing required patient data: consultation_details; ask only for brief consultation details now"
-            )
-
-        request.patient_first_name = patient_first_name
-        request.patient_last_name = patient_last_name
-        request.patient_age = patient_age
         request.consultation_reason = consultation_reason
-        request.consultation_details = consultation_details
         request.professional_note = None
         request.rejection_summary = None
         request.set_status("AWAITING_CONSULTATION_REVIEW", now_value)
@@ -252,13 +228,46 @@ class SchedulingService:
             request_id=input_dto.request_id,
         )
 
-        if request.status in ("AWAITING_PROFESSIONAL_SLOTS", "AWAITING_PATIENT_CHOICE"):
+        if request.status == "AWAITING_PROFESSIONAL_SLOTS":
             logger.info(
                 "scheduling.request_reused",
                 extra={
                     "event_data": app_logs.build_log_event(
                         event_name="scheduling.request_reused",
                         message="existing open scheduling request reused",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation_id,
+                            "request_id": request.id,
+                            "status": request.status,
+                        },
+                    )
+                },
+            )
+            return self._to_summary_dto(request)
+        if request.status == "AWAITING_PATIENT_CHOICE":
+            now_value = self._clock.now()
+            resolved_location = self._resolve_location(
+                appointment_modality=input_dto.appointment_modality,
+                patient_location=input_dto.patient_location,
+                fallback_patient_location=request.patient_location,
+            )
+            request.appointment_modality = input_dto.appointment_modality
+            request.patient_location = resolved_location
+            request.patient_preference_note = input_dto.patient_preference_note
+            request.rejection_summary = input_dto.rejection_summary
+            request.professional_note = "patient requested different schedule options"
+            request.slots = []
+            request.slot_options_map = {}
+            request.selected_slot_id = None
+            request.set_status("AWAITING_PROFESSIONAL_SLOTS", now_value)
+            self._scheduling_repository.save_request(request)
+            logger.info(
+                "scheduling.request_reopened_after_patient_rejection",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="scheduling.request_reopened_after_patient_rejection",
+                        message="patient rejected offered slots and scheduling request was reopened",
                         data={
                             "tenant_id": tenant_id,
                             "conversation_id": conversation_id,
@@ -279,6 +288,7 @@ class SchedulingService:
         resolved_location = self._resolve_location(
             appointment_modality=input_dto.appointment_modality,
             patient_location=input_dto.patient_location,
+            fallback_patient_location=request.patient_location,
         )
 
         request.appointment_modality = input_dto.appointment_modality
@@ -541,7 +551,6 @@ class SchedulingService:
             requests=existing_requests,
             statuses=(
                 "AWAITING_CONSULTATION_DETAILS",
-                "COLLECTING_PREFERENCES",
                 "AWAITING_CONSULTATION_REVIEW",
             ),
         )
@@ -692,11 +701,14 @@ class SchedulingService:
         self,
         appointment_modality: str,
         patient_location: str | None,
+        fallback_patient_location: str | None,
     ) -> str:
         if appointment_modality == "PRESENCIAL":
             return "Cali"
 
         normalized_location = self._normalize_patient_text(patient_location)
+        if normalized_location is None:
+            normalized_location = self._normalize_patient_text(fallback_patient_location)
         if normalized_location is None:
             raise service_exceptions.InvalidStateError(
                 "missing required patient data: patient_location; ask only for the patient's location now"

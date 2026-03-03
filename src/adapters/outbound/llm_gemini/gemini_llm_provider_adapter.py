@@ -7,6 +7,7 @@ import google.genai.types as genai_types
 import httpx
 from google import genai
 
+import src.infra.langsmith_tracer as langsmith_tracer
 import src.ports.llm_provider_port as llm_provider_port
 import src.services.dto.llm_dto as llm_dto
 import src.services.exceptions as service_exceptions
@@ -19,77 +20,118 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
         location: str,
         model: str,
         max_output_tokens: int,
+        tracer: langsmith_tracer.LangsmithTracer | None = None,
     ) -> None:
         self._project_id = project_id
         self._location = location
         self._model = model
         self._max_output_tokens = max_output_tokens
         self._client: genai.Client | None = None
+        if tracer is None:
+            self._tracer = langsmith_tracer.LangsmithTracer()
+        else:
+            self._tracer = tracer
 
     def generate_reply(self, prompt_input: llm_dto.GenerateReplyInputDTO) -> llm_dto.AgentReplyDTO:
-        if not self._project_id:
-            raise service_exceptions.ExternalProviderError("GEMINI_PROJECT_ID is required")
-
-        if not self._location:
-            raise service_exceptions.ExternalProviderError("GEMINI_LOCATION is required")
-
-        request_contents = self._build_request_contents(prompt_input)
-        request_config: genai_types.GenerateContentConfigDict = {
-            "system_instruction": prompt_input.system_prompt,
-            "max_output_tokens": self._max_output_tokens,
+        trace_inputs: dict[str, object] = {
+            "messages_count": len(prompt_input.messages),
+            "tools_count": len(prompt_input.tools),
+            "function_call_results_count": len(prompt_input.function_call_results),
+            "system_prompt_chars": len(prompt_input.system_prompt),
         }
-        tools = self._build_tools(prompt_input)
-        if tools:
-            function_calling_config: genai_types.FunctionCallingConfigDict = {
-                "mode": genai_types.FunctionCallingConfigMode.AUTO,
-            }
-            tool_config: genai_types.ToolConfigDict = {
-                "function_calling_config": function_calling_config,
-            }
-            request_config["tools"] = tools
-            request_config["tool_config"] = tool_config
-        client = self._get_client()
+        trace_metadata: dict[str, object] = {
+            "llm_provider": "gemini",
+            "model": self._model,
+            "location": self._location,
+        }
+        with self._tracer.trace(
+            name="gemini.generate_reply",
+            run_type="llm",
+            inputs=trace_inputs,
+            metadata=trace_metadata,
+            tags=["llm", "gemini"],
+        ) as trace_run:
+            if not self._project_id:
+                trace_run.set_error("GEMINI_PROJECT_ID is required")
+                raise service_exceptions.ExternalProviderError("GEMINI_PROJECT_ID is required")
 
-        try:
-            response = client.models.generate_content(
-                model=self._model,
-                contents=request_contents,
-                config=request_config,
+            if not self._location:
+                trace_run.set_error("GEMINI_LOCATION is required")
+                raise service_exceptions.ExternalProviderError("GEMINI_LOCATION is required")
+
+            request_contents = self._build_request_contents(prompt_input)
+            request_config: genai_types.GenerateContentConfigDict = {
+                "system_instruction": prompt_input.system_prompt,
+                "max_output_tokens": self._max_output_tokens,
+            }
+            tools = self._build_tools(prompt_input)
+            if tools:
+                function_calling_config: genai_types.FunctionCallingConfigDict = {
+                    "mode": genai_types.FunctionCallingConfigMode.AUTO,
+                }
+                tool_config: genai_types.ToolConfigDict = {
+                    "function_calling_config": function_calling_config,
+                }
+                request_config["tools"] = tools
+                request_config["tool_config"] = tool_config
+            client = self._get_client()
+
+            try:
+                response = client.models.generate_content(
+                    model=self._model,
+                    contents=request_contents,
+                    config=request_config,
+                )
+            except google_auth_exceptions.DefaultCredentialsError as error:
+                trace_run.set_error("google application default credentials are required")
+                raise service_exceptions.ExternalProviderError(
+                    "google application default credentials are required"
+                ) from error
+            except httpx.TimeoutException as error:
+                trace_run.set_error("timeout calling gemini")
+                raise service_exceptions.ExternalProviderError("timeout calling gemini") from error
+            except httpx.RequestError as error:
+                trace_run.set_error("network error calling gemini")
+                raise service_exceptions.ExternalProviderError(
+                    "network error calling gemini"
+                ) from error
+            except genai_errors.ClientError as error:
+                detail = self._extract_api_error_detail(error)
+                trace_run.set_error(
+                    f"gemini rejected the request (status={error.code}, detail={detail})"
+                )
+                raise service_exceptions.ExternalProviderError(
+                    f"gemini rejected the request (status={error.code}, detail={detail})"
+                ) from error
+            except genai_errors.ServerError as error:
+                detail = self._extract_api_error_detail(error)
+                trace_run.set_error(f"gemini server error (status={error.code}, detail={detail})")
+                raise service_exceptions.ExternalProviderError(
+                    f"gemini server error (status={error.code}, detail={detail})"
+                ) from error
+            except genai_errors.APIError as error:
+                detail = self._extract_api_error_detail(error)
+                trace_run.set_error(f"gemini api error (status={error.code}, detail={detail})")
+                raise service_exceptions.ExternalProviderError(
+                    f"gemini api error (status={error.code}, detail={detail})"
+                ) from error
+
+            function_calls = self._extract_function_calls(response)
+            reply_text = self._extract_reply_text(response)
+            if reply_text is None and not function_calls:
+                trace_run.set_error("gemini returned empty content")
+                raise service_exceptions.ExternalProviderError("gemini returned empty content")
+
+            trace_run.set_outputs(
+                {
+                    "has_text_reply": reply_text is not None and reply_text != "",
+                    "function_calls_count": len(function_calls),
+                }
             )
-        except google_auth_exceptions.DefaultCredentialsError as error:
-            raise service_exceptions.ExternalProviderError(
-                "google application default credentials are required"
-            ) from error
-        except httpx.TimeoutException as error:
-            raise service_exceptions.ExternalProviderError("timeout calling gemini") from error
-        except httpx.RequestError as error:
-            raise service_exceptions.ExternalProviderError(
-                "network error calling gemini"
-            ) from error
-        except genai_errors.ClientError as error:
-            detail = self._extract_api_error_detail(error)
-            raise service_exceptions.ExternalProviderError(
-                f"gemini rejected the request (status={error.code}, detail={detail})"
-            ) from error
-        except genai_errors.ServerError as error:
-            detail = self._extract_api_error_detail(error)
-            raise service_exceptions.ExternalProviderError(
-                f"gemini server error (status={error.code}, detail={detail})"
-            ) from error
-        except genai_errors.APIError as error:
-            detail = self._extract_api_error_detail(error)
-            raise service_exceptions.ExternalProviderError(
-                f"gemini api error (status={error.code}, detail={detail})"
-            ) from error
-
-        function_calls = self._extract_function_calls(response)
-        reply_text = self._extract_reply_text(response)
-        if reply_text is None and not function_calls:
-            raise service_exceptions.ExternalProviderError("gemini returned empty content")
-        return llm_dto.AgentReplyDTO(
-            content=reply_text if reply_text is not None else "",
-            function_calls=function_calls,
-        )
+            return llm_dto.AgentReplyDTO(
+                content=reply_text if reply_text is not None else "",
+                function_calls=function_calls,
+            )
 
     def _get_client(self) -> genai.Client:
         if self._client is None:

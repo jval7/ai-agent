@@ -1,5 +1,7 @@
 import datetime
 
+import pytest
+
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
@@ -87,11 +89,7 @@ def create_collecting_preferences_request(
         conversation_id="conv-1",
         whatsapp_user_id="wa-user-1",
         input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
-            patient_first_name="Jane",
-            patient_last_name="Doe",
-            patient_age=29,
             consultation_reason="Ansiedad",
-            consultation_details="Me cuesta dormir y me siento abrumada.",
         ),
     )
     return service.resolve_consultation_review(
@@ -182,6 +180,115 @@ def test_request_schedule_approval_reuses_open_request() -> None:
     assert second_request.request_id == "req-1"
     stored_requests = repository.list_requests_by_conversation("tenant-1", "conv-1")
     assert len(stored_requests) == 1
+
+
+def test_request_schedule_approval_reopens_when_patient_rejects_offered_slots() -> None:
+    service, repository, _ = build_service(["req-1"])
+    collecting_request = create_collecting_preferences_request(service)
+    request = service.request_schedule_approval(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
+            request_id=collecting_request.request_id,
+            appointment_modality="VIRTUAL",
+            patient_location="Bogota",
+            patient_preference_note="despues de las 4 pm",
+            hard_constraints=[],
+            rejection_summary=None,
+        ),
+    )
+    stored_request = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored_request is not None
+    stored_request.status = "AWAITING_PATIENT_CHOICE"
+    stored_request.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="PROPOSED",
+        )
+    ]
+    stored_request.slot_options_map = {"1": "slot-1"}
+    repository.save_request(stored_request)
+
+    reopened = service.request_schedule_approval(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
+            request_id=request.request_id,
+            appointment_modality="VIRTUAL",
+            patient_location=None,
+            patient_preference_note="no puedo a las 4 pm, prefiero despues de las 6 pm",
+            hard_constraints=[],
+            rejection_summary=None,
+        ),
+    )
+
+    assert reopened.request_id == request.request_id
+    assert reopened.status == "AWAITING_PROFESSIONAL_SLOTS"
+    assert reopened.patient_preference_note == "no puedo a las 4 pm, prefiero despues de las 6 pm"
+    assert reopened.patient_location == "Bogota"
+    assert reopened.selected_slot_id is None
+    assert reopened.slot_options_map == {}
+    assert reopened.slots == []
+
+
+def test_submit_consultation_reason_rejects_when_already_approved() -> None:
+    service, _, _ = build_service(["req-1"])
+    approved_request = create_collecting_preferences_request(service)
+
+    with pytest.raises(service_exceptions.InvalidStateError) as error:
+        service.submit_consultation_reason_for_review(
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
+                request_id=approved_request.request_id,
+                consultation_reason="Ansiedad laboral",
+            ),
+        )
+
+    assert "already approved" in str(error.value)
+
+
+def test_submit_consultation_reason_allows_resubmission_after_more_info_request() -> None:
+    service, repository, _ = build_service(["req-1"])
+    submitted_request = service.submit_consultation_reason_for_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
+            consultation_reason="Ansiedad",
+        ),
+    )
+
+    service.resolve_consultation_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        request_id=submitted_request.request_id,
+        input_dto=scheduling_dto.ConsultationReviewDecisionDTO(
+            decision="REQUEST_MORE_INFO",
+            professional_note="¿Puedes ampliar el contexto?",
+        ),
+    )
+
+    resubmitted_request = service.submit_consultation_reason_for_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
+            request_id=submitted_request.request_id,
+            consultation_reason="Ansiedad por cambios de trabajo y falta de sueno",
+        ),
+    )
+
+    assert resubmitted_request.status == "AWAITING_CONSULTATION_REVIEW"
+    stored_request = repository.get_request_by_id("tenant-1", submitted_request.request_id)
+    assert stored_request is not None
+    assert stored_request.consultation_reason == "Ansiedad por cambios de trabajo y falta de sueno"
 
 
 def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
