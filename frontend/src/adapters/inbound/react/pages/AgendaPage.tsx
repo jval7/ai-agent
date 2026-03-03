@@ -13,45 +13,42 @@ import * as dateUtilsModule from "@shared/utils/date";
 const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
 const googleCalendarConnectionQueryKey = ["google-calendar-connection"] as const;
 
-interface SchedulingTabConfig {
-  status: schedulingModel.SchedulingRequestStatus;
+interface AgendaSection {
+  id: string;
   label: string;
+  statuses: {
+    status: schedulingModel.SchedulingRequestStatus;
+    label: string;
+  }[];
 }
 
-interface SchedulingTabGroup {
-  groupId: "CONSULTATION" | "CALENDAR";
-  title: string;
-  helperText: string;
-  tabs: SchedulingTabConfig[];
-}
-
-const consultationTabs: SchedulingTabConfig[] = [
-  { status: "AWAITING_CONSULTATION_REVIEW", label: "Pendiente validar motivo" },
-  { status: "AWAITING_CONSULTATION_DETAILS", label: "Esperando más detalle" },
-  { status: "CONSULTATION_REJECTED", label: "Motivo rechazado" }
-];
-
-const calendarTabs: SchedulingTabConfig[] = [
-  { status: "COLLECTING_PREFERENCES", label: "Recolectando preferencias" },
-  { status: "AWAITING_PROFESSIONAL_SLOTS", label: "Pendientes de slots" },
-  { status: "AWAITING_PATIENT_CHOICE", label: "Esperando paciente" },
-  { status: "BOOKED", label: "Agendadas" },
-  { status: "CANCELLED", label: "Canceladas" },
-  { status: "HUMAN_HANDOFF", label: "Human handoff" }
-];
-
-const schedulingTabGroups: SchedulingTabGroup[] = [
+const agendaSections: AgendaSection[] = [
   {
-    groupId: "CONSULTATION",
-    title: "Motivos de consulta",
-    helperText: "Valida el motivo clínico y solicita detalle adicional si aplica.",
-    tabs: consultationTabs
+    id: "CONSULTATION",
+    label: "Motivos de Consulta",
+    statuses: [
+      { status: "AWAITING_CONSULTATION_REVIEW", label: "Pendiente Validar" },
+      { status: "AWAITING_CONSULTATION_DETAILS", label: "Esperando Detalle" },
+      { status: "CONSULTATION_REJECTED", label: "Rechazado" }
+    ]
   },
   {
-    groupId: "CALENDAR",
-    title: "Calendario y agenda",
-    helperText: "Gestiona preferencias, slots disponibles y resultado de agendamiento.",
-    tabs: calendarTabs
+    id: "SCHEDULING",
+    label: "Agendamiento en Curso",
+    statuses: [
+      { status: "COLLECTING_PREFERENCES", label: "Recolectando Preferencias" },
+      { status: "AWAITING_PROFESSIONAL_SLOTS", label: "Pendiente Slots" },
+      { status: "AWAITING_PATIENT_CHOICE", label: "Esperando Paciente" }
+    ]
+  },
+  {
+    id: "FINALIZED",
+    label: "Agenda e Historial",
+    statuses: [
+      { status: "BOOKED", label: "Agendadas" },
+      { status: "CANCELLED", label: "Canceladas" },
+      { status: "HUMAN_HANDOFF", label: "Human Handoff" }
+    ]
   }
 ];
 
@@ -129,6 +126,7 @@ export function AgendaPage() {
     queryFn: () => appContainer.onboardingUseCase.getGoogleCalendarConnectionStatus()
   });
 
+  const [activeSectionId, setActiveSectionId] = reactModule.useState<string>("CONSULTATION");
   const [activeTab, setActiveTab] = reactModule.useState<schedulingModel.SchedulingRequestStatus>(
     "AWAITING_CONSULTATION_REVIEW"
   );
@@ -164,9 +162,35 @@ export function AgendaPage() {
     });
     return countMap;
   }, [allRequests]);
+
+  const sectionCounts = reactModule.useMemo(() => {
+    const counts: Record<string, number> = {};
+    agendaSections.forEach((section) => {
+      let sectionCount = 0;
+      section.statuses.forEach((statusConfig) => {
+        sectionCount += requestCountByStatus.get(statusConfig.status) ?? 0;
+      });
+      counts[section.id] = sectionCount;
+    });
+    return counts;
+  }, [requestCountByStatus]);
+
   const filteredRequests = reactModule.useMemo(() => {
     return allRequests.filter((request) => request.status === activeTab);
   }, [allRequests, activeTab]);
+
+  const handleSectionChange = (sectionId: string) => {
+    setActiveSectionId(sectionId);
+    const section = agendaSections.find((s) => s.id === sectionId);
+    if (section && section.statuses.length > 0) {
+      const firstStatus = section.statuses[0];
+      if (firstStatus) {
+        setActiveTab(firstStatus.status);
+      }
+      setSubmitSuccessMessage(null);
+      setLocalSubmitErrorMessage(null);
+    }
+  };
 
   reactModule.useEffect(() => {
     if (filteredRequests.length === 0) {
@@ -403,39 +427,62 @@ export function AgendaPage() {
           </button>
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-2">
-          {schedulingTabGroups.map((group) => (
-            <section
-              className="rounded-xl border border-slate-200 bg-white p-3"
-              key={group.groupId}
-            >
-              <header className="mb-3">
-                <h3 className="text-sm font-semibold text-brand-ink">{group.title}</h3>
-                <p className="text-xs text-slate-500">{group.helperText}</p>
-              </header>
-              <div className="flex flex-wrap gap-2">
-                {group.tabs.map((tab) => (
-                  <button
-                    className={[
-                      "rounded-md border px-3 py-2 text-sm font-semibold",
-                      activeTab === tab.status
-                        ? "border-brand-teal bg-teal-50 text-brand-teal"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                    ].join(" ")}
-                    key={tab.status}
-                    onClick={() => {
-                      setActiveTab(tab.status);
-                      setSubmitSuccessMessage(null);
-                      setLocalSubmitErrorMessage(null);
-                    }}
-                    type="button"
-                  >
-                    {tab.label} ({requestCountByStatus.get(tab.status) ?? 0})
-                  </button>
-                ))}
-              </div>
-            </section>
-          ))}
+        <div className="flex flex-col gap-4">
+          <div className="flex border-b border-slate-200">
+            {agendaSections.map((section) => {
+              const isActive = activeSectionId === section.id;
+              const count = sectionCounts[section.id] ?? 0;
+              return (
+                <button
+                  className={[
+                    "relative -mb-px px-6 py-3 text-sm font-semibold transition-colors",
+                    isActive
+                      ? "border-b-2 border-brand-teal text-brand-teal"
+                      : "text-slate-500 hover:border-b-2 hover:border-slate-300 hover:text-slate-700"
+                  ].join(" ")}
+                  key={section.id}
+                  onClick={() => handleSectionChange(section.id)}
+                  type="button"
+                >
+                  {section.label}
+                  {count > 0 ? (
+                    <span
+                      className={[
+                        "ml-2 rounded-full px-2 py-0.5 text-xs",
+                        isActive ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-600"
+                      ].join(" ")}
+                    >
+                      {count}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {agendaSections
+              .find((s) => s.id === activeSectionId)
+              ?.statuses.map((tab) => (
+                <button
+                  className={[
+                    "rounded-md border px-3 py-2 text-sm font-semibold",
+                    activeTab === tab.status
+                      ? "border-brand-teal bg-teal-50 text-brand-teal"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  ].join(" ")}
+                  key={tab.status}
+                  onClick={() => {
+                    setActiveTab(tab.status);
+                    setSubmitSuccessMessage(null);
+                    setLocalSubmitErrorMessage(null);
+                  }}
+                  type="button"
+                >
+                  {tab.label} ({requestCountByStatus.get(tab.status) ?? 0})
+                </button>
+              ))}
+          </div>
         </div>
       </section>
 

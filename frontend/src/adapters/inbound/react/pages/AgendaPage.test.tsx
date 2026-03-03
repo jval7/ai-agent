@@ -129,7 +129,13 @@ vitestModule.describe("AgendaPage", () => {
 
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", {
-        name: /Pendientes de slots/
+        name: /Agendamiento en Curso/
+      })
+    );
+
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", {
+        name: /Pendiente Slots/
       })
     );
 
@@ -155,7 +161,7 @@ vitestModule.describe("AgendaPage", () => {
     await testingLibraryReactModule.waitFor(() => {
       expect(
         testingLibraryReactModule.screen.getByRole("button", {
-          name: /Esperando paciente \(1\)/
+          name: /Esperando Paciente \(1\)/
         })
       ).toBeInTheDocument();
       expect(
