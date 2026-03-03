@@ -1,31 +1,38 @@
 import * as vitestModule from "vitest";
 
 import type * as backendApiPort from "@ports/backend_api_port";
+import type * as schedulingModel from "@domain/models/scheduling";
 
 import * as schedulingUseCaseModule from "./scheduling_use_case";
 
 vitestModule.describe("SchedulingUseCase", () => {
   vitestModule.it("delegates scheduling operations to api port", async () => {
+    const requestSummary: schedulingModel.SchedulingRequestSummary = {
+      requestId: "req-1",
+      conversationId: "conv-1",
+      whatsappUserId: "wa-1",
+      requestKind: "INITIAL",
+      status: "AWAITING_PROFESSIONAL_SLOTS",
+      roundNumber: 1,
+      patientPreferenceNote: "prefiere tarde",
+      rejectionSummary: null,
+      professionalNote: null,
+      patientFirstName: null,
+      patientLastName: null,
+      patientAge: null,
+      consultationReason: null,
+      consultationDetails: null,
+      appointmentModality: null,
+      patientLocation: null,
+      slotOptionsMap: {},
+      selectedSlotId: null,
+      calendarEventId: null,
+      createdAt: "2026-03-01T10:00:00Z",
+      updatedAt: "2026-03-01T10:00:00Z",
+      slots: []
+    };
     const apiMock = {
-      listSchedulingRequests: vitestModule.vi.fn(async () => [
-        {
-          requestId: "req-1",
-          conversationId: "conv-1",
-          whatsappUserId: "wa-1",
-          requestKind: "INITIAL",
-          status: "AWAITING_PROFESSIONAL_SLOTS",
-          roundNumber: 1,
-          patientPreferenceNote: "prefiere tarde",
-          rejectionSummary: null,
-          professionalNote: null,
-          slotOptionsMap: {},
-          selectedSlotId: null,
-          calendarEventId: null,
-          createdAt: "2026-03-01T10:00:00Z",
-          updatedAt: "2026-03-01T10:00:00Z",
-          slots: []
-        }
-      ]),
+      listSchedulingRequests: vitestModule.vi.fn(async () => [requestSummary]),
       listConversationSchedulingRequests: vitestModule.vi.fn(async () => []),
       getGoogleCalendarAvailability: vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
@@ -38,6 +45,11 @@ vitestModule.describe("SchedulingUseCase", () => {
         slotBatchId: "req-1",
         outboundMessageId: "wamid-1",
         assistantText: "Listo"
+      })),
+      resolveConsultationReview: vitestModule.vi.fn(async () => ({
+        status: "COLLECTING_PREFERENCES",
+        outboundMessageId: "wamid-2",
+        assistantText: "Perfecto, continuemos."
       }))
     } as Partial<backendApiPort.BackendApiPort> as backendApiPort.BackendApiPort;
 

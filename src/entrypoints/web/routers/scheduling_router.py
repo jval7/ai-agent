@@ -44,6 +44,25 @@ def list_conversation_scheduling_requests(
 
 
 @router.post(
+    "/v1/conversations/{conversation_id}/scheduling/requests/{request_id}/consultation-review",
+    response_model=scheduling_dto.ConsultationReviewDecisionResponseDTO,
+)
+def resolve_consultation_review(
+    conversation_id: str,
+    request_id: str,
+    review_dto: scheduling_dto.ConsultationReviewDecisionDTO,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> scheduling_dto.ConsultationReviewDecisionResponseDTO:
+    return container.scheduling_inbox_service.resolve_consultation_review(
+        claims=claims,
+        conversation_id=conversation_id,
+        request_id=request_id,
+        input_dto=review_dto,
+    )
+
+
+@router.post(
     "/v1/conversations/{conversation_id}/scheduling/requests/{request_id}/professional-slots",
     response_model=scheduling_dto.ProfessionalSubmitSlotsResponseDTO,
 )

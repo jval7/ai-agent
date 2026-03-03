@@ -14,15 +14,26 @@ class SchedulingRequest(pydantic.BaseModel):
     request_kind: typing.Literal["INITIAL", "RETRY"]
     status: typing.Literal[
         "COLLECTING_PREFERENCES",
+        "AWAITING_CONSULTATION_REVIEW",
+        "AWAITING_CONSULTATION_DETAILS",
         "AWAITING_PROFESSIONAL_SLOTS",
         "AWAITING_PATIENT_CHOICE",
+        "CONSULTATION_REJECTED",
+        "CANCELLED",
         "BOOKED",
         "HUMAN_HANDOFF",
     ]
     round_number: int
-    patient_preference_note: str
+    patient_preference_note: str | None
     rejection_summary: str | None
     professional_note: str | None
+    patient_first_name: str | None = None
+    patient_last_name: str | None = None
+    patient_age: int | None = None
+    consultation_reason: str | None = None
+    consultation_details: str | None = None
+    appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] | None = None
+    patient_location: str | None = None
     slots: list[scheduling_slot_entity.SchedulingSlot]
     slot_options_map: dict[str, str]
     selected_slot_id: str | None
@@ -32,10 +43,12 @@ class SchedulingRequest(pydantic.BaseModel):
 
     @pydantic.field_validator("patient_preference_note")
     @classmethod
-    def validate_patient_preference_note(cls, value: str) -> str:
+    def validate_patient_preference_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         normalized_value = value.strip()
         if not normalized_value:
-            raise ValueError("patient_preference_note cannot be empty")
+            return None
         return normalized_value
 
     @pydantic.field_validator("round_number")
@@ -49,8 +62,12 @@ class SchedulingRequest(pydantic.BaseModel):
         self,
         status: typing.Literal[
             "COLLECTING_PREFERENCES",
+            "AWAITING_CONSULTATION_REVIEW",
+            "AWAITING_CONSULTATION_DETAILS",
             "AWAITING_PROFESSIONAL_SLOTS",
             "AWAITING_PATIENT_CHOICE",
+            "CONSULTATION_REJECTED",
+            "CANCELLED",
             "BOOKED",
             "HUMAN_HANDOFF",
         ],

@@ -19,9 +19,16 @@ class SchedulingRequestSummaryDTO(pydantic.BaseModel):
     request_kind: str
     status: str
     round_number: int
-    patient_preference_note: str
+    patient_preference_note: str | None
     rejection_summary: str | None
     professional_note: str | None
+    patient_first_name: str | None
+    patient_last_name: str | None
+    patient_age: int | None
+    consultation_reason: str | None
+    consultation_details: str | None
+    appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] | None
+    patient_location: str | None
     slot_options_map: dict[str, str]
     selected_slot_id: str | None
     calendar_event_id: str | None
@@ -69,10 +76,32 @@ class ProfessionalSubmitSlotsResponseDTO(pydantic.BaseModel):
 
 
 class RequestScheduleApprovalInputDTO(pydantic.BaseModel):
-    request_kind: typing.Literal["INITIAL", "RETRY"] = "INITIAL"
+    request_id: str | None = None
+    appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"]
+    patient_location: str | None = None
     patient_preference_note: str
     hard_constraints: list[str] = pydantic.Field(default_factory=list)
     rejection_summary: str | None = None
+
+
+class SubmitConsultationReasonForReviewToolInputDTO(pydantic.BaseModel):
+    request_id: str | None = None
+    patient_first_name: str | None = None
+    patient_last_name: str | None = None
+    patient_age: int | str | None = None
+    consultation_reason: str | None = None
+    consultation_details: str | None = None
+
+
+class ConsultationReviewDecisionDTO(pydantic.BaseModel):
+    decision: typing.Literal["APPROVE", "REQUEST_MORE_INFO", "REJECT"]
+    professional_note: str | None = None
+
+
+class ConsultationReviewDecisionResponseDTO(pydantic.BaseModel):
+    status: str
+    outbound_message_id: str
+    assistant_text: str
 
 
 class ConfirmSelectedSlotInputDTO(pydantic.BaseModel):
@@ -104,3 +133,7 @@ class ConfirmSelectedSlotResponseDTO(pydantic.BaseModel):
 class HandoffToHumanInputDTO(pydantic.BaseModel):
     reason: str
     summary_for_professional: str
+
+
+class CancelActiveSchedulingRequestInputDTO(pydantic.BaseModel):
+    reason: str | None = None

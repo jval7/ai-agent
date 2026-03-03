@@ -125,11 +125,27 @@ export interface SchedulingRequestSummaryApiResponse {
   conversation_id: string;
   whatsapp_user_id: string;
   request_kind: "INITIAL" | "RETRY";
-  status: "AWAITING_PROFESSIONAL_SLOTS" | "AWAITING_PATIENT_CHOICE" | "BOOKED" | "HUMAN_HANDOFF";
+  status:
+    | "AWAITING_CONSULTATION_REVIEW"
+    | "AWAITING_CONSULTATION_DETAILS"
+    | "COLLECTING_PREFERENCES"
+    | "AWAITING_PROFESSIONAL_SLOTS"
+    | "AWAITING_PATIENT_CHOICE"
+    | "CONSULTATION_REJECTED"
+    | "CANCELLED"
+    | "BOOKED"
+    | "HUMAN_HANDOFF";
   round_number: number;
-  patient_preference_note: string;
+  patient_preference_note: string | null;
   rejection_summary: string | null;
   professional_note: string | null;
+  patient_first_name: string | null;
+  patient_last_name: string | null;
+  patient_age: number | null;
+  consultation_reason: string | null;
+  consultation_details: string | null;
+  appointment_modality: "PRESENCIAL" | "VIRTUAL" | null;
+  patient_location: string | null;
   slot_options_map: Record<string, string>;
   selected_slot_id: string | null;
   calendar_event_id: string | null;
@@ -155,6 +171,26 @@ export interface SubmitProfessionalSlotsApiRequest {
 export interface SubmitProfessionalSlotsApiResponse {
   status: "AWAITING_PATIENT_CHOICE";
   slot_batch_id: string;
+  outbound_message_id: string;
+  assistant_text: string;
+}
+
+export interface ResolveConsultationReviewApiRequest {
+  decision: "APPROVE" | "REQUEST_MORE_INFO" | "REJECT";
+  professional_note: string | null;
+}
+
+export interface ResolveConsultationReviewApiResponse {
+  status:
+    | "AWAITING_CONSULTATION_REVIEW"
+    | "AWAITING_CONSULTATION_DETAILS"
+    | "COLLECTING_PREFERENCES"
+    | "AWAITING_PROFESSIONAL_SLOTS"
+    | "AWAITING_PATIENT_CHOICE"
+    | "CONSULTATION_REJECTED"
+    | "CANCELLED"
+    | "BOOKED"
+    | "HUMAN_HANDOFF";
   outbound_message_id: string;
   assistant_text: string;
 }

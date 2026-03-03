@@ -1,8 +1,13 @@
 export type SchedulingRequestKind = "INITIAL" | "RETRY";
 
 export type SchedulingRequestStatus =
+  | "AWAITING_CONSULTATION_REVIEW"
+  | "AWAITING_CONSULTATION_DETAILS"
+  | "COLLECTING_PREFERENCES"
   | "AWAITING_PROFESSIONAL_SLOTS"
   | "AWAITING_PATIENT_CHOICE"
+  | "CONSULTATION_REJECTED"
+  | "CANCELLED"
   | "BOOKED"
   | "HUMAN_HANDOFF";
 
@@ -23,9 +28,16 @@ export interface SchedulingRequestSummary {
   requestKind: SchedulingRequestKind;
   status: SchedulingRequestStatus;
   roundNumber: number;
-  patientPreferenceNote: string;
+  patientPreferenceNote: string | null;
   rejectionSummary: string | null;
   professionalNote: string | null;
+  patientFirstName: string | null;
+  patientLastName: string | null;
+  patientAge: number | null;
+  consultationReason: string | null;
+  consultationDetails: string | null;
+  appointmentModality: "PRESENCIAL" | "VIRTUAL" | null;
+  patientLocation: string | null;
   slotOptionsMap: Record<string, string>;
   selectedSlotId: string | null;
   calendarEventId: string | null;
@@ -49,6 +61,17 @@ export interface SubmitProfessionalSlotsInput {
 export interface SubmitProfessionalSlotsResult {
   status: "AWAITING_PATIENT_CHOICE";
   slotBatchId: string;
+  outboundMessageId: string;
+  assistantText: string;
+}
+
+export interface ResolveConsultationReviewInput {
+  decision: "APPROVE" | "REQUEST_MORE_INFO" | "REJECT";
+  professionalNote: string | null;
+}
+
+export interface ResolveConsultationReviewResult {
+  status: SchedulingRequestStatus;
   outboundMessageId: string;
   assistantText: string;
 }

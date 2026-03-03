@@ -79,14 +79,62 @@ def build_service(
     return service, scheduling_repository, provider
 
 
+def create_collecting_preferences_request(
+    service: scheduling_service.SchedulingService,
+) -> scheduling_dto.SchedulingRequestSummaryDTO:
+    submitted = service.submit_consultation_reason_for_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
+            patient_first_name="Jane",
+            patient_last_name="Doe",
+            patient_age=29,
+            consultation_reason="Ansiedad",
+            consultation_details="Me cuesta dormir y me siento abrumada.",
+        ),
+    )
+    return service.resolve_consultation_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        request_id=submitted.request_id,
+        input_dto=scheduling_dto.ConsultationReviewDecisionDTO(
+            decision="APPROVE",
+            professional_note="Aprobado",
+        ),
+    )
+
+
+def create_waiting_professional_slots_request(
+    service: scheduling_service.SchedulingService,
+) -> scheduling_dto.SchedulingRequestSummaryDTO:
+    request = create_collecting_preferences_request(service)
+    return service.request_schedule_approval(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
+            request_id=request.request_id,
+            appointment_modality="VIRTUAL",
+            patient_location="Bogota",
+            patient_preference_note="prefiere en la tarde",
+            hard_constraints=["solo tardes"],
+            rejection_summary=None,
+        ),
+    )
+
+
 def test_request_schedule_approval_creates_pending_request() -> None:
     service, repository, _ = build_service(["req-1"])
+    collecting_request = create_collecting_preferences_request(service)
     request = service.request_schedule_approval(
         tenant_id="tenant-1",
         conversation_id="conv-1",
         whatsapp_user_id="wa-user-1",
         input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_kind="INITIAL",
+            request_id=collecting_request.request_id,
+            appointment_modality="VIRTUAL",
+            patient_location="Bogota",
             patient_preference_note="prefiere en la tarde",
             hard_constraints=["solo tardes"],
             rejection_summary=None,
@@ -101,12 +149,15 @@ def test_request_schedule_approval_creates_pending_request() -> None:
 
 def test_request_schedule_approval_reuses_open_request() -> None:
     service, repository, _ = build_service(["req-1", "req-2"])
+    collecting_request = create_collecting_preferences_request(service)
     first_request = service.request_schedule_approval(
         tenant_id="tenant-1",
         conversation_id="conv-1",
         whatsapp_user_id="wa-user-1",
         input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_kind="INITIAL",
+            request_id=collecting_request.request_id,
+            appointment_modality="VIRTUAL",
+            patient_location="Bogota",
             patient_preference_note="prefiere en la tarde",
             hard_constraints=[],
             rejection_summary=None,
@@ -118,7 +169,9 @@ def test_request_schedule_approval_reuses_open_request() -> None:
         conversation_id="conv-1",
         whatsapp_user_id="wa-user-1",
         input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_kind="INITIAL",
+            request_id=collecting_request.request_id,
+            appointment_modality="VIRTUAL",
+            patient_location="Bogota",
             patient_preference_note="prefiere virtual",
             hard_constraints=[],
             rejection_summary=None,
@@ -139,17 +192,7 @@ def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
             end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
         )
     ]
-    request = service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_kind="INITIAL",
-            patient_preference_note="prefiere tarde",
-            hard_constraints=[],
-            rejection_summary=None,
-        ),
-    )
+    request = create_waiting_professional_slots_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -182,17 +225,7 @@ def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
 
 def test_confirm_selected_slot_creates_event_when_available() -> None:
     service, repository, provider = build_service(["req-1"])
-    request = service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_kind="INITIAL",
-            patient_preference_note="prefiere tarde",
-            hard_constraints=[],
-            rejection_summary=None,
-        ),
-    )
+    request = create_waiting_professional_slots_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -229,17 +262,7 @@ def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None
             "google calendar create event failed (status=409, detail=conflict)"
         )
     ]
-    request = service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_kind="INITIAL",
-            patient_preference_note="prefiere tarde",
-            hard_constraints=[],
-            rejection_summary=None,
-        ),
-    )
+    request = create_waiting_professional_slots_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -269,17 +292,7 @@ def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None
 
 def test_select_slot_for_confirmation_persists_selected_slot() -> None:
     service, repository, _ = build_service(["req-1"])
-    request = service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_kind="INITIAL",
-            patient_preference_note="prefiere tarde",
-            hard_constraints=[],
-            rejection_summary=None,
-        ),
-    )
+    request = create_waiting_professional_slots_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -318,17 +331,7 @@ def test_select_slot_for_confirmation_persists_selected_slot() -> None:
 
 def test_select_slot_for_confirmation_switches_selected_slot() -> None:
     service, repository, _ = build_service(["req-1"])
-    request = service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_kind="INITIAL",
-            patient_preference_note="prefiere tarde",
-            hard_constraints=[],
-            rejection_summary=None,
-        ),
-    )
+    request = create_waiting_professional_slots_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -368,17 +371,7 @@ def test_select_slot_for_confirmation_switches_selected_slot() -> None:
 
 def test_confirm_selected_slot_accepts_selected_slot_status() -> None:
     service, repository, provider = build_service(["req-1"])
-    request = service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_kind="INITIAL",
-            patient_preference_note="prefiere tarde",
-            hard_constraints=[],
-            rejection_summary=None,
-        ),
-    )
+    request = create_waiting_professional_slots_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"

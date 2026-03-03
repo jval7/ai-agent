@@ -383,6 +383,30 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     };
   }
 
+  async resolveConsultationReview(
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.ResolveConsultationReviewInput
+  ): Promise<schedulingModel.ResolveConsultationReviewResult> {
+    const payload = await this.request<httpTypes.ResolveConsultationReviewApiResponse>(
+      `/v1/conversations/${conversationId}/scheduling/requests/${requestId}/consultation-review`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          decision: input.decision,
+          professional_note: input.professionalNote
+        } satisfies httpTypes.ResolveConsultationReviewApiRequest)
+      }
+    );
+
+    return {
+      status: payload.status,
+      outboundMessageId: payload.outbound_message_id,
+      assistantText: payload.assistant_text
+    };
+  }
+
   private async request<T>(path: string, options: RequestOptions): Promise<T> {
     const retryOnUnauthorized = options.retryOnUnauthorized ?? true;
     const requestId = options.requestId ?? requestIdModule.createRequestId();
@@ -571,6 +595,13 @@ function mapSchedulingRequestSummary(
     patientPreferenceNote: payload.patient_preference_note,
     rejectionSummary: payload.rejection_summary,
     professionalNote: payload.professional_note,
+    patientFirstName: payload.patient_first_name,
+    patientLastName: payload.patient_last_name,
+    patientAge: payload.patient_age,
+    consultationReason: payload.consultation_reason,
+    consultationDetails: payload.consultation_details,
+    appointmentModality: payload.appointment_modality,
+    patientLocation: payload.patient_location,
     slotOptionsMap: payload.slot_options_map,
     selectedSlotId: payload.selected_slot_id,
     calendarEventId: payload.calendar_event_id,

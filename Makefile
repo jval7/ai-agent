@@ -5,10 +5,18 @@ include .env
 export
 endif
 
+MAKE_CREDENTIALS_FILE ?= .secrets/make_credentials.env
+ifneq (,$(wildcard $(MAKE_CREDENTIALS_FILE)))
+include $(MAKE_CREDENTIALS_FILE)
+export
+endif
+
 API_BASE ?= http://localhost:8000
 TENANT_NAME ?= Acme
 OWNER_EMAIL ?= owner@acme.com
 OWNER_PASSWORD ?= supersecret
+OWNER_EMAIL_ORIGIN := $(origin OWNER_EMAIL)
+OWNER_PASSWORD_ORIGIN := $(origin OWNER_PASSWORD)
 FLOW_DIR ?= .make-flow
 MEMORY_JSON_FILE_PATH ?= data/memory_store.json
 FRONTEND_DIR ?= frontend
@@ -19,6 +27,7 @@ SIM_PROVIDER_MESSAGE_ID ?=
 
 .PHONY: \
 	oauth-flow \
+	save-credentials \
 	memory-reset \
 	chat-memory-reset \
 	static-checks \
@@ -73,6 +82,12 @@ oauth-flow:
 		echo "$$connect_url"; \
 	fi
 
+save-credentials:
+	@mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"
+	@printf "OWNER_EMAIL=%s\nOWNER_PASSWORD=%s\n" "$(OWNER_EMAIL)" "$(OWNER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"
+	@chmod 600 "$(MAKE_CREDENTIALS_FILE)"
+	@echo "Saved OWNER_EMAIL/OWNER_PASSWORD to $(MAKE_CREDENTIALS_FILE)"
+
 memory-reset:
 	@if [[ -f "$(FLOW_DIR)/access_token" ]]; then \
 		access_token=$$(cat "$(FLOW_DIR)/access_token"); \
@@ -94,22 +109,64 @@ memory-reset:
 	fi
 
 chat-memory-reset:
-	@if [[ -f "$(FLOW_DIR)/access_token" ]]; then \
-		access_token=$$(cat "$(FLOW_DIR)/access_token"); \
+	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
+	@mkdir -p "$(FLOW_DIR)"
+	@if [[ "$(OWNER_EMAIL_ORIGIN)" == "command line" || "$(OWNER_PASSWORD_ORIGIN)" == "command line" ]]; then \
+		mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
+		printf "OWNER_EMAIL=%s\nOWNER_PASSWORD=%s\n" "$(OWNER_EMAIL)" "$(OWNER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"; \
+		chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
+		echo "Saved credentials to $(MAKE_CREDENTIALS_FILE)"; \
+	fi
+	@live_reset_ok=0; \
+	resolved_access_token=""; \
+	if [[ -f "$(FLOW_DIR)/access_token" ]]; then \
+		resolved_access_token=$$(cat "$(FLOW_DIR)/access_token"); \
+	fi; \
+	if [[ -n "$$resolved_access_token" ]]; then \
 		live_chat_reset_response=$$(curl -sS -X POST "$(API_BASE)/v1/dev/memory/chat/reset" \
-			-H "Authorization: Bearer $$access_token" || true); \
-		echo "Live chat reset response: $$live_chat_reset_response"; \
-	else \
-		echo "No access token in $(FLOW_DIR)/access_token; skipping live chat reset endpoint."; \
+			-H "Authorization: Bearer $$resolved_access_token" || true); \
+		live_chat_reset_status=$$(echo "$$live_chat_reset_response" | jq -r '.status // empty' 2>/dev/null); \
+		if [[ "$$live_chat_reset_status" == "chat_reset" ]]; then \
+			live_reset_ok=1; \
+			echo "Live chat reset response: $$live_chat_reset_response"; \
+		else \
+			echo "Stored access token did not reset chat memory; attempting login fallback."; \
+		fi; \
+	fi; \
+	if [[ $$live_reset_ok -eq 0 ]]; then \
+		login_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/login" \
+			-H "Content-Type: application/json" \
+			-d '{"email":"$(OWNER_EMAIL)","password":"$(OWNER_PASSWORD)"}' || true); \
+		login_access_token=$$(echo "$$login_response" | jq -r '.access_token // empty' 2>/dev/null); \
+		if [[ -n "$$login_access_token" ]]; then \
+			echo "$$login_access_token" > "$(FLOW_DIR)/access_token"; \
+			live_chat_reset_response=$$(curl -sS -X POST "$(API_BASE)/v1/dev/memory/chat/reset" \
+				-H "Authorization: Bearer $$login_access_token" || true); \
+			live_chat_reset_status=$$(echo "$$live_chat_reset_response" | jq -r '.status // empty' 2>/dev/null); \
+			if [[ "$$live_chat_reset_status" == "chat_reset" ]]; then \
+				live_reset_ok=1; \
+				echo "Live chat reset response: $$live_chat_reset_response"; \
+				mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
+				printf "OWNER_EMAIL=%s\nOWNER_PASSWORD=%s\n" "$(OWNER_EMAIL)" "$(OWNER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"; \
+				chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
+				echo "Saved credentials to $(MAKE_CREDENTIALS_FILE)"; \
+			else \
+				echo "Live chat reset failed after login: $$live_chat_reset_response"; \
+			fi; \
+		else \
+			echo "Login fallback failed; skipping live reset. Response: $$login_response"; \
+		fi; \
+	fi; \
+	if [[ $$live_reset_ok -eq 0 ]]; then \
+		echo "Live reset was not applied. Local snapshot cleanup will still run."; \
 	fi
 	@if [[ -z "$(MEMORY_JSON_FILE_PATH)" ]]; then \
 		echo "MEMORY_JSON_FILE_PATH is empty (persistence disabled). Nothing to delete."; \
 		exit 0; \
 	fi
 	@if [[ -f "$(MEMORY_JSON_FILE_PATH)" ]]; then \
-		command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }; \
 		tmp_memory_file=$$(mktemp); \
-		jq '.conversations = [] | .messages = [] | .scheduling_requests = [] | .processed_events = []' \
+		jq '.whatsapp_users = [] | .patients = [] | .conversations = [] | .messages = [] | .scheduling_requests = [] | .processed_events = [] | .blacklist_entries = []' \
 			"$(MEMORY_JSON_FILE_PATH)" > "$$tmp_memory_file"; \
 		mv "$$tmp_memory_file" "$(MEMORY_JSON_FILE_PATH)"; \
 		echo "Cleared chat memory keys in $(MEMORY_JSON_FILE_PATH)"; \

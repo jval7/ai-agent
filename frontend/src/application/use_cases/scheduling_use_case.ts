@@ -27,4 +27,12 @@ export class SchedulingUseCase {
   ) {
     return this.api.submitProfessionalSlots(conversationId, requestId, input);
   }
+
+  async resolveConsultationReview(
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.ResolveConsultationReviewInput
+  ) {
+    return this.api.resolveConsultationReview(conversationId, requestId, input);
+  }
 }

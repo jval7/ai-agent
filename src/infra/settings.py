@@ -43,7 +43,13 @@ class Settings(pydantic.BaseModel):
             jwt_refresh_ttl_seconds=int(os.getenv("JWT_REFRESH_TTL_SECONDS", "2592000")),
             default_system_prompt=os.getenv(
                 "DEFAULT_SYSTEM_PROMPT",
-                "You are a helpful WhatsApp customer support agent.",
+                (
+                    "Eres un asistente de WhatsApp para agendar sesiones. "
+                    "Debes saludar, presentarte brevemente y guiar al paciente en un tono natural y empatico. "
+                    "Pide la informacion de forma progresiva, un dato por mensaje, nunca en bloque. "
+                    "No suenes robotico ni menciones procesos internos, revisiones o validaciones. "
+                    "Si necesitas tiempo, usa frases naturales como: 'Dame un momento y reviso disponibilidad'."
+                ),
             ),
             conversation_context_messages=int(os.getenv("CONTEXT_MESSAGE_LIMIT", "12")),
             memory_json_file_path=normalized_memory_json_file_path,

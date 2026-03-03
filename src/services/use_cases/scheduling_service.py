@@ -53,12 +53,12 @@ class SchedulingService:
         items = [self._to_summary_dto(item) for item in sorted_requests]
         return scheduling_dto.SchedulingRequestListResponseDTO(items=items)
 
-    def request_schedule_approval(
+    def submit_consultation_reason_for_review(
         self,
         tenant_id: str,
         conversation_id: str,
         whatsapp_user_id: str,
-        input_dto: scheduling_dto.RequestScheduleApprovalInputDTO,
+        input_dto: scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO,
     ) -> scheduling_dto.SchedulingRequestSummaryDTO:
         conversation = self._conversation_repository.get_conversation_by_id(
             tenant_id, conversation_id
@@ -71,8 +71,188 @@ class SchedulingService:
             tenant_id,
             conversation_id,
         )
-        open_request = self._find_open_request(existing_requests)
-        if open_request is not None:
+        request = self._resolve_request_for_consultation_submission(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            existing_requests=existing_requests,
+            request_id=input_dto.request_id,
+        )
+        if request is None:
+            request = scheduling_request_entity.SchedulingRequest(
+                id=self._id_generator.new_id(),
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                whatsapp_user_id=whatsapp_user_id,
+                request_kind="INITIAL",
+                status="AWAITING_CONSULTATION_REVIEW",
+                round_number=len(existing_requests) + 1,
+                patient_preference_note=None,
+                rejection_summary=None,
+                professional_note=None,
+                slots=[],
+                slot_options_map={},
+                selected_slot_id=None,
+                calendar_event_id=None,
+                created_at=now_value,
+                updated_at=now_value,
+            )
+
+        if request.status in ("BOOKED", "HUMAN_HANDOFF", "CONSULTATION_REJECTED", "CANCELLED"):
+            raise service_exceptions.InvalidStateError(
+                "cannot submit consultation reason for a closed scheduling request"
+            )
+
+        patient_first_name = self._coalesce_patient_text(
+            primary=input_dto.patient_first_name,
+            fallback=request.patient_first_name,
+        )
+        if patient_first_name is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: patient_first_name; ask only for the patient's first name now"
+            )
+
+        patient_last_name = self._coalesce_patient_text(
+            primary=input_dto.patient_last_name,
+            fallback=request.patient_last_name,
+        )
+        if patient_last_name is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: patient_last_name; ask only for the patient's last name now"
+            )
+
+        patient_age = self._coalesce_patient_age(
+            primary=input_dto.patient_age,
+            fallback=request.patient_age,
+        )
+        if patient_age is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: patient_age; ask only for the patient's age now"
+            )
+        if patient_age < 1 or patient_age > 120:
+            raise service_exceptions.InvalidStateError(
+                "patient_age is invalid; ask only for age as a whole number between 1 and 120"
+            )
+
+        consultation_reason = self._coalesce_patient_text(
+            primary=input_dto.consultation_reason,
+            fallback=request.consultation_reason,
+        )
+        if consultation_reason is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: consultation_reason; ask only for the consultation reason now"
+            )
+
+        consultation_details = self._coalesce_patient_text(
+            primary=input_dto.consultation_details,
+            fallback=request.consultation_details,
+        )
+        if consultation_details is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: consultation_details; ask only for brief consultation details now"
+            )
+
+        request.patient_first_name = patient_first_name
+        request.patient_last_name = patient_last_name
+        request.patient_age = patient_age
+        request.consultation_reason = consultation_reason
+        request.consultation_details = consultation_details
+        request.professional_note = None
+        request.rejection_summary = None
+        request.set_status("AWAITING_CONSULTATION_REVIEW", now_value)
+        self._scheduling_repository.save_request(request)
+        logger.info(
+            "scheduling.consultation_review_requested",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.consultation_review_requested",
+                    message="consultation reason submitted for professional review",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "request_id": request.id,
+                        "status": request.status,
+                    },
+                )
+            },
+        )
+        return self._to_summary_dto(request)
+
+    def resolve_consultation_review(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.ConsultationReviewDecisionDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+        if request.conversation_id != conversation_id:
+            raise service_exceptions.AuthorizationError(
+                "scheduling request does not belong to conversation"
+            )
+        if request.status != "AWAITING_CONSULTATION_REVIEW":
+            raise service_exceptions.InvalidStateError(
+                "scheduling request is not waiting for consultation review"
+            )
+
+        now_value = self._clock.now()
+        professional_note = self._normalize_patient_text(input_dto.professional_note)
+
+        if input_dto.decision == "APPROVE":
+            request.set_status("COLLECTING_PREFERENCES", now_value)
+            request.professional_note = professional_note
+        elif input_dto.decision == "REQUEST_MORE_INFO":
+            if professional_note is None:
+                raise service_exceptions.InvalidStateError(
+                    "professional_note is required when requesting more information"
+                )
+            request.professional_note = professional_note
+            request.set_status("AWAITING_CONSULTATION_DETAILS", now_value)
+        else:
+            request.professional_note = professional_note
+            request.set_status("CONSULTATION_REJECTED", now_value)
+
+        self._scheduling_repository.save_request(request)
+        logger.info(
+            "scheduling.consultation_review_resolved",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.consultation_review_resolved",
+                    message="consultation review resolved by professional",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "request_id": request.id,
+                        "decision": input_dto.decision,
+                        "status": request.status,
+                    },
+                )
+            },
+        )
+        return self._to_summary_dto(request)
+
+    def request_schedule_approval(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        whatsapp_user_id: str,
+        input_dto: scheduling_dto.RequestScheduleApprovalInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        del whatsapp_user_id
+        conversation = self._conversation_repository.get_conversation_by_id(
+            tenant_id, conversation_id
+        )
+        if conversation is None:
+            raise service_exceptions.EntityNotFoundError("conversation not found")
+
+        request = self._resolve_target_request_for_schedule(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            request_id=input_dto.request_id,
+        )
+
+        if request.status in ("AWAITING_PROFESSIONAL_SLOTS", "AWAITING_PATIENT_CHOICE"):
             logger.info(
                 "scheduling.request_reused",
                 extra={
@@ -82,33 +262,31 @@ class SchedulingService:
                         data={
                             "tenant_id": tenant_id,
                             "conversation_id": conversation_id,
-                            "request_id": open_request.id,
-                            "status": open_request.status,
+                            "request_id": request.id,
+                            "status": request.status,
                         },
                     )
                 },
             )
-            return self._to_summary_dto(open_request)
+            return self._to_summary_dto(request)
 
-        round_number = len(existing_requests) + 1
-        request = scheduling_request_entity.SchedulingRequest(
-            id=self._id_generator.new_id(),
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            whatsapp_user_id=whatsapp_user_id,
-            request_kind=input_dto.request_kind,
-            status="AWAITING_PROFESSIONAL_SLOTS",
-            round_number=round_number,
-            patient_preference_note=input_dto.patient_preference_note,
-            rejection_summary=input_dto.rejection_summary,
-            professional_note=None,
-            slots=[],
-            slot_options_map={},
-            selected_slot_id=None,
-            calendar_event_id=None,
-            created_at=now_value,
-            updated_at=now_value,
+        if request.status != "COLLECTING_PREFERENCES":
+            raise service_exceptions.InvalidStateError(
+                "consultation reason must be approved before requesting schedule approval"
+            )
+
+        now_value = self._clock.now()
+        resolved_location = self._resolve_location(
+            appointment_modality=input_dto.appointment_modality,
+            patient_location=input_dto.patient_location,
         )
+
+        request.appointment_modality = input_dto.appointment_modality
+        request.patient_location = resolved_location
+        request.patient_preference_note = input_dto.patient_preference_note
+        request.rejection_summary = input_dto.rejection_summary
+        request.professional_note = None
+        request.set_status("AWAITING_PROFESSIONAL_SLOTS", now_value)
         self._scheduling_repository.save_request(request)
         logger.info(
             "scheduling.request_created",
@@ -127,18 +305,56 @@ class SchedulingService:
         )
         return self._to_summary_dto(request)
 
-    def _find_open_request(
+    def cancel_active_request(
         self,
-        requests: list[scheduling_request_entity.SchedulingRequest],
-    ) -> scheduling_request_entity.SchedulingRequest | None:
-        open_requests: list[scheduling_request_entity.SchedulingRequest] = []
-        for request in requests:
-            if request.status in ("AWAITING_PROFESSIONAL_SLOTS", "AWAITING_PATIENT_CHOICE"):
-                open_requests.append(request)
-        if not open_requests:
-            return None
-        sorted_open_requests = sorted(open_requests, key=lambda item: item.updated_at, reverse=True)
-        return sorted_open_requests[0]
+        tenant_id: str,
+        conversation_id: str,
+        input_dto: scheduling_dto.CancelActiveSchedulingRequestInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        conversation = self._conversation_repository.get_conversation_by_id(
+            tenant_id, conversation_id
+        )
+        if conversation is None:
+            raise service_exceptions.EntityNotFoundError("conversation not found")
+
+        request_list = self._scheduling_repository.list_requests_by_conversation(
+            tenant_id,
+            conversation_id,
+        )
+        open_request = self._find_latest_request_by_statuses(
+            requests=request_list,
+            statuses=(
+                "AWAITING_CONSULTATION_REVIEW",
+                "AWAITING_CONSULTATION_DETAILS",
+                "COLLECTING_PREFERENCES",
+                "AWAITING_PROFESSIONAL_SLOTS",
+                "AWAITING_PATIENT_CHOICE",
+            ),
+        )
+        if open_request is None:
+            raise service_exceptions.EntityNotFoundError("no active scheduling request found")
+
+        now_value = self._clock.now()
+        open_request.set_status("CANCELLED", now_value)
+        cancellation_reason = self._normalize_patient_text(input_dto.reason)
+        if cancellation_reason is not None:
+            open_request.professional_note = cancellation_reason
+        self._scheduling_repository.save_request(open_request)
+        logger.info(
+            "scheduling.request_cancelled",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.request_cancelled",
+                    message="scheduling request cancelled by patient",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "request_id": open_request.id,
+                    },
+                )
+            },
+        )
+        return self._to_summary_dto(open_request)
 
     def confirm_selected_slot_and_create_event(
         self,
@@ -274,7 +490,12 @@ class SchedulingService:
             conversation_id,
         )
         for request in request_list:
-            if request.status in ("BOOKED", "HUMAN_HANDOFF"):
+            if request.status in (
+                "BOOKED",
+                "HUMAN_HANDOFF",
+                "CONSULTATION_REJECTED",
+                "CANCELLED",
+            ):
                 continue
             request.set_status("HUMAN_HANDOFF", now_value)
             request.professional_note = input_dto.summary_for_professional
@@ -298,6 +519,82 @@ class SchedulingService:
             "status": "HUMAN_HANDOFF",
             "control_mode": "HUMAN",
         }
+
+    def _resolve_request_for_consultation_submission(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        existing_requests: list[scheduling_request_entity.SchedulingRequest],
+        request_id: str | None,
+    ) -> scheduling_request_entity.SchedulingRequest | None:
+        if request_id is not None:
+            request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
+            if request is None:
+                raise service_exceptions.EntityNotFoundError("scheduling request not found")
+            if request.conversation_id != conversation_id:
+                raise service_exceptions.AuthorizationError(
+                    "scheduling request does not belong to conversation"
+                )
+            return request
+
+        return self._find_latest_request_by_statuses(
+            requests=existing_requests,
+            statuses=(
+                "AWAITING_CONSULTATION_DETAILS",
+                "COLLECTING_PREFERENCES",
+                "AWAITING_CONSULTATION_REVIEW",
+            ),
+        )
+
+    def _resolve_target_request_for_schedule(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        request_id: str | None,
+    ) -> scheduling_request_entity.SchedulingRequest:
+        request_list = self._scheduling_repository.list_requests_by_conversation(
+            tenant_id,
+            conversation_id,
+        )
+
+        if request_id is not None:
+            request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
+            if request is None:
+                raise service_exceptions.EntityNotFoundError("scheduling request not found")
+            if request.conversation_id != conversation_id:
+                raise service_exceptions.AuthorizationError(
+                    "scheduling request does not belong to conversation"
+                )
+            return request
+
+        request = self._find_latest_request_by_statuses(
+            requests=request_list,
+            statuses=(
+                "COLLECTING_PREFERENCES",
+                "AWAITING_PROFESSIONAL_SLOTS",
+                "AWAITING_PATIENT_CHOICE",
+            ),
+        )
+        if request is None:
+            raise service_exceptions.InvalidStateError(
+                "consultation reason must be approved before requesting schedule approval"
+            )
+        return request
+
+    def _find_latest_request_by_statuses(
+        self,
+        requests: list[scheduling_request_entity.SchedulingRequest],
+        statuses: tuple[str, ...],
+    ) -> scheduling_request_entity.SchedulingRequest | None:
+        filtered_requests: list[scheduling_request_entity.SchedulingRequest] = []
+        for request in requests:
+            if request.status in statuses:
+                filtered_requests.append(request)
+
+        if not filtered_requests:
+            return None
+        sorted_requests = sorted(filtered_requests, key=lambda item: item.updated_at, reverse=True)
+        return sorted_requests[0]
 
     def _find_selectable_slot(
         self,
@@ -351,6 +648,61 @@ class SchedulingService:
         normalized_message = error_message.lower()
         return "status=409" in normalized_message or "conflict" in normalized_message
 
+    def _coalesce_patient_text(
+        self,
+        primary: str | None,
+        fallback: str | None,
+    ) -> str | None:
+        normalized_primary = self._normalize_patient_text(primary)
+        if normalized_primary is not None:
+            return normalized_primary
+        return self._normalize_patient_text(fallback)
+
+    def _coalesce_patient_age(
+        self,
+        primary: int | str | None,
+        fallback: int | None,
+    ) -> int | None:
+        normalized_primary = self._normalize_patient_age(primary)
+        if normalized_primary is not None:
+            return normalized_primary
+        return fallback
+
+    def _normalize_patient_text(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized_value = value.strip()
+        if normalized_value == "":
+            return None
+        return normalized_value
+
+    def _normalize_patient_age(self, value: int | str | None) -> int | None:
+        if value is None:
+            return None
+        if isinstance(value, int):
+            return value
+        normalized_value = value.strip()
+        if normalized_value == "":
+            return None
+        if not normalized_value.isdigit():
+            return None
+        return int(normalized_value)
+
+    def _resolve_location(
+        self,
+        appointment_modality: str,
+        patient_location: str | None,
+    ) -> str:
+        if appointment_modality == "PRESENCIAL":
+            return "Cali"
+
+        normalized_location = self._normalize_patient_text(patient_location)
+        if normalized_location is None:
+            raise service_exceptions.InvalidStateError(
+                "missing required patient data: patient_location; ask only for the patient's location now"
+            )
+        return normalized_location
+
     def _to_summary_dto(
         self,
         request: scheduling_request_entity.SchedulingRequest,
@@ -377,6 +729,13 @@ class SchedulingService:
             patient_preference_note=request.patient_preference_note,
             rejection_summary=request.rejection_summary,
             professional_note=request.professional_note,
+            patient_first_name=request.patient_first_name,
+            patient_last_name=request.patient_last_name,
+            patient_age=request.patient_age,
+            consultation_reason=request.consultation_reason,
+            consultation_details=request.consultation_details,
+            appointment_modality=request.appointment_modality,
+            patient_location=request.patient_location,
             slot_options_map=request.slot_options_map,
             selected_slot_id=request.selected_slot_id,
             calendar_event_id=request.calendar_event_id,

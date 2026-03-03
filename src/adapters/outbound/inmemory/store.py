@@ -283,3 +283,6 @@ class InMemoryStore:
         self.scheduling_request_ids_by_conversation = {}
         self.messages_by_conversation_id = {}
         self.processed_events = set()
+        self.whatsapp_user_by_tenant_and_id = {}
+        self.patient_by_tenant_and_wa_user = {}
+        self.blacklist_by_tenant_and_wa_user = {}

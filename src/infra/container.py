@@ -145,6 +145,9 @@ class AppContainer:
             whatsapp_provider=self.whatsapp_provider_adapter,
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
+            llm_provider=self.llm_provider_adapter,
+            agent_profile_repository=self.agent_profile_repository,
+            default_system_prompt=self.settings.default_system_prompt,
         )
 
         self.webhook_service = webhook_service.WebhookService(

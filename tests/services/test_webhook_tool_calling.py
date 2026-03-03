@@ -93,15 +93,18 @@ def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
             content="",
             function_calls=[
                 llm_dto.FunctionCallDTO(
-                    name="request_schedule_approval",
+                    name="submit_consultation_reason_for_review",
                     args={
-                        "patient_preference_note": "prefiere tarde",
+                        "patient_first_name": "Jane",
+                        "patient_last_name": "Doe",
+                        "patient_age": 29,
+                        "consultation_reason": "Ansiedad",
+                        "consultation_details": "Me cuesta dormir por ansiedad.",
                     },
                     call_id="call-1",
                 )
             ],
         ),
-        llm_dto.AgentReplyDTO(content="Perfecto, ya envié tu preferencia al profesional."),
     ]
     id_generator = fake_adapters.SequenceIdGenerator(
         ["conversation-1", "in-msg-1", "req-1", "out-msg-1"]
@@ -154,13 +157,13 @@ def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
 
     saved_requests = scheduling_repository.list_requests_by_tenant("tenant-1")
     assert len(saved_requests) == 1
-    assert saved_requests[0].status == "AWAITING_PROFESSIONAL_SLOTS"
+    assert saved_requests[0].status == "AWAITING_CONSULTATION_REVIEW"
     assert len(provider.sent_messages) == 1
-    assert "esperando su aprobacion de horarios" in provider.sent_messages[0]["text"].lower()
+    assert "dame un momento" in provider.sent_messages[0]["text"].lower()
     assert len(llm_provider.calls) == 1
 
 
-def test_webhook_waiting_professional_slots_skips_llm_and_repeats_waiting_message() -> None:
+def test_webhook_waiting_professional_slots_silently_persists_inbound_message() -> None:
     store = in_memory_store.InMemoryStore()
     conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
         store
@@ -303,9 +306,8 @@ def test_webhook_waiting_professional_slots_skips_llm_and_repeats_waiting_messag
     saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
     assert saved_request.status == "AWAITING_PROFESSIONAL_SLOTS"
-    assert len(provider.sent_messages) == 1
-    assert "esperando su aprobacion de horarios" in provider.sent_messages[0]["text"].lower()
-    assert len(llm_provider.calls) == 0
+    assert len(provider.sent_messages) == 0
+    assert len(llm_provider.calls) == 1
 
 
 def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> None:

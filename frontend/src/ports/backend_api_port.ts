@@ -54,4 +54,9 @@ export interface BackendApiPort {
     requestId: string,
     input: schedulingModel.SubmitProfessionalSlotsInput
   ): Promise<schedulingModel.SubmitProfessionalSlotsResult>;
+  resolveConsultationReview(
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.ResolveConsultationReviewInput
+  ): Promise<schedulingModel.ResolveConsultationReviewResult>;
 }

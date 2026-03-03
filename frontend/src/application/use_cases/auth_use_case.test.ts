@@ -148,6 +148,14 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async resolveConsultationReview(
+    _conversationId: string,
+    _requestId: string,
+    _input: schedulingModel.ResolveConsultationReviewInput
+  ): Promise<schedulingModel.ResolveConsultationReviewResult> {
+    throw new Error("not used");
+  }
+
   async listBlacklist(): Promise<blacklistModel.BlacklistEntry[]> {
     throw new Error("not used");
   }

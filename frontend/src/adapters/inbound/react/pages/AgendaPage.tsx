@@ -14,8 +14,13 @@ const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
 const googleCalendarConnectionQueryKey = ["google-calendar-connection"] as const;
 
 const schedulingTabs: { status: schedulingModel.SchedulingRequestStatus; label: string }[] = [
+  { status: "AWAITING_CONSULTATION_REVIEW", label: "Pendiente validar motivo" },
+  { status: "AWAITING_CONSULTATION_DETAILS", label: "Esperando más detalle" },
+  { status: "COLLECTING_PREFERENCES", label: "Recolectando preferencias" },
   { status: "AWAITING_PROFESSIONAL_SLOTS", label: "Pendientes de slots" },
   { status: "AWAITING_PATIENT_CHOICE", label: "Esperando paciente" },
+  { status: "CONSULTATION_REJECTED", label: "Motivo rechazado" },
+  { status: "CANCELLED", label: "Canceladas" },
   { status: "BOOKED", label: "Agendadas" },
   { status: "HUMAN_HANDOFF", label: "Human handoff" }
 ];
@@ -95,7 +100,7 @@ export function AgendaPage() {
   });
 
   const [activeTab, setActiveTab] = reactModule.useState<schedulingModel.SchedulingRequestStatus>(
-    "AWAITING_PROFESSIONAL_SLOTS"
+    "AWAITING_CONSULTATION_REVIEW"
   );
   const [selectedRequestId, setSelectedRequestId] = reactModule.useState<string | null>(null);
   const [visibleMonth, setVisibleMonth] = reactModule.useState({
@@ -110,6 +115,9 @@ export function AgendaPage() {
     Record<string, schedulingModel.ProfessionalSlotInput[]>
   >({});
   const [professionalNotesByRequestId, setProfessionalNotesByRequestId] = reactModule.useState<
+    Record<string, string>
+  >({});
+  const [reviewNotesByRequestId, setReviewNotesByRequestId] = reactModule.useState<
     Record<string, string>
   >({});
   const [localSubmitErrorMessage, setLocalSubmitErrorMessage] = reactModule.useState<string | null>(
@@ -216,6 +224,8 @@ export function AgendaPage() {
     selectedRequest !== undefined
       ? (professionalNotesByRequestId[selectedRequest.requestId] ?? "")
       : "";
+  const currentReviewNote =
+    selectedRequest !== undefined ? (reviewNotesByRequestId[selectedRequest.requestId] ?? "") : "";
 
   const submitSlotsMutation = reactQueryModule.useMutation({
     mutationFn: (payload: {
@@ -269,7 +279,51 @@ export function AgendaPage() {
     }
   });
 
-  const submitErrorMessage = uiErrorModule.resolveUiErrorMessage([submitSlotsMutation.error]);
+  const resolveConsultationReviewMutation = reactQueryModule.useMutation({
+    mutationFn: (payload: {
+      request: schedulingModel.SchedulingRequestSummary;
+      decision: "APPROVE" | "REQUEST_MORE_INFO" | "REJECT";
+      professionalNote: string | null;
+    }) => {
+      return appContainer.schedulingUseCase.resolveConsultationReview(
+        payload.request.conversationId,
+        payload.request.requestId,
+        {
+          decision: payload.decision,
+          professionalNote: payload.professionalNote
+        }
+      );
+    },
+    onSuccess: (result, payload) => {
+      setSubmitSuccessMessage(result.assistantText);
+      setLocalSubmitErrorMessage(null);
+      queryClient.setQueryData<schedulingModel.SchedulingRequestSummary[]>(
+        schedulingRequestsQueryKey,
+        (currentValue) => {
+          if (currentValue === undefined) {
+            return currentValue;
+          }
+          return currentValue.map((request) => {
+            if (request.requestId !== payload.request.requestId) {
+              return request;
+            }
+            return {
+              ...request,
+              status: result.status,
+              updatedAt: luxonModule.DateTime.now().toISO() ?? request.updatedAt,
+              professionalNote: payload.professionalNote
+            };
+          });
+        }
+      );
+      setActiveTab(result.status);
+    }
+  });
+
+  const submitErrorMessage = uiErrorModule.resolveUiErrorMessage([
+    submitSlotsMutation.error,
+    resolveConsultationReviewMutation.error
+  ]);
   const loadingErrorMessage = uiErrorModule.resolveUiErrorMessage([
     requestsQuery.error,
     googleCalendarConnectionQuery.error,
@@ -416,15 +470,130 @@ export function AgendaPage() {
                     Preferencias del paciente
                   </h4>
                   <p className="mt-2 text-sm text-slate-700">
-                    {selectedRequest.patientPreferenceNote}
+                    {selectedRequest.patientPreferenceNote ?? "-"}
                   </p>
                   {selectedRequest.rejectionSummary !== null ? (
                     <p className="mt-2 text-xs text-slate-600">
                       <strong>Resumen rechazo:</strong> {selectedRequest.rejectionSummary}
                     </p>
                   ) : null}
+                  {selectedRequest.consultationReason !== null ? (
+                    <p className="mt-2 text-xs text-slate-600">
+                      <strong>Motivo:</strong> {selectedRequest.consultationReason}
+                    </p>
+                  ) : null}
+                  {selectedRequest.consultationDetails !== null ? (
+                    <p className="mt-2 text-xs text-slate-600">
+                      <strong>Detalles:</strong> {selectedRequest.consultationDetails}
+                    </p>
+                  ) : null}
+                  {selectedRequest.appointmentModality !== null ? (
+                    <p className="mt-2 text-xs text-slate-600">
+                      <strong>Modalidad:</strong> {selectedRequest.appointmentModality}
+                    </p>
+                  ) : null}
+                  {selectedRequest.patientLocation !== null ? (
+                    <p className="mt-2 text-xs text-slate-600">
+                      <strong>Ubicación:</strong> {selectedRequest.patientLocation}
+                    </p>
+                  ) : null}
                 </div>
               </section>
+
+              {selectedRequest.status === "AWAITING_CONSULTATION_REVIEW" ? (
+                <section className="rounded-lg border border-slate-200 p-3">
+                  <h4 className="text-sm font-semibold text-brand-ink">
+                    Resolver motivo de consulta
+                  </h4>
+                  <p className="mt-2 text-xs text-slate-600">
+                    Puedes aprobar, pedir más información o rechazar este caso.
+                  </p>
+                  <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Nota para el bot
+                    <textarea
+                      className="mt-1 min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => {
+                        if (selectedRequest === undefined) {
+                          return;
+                        }
+                        const nextValue = event.target.value;
+                        setReviewNotesByRequestId((currentValue) => ({
+                          ...currentValue,
+                          [selectedRequest.requestId]: nextValue
+                        }));
+                      }}
+                      value={currentReviewNote}
+                    />
+                  </label>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={resolveConsultationReviewMutation.isPending}
+                      onClick={() => {
+                        if (selectedRequest === undefined) {
+                          return;
+                        }
+                        setLocalSubmitErrorMessage(null);
+                        setSubmitSuccessMessage(null);
+                        resolveConsultationReviewMutation.mutate({
+                          request: selectedRequest,
+                          decision: "APPROVE",
+                          professionalNote:
+                            currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
+                        });
+                      }}
+                      type="button"
+                    >
+                      Aprobar motivo
+                    </button>
+                    <button
+                      className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={resolveConsultationReviewMutation.isPending}
+                      onClick={() => {
+                        if (selectedRequest === undefined) {
+                          return;
+                        }
+                        if (currentReviewNote.trim() === "") {
+                          setLocalSubmitErrorMessage(
+                            "Debes agregar una nota para pedir más información."
+                          );
+                          return;
+                        }
+                        setLocalSubmitErrorMessage(null);
+                        setSubmitSuccessMessage(null);
+                        resolveConsultationReviewMutation.mutate({
+                          request: selectedRequest,
+                          decision: "REQUEST_MORE_INFO",
+                          professionalNote: currentReviewNote.trim()
+                        });
+                      }}
+                      type="button"
+                    >
+                      Pedir más info
+                    </button>
+                    <button
+                      className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={resolveConsultationReviewMutation.isPending}
+                      onClick={() => {
+                        if (selectedRequest === undefined) {
+                          return;
+                        }
+                        setLocalSubmitErrorMessage(null);
+                        setSubmitSuccessMessage(null);
+                        resolveConsultationReviewMutation.mutate({
+                          request: selectedRequest,
+                          decision: "REJECT",
+                          professionalNote:
+                            currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
+                        });
+                      }}
+                      type="button"
+                    >
+                      Rechazar
+                    </button>
+                  </div>
+                </section>
+              ) : null}
 
               {selectedRequest.status === "AWAITING_PROFESSIONAL_SLOTS" ? (
                 <>
@@ -626,7 +795,7 @@ export function AgendaPage() {
                     </div>
                   </section>
                 </>
-              ) : (
+              ) : selectedRequest.status === "AWAITING_CONSULTATION_REVIEW" ? null : (
                 <section className="rounded-lg border border-slate-200 p-3">
                   <p className="text-sm text-slate-600">
                     Esta solicitud está en modo lectura para este estado.

@@ -296,27 +296,47 @@ class WebhookService:
             )
             return
 
-        waiting_professional_approval_text = (
-            self._build_waiting_for_professional_approval_message_if_needed(
-                tenant_id=tenant_id,
-                conversation_id=conversation.id,
-            )
+        waiting_state_outbound_text = self._handle_waiting_professional_state_message(
+            tenant_id=tenant_id,
+            conversation_id=conversation.id,
+            whatsapp_user_id=event.whatsapp_user_id,
+            latest_user_text=inbound_message.content,
         )
-        if waiting_professional_approval_text is not None:
+        if waiting_state_outbound_text is not None:
             self._send_assistant_message(
                 connection=connection,
                 conversation_id=conversation.id,
                 tenant_id=tenant_id,
                 whatsapp_user_id=event.whatsapp_user_id,
-                text=waiting_professional_approval_text,
+                text=waiting_state_outbound_text,
             )
             self._mark_event_processed(tenant_id, event.provider_event_id)
             logger.info(
-                "webhook.awaiting_professional_slots_reply_sent",
+                "webhook.waiting_professional_override_sent",
                 extra={
                     "event_data": app_logs.build_log_event(
-                        event_name="webhook.awaiting_professional_slots_reply_sent",
-                        message="customer message answered while waiting professional slot approval",
+                        event_name="webhook.waiting_professional_override_sent",
+                        message="customer requested explicit override while waiting professional response",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation.id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
+            return
+        if self._is_waiting_professional_state_active(
+            tenant_id=tenant_id,
+            conversation_id=conversation.id,
+        ):
+            self._mark_event_processed(tenant_id, event.provider_event_id)
+            logger.info(
+                "webhook.waiting_professional_silent_skip",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.waiting_professional_silent_skip",
+                        message="customer message persisted and skipped while waiting professional response",
                         data={
                             "tenant_id": tenant_id,
                             "conversation_id": conversation.id,
@@ -484,7 +504,13 @@ class WebhookService:
                         function_call.name == "request_schedule_approval"
                         and function_response_payload.get("status") == "AWAITING_PROFESSIONAL_SLOTS"
                     ):
-                        return self._build_waiting_for_professional_approval_message()
+                        return self._build_availability_ack_message()
+                    if (
+                        function_call.name == "submit_consultation_reason_for_review"
+                        and function_response_payload.get("status")
+                        == "AWAITING_CONSULTATION_REVIEW"
+                    ):
+                        return self._build_reason_review_ack_message()
                 continue
 
             if llm_reply.content.strip():
@@ -597,6 +623,26 @@ class WebhookService:
                     "round_number": request.round_number,
                 }
 
+            if function_call.name == "submit_consultation_reason_for_review":
+                if self._scheduling_service is None:
+                    return {"error": "scheduling service is not configured"}
+                review_input_dto = (
+                    scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO.model_validate(
+                        function_call.args
+                    )
+                )
+                request = self._scheduling_service.submit_consultation_reason_for_review(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    whatsapp_user_id=whatsapp_user_id,
+                    input_dto=review_input_dto,
+                )
+                return {
+                    "request_id": request.request_id,
+                    "status": request.status,
+                    "round_number": request.round_number,
+                }
+
             if function_call.name == "confirm_selected_slot_and_create_event":
                 if self._scheduling_service is None:
                     return {"error": "scheduling service is not configured"}
@@ -638,6 +684,24 @@ class WebhookService:
                 return {
                     "status": handoff_result["status"],
                     "control_mode": handoff_result["control_mode"],
+                }
+
+            if function_call.name == "cancel_active_scheduling_request":
+                if self._scheduling_service is None:
+                    return {"error": "scheduling service is not configured"}
+                cancel_input_dto = (
+                    scheduling_dto.CancelActiveSchedulingRequestInputDTO.model_validate(
+                        function_call.args
+                    )
+                )
+                cancelled_request = self._scheduling_service.cancel_active_request(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    input_dto=cancel_input_dto,
+                )
+                return {
+                    "request_id": cancelled_request.request_id,
+                    "status": cancelled_request.status,
                 }
 
             return {"error": f"unknown function: {function_call.name}"}
@@ -720,6 +784,7 @@ class WebhookService:
         resolved_patient_profile, patient_exists = self._resolve_patient_profile_for_confirmation(
             tenant_id=tenant_id,
             whatsapp_user_id=target_request.whatsapp_user_id,
+            request=target_request,
             tool_input_dto=tool_input_dto,
             default_patient_phone=target_request.whatsapp_user_id,
         )
@@ -860,11 +925,111 @@ class WebhookService:
         lines.append("Ejemplo: 2")
         return "\n".join(lines)
 
-    def _build_waiting_for_professional_approval_message_if_needed(
+    def _handle_waiting_professional_state_message(
         self,
         tenant_id: str,
         conversation_id: str,
+        whatsapp_user_id: str,
+        latest_user_text: str,
     ) -> str | None:
+        waiting_request = self._find_latest_waiting_professional_request(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        if waiting_request is None:
+            return None
+
+        waiting_override_function_calls = self._resolve_waiting_state_override_function_calls(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            latest_user_text=latest_user_text,
+            waiting_request_status=waiting_request.status,
+        )
+        if not waiting_override_function_calls:
+            return None
+
+        for function_call in waiting_override_function_calls:
+            function_response_payload = self._execute_function_call(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                whatsapp_user_id=whatsapp_user_id,
+                function_call=function_call,
+            )
+            if function_call.name == "handoff_to_human":
+                if function_response_payload.get("status") == "HUMAN_HANDOFF":
+                    return self._build_handoff_ack_message()
+                return None
+            if function_call.name == "cancel_active_scheduling_request":
+                if function_response_payload.get("status") == "CANCELLED":
+                    return self._build_cancel_ack_message()
+                return None
+        return None
+
+    def _resolve_waiting_state_override_function_calls(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        latest_user_text: str,
+        waiting_request_status: str,
+    ) -> list[llm_dto.FunctionCallDTO]:
+        del tenant_id
+        del conversation_id
+        llm_input = llm_dto.GenerateReplyInputDTO(
+            system_prompt=self._build_waiting_state_system_prompt(),
+            messages=[
+                llm_dto.ChatMessageDTO(
+                    role="user",
+                    content=self._build_waiting_state_user_prompt(
+                        latest_user_text=latest_user_text,
+                        waiting_request_status=waiting_request_status,
+                    ),
+                )
+            ],
+            tools=self._build_waiting_state_tool_definitions(),
+        )
+        try:
+            llm_reply = self._llm_provider.generate_reply(llm_input)
+        except service_exceptions.ExternalProviderError:
+            return []
+        return llm_reply.function_calls
+
+    def _build_waiting_state_system_prompt(self) -> str:
+        return (
+            "Clasifica si el paciente pidio explicitamente: "
+            "1) hablar con un humano, o 2) cancelar el proceso actual. "
+            "Si no hay una peticion explicita de humano o cancelacion, no llames ninguna funcion y responde vacio. "
+            "No llames otras funciones."
+        )
+
+    def _build_waiting_state_user_prompt(
+        self,
+        latest_user_text: str,
+        waiting_request_status: str,
+    ) -> str:
+        return (
+            f"Estado actual interno: {waiting_request_status}\\n"
+            f"Mensaje del paciente: {latest_user_text}\\n"
+            "Si pide explicitamente humano, llama handoff_to_human. "
+            "Si pide explicitamente cancelar, llama cancel_active_scheduling_request."
+        )
+
+    def _build_handoff_ack_message(self) -> str:
+        return "Claro, te comunico con una persona de nuestro equipo."
+
+    def _build_cancel_ack_message(self) -> str:
+        return "Listo, cancelé este proceso. Si quieres retomarlo más adelante, te ayudo por aquí."
+
+    def _build_reason_review_ack_message(self) -> str:
+        return "Gracias por compartir la información. Dame un momento y te ayudo a continuar."
+
+    def _build_availability_ack_message(self) -> str:
+        return "Perfecto. Dame un momento y te comparto opciones de horario."
+
+    def _find_latest_waiting_professional_request(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO | None:
         if self._scheduling_service is None:
             return None
 
@@ -873,14 +1038,21 @@ class WebhookService:
             conversation_id=conversation_id,
         )
         for request in request_list.items:
-            if request.status == "AWAITING_PROFESSIONAL_SLOTS":
-                return self._build_waiting_for_professional_approval_message()
+            if request.status in ("AWAITING_CONSULTATION_REVIEW", "AWAITING_PROFESSIONAL_SLOTS"):
+                return request
         return None
 
-    def _build_waiting_for_professional_approval_message(self) -> str:
+    def _is_waiting_professional_state_active(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> bool:
         return (
-            "Ya envie tu solicitud al profesional y estoy esperando su aprobacion de horarios.\n\n"
-            "En cuanto me comparta opciones, te las enviare por aqui para que elijas una con su numero."
+            self._find_latest_waiting_professional_request(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+            )
+            is not None
         )
 
     def _find_single_active_request_waiting_patient_choice(
@@ -908,6 +1080,7 @@ class WebhookService:
         self,
         tenant_id: str,
         whatsapp_user_id: str,
+        request: scheduling_dto.SchedulingRequestSummaryDTO,
         tool_input_dto: scheduling_dto.ConfirmSelectedSlotToolInputDTO,
         default_patient_phone: str | None,
     ) -> tuple[ResolvedPatientProfile, bool]:
@@ -935,13 +1108,19 @@ class WebhookService:
                 True,
             )
 
-        patient_first_name = self._normalize_patient_text(tool_input_dto.patient_first_name)
+        patient_first_name = self._coalesce_patient_text(
+            primary=request.patient_first_name,
+            fallback=tool_input_dto.patient_first_name,
+        )
         if patient_first_name is None:
             raise service_exceptions.InvalidStateError(
                 "missing required patient data: patient_first_name; ask only for the patient's first name now"
             )
 
-        patient_last_name = self._normalize_patient_text(tool_input_dto.patient_last_name)
+        patient_last_name = self._coalesce_patient_text(
+            primary=request.patient_last_name,
+            fallback=tool_input_dto.patient_last_name,
+        )
         if patient_last_name is None:
             raise service_exceptions.InvalidStateError(
                 "missing required patient data: patient_last_name; ask only for the patient's last name now"
@@ -966,7 +1145,10 @@ class WebhookService:
                 "missing required patient data: patient_phone; ask only for the patient's phone number now"
             )
 
-        patient_age = self._normalize_patient_age(tool_input_dto.patient_age)
+        patient_age = self._coalesce_patient_age(
+            primary=request.patient_age,
+            fallback=tool_input_dto.patient_age,
+        )
         if patient_age is None:
             raise service_exceptions.InvalidStateError(
                 "missing required patient data: patient_age; ask only for the patient's age now"
@@ -976,13 +1158,19 @@ class WebhookService:
                 "patient_age is invalid; ask only for age as a whole number between 1 and 120"
             )
 
-        consultation_reason = self._normalize_patient_text(tool_input_dto.consultation_reason)
+        consultation_reason = self._coalesce_patient_text(
+            primary=request.consultation_reason,
+            fallback=tool_input_dto.consultation_reason,
+        )
         if consultation_reason is None:
             raise service_exceptions.InvalidStateError(
                 "missing required patient data: consultation_reason; ask only for the consultation reason now"
             )
 
-        patient_location = self._normalize_patient_text(tool_input_dto.patient_location)
+        patient_location = self._coalesce_patient_text(
+            primary=request.patient_location,
+            fallback=tool_input_dto.patient_location,
+        )
         if patient_location is None:
             raise service_exceptions.InvalidStateError(
                 "missing required patient data: patient_location; ask only for the patient's location now"
@@ -1114,6 +1302,21 @@ class WebhookService:
                 )
             },
         )
+
+    def _coalesce_patient_text(self, primary: str | None, fallback: str | None) -> str | None:
+        normalized_primary = self._normalize_patient_text(primary)
+        if normalized_primary is not None:
+            return normalized_primary
+        return self._normalize_patient_text(fallback)
+
+    def _coalesce_patient_age(
+        self,
+        primary: int | None,
+        fallback: int | str | None,
+    ) -> int | None:
+        if primary is not None:
+            return primary
+        return self._normalize_patient_age(fallback)
 
     def _normalize_patient_text(self, value: str | None) -> str | None:
         if value is None:
@@ -1267,17 +1470,82 @@ class WebhookService:
         normalized_message = error_message.lower()
         return "empty content" in normalized_message
 
-    def _build_tool_definitions(self) -> list[llm_dto.FunctionDeclarationDTO]:
+    def _build_waiting_state_tool_definitions(self) -> list[llm_dto.FunctionDeclarationDTO]:
         return [
             llm_dto.FunctionDeclarationDTO(
-                name="request_schedule_approval",
+                name="handoff_to_human",
                 description=(
-                    "Crea o reintenta la busqueda de disponibilidad de agenda segun las preferencias del paciente."
+                    "Pasa la conversacion a modo humano solo cuando el paciente solicita "
+                    "explicitamente la intervencion de una persona humana."
                 ),
                 parameters_json_schema={
                     "type": "object",
                     "properties": {
-                        "request_kind": {"type": "string", "enum": ["INITIAL", "RETRY"]},
+                        "reason": {"type": "string"},
+                        "summary_for_professional": {"type": "string"},
+                    },
+                    "required": ["reason", "summary_for_professional"],
+                    "additionalProperties": False,
+                },
+            ),
+            llm_dto.FunctionDeclarationDTO(
+                name="cancel_active_scheduling_request",
+                description=(
+                    "Cancela la solicitud de agendamiento activa solo cuando el paciente lo pide "
+                    "explicitamente."
+                ),
+                parameters_json_schema={
+                    "type": "object",
+                    "properties": {
+                        "reason": {"type": "string"},
+                    },
+                    "required": [],
+                    "additionalProperties": False,
+                },
+            ),
+        ]
+
+    def _build_tool_definitions(self) -> list[llm_dto.FunctionDeclarationDTO]:
+        return [
+            llm_dto.FunctionDeclarationDTO(
+                name="submit_consultation_reason_for_review",
+                description=(
+                    "Recolecta y envia para revision el motivo de consulta con detalles basicos. "
+                    "Antes de llamar esta tool, recolecta paso a paso: patient_first_name, "
+                    "patient_last_name, patient_age, consultation_reason y consultation_details. "
+                    "No pidas todos los datos en un solo mensaje."
+                ),
+                parameters_json_schema={
+                    "type": "object",
+                    "properties": {
+                        "request_id": {"type": "string"},
+                        "patient_first_name": {"type": "string"},
+                        "patient_last_name": {"type": "string"},
+                        "patient_age": {"type": ["integer", "string"]},
+                        "consultation_reason": {"type": "string"},
+                        "consultation_details": {"type": "string"},
+                    },
+                    "required": [],
+                    "additionalProperties": False,
+                },
+            ),
+            llm_dto.FunctionDeclarationDTO(
+                name="request_schedule_approval",
+                description=(
+                    "Solicita disponibilidad de agenda despues de que el motivo de consulta ya fue aprobado. "
+                    "Recolecta la modalidad (PRESENCIAL o VIRTUAL) y la preferencia de horario del paciente. "
+                    "Si la modalidad es VIRTUAL debes incluir patient_location. "
+                    "Si la modalidad es PRESENCIAL, patient_location se puede omitir porque sera Cali."
+                ),
+                parameters_json_schema={
+                    "type": "object",
+                    "properties": {
+                        "request_id": {"type": "string"},
+                        "appointment_modality": {
+                            "type": "string",
+                            "enum": ["PRESENCIAL", "VIRTUAL"],
+                        },
+                        "patient_location": {"type": "string"},
                         "patient_preference_note": {"type": "string"},
                         "hard_constraints": {
                             "type": "array",
@@ -1285,7 +1553,7 @@ class WebhookService:
                         },
                         "rejection_summary": {"type": ["string", "null"]},
                     },
-                    "required": ["patient_preference_note"],
+                    "required": ["appointment_modality", "patient_preference_note"],
                     "additionalProperties": False,
                 },
             ),
@@ -1294,8 +1562,8 @@ class WebhookService:
                 description=(
                     "Confirma un horario elegido por el paciente y crea el evento en Google Calendar. "
                     "Si el perfil del paciente ya existe en contexto, reutilizalo y no repitas preguntas innecesarias. "
-                    "Si el perfil no existe, antes de llamar esta tool recolecta paso a paso y en mensajes separados: "
-                    "patient_first_name, patient_last_name, patient_email, patient_phone, patient_age, consultation_reason y patient_location. "
+                    "Si el perfil no existe, antes de llamar esta tool recolecta en mensajes separados "
+                    "solo los datos faltantes para confirmar la cita, especialmente patient_email y patient_phone. "
                     "patient_phone puede tomarse del numero de WhatsApp si ya esta disponible. "
                     "No pidas todos los datos en un solo mensaje. "
                     "La eleccion del horario se hace por numero de opcion y el backend persiste esa seleccion. "
@@ -1311,8 +1579,6 @@ class WebhookService:
                         "patient_email": {"type": "string"},
                         "patient_phone": {"type": "string"},
                         "patient_age": {"type": ["integer", "string"]},
-                        "consultation_reason": {"type": "string"},
-                        "patient_location": {"type": "string"},
                     },
                     "required": [],
                     "additionalProperties": False,
@@ -1331,6 +1597,21 @@ class WebhookService:
                         "summary_for_professional": {"type": "string"},
                     },
                     "required": ["reason", "summary_for_professional"],
+                    "additionalProperties": False,
+                },
+            ),
+            llm_dto.FunctionDeclarationDTO(
+                name="cancel_active_scheduling_request",
+                description=(
+                    "Cancela la solicitud de agendamiento activa solo cuando el paciente lo pide "
+                    "explicitamente."
+                ),
+                parameters_json_schema={
+                    "type": "object",
+                    "properties": {
+                        "reason": {"type": "string"},
+                    },
+                    "required": [],
                     "additionalProperties": False,
                 },
             ),

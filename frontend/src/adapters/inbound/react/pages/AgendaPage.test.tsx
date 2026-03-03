@@ -80,6 +80,13 @@ vitestModule.describe("AgendaPage", () => {
         patientPreferenceNote: "prefiere tarde",
         rejectionSummary: null,
         professionalNote: null,
+        patientFirstName: null,
+        patientLastName: null,
+        patientAge: null,
+        consultationReason: null,
+        consultationDetails: null,
+        appointmentModality: null,
+        patientLocation: null,
         slotOptionsMap: {},
         selectedSlotId: null,
         calendarEventId: null,
@@ -119,6 +126,12 @@ vitestModule.describe("AgendaPage", () => {
     };
 
     renderAgendaPage(container);
+
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", {
+        name: /Pendientes de slots/
+      })
+    );
 
     await testingLibraryReactModule.waitFor(() => {
       expect(testingLibraryReactModule.screen.getByText("req-1")).toBeInTheDocument();
