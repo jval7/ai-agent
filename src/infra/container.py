@@ -1,17 +1,19 @@
+import src.adapters.outbound.firestore.agent_profile_repository_adapter as agent_profile_repository_adapter
+import src.adapters.outbound.firestore.blacklist_repository_adapter as blacklist_repository_adapter
+import src.adapters.outbound.firestore.client_factory as firestore_client_factory
+import src.adapters.outbound.firestore.conversation_repository_adapter as conversation_repository_adapter
+import src.adapters.outbound.firestore.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
+import src.adapters.outbound.firestore.memory_admin_adapter as memory_admin_adapter
+import src.adapters.outbound.firestore.patient_repository_adapter as patient_repository_adapter
+import src.adapters.outbound.firestore.processed_webhook_event_repository_adapter as processed_webhook_event_repository_adapter
+import src.adapters.outbound.firestore.refresh_token_repository_adapter as refresh_token_repository_adapter
+import src.adapters.outbound.firestore.scheduling_repository_adapter as scheduling_repository_adapter
+import src.adapters.outbound.firestore.tenant_repository_adapter as tenant_repository_adapter
+import src.adapters.outbound.firestore.user_repository_adapter as user_repository_adapter
+import src.adapters.outbound.firestore.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.adapters.outbound.google_calendar.google_calendar_provider_adapter as google_calendar_provider_adapter
-import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
-import src.adapters.outbound.inmemory.blacklist_repository_adapter as blacklist_repository_adapter
-import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
-import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
-import src.adapters.outbound.inmemory.memory_admin_adapter as memory_admin_adapter
-import src.adapters.outbound.inmemory.patient_repository_adapter as patient_repository_adapter
-import src.adapters.outbound.inmemory.processed_webhook_event_repository_adapter as processed_webhook_event_repository_adapter
-import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
-import src.adapters.outbound.inmemory.store as in_memory_store
-import src.adapters.outbound.inmemory.tenant_repository_adapter as tenant_repository_adapter
-import src.adapters.outbound.inmemory.user_repository_adapter as user_repository_adapter
-import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.adapters.outbound.llm_gemini.gemini_llm_provider_adapter as gemini_llm_provider_adapter
+import src.adapters.outbound.secret_manager.app_config_secret_loader_adapter as app_config_secret_loader_adapter
 import src.adapters.outbound.security.jwt_provider_adapter as jwt_provider_adapter
 import src.adapters.outbound.security.password_hasher_adapter as password_hasher_adapter
 import src.adapters.outbound.whatsapp_meta.meta_whatsapp_provider_adapter as meta_whatsapp_provider_adapter
@@ -35,44 +37,69 @@ import src.services.use_cases.whatsapp_onboarding_service as whatsapp_onboarding
 
 class AppContainer:
     def __init__(self) -> None:
-        self.settings = app_settings.Settings.from_env()
+        self.app_config_secret_loader = (
+            app_config_secret_loader_adapter.SecretManagerAppConfigLoaderAdapter()
+        )
+        loaded_app_config_secret = self.app_config_secret_loader.load()
+        self.settings = app_settings.Settings.from_secret_json(
+            raw_app_config_json=loaded_app_config_secret.secret_json,
+            adc_project_id=loaded_app_config_secret.project_id,
+        )
+        if not self.settings.google_cloud_project_id:
+            raise ValueError("GOOGLE_CLOUD_PROJECT must be configured")
 
         self.clock_adapter = system_adapters.SystemClockAdapter()
         self.id_generator_adapter = system_adapters.UuidIdGeneratorAdapter()
+        self.firestore_client = firestore_client_factory.build_client(
+            project_id=self.settings.google_cloud_project_id,
+            database_id=self.settings.firestore_database_id,
+        )
 
-        self.store = in_memory_store.InMemoryStore(
-            persistence_file_path=self.settings.memory_json_file_path
+        self.tenant_repository = tenant_repository_adapter.FirestoreTenantRepositoryAdapter(
+            self.firestore_client
         )
-        self.tenant_repository = tenant_repository_adapter.InMemoryTenantRepositoryAdapter(
-            self.store
+        self.user_repository = user_repository_adapter.FirestoreUserRepositoryAdapter(
+            self.firestore_client
         )
-        self.user_repository = user_repository_adapter.InMemoryUserRepositoryAdapter(self.store)
         self.agent_profile_repository = (
-            agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(self.store)
-        )
-        self.whatsapp_connection_repository = (
-            whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(
-                self.store
+            agent_profile_repository_adapter.FirestoreAgentProfileRepositoryAdapter(
+                self.firestore_client
             )
         )
-        self.google_calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-            self.store
+        self.whatsapp_connection_repository = (
+            whatsapp_connection_repository_adapter.FirestoreWhatsappConnectionRepositoryAdapter(
+                self.firestore_client
+            )
+        )
+        self.google_calendar_connection_repository = google_calendar_connection_repository_adapter.FirestoreGoogleCalendarConnectionRepositoryAdapter(
+            self.firestore_client
         )
         self.conversation_repository = (
-            conversation_repository_adapter.InMemoryConversationRepositoryAdapter(self.store)
+            conversation_repository_adapter.FirestoreConversationRepositoryAdapter(
+                self.firestore_client
+            )
         )
         self.scheduling_repository = (
-            scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(self.store)
+            scheduling_repository_adapter.FirestoreSchedulingRepositoryAdapter(
+                self.firestore_client
+            )
         )
-        self.processed_webhook_event_repository = processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            self.store
+        self.processed_webhook_event_repository = processed_webhook_event_repository_adapter.FirestoreProcessedWebhookEventRepositoryAdapter(
+            self.firestore_client
         )
-        self.blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(
-            self.store
+        self.blacklist_repository = (
+            blacklist_repository_adapter.FirestoreBlacklistRepositoryAdapter(self.firestore_client)
         )
-        self.memory_admin_adapter = memory_admin_adapter.InMemoryMemoryAdminAdapter(self.store)
-        self.patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(
-            self.store
+        self.memory_admin_adapter = memory_admin_adapter.FirestoreMemoryAdminAdapter(
+            self.firestore_client
+        )
+        self.patient_repository = patient_repository_adapter.FirestorePatientRepositoryAdapter(
+            self.firestore_client
+        )
+        self.refresh_token_repository = (
+            refresh_token_repository_adapter.FirestoreRefreshTokenRepositoryAdapter(
+                self.firestore_client
+            )
         )
 
         self.password_hasher_adapter = password_hasher_adapter.Pbkdf2PasswordHasherAdapter()
@@ -99,7 +126,7 @@ class AppContainer:
             tags=self.settings.langsmith_tags,
         )
         self.llm_provider_adapter = gemini_llm_provider_adapter.GeminiLlmProviderAdapter(
-            project_id=self.settings.gemini_project_id,
+            project_id=self.settings.google_cloud_project_id,
             location=self.settings.gemini_location,
             model=self.settings.gemini_model,
             max_output_tokens=self.settings.gemini_max_output_tokens,
@@ -112,6 +139,7 @@ class AppContainer:
             agent_profile_repository=self.agent_profile_repository,
             password_hasher=self.password_hasher_adapter,
             jwt_provider=self.jwt_provider_adapter,
+            refresh_token_repository=self.refresh_token_repository,
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
             default_system_prompt=self.settings.default_system_prompt,

@@ -851,6 +851,19 @@ def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> 
     assert created_patient.email == "jane@example.com"
     assert len(provider.sent_messages) == 1
     assert "confirmada" in provider.sent_messages[0]["text"]
+    active_messages = conversation_repository.list_messages("tenant-1", "conversation-1")
+    assert active_messages == []
+    saved_conversation = conversation_repository.get_conversation_by_id(
+        "tenant-1",
+        "conversation-1",
+    )
+    assert saved_conversation is not None
+    assert len(saved_conversation.subsessions) == 1
+    archived_subsession = saved_conversation.subsessions[0]
+    assert len(archived_subsession.messages) == 2
+    assert archived_subsession.messages[0].id == "in-msg-1"
+    assert archived_subsession.messages[1].id == "out-msg-1"
+    assert "confirmada" in archived_subsession.messages[1].content.lower()
 
 
 def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() -> None:

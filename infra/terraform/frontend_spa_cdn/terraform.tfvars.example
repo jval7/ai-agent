@@ -1,0 +1,15 @@
+project_id = "ai-agent-calendar-2603011621"
+
+# Modo rapido local por IP (sin dominio/certificado):
+enable_https         = false
+enable_http_redirect = false
+frontend_domains     = []
+
+# Si no lo defines, usa "<project_id>-frontend-spa"
+bucket_name            = null
+bucket_location        = "US"
+resource_name_prefix   = "ai-agent-frontend"
+enable_cdn             = true
+force_destroy_bucket   = false
+index_document         = "index.html"
+error_document         = "index.html"

@@ -199,12 +199,23 @@ Este documento describe qué hace cada endpoint del backend.
 
 ### `POST /v1/dev/memory/reset`
 - Auth: sí
-- Qué hace: limpia memoria en caliente del proceso (tenants, users, conversaciones, eventos) y persiste snapshot vacío.
+- Qué hace: limpia estado en Firestore (tenants, users, conversaciones, eventos, índices y refresh tokens).
 - Uso: desarrollo local para resetear estado sin reiniciar la API.
 - Response body:
 ```json
 {
   "status": "reset"
+}
+```
+
+### `POST /v1/dev/memory/chat/reset`
+- Auth: sí
+- Qué hace: limpia solo estado de chat en Firestore (conversaciones, mensajes, scheduling, blacklist, pacientes, deduplicación de eventos).
+- Uso: desarrollo local para reiniciar conversación sin borrar configuración base del tenant.
+- Response body:
+```json
+{
+  "status": "chat_reset"
 }
 ```
 

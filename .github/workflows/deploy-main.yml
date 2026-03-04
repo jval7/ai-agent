@@ -1,0 +1,143 @@
+name: Deploy Backend to GCP (main)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
+env:
+  TF_DIR: infra/terraform/runtime_deploy
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate required secrets
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+          ARTIFACT_REPOSITORY: ${{ secrets.GCP_ARTIFACT_REPOSITORY }}
+          WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          WIF_SERVICE_ACCOUNT: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+          RUNTIME_SERVICE_ACCOUNT_EMAIL: ${{ secrets.RUNTIME_SERVICE_ACCOUNT_EMAIL }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+        run: |
+          set -euo pipefail
+          required=(
+            PROJECT_ID
+            REGION
+            ARTIFACT_REPOSITORY
+            WIF_PROVIDER
+            WIF_SERVICE_ACCOUNT
+            RUNTIME_SERVICE_ACCOUNT_EMAIL
+            TF_STATE_BUCKET
+          )
+          for key in "${required[@]}"; do
+            if [ -z "${!key:-}" ]; then
+              echo "Missing required GitHub secret: $key" >&2
+              exit 1
+            fi
+          done
+
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configure Docker auth for Artifact Registry
+        env:
+          REGION: ${{ secrets.GCP_REGION }}
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_STATE_PREFIX: ${{ secrets.TF_STATE_PREFIX }}
+        run: |
+          set -euo pipefail
+          PREFIX="${TF_STATE_PREFIX:-ai-agent/runtime_deploy}"
+          terraform init -input=false -reconfigure \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="prefix=${PREFIX}"
+
+      - name: Terraform bootstrap Artifact Registry
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+          ARTIFACT_REPOSITORY: ${{ secrets.GCP_ARTIFACT_REPOSITORY }}
+          RUNTIME_SERVICE_ACCOUNT_EMAIL: ${{ secrets.RUNTIME_SERVICE_ACCOUNT_EMAIL }}
+          CLOUD_RUN_SERVICE_NAME: ${{ secrets.CLOUD_RUN_SERVICE_NAME }}
+        run: |
+          set -euo pipefail
+          SERVICE_NAME="${CLOUD_RUN_SERVICE_NAME:-ai-agent-backend}"
+          terraform apply -auto-approve -input=false \
+            -target=google_project_service.serviceusage \
+            -target=google_project_service.apis \
+            -target=google_artifact_registry_repository.backend \
+            -var="project_id=${PROJECT_ID}" \
+            -var="region=${REGION}" \
+            -var="artifact_registry_location=${REGION}" \
+            -var="artifact_repository_id=${ARTIFACT_REPOSITORY}" \
+            -var="cloud_run_service_name=${SERVICE_NAME}" \
+            -var="runtime_service_account_email=${RUNTIME_SERVICE_ACCOUNT_EMAIL}" \
+            -var="container_image=bootstrap/placeholder:latest"
+
+      - name: Build and push backend image
+        id: build
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+          ARTIFACT_REPOSITORY: ${{ secrets.GCP_ARTIFACT_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}/backend:${GITHUB_SHA}"
+          docker build -f Dockerfile.backend -t "${IMAGE_URI}" .
+          docker push "${IMAGE_URI}"
+          echo "image_uri=${IMAGE_URI}" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ secrets.GCP_REGION }}
+          ARTIFACT_REPOSITORY: ${{ secrets.GCP_ARTIFACT_REPOSITORY }}
+          RUNTIME_SERVICE_ACCOUNT_EMAIL: ${{ secrets.RUNTIME_SERVICE_ACCOUNT_EMAIL }}
+          CLOUD_RUN_SERVICE_NAME: ${{ secrets.CLOUD_RUN_SERVICE_NAME }}
+          IMAGE_URI: ${{ steps.build.outputs.image_uri }}
+          TF_VAR_app_env_vars: ${{ vars.TF_VAR_APP_ENV_VARS_JSON }}
+          TF_VAR_secret_env_vars: ${{ secrets.TF_VAR_SECRET_ENV_VARS_JSON }}
+        run: |
+          set -euo pipefail
+          SERVICE_NAME="${CLOUD_RUN_SERVICE_NAME:-ai-agent-backend}"
+          terraform apply -auto-approve -input=false \
+            -var="project_id=${PROJECT_ID}" \
+            -var="region=${REGION}" \
+            -var="artifact_registry_location=${REGION}" \
+            -var="artifact_repository_id=${ARTIFACT_REPOSITORY}" \
+            -var="cloud_run_service_name=${SERVICE_NAME}" \
+            -var="runtime_service_account_email=${RUNTIME_SERVICE_ACCOUNT_EMAIL}" \
+            -var="container_image=${IMAGE_URI}"

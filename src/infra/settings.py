@@ -1,4 +1,4 @@
-import os
+import json
 
 import pydantic
 
@@ -9,7 +9,7 @@ class Settings(pydantic.BaseModel):
     jwt_refresh_ttl_seconds: int
     default_system_prompt: str
     conversation_context_messages: int
-    memory_json_file_path: str | None
+    firestore_database_id: str
     cors_allowed_origins: list[str]
     frontend_app_base_url: str
     enable_dev_endpoints: bool
@@ -22,7 +22,7 @@ class Settings(pydantic.BaseModel):
     google_oauth_client_id: str
     google_oauth_client_secret: str
     google_oauth_redirect_uri: str
-    gemini_project_id: str
+    google_cloud_project_id: str
     gemini_location: str
     gemini_model: str
     gemini_max_output_tokens: int
@@ -37,18 +37,27 @@ class Settings(pydantic.BaseModel):
     log_include_request_summary: bool
 
     @classmethod
-    def from_env(cls) -> "Settings":
-        memory_json_file_path = os.getenv("MEMORY_JSON_FILE_PATH", "data/memory_store.json")
-        normalized_memory_json_file_path = memory_json_file_path.strip() or None
-        cors_allowed_origins = cls._parse_csv_env(
-            os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
+    def from_secret_json(cls, raw_app_config_json: str, adc_project_id: str) -> "Settings":
+        app_config_overrides = cls._parse_app_config_overrides(raw_app_config_json)
+        resolved_project_id = cls._resolve_google_cloud_project_id(
+            adc_project_id=adc_project_id,
+            app_config_overrides=app_config_overrides,
         )
+        cors_allowed_origins = cls._parse_csv_env(
+            app_config_overrides.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
+        )
+        firestore_database_id = app_config_overrides.get(
+            "FIRESTORE_DATABASE_ID", "(default)"
+        ).strip()
+        normalized_firestore_database_id = firestore_database_id or "(default)"
 
         return cls(
-            jwt_secret=os.getenv("JWT_SECRET", "dev-secret-change-me"),
-            jwt_access_ttl_seconds=int(os.getenv("JWT_ACCESS_TTL_SECONDS", "1800")),
-            jwt_refresh_ttl_seconds=int(os.getenv("JWT_REFRESH_TTL_SECONDS", "2592000")),
-            default_system_prompt=os.getenv(
+            jwt_secret=app_config_overrides.get("JWT_SECRET", "dev-secret-change-me"),
+            jwt_access_ttl_seconds=int(app_config_overrides.get("JWT_ACCESS_TTL_SECONDS", "1800")),
+            jwt_refresh_ttl_seconds=int(
+                app_config_overrides.get("JWT_REFRESH_TTL_SECONDS", "2592000")
+            ),
+            default_system_prompt=app_config_overrides.get(
                 "DEFAULT_SYSTEM_PROMPT",
                 (
                     "Eres un asistente de WhatsApp para agendar sesiones. "
@@ -58,53 +67,150 @@ class Settings(pydantic.BaseModel):
                     "Si necesitas tiempo, usa frases naturales como: 'Dame un momento y reviso disponibilidad'."
                 ),
             ),
-            conversation_context_messages=int(os.getenv("CONTEXT_MESSAGE_LIMIT", "12")),
-            memory_json_file_path=normalized_memory_json_file_path,
+            conversation_context_messages=int(
+                app_config_overrides.get("CONTEXT_MESSAGE_LIMIT", "12")
+            ),
+            firestore_database_id=normalized_firestore_database_id,
             cors_allowed_origins=cors_allowed_origins,
-            frontend_app_base_url=os.getenv("FRONTEND_APP_BASE_URL", "http://localhost:5173"),
-            enable_dev_endpoints=os.getenv("ENABLE_DEV_ENDPOINTS", "true").lower() == "true",
-            meta_app_id=os.getenv("META_APP_ID", ""),
-            meta_app_secret=os.getenv("META_APP_SECRET", ""),
-            meta_redirect_uri=os.getenv("META_REDIRECT_URI", ""),
-            meta_webhook_verify_token=os.getenv(
+            frontend_app_base_url=app_config_overrides.get(
+                "FRONTEND_APP_BASE_URL",
+                "http://localhost:5173",
+            ),
+            enable_dev_endpoints=app_config_overrides.get("ENABLE_DEV_ENDPOINTS", "true").lower()
+            == "true",
+            meta_app_id=app_config_overrides.get("META_APP_ID", ""),
+            meta_app_secret=app_config_overrides.get("META_APP_SECRET", ""),
+            meta_redirect_uri=app_config_overrides.get("META_REDIRECT_URI", ""),
+            meta_webhook_verify_token=app_config_overrides.get(
                 "META_WEBHOOK_VERIFY_TOKEN",
                 "dev-meta-webhook-verify-token",
             ),
-            meta_phone_registration_pin=os.getenv("META_PHONE_REGISTRATION_PIN", ""),
-            meta_api_version=os.getenv("META_API_VERSION", "v23.0"),
-            google_oauth_client_id=os.getenv("GOOGLE_OAUTH_CLIENT_ID", ""),
-            google_oauth_client_secret=os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", ""),
-            google_oauth_redirect_uri=os.getenv("GOOGLE_OAUTH_REDIRECT_URI", ""),
-            gemini_project_id=os.getenv("GEMINI_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", "")),
-            gemini_location=os.getenv(
+            meta_phone_registration_pin=app_config_overrides.get("META_PHONE_REGISTRATION_PIN", ""),
+            meta_api_version=app_config_overrides.get("META_API_VERSION", "v23.0"),
+            google_oauth_client_id=app_config_overrides.get("GOOGLE_OAUTH_CLIENT_ID", ""),
+            google_oauth_client_secret=app_config_overrides.get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
+            google_oauth_redirect_uri=app_config_overrides.get("GOOGLE_OAUTH_REDIRECT_URI", ""),
+            google_cloud_project_id=resolved_project_id,
+            gemini_location=app_config_overrides.get(
                 "GEMINI_LOCATION",
-                os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                app_config_overrides.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
             ),
-            gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
-            gemini_max_output_tokens=int(os.getenv("GEMINI_MAX_OUTPUT_TOKENS", "512")),
-            langsmith_tracing_enabled=os.getenv("LANGSMITH_TRACING_ENABLED", "false").lower()
+            gemini_model=app_config_overrides.get("GEMINI_MODEL", "gemini-2.5-flash"),
+            gemini_max_output_tokens=int(
+                app_config_overrides.get("GEMINI_MAX_OUTPUT_TOKENS", "512")
+            ),
+            langsmith_tracing_enabled=app_config_overrides.get(
+                "LANGSMITH_TRACING_ENABLED",
+                "false",
+            ).lower()
             == "true",
-            langsmith_project=os.getenv("LANGSMITH_PROJECT", "ai-agent-dev"),
+            langsmith_project=app_config_overrides.get("LANGSMITH_PROJECT", "ai-agent-dev"),
             langsmith_api_key=cls._normalize_optional_text(
-                os.getenv("LANGSMITH_API_KEY", os.getenv("LANGCHAIN_API_KEY", ""))
+                app_config_overrides.get(
+                    "LANGSMITH_API_KEY",
+                    app_config_overrides.get("LANGCHAIN_API_KEY", ""),
+                )
             ),
             langsmith_endpoint=cls._normalize_optional_text(
-                os.getenv("LANGSMITH_ENDPOINT", os.getenv("LANGCHAIN_ENDPOINT", ""))
+                app_config_overrides.get(
+                    "LANGSMITH_ENDPOINT",
+                    app_config_overrides.get("LANGCHAIN_ENDPOINT", ""),
+                )
             ),
             langsmith_workspace_id=cls._normalize_optional_text(
-                os.getenv("LANGSMITH_WORKSPACE_ID", "")
+                app_config_overrides.get("LANGSMITH_WORKSPACE_ID", "")
             ),
             langsmith_environment=cls._normalize_optional_text(
-                os.getenv("LANGSMITH_ENVIRONMENT", "local")
+                app_config_overrides.get("LANGSMITH_ENVIRONMENT", "local")
             ),
-            langsmith_tags=cls._parse_csv_env(os.getenv("LANGSMITH_TAGS", "ai-agent")),
-            log_level=os.getenv("LOG_LEVEL", "INFO"),
-            log_include_request_summary=os.getenv(
+            langsmith_tags=cls._parse_csv_env(
+                app_config_overrides.get("LANGSMITH_TAGS", "ai-agent")
+            ),
+            log_level=app_config_overrides.get("LOG_LEVEL", "INFO"),
+            log_include_request_summary=app_config_overrides.get(
                 "LOG_INCLUDE_REQUEST_SUMMARY",
                 "false",
             ).lower()
             == "true",
         )
+
+    @staticmethod
+    def _resolve_google_cloud_project_id(
+        adc_project_id: str,
+        app_config_overrides: dict[str, str],
+    ) -> str:
+        project_id_from_secret = app_config_overrides.get("GOOGLE_CLOUD_PROJECT", "").strip()
+        if project_id_from_secret != "":
+            return project_id_from_secret
+
+        normalized_adc_project_id = adc_project_id.strip()
+        if normalized_adc_project_id == "":
+            raise ValueError(
+                "GOOGLE_CLOUD_PROJECT is missing in app config secret and ADC project is empty"
+            )
+        return normalized_adc_project_id
+
+    @classmethod
+    def _parse_app_config_overrides(cls, raw_app_config_json: str) -> dict[str, str]:
+        normalized_raw_app_config_json = raw_app_config_json.strip()
+        if normalized_raw_app_config_json == "":
+            return {}
+
+        try:
+            parsed_app_config = json.loads(normalized_raw_app_config_json)
+        except json.JSONDecodeError as error:
+            raise ValueError("App config secret must be valid JSON") from error
+
+        if not isinstance(parsed_app_config, dict):
+            raise ValueError("App config secret must be a JSON object")
+
+        overrides: dict[str, str] = {}
+        for key, value in parsed_app_config.items():
+            if not isinstance(key, str):
+                raise ValueError("App config secret keys must be strings")
+
+            normalized_key = key.strip()
+            if normalized_key == "":
+                raise ValueError("App config secret keys cannot be empty")
+
+            overrides[normalized_key] = cls._serialize_app_config_value(value)
+
+        return overrides
+
+    @staticmethod
+    def _serialize_app_config_value(value: object) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, str):
+            return value
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            return str(value)
+        if isinstance(value, list):
+            serialized_items: list[str] = []
+            for item in value:
+                serialized_items.append(Settings._serialize_app_config_scalar(item))
+            return ",".join(serialized_items)
+        if isinstance(value, dict):
+            return json.dumps(value, separators=(",", ":"))
+        raise ValueError("App config secret contains unsupported value type")
+
+    @staticmethod
+    def _serialize_app_config_scalar(value: object) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, str):
+            return value
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, float):
+            return str(value)
+        raise ValueError("App config secret arrays must contain scalar values")
 
     @staticmethod
     def _parse_csv_env(raw_value: str) -> list[str]:

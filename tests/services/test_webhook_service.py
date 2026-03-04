@@ -16,6 +16,7 @@ import src.domain.entities.blacklist_entry as blacklist_entry_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.services.dto.llm_dto as llm_dto
+import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.webhook_service as webhook_service
@@ -222,6 +223,36 @@ def test_process_payload_dedupes_same_event() -> None:
     messages = conversation_repository.list_messages("tenant-1", conversation.id)
     assert len(messages) == 2
     assert len(provider.sent_messages) == 1
+
+
+def test_process_payload_dedupes_same_message_id_with_different_event_id() -> None:
+    (
+        service,
+        provider,
+        _,
+        conversation_repository,
+        processed_repository,
+        _,
+    ) = build_webhook_service(["conversation-1", "in-msg-1", "out-msg-1"])
+    provider.events = [
+        build_customer_text_event(provider_event_id="evt-1", message_id="wamid-in-1"),
+    ]
+
+    service.process_payload({})
+
+    provider.events = [
+        build_customer_text_event(provider_event_id="evt-2", message_id="wamid-in-1"),
+    ]
+    service.process_payload({})
+
+    conversation = conversation_repository.get_conversation_by_whatsapp_user(
+        "tenant-1", "wa-user-1"
+    )
+    assert conversation is not None
+    messages = conversation_repository.list_messages("tenant-1", conversation.id)
+    assert len(messages) == 2
+    assert len(provider.sent_messages) == 1
+    assert processed_repository.exists("tenant-1", "evt-2")
 
 
 def test_process_payload_skips_blacklisted_contact_without_creating_conversation() -> None:
@@ -538,3 +569,39 @@ def test_process_payload_logs_ai_failure(caplog: pytest.LogCaptureFixture) -> No
     ]
     assert "webhook.ai_reply_failed" in events
     assert "webhook.ai_reply_fallback_sent" in events
+
+
+def test_compute_missing_confirmation_fields_does_not_require_phone_with_whatsapp_id() -> None:
+    service, _, _, _, _, _ = build_webhook_service(["conversation-1"])
+    request = scheduling_dto.SchedulingRequestSummaryDTO(
+        request_id="req-1",
+        conversation_id="conversation-1",
+        whatsapp_user_id="573127457050",
+        request_kind="INITIAL",
+        status="AWAITING_PATIENT_CHOICE",
+        round_number=1,
+        patient_preference_note="despues de las 4 pm",
+        rejection_summary=None,
+        professional_note=None,
+        patient_first_name="Jhon",
+        patient_last_name="Valderrama",
+        patient_age=33,
+        consultation_reason="ansiedad",
+        consultation_details=None,
+        appointment_modality="VIRTUAL",
+        patient_location="Cali",
+        slot_options_map={"1": "slot-1"},
+        selected_slot_id="slot-1",
+        calendar_event_id=None,
+        created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        slots=[],
+    )
+
+    missing_fields = service._compute_missing_confirmation_fields(
+        request=request,
+        known_patient=None,
+    )
+
+    assert "patient_email" in missing_fields
+    assert "patient_phone" not in missing_fields

@@ -43,3 +43,7 @@ class ConversationRepositoryPort(abc.ABC):
     @abc.abstractmethod
     def list_messages(self, tenant_id: str, conversation_id: str) -> list[message_entity.Message]:
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def delete_messages(self, tenant_id: str, conversation_id: str) -> None:
+        raise NotImplementedError

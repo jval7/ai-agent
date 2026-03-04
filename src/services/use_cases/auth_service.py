@@ -1,4 +1,8 @@
+import datetime
+import hashlib
+
 import src.domain.entities.agent_profile as agent_profile_entity
+import src.domain.entities.refresh_token as refresh_token_entity
 import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.user as user_entity
 import src.infra.logs as app_logs
@@ -7,6 +11,7 @@ import src.ports.clock_port as clock_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.jwt_provider_port as jwt_provider_port
 import src.ports.password_hasher_port as password_hasher_port
+import src.ports.refresh_token_repository_port as refresh_token_repository_port
 import src.ports.tenant_repository_port as tenant_repository_port
 import src.ports.user_repository_port as user_repository_port
 import src.services.constants as service_constants
@@ -24,6 +29,7 @@ class AuthService:
         agent_profile_repository: agent_profile_repository_port.AgentProfileRepositoryPort,
         password_hasher: password_hasher_port.PasswordHasherPort,
         jwt_provider: jwt_provider_port.JwtProviderPort,
+        refresh_token_repository: refresh_token_repository_port.RefreshTokenRepositoryPort,
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
         default_system_prompt: str,
@@ -35,6 +41,7 @@ class AuthService:
         self._agent_profile_repository = agent_profile_repository
         self._password_hasher = password_hasher
         self._jwt_provider = jwt_provider
+        self._refresh_token_repository = refresh_token_repository
         self._id_generator = id_generator
         self._clock = clock
         self._default_system_prompt = default_system_prompt
@@ -232,7 +239,16 @@ class AuthService:
             )
             raise service_exceptions.AuthenticationError("token tenant mismatch")
 
-        self._jwt_provider.revoke_refresh_jti(claims.jti)
+        refresh_token_hash = self._hash_refresh_token(refresh_dto.refresh_token)
+        consumed_record = self._refresh_token_repository.consume_for_rotation(
+            jti=claims.jti,
+            tenant_id=claims.tenant_id,
+            user_id=claims.sub,
+            token_hash=refresh_token_hash,
+            revoked_at=self._clock.now(),
+        )
+        if consumed_record is None:
+            raise service_exceptions.AuthenticationError("refresh token revoked")
         auth_tokens = self._issue_auth_tokens(user)
         logger.info(
             "auth.refresh.success",
@@ -253,7 +269,24 @@ class AuthService:
         claims = self._jwt_provider.decode(logout_dto.refresh_token)
         if claims.token_kind != "refresh":
             raise service_exceptions.AuthenticationError("token is not a refresh token")
-        self._jwt_provider.revoke_refresh_jti(claims.jti)
+        now_value = self._clock.now()
+        revoke_ok = self._refresh_token_repository.revoke(claims.jti, now_value)
+        if revoke_ok:
+            return
+
+        refresh_token_hash = self._hash_refresh_token(logout_dto.refresh_token)
+        expires_at = datetime.datetime.fromtimestamp(claims.exp, tz=datetime.UTC)
+        self._refresh_token_repository.create(
+            refresh_token_entity.RefreshTokenRecord(
+                jti=claims.jti,
+                user_id=claims.sub,
+                tenant_id=claims.tenant_id,
+                token_hash=refresh_token_hash,
+                expires_at=expires_at,
+                revoked_at=now_value,
+                created_at=now_value,
+            )
+        )
 
     def authenticate_access_token(self, access_token: str) -> auth_dto.TokenClaimsDTO:
         claims = self._jwt_provider.decode(access_token)
@@ -281,11 +314,26 @@ class AuthService:
         )
         access_token = self._jwt_provider.encode(access_claims)
         refresh_token = self._jwt_provider.encode(refresh_claims)
+        refresh_token_hash = self._hash_refresh_token(refresh_token)
+        now_value = self._clock.now()
+        refresh_token_record = refresh_token_entity.RefreshTokenRecord(
+            jti=refresh_claims.jti,
+            user_id=user.id,
+            tenant_id=user.tenant_id,
+            token_hash=refresh_token_hash,
+            expires_at=datetime.datetime.fromtimestamp(refresh_claims.exp, tz=datetime.UTC),
+            revoked_at=None,
+            created_at=now_value,
+        )
+        self._refresh_token_repository.create(refresh_token_record)
         return auth_dto.AuthTokensDTO(
             access_token=access_token,
             refresh_token=refresh_token,
             expires_in_seconds=self._access_ttl_seconds,
         )
+
+    def _hash_refresh_token(self, refresh_token: str) -> str:
+        return hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
 
     def _build_claims(
         self,

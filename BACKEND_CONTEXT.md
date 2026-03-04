@@ -2,7 +2,7 @@
 
 ## Estado actual
 - Backend MVP multi-tenant para atención por WhatsApp.
-- Stack: FastAPI + arquitectura hexagonal + persistencia in-memory con snapshot JSON.
+- Stack: FastAPI + arquitectura hexagonal + persistencia en Firestore.
 - Providers activos:
   - WhatsApp: Meta Cloud API.
   - LLM: Gemini en Vertex AI (`GEMINI_*`).
@@ -22,7 +22,7 @@
 - `src/entrypoints/web`: capa HTTP (routers, handlers, dependencias auth).
 - `src/services`: casos de uso y DTOs principales.
 - `src/ports`: contratos/interfaces para adapters.
-- `src/adapters/outbound`: implementaciones concretas (Meta, Gemini, seguridad, in-memory).
+- `src/adapters/outbound`: implementaciones concretas (Meta, Gemini, seguridad, Firestore, in-memory para tests).
 - `src/domain`: entidades/agregados Pydantic.
 - `src/infra`: settings + wiring en `container.py`.
 
@@ -73,9 +73,9 @@
   - si está en `AI`, genera respuesta con Gemini y envía por WhatsApp.
 
 ## Persistencia actual
-- Store in-memory compartido entre repositorios.
-- Snapshot JSON configurable con `MEMORY_JSON_FILE_PATH` (default `data/memory_store.json`).
-- Reinicio conserva estado solo si snapshot está habilitado.
+- Firestore como almacenamiento principal de estado de dominio.
+- Refresh tokens persistidos y revocados en Firestore (rotación estricta).
+- Endpoints dev (`/v1/dev/memory/reset` y `/v1/dev/memory/chat/reset`) limpian estado en Firestore.
 
 ## Logging y errores
 - Logging estructurado JSON en `stdout`.

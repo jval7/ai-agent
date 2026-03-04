@@ -17,5 +17,5 @@
 - Desactivar `GET /v1/whatsapp/dev/verify-token` fuera de dev con flag de entorno (`ENABLE_DEV_ENDPOINTS`)
 
 ## 4. Preparar despliegue
-- Mover `MEMORY_JSON_FILE_PATH` a un volumen persistente
+- Configurar Firestore en el proyecto destino (`FIRESTORE_PROJECT_ID`, ADC y permisos IAM)
 - Configurar secretos reales: `JWT_SECRET`, `META_*`, `ANTHROPIC_API_KEY`

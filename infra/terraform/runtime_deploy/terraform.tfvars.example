@@ -1,0 +1,22 @@
+project_id                    = "ai-agent-dev-12345"
+region                        = "us-central1"
+artifact_registry_location    = "us-central1"
+artifact_repository_id        = "ai-agent-backend"
+cloud_run_service_name        = "ai-agent-backend"
+runtime_service_account_email = "ai-agent-runtime@ai-agent-dev-12345.iam.gserviceaccount.com"
+
+# CI reemplaza este valor con la imagen del commit.
+container_image = "us-central1-docker.pkg.dev/ai-agent-dev-12345/ai-agent-backend/backend:manual"
+
+allow_unauthenticated = true
+min_instances         = 0
+max_instances         = 10
+container_concurrency = 40
+timeout_seconds       = 300
+cpu                   = "1"
+memory                = "512Mi"
+container_port        = 8000
+
+# Single JSON secret read directly by the app at startup.
+manage_app_config_secret         = true
+app_config_secret_bootstrap_json = "{}"

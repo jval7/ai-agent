@@ -3,7 +3,6 @@ import binascii
 import hashlib
 import hmac
 import json
-import threading
 
 import pydantic
 
@@ -17,8 +16,6 @@ class Hs256JwtProviderAdapter(jwt_provider_port.JwtProviderPort):
     def __init__(self, secret: str, clock: clock_port.ClockPort) -> None:
         self._secret_bytes = secret.encode("utf-8")
         self._clock = clock
-        self._revoked_refresh_jtis: set[str] = set()
-        self._lock = threading.RLock()
 
     def encode(self, claims: auth_dto.TokenClaimsDTO) -> str:
         header_data = {"alg": "HS256", "typ": "JWT"}
@@ -75,18 +72,7 @@ class Hs256JwtProviderAdapter(jwt_provider_port.JwtProviderPort):
         if claims.exp <= current_epoch:
             raise service_exceptions.AuthenticationError("token expired")
 
-        if claims.token_kind == "refresh" and self.is_refresh_jti_revoked(claims.jti):
-            raise service_exceptions.AuthenticationError("refresh token revoked")
-
         return claims
-
-    def revoke_refresh_jti(self, jti: str) -> None:
-        with self._lock:
-            self._revoked_refresh_jtis.add(jti)
-
-    def is_refresh_jti_revoked(self, jti: str) -> bool:
-        with self._lock:
-            return jti in self._revoked_refresh_jtis
 
     def _base64url_encode(self, value: bytes) -> str:
         return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")

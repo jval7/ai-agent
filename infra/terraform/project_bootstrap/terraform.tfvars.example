@@ -11,7 +11,28 @@ labels = {
   owner = "jhon"
 }
 
+# Firestore in same project (recommended defaults).
+enable_firestore          = true
+create_firestore_database = true
+firestore_location_id     = "nam5"
+
 enable_apis = [
   "calendar-json.googleapis.com",
   "secretmanager.googleapis.com",
 ]
+
+# OAuth secrets bootstrap (recommended hybrid style).
+# - manage_oauth_secrets=true creates the Secret Manager containers.
+# - create_oauth_secret_versions=false avoids storing secret values in tfstate.
+manage_oauth_secrets         = true
+create_oauth_secret_versions = false
+
+# Optional runtime service account that needs read access to these secrets.
+backend_service_account_email = "backend-sa@ai-agent-dev-12345.iam.gserviceaccount.com"
+
+# Only used when create_oauth_secret_versions=true.
+google_oauth_client_id     = null
+google_oauth_client_secret = null
+
+# Must match the OAuth client redirect URI configured in Google Cloud Console.
+google_oauth_redirect_uri = "http://localhost:8000/oauth/google/callback"

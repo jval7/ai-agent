@@ -4,6 +4,7 @@ import logging
 import pytest
 
 import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
+import src.adapters.outbound.inmemory.refresh_token_repository_adapter as refresh_token_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.tenant_repository_adapter as tenant_repository_adapter
 import src.adapters.outbound.inmemory.user_repository_adapter as user_repository_adapter
@@ -37,6 +38,9 @@ def build_auth_service(
     id_generator = fake_adapters.SequenceIdGenerator(id_values)
     password_hasher = password_hasher_adapter.Pbkdf2PasswordHasherAdapter()
     jwt_provider = jwt_provider_adapter.Hs256JwtProviderAdapter(secret="test-secret", clock=clock)
+    refresh_token_repository = (
+        refresh_token_repository_adapter.InMemoryRefreshTokenRepositoryAdapter()
+    )
 
     service = auth_service.AuthService(
         tenant_repository=tenant_repository,
@@ -44,6 +48,7 @@ def build_auth_service(
         agent_profile_repository=agent_profile_repository,
         password_hasher=password_hasher,
         jwt_provider=jwt_provider,
+        refresh_token_repository=refresh_token_repository,
         id_generator=id_generator,
         clock=clock,
         default_system_prompt="default-prompt",

@@ -8,7 +8,6 @@ import pydantic
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.patient as patient_entity
-import src.domain.entities.processed_webhook_event as processed_webhook_event_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.domain.entities.whatsapp_user as whatsapp_user_entity
 import src.infra.langsmith_tracer as langsmith_tracer
@@ -138,7 +137,22 @@ class WebhookService:
             },
         )
         for event in events:
-            self._process_event(event)
+            try:
+                self._process_event(event)
+            except service_exceptions.ServiceError as error:
+                self._mark_event_failed_by_phone_number(
+                    phone_number_id=event.phone_number_id,
+                    provider_event_id=event.provider_event_id,
+                    failure_reason=str(error),
+                )
+                raise
+            except ValueError as error:
+                self._mark_event_failed_by_phone_number(
+                    phone_number_id=event.phone_number_id,
+                    provider_event_id=event.provider_event_id,
+                    failure_reason=str(error),
+                )
+                raise
         return webhook_dto.WebhookEventResponseDTO(status="processed")
 
     def _process_event(self, event: webhook_dto.IncomingMessageEventDTO) -> None:
@@ -162,7 +176,12 @@ class WebhookService:
             return
 
         tenant_id = connection.tenant_id
-        if self._processed_webhook_event_repository.exists(tenant_id, event.provider_event_id):
+        event_claimed = self._processed_webhook_event_repository.claim_for_processing(
+            tenant_id=tenant_id,
+            provider_event_id=event.provider_event_id,
+            claimed_at=self._clock.now(),
+        )
+        if not event_claimed:
             logger.info(
                 "webhook.duplicate_skipped",
                 extra={
@@ -227,6 +246,26 @@ class WebhookService:
                 message_ids=[],
                 control_mode="AI",
             )
+            self._conversation_repository.save_conversation(conversation)
+
+        if self._conversation_has_provider_message_id(conversation, event.message_id):
+            self._mark_event_processed(tenant_id, event.provider_event_id)
+            logger.info(
+                "webhook.duplicate_message_skipped",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.duplicate_message_skipped",
+                        message="duplicate webhook message id skipped",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation.id,
+                            "provider_event_id": event.provider_event_id,
+                            "provider_message_id": event.message_id,
+                        },
+                    )
+                },
+            )
+            return
 
         if event.source == "OWNER_APP":
             owner_message = message_entity.Message(
@@ -421,6 +460,7 @@ class WebhookService:
             tenant_id=tenant_id,
             whatsapp_user_id=event.whatsapp_user_id,
         )
+        subsessions_count_before_ai_reply = len(conversation.subsessions)
 
         trace_inputs: dict[str, object] = {
             "tenant_id": tenant_id,
@@ -451,6 +491,11 @@ class WebhookService:
                     tenant_id=tenant_id,
                     whatsapp_user_id=event.whatsapp_user_id,
                     text=assistant_text,
+                )
+                self._archive_new_active_messages_into_latest_subsession_if_booking_occurred(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation.id,
+                    subsessions_count_before_ai_reply=subsessions_count_before_ai_reply,
                 )
             except service_exceptions.ExternalProviderError as error:
                 trace_run.set_error(str(error))
@@ -586,6 +631,64 @@ class WebhookService:
         )
         self._conversation_repository.save_conversation(latest_conversation)
         return outbound_message_provider_id
+
+    def _archive_new_active_messages_into_latest_subsession_if_booking_occurred(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        subsessions_count_before_ai_reply: int,
+    ) -> None:
+        latest_conversation = self._conversation_repository.get_conversation_by_id(
+            tenant_id,
+            conversation_id,
+        )
+        if latest_conversation is None:
+            raise service_exceptions.EntityNotFoundError("conversation not found")
+
+        if len(latest_conversation.subsessions) <= subsessions_count_before_ai_reply:
+            return
+
+        latest_subsession = latest_conversation.subsessions[-1]
+        active_messages = self._conversation_repository.list_messages(
+            tenant_id,
+            conversation_id,
+        )
+        if not active_messages:
+            return
+
+        sorted_active_messages = sorted(active_messages, key=lambda item: item.created_at)
+        existing_message_ids = {message.id for message in latest_subsession.messages}
+        appended_messages_count = 0
+        for active_message in sorted_active_messages:
+            if active_message.id in existing_message_ids:
+                continue
+            latest_subsession.messages.append(active_message.model_copy(deep=True))
+            existing_message_ids.add(active_message.id)
+            appended_messages_count += 1
+
+        latest_conversation.messages = []
+        latest_conversation.message_ids = []
+        latest_conversation.last_message_preview = None
+        latest_conversation.updated_at = self._clock.now()
+        self._conversation_repository.save_conversation(latest_conversation)
+        self._conversation_repository.delete_messages(tenant_id, conversation_id)
+        logger.info(
+            "webhook.booking_confirmation_message_archived",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="webhook.booking_confirmation_message_archived",
+                    message=(
+                        "booking confirmation message archived into latest booking subsession"
+                    ),
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "appended_messages_count": appended_messages_count,
+                        "subsessions_count": len(latest_conversation.subsessions),
+                    },
+                )
+            },
+        )
 
     def _generate_reply_with_tools(
         self,
@@ -1004,7 +1107,8 @@ class WebhookService:
             missing_fields.append("patient_location")
 
         missing_fields.append("patient_email")
-        missing_fields.append("patient_phone")
+        if self._normalize_patient_text(request.whatsapp_user_id) is None:
+            missing_fields.append("patient_phone")
         return missing_fields
 
     def _request_llm_reply_with_retry(
@@ -2423,6 +2527,20 @@ class WebhookService:
                 filtered_tool_definitions.append(tool_definition)
         return filtered_tool_definitions
 
+    def _conversation_has_provider_message_id(
+        self,
+        conversation: conversation_entity.Conversation,
+        provider_message_id: str,
+    ) -> bool:
+        for message in conversation.messages:
+            if message.provider_message_id == provider_message_id:
+                return True
+        for subsession in conversation.subsessions:
+            for message in subsession.messages:
+                if message.provider_message_id == provider_message_id:
+                    return True
+        return False
+
     def _summarize_tool_result_for_trace(
         self, result: typing.Mapping[str, object]
     ) -> dict[str, object]:
@@ -2477,9 +2595,50 @@ class WebhookService:
         return str(value)
 
     def _mark_event_processed(self, tenant_id: str, provider_event_id: str) -> None:
-        processed_event = processed_webhook_event_entity.ProcessedWebhookEvent(
-            provider_event_id=provider_event_id,
+        self._processed_webhook_event_repository.mark_processed(
             tenant_id=tenant_id,
+            provider_event_id=provider_event_id,
             processed_at=self._clock.now(),
         )
-        self._processed_webhook_event_repository.save(processed_event)
+
+    def _mark_event_failed_by_phone_number(
+        self,
+        phone_number_id: str,
+        provider_event_id: str,
+        failure_reason: str,
+    ) -> None:
+        connection = self._whatsapp_connection_repository.get_by_phone_number_id(phone_number_id)
+        if connection is None:
+            return
+        tenant_id = connection.tenant_id
+        if not self._processed_webhook_event_repository.exists(tenant_id, provider_event_id):
+            return
+        try:
+            self._processed_webhook_event_repository.mark_failed(
+                tenant_id=tenant_id,
+                provider_event_id=provider_event_id,
+                failed_at=self._clock.now(),
+                failure_reason=self._truncate_failure_reason(failure_reason),
+            )
+        except Exception:
+            logger.warning(
+                "webhook.event_failed_mark_error",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.event_failed_mark_error",
+                        message="failed to persist failed status for webhook event",
+                        data={
+                            "tenant_id": tenant_id,
+                            "provider_event_id": provider_event_id,
+                        },
+                    )
+                },
+            )
+
+    def _truncate_failure_reason(self, failure_reason: str) -> str:
+        normalized_reason = failure_reason.strip()
+        if normalized_reason == "":
+            return "unknown webhook processing error"
+        if len(normalized_reason) <= 280:
+            return normalized_reason
+        return f"{normalized_reason[:280]}..."

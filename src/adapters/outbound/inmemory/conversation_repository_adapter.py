@@ -31,8 +31,16 @@ class InMemoryConversationRepositoryAdapter(
         with self._store.lock:
             key = (conversation.tenant_id, conversation.whatsapp_user_id)
             conversation_copy = conversation.model_copy(deep=True)
+            existing_conversation = self._store.conversation_by_id.get(conversation.id)
+            if existing_conversation is not None:
+                conversation_copy.messages = [
+                    message.model_copy(deep=True) for message in existing_conversation.messages
+                ]
             self._store.conversation_by_tenant_and_wa_user[key] = conversation_copy
             self._store.conversation_by_id[conversation.id] = conversation_copy
+            self._store.messages_by_conversation_id[conversation.id] = [
+                message.model_copy(deep=True) for message in conversation_copy.messages
+            ]
             self._store.flush()
 
     def get_conversation_by_whatsapp_user(
@@ -66,15 +74,22 @@ class InMemoryConversationRepositoryAdapter(
 
     def save_message(self, message: message_entity.Message) -> None:
         with self._store.lock:
-            conversation_messages = self._store.messages_by_conversation_id.get(
-                message.conversation_id
+            conversation = self._store.conversation_by_id.get(message.conversation_id)
+            if conversation is None or conversation.tenant_id != message.tenant_id:
+                raise ValueError("conversation not found for message")
+            updated_conversation = conversation.model_copy(deep=True)
+            updated_message = message.model_copy(deep=True)
+            updated_conversation.messages.append(updated_message)
+            conversation_key = (
+                updated_conversation.tenant_id,
+                updated_conversation.whatsapp_user_id,
             )
-            if conversation_messages is None:
-                conversation_messages = []
-                self._store.messages_by_conversation_id[message.conversation_id] = (
-                    conversation_messages
-                )
-            conversation_messages.append(message.model_copy(deep=True))
+            self._store.conversation_by_id[updated_conversation.id] = updated_conversation
+            self._store.conversation_by_tenant_and_wa_user[conversation_key] = updated_conversation
+            self._store.messages_by_conversation_id[updated_conversation.id] = [
+                stored_message.model_copy(deep=True)
+                for stored_message in updated_conversation.messages
+            ]
             self._store.flush()
 
     def list_messages(self, tenant_id: str, conversation_id: str) -> list[message_entity.Message]:
@@ -82,5 +97,23 @@ class InMemoryConversationRepositoryAdapter(
             conversation = self._store.conversation_by_id.get(conversation_id)
             if conversation is None or conversation.tenant_id != tenant_id:
                 return []
+            if conversation.messages:
+                return [message.model_copy(deep=True) for message in conversation.messages]
             message_list = self._store.messages_by_conversation_id.get(conversation_id, [])
             return [message.model_copy(deep=True) for message in message_list]
+
+    def delete_messages(self, tenant_id: str, conversation_id: str) -> None:
+        with self._store.lock:
+            conversation = self._store.conversation_by_id.get(conversation_id)
+            if conversation is None or conversation.tenant_id != tenant_id:
+                return
+            updated_conversation = conversation.model_copy(deep=True)
+            updated_conversation.messages = []
+            conversation_key = (
+                updated_conversation.tenant_id,
+                updated_conversation.whatsapp_user_id,
+            )
+            self._store.conversation_by_id[updated_conversation.id] = updated_conversation
+            self._store.conversation_by_tenant_and_wa_user[conversation_key] = updated_conversation
+            self._store.messages_by_conversation_id[conversation_id] = []
+            self._store.flush()

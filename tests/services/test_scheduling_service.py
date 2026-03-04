@@ -8,6 +8,7 @@ import src.adapters.outbound.inmemory.scheduling_repository_adapter as schedulin
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
+import src.domain.entities.message as message_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.services.dto.google_calendar_dto as google_calendar_dto
 import src.services.dto.scheduling_dto as scheduling_dto
@@ -360,6 +361,75 @@ def test_confirm_selected_slot_creates_event_when_available() -> None:
     assert result.status == "BOOKED"
     assert result.calendar_event_id == "event-1"
     assert provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+
+
+def test_confirm_selected_slot_archives_active_chat_messages_into_subsession() -> None:
+    service, repository, _ = build_service(["req-1"])
+    conversation_repository = service._conversation_repository
+    conversation_repository.save_message(
+        message_entity.Message(
+            id="msg-1",
+            conversation_id="conv-1",
+            tenant_id="tenant-1",
+            direction="INBOUND",
+            role="user",
+            content="Hola, quiero una cita",
+            provider_message_id="wamid-in-1",
+            created_at=datetime.datetime(2026, 1, 1, 9, 0, tzinfo=datetime.UTC),
+        )
+    )
+    conversation_repository.save_message(
+        message_entity.Message(
+            id="msg-2",
+            conversation_id="conv-1",
+            tenant_id="tenant-1",
+            direction="OUTBOUND",
+            role="assistant",
+            content="Claro, te ayudo con eso.",
+            provider_message_id="wamid-out-1",
+            created_at=datetime.datetime(2026, 1, 1, 9, 1, tzinfo=datetime.UTC),
+        )
+    )
+    request = create_waiting_professional_slots_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "AWAITING_PATIENT_CHOICE"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="PROPOSED",
+        )
+    ]
+    repository.save_request(stored)
+
+    result = service.confirm_selected_slot_and_create_event(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
+            request_id=request.request_id,
+            slot_id="slot-1",
+            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+        ),
+    )
+
+    assert result.status == "BOOKED"
+    active_messages = conversation_repository.list_messages("tenant-1", "conv-1")
+    assert active_messages == []
+    conversation = conversation_repository.get_conversation_by_id("tenant-1", "conv-1")
+    assert conversation is not None
+    assert conversation.last_message_preview is None
+    assert conversation.message_ids == []
+    assert len(conversation.subsessions) == 1
+    archived_session = conversation.subsessions[0]
+    assert archived_session.archived_reason == "APPOINTMENT_BOOKED"
+    assert archived_session.scheduling_request_id == request.request_id
+    assert archived_session.calendar_event_id == "event-1"
+    assert len(archived_session.messages) == 2
+    assert archived_session.messages[0].content == "Hola, quiero una cita"
+    assert archived_session.messages[1].content == "Claro, te ayudo con eso."
 
 
 def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None:

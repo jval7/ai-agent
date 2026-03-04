@@ -421,12 +421,65 @@ class SchedulingService:
         request.calendar_event_id = event.event_id
         request.set_status("BOOKED", now_value)
         self._scheduling_repository.save_request(request)
+        self._archive_conversation_subsession_after_booking(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            scheduling_request_id=request.id,
+            calendar_event_id=event.event_id,
+            now_value=now_value,
+        )
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="BOOKED",
             request_id=request.id,
             selected_slot_id=selected_slot.id,
             calendar_event_id=event.event_id,
             remaining_slot_ids=[],
+        )
+
+    def _archive_conversation_subsession_after_booking(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        scheduling_request_id: str,
+        calendar_event_id: str,
+        now_value: datetime.datetime,
+    ) -> None:
+        conversation = self._conversation_repository.get_conversation_by_id(
+            tenant_id,
+            conversation_id,
+        )
+        if conversation is None:
+            raise service_exceptions.EntityNotFoundError("conversation not found")
+
+        active_messages = self._conversation_repository.list_messages(
+            tenant_id,
+            conversation_id,
+        )
+        sorted_active_messages = sorted(active_messages, key=lambda item: item.created_at)
+        conversation.archive_current_session(
+            scheduling_request_id=scheduling_request_id,
+            calendar_event_id=calendar_event_id,
+            messages=sorted_active_messages,
+            now=now_value,
+        )
+        self._conversation_repository.save_conversation(conversation)
+        self._conversation_repository.delete_messages(tenant_id, conversation_id)
+        logger.info(
+            "scheduling.subsession_archived_after_booking",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.subsession_archived_after_booking",
+                    message="conversation messages archived into subsession after booking",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "request_id": scheduling_request_id,
+                        "calendar_event_id": calendar_event_id,
+                        "archived_messages_count": len(sorted_active_messages),
+                        "subsessions_count": len(conversation.subsessions),
+                    },
+                )
+            },
         )
 
     def select_slot_for_confirmation(

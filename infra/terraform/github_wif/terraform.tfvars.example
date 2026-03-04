@@ -1,0 +1,12 @@
+project_id                  = "ai-agent-dev-12345"
+github_repository           = "your-org/ai-agent"
+github_branch               = "main"
+wif_pool_id                 = "github-actions-pool"
+wif_provider_id             = "github-provider"
+deployer_service_account_id = "github-actions-deployer"
+runtime_service_account_id  = "ai-agent-runtime"
+
+# Optional: add extra roles only if your runtime stack needs them.
+additional_deployer_project_roles = [
+  # "roles/secretmanager.admin",
+]

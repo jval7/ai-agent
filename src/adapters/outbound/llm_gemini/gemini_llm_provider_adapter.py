@@ -52,8 +52,8 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
             tags=["llm", "gemini"],
         ) as trace_run:
             if not self._project_id:
-                trace_run.set_error("GEMINI_PROJECT_ID is required")
-                raise service_exceptions.ExternalProviderError("GEMINI_PROJECT_ID is required")
+                trace_run.set_error("GOOGLE_CLOUD_PROJECT is required")
+                raise service_exceptions.ExternalProviderError("GOOGLE_CLOUD_PROJECT is required")
 
             if not self._location:
                 trace_run.set_error("GEMINI_LOCATION is required")
@@ -119,8 +119,9 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
             function_calls = self._extract_function_calls(response)
             reply_text = self._extract_reply_text(response)
             if reply_text is None and not function_calls:
-                trace_run.set_error("gemini returned empty content")
-                raise service_exceptions.ExternalProviderError("gemini returned empty content")
+                empty_content_error_message = self._build_empty_content_error_message(response)
+                trace_run.set_error(empty_content_error_message)
+                raise service_exceptions.ExternalProviderError(empty_content_error_message)
 
             trace_run.set_outputs(
                 {
@@ -334,6 +335,39 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
             call_id=call_id,
             thought_signature=self._normalize_thought_signature(raw_thought_signature),
         )
+
+    def _build_empty_content_error_message(
+        self,
+        response: genai_types.GenerateContentResponse,
+    ) -> str:
+        error_parts: list[str] = ["gemini returned empty content"]
+
+        response_id = response.response_id
+        if isinstance(response_id, str) and response_id.strip():
+            error_parts.append(f"response_id={response_id.strip()}")
+
+        candidate_count = 0
+        first_candidate = None
+        if response.candidates:
+            candidate_count = len(response.candidates)
+            first_candidate = response.candidates[0]
+        error_parts.append(f"candidates={candidate_count}")
+
+        if first_candidate is not None:
+            finish_reason = first_candidate.finish_reason
+            if finish_reason is not None:
+                error_parts.append(f"finish_reason={finish_reason!s}")
+            finish_message = first_candidate.finish_message
+            if isinstance(finish_message, str):
+                normalized_finish_message = finish_message.strip()
+                if normalized_finish_message:
+                    error_parts.append(f"finish_message={normalized_finish_message}")
+
+        prompt_feedback = response.prompt_feedback
+        if prompt_feedback is not None and prompt_feedback.block_reason is not None:
+            error_parts.append(f"prompt_block_reason={prompt_feedback.block_reason!s}")
+
+        return " (".join([error_parts[0], ", ".join(error_parts[1:]) + ")"])
 
     def _normalize_thought_signature(self, raw_value: object) -> bytes | None:
         if isinstance(raw_value, bytes) and raw_value:
