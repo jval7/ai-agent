@@ -48,6 +48,10 @@ class FirestoreMemoryAdminAdapter(memory_admin_port.MemoryAdminPort):
                     chunk_size=200,
                 )
                 self._client.recursive_delete(
+                    tenant_document.collection(firestore_paths.MANUAL_APPOINTMENTS_COLLECTION),
+                    chunk_size=200,
+                )
+                self._client.recursive_delete(
                     tenant_document.collection(firestore_paths.CONVERSATION_LOOKUP_COLLECTION),
                     chunk_size=200,
                 )

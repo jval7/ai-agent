@@ -3,14 +3,17 @@ import datetime
 import pytest
 
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
+import src.adapters.outbound.inmemory.manual_appointment_repository_adapter as manual_appointment_repository_adapter
 import src.adapters.outbound.inmemory.patient_repository_adapter as patient_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
+import src.domain.entities.manual_appointment as manual_appointment_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.google_calendar_dto as google_calendar_dto
+import src.services.dto.patient_dto as patient_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.patient_query_service as patient_query_service
@@ -20,11 +23,15 @@ import tests.fakes.fake_adapters as fake_adapters
 def build_service() -> tuple[
     patient_query_service.PatientQueryService,
     patient_repository_adapter.InMemoryPatientRepositoryAdapter,
+    manual_appointment_repository_adapter.InMemoryManualAppointmentRepositoryAdapter,
     scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
     fake_adapters.FakeGoogleCalendarProvider,
 ]:
     store = in_memory_store.InMemoryStore()
     patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
+    manual_appointment_repository = (
+        manual_appointment_repository_adapter.InMemoryManualAppointmentRepositoryAdapter(store)
+    )
     scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
     calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
         store
@@ -66,10 +73,17 @@ def build_service() -> tuple[
     service = patient_query_service.PatientQueryService(
         patient_repository=patient_repository,
         scheduling_repository=scheduling_repository,
+        manual_appointment_repository=manual_appointment_repository,
         google_calendar_onboarding_service=google_service,
         clock=clock,
     )
-    return service, patient_repository, scheduling_repository, google_provider
+    return (
+        service,
+        patient_repository,
+        manual_appointment_repository,
+        scheduling_repository,
+        google_provider,
+    )
 
 
 def build_claims(role: str) -> auth_dto.TokenClaimsDTO:
@@ -84,21 +98,21 @@ def build_claims(role: str) -> auth_dto.TokenClaimsDTO:
 
 
 def test_list_patients_requires_owner_role() -> None:
-    service, _, _, _ = build_service()
+    service, _, _, _, _ = build_service()
 
     with pytest.raises(service_exceptions.AuthorizationError):
         service.list_patients(build_claims("agent"))
 
 
 def test_get_patient_raises_not_found() -> None:
-    service, _, _, _ = build_service()
+    service, _, _, _, _ = build_service()
 
     with pytest.raises(service_exceptions.EntityNotFoundError):
         service.get_patient(build_claims("owner"), "wa-404")
 
 
 def test_list_patients_returns_sorted_items() -> None:
-    service, repository, _, _ = build_service()
+    service, repository, _, _, _ = build_service()
     repository.save(
         patient_entity.Patient(
             tenant_id="tenant-1",
@@ -136,7 +150,7 @@ def test_list_patients_returns_sorted_items() -> None:
 
 
 def test_get_patient_returns_single_patient() -> None:
-    service, repository, _, _ = build_service()
+    service, repository, _, _, _ = build_service()
     repository.save(
         patient_entity.Patient(
             tenant_id="tenant-1",
@@ -158,15 +172,82 @@ def test_get_patient_returns_single_patient() -> None:
     assert response.first_name == "Jane"
 
 
+def test_create_patient_persists_new_patient() -> None:
+    service, repository, _, _, _ = build_service()
+
+    created_patient = service.create_patient(
+        claims=build_claims("owner"),
+        create_dto=patient_dto.CreatePatientDTO(
+            whatsapp_user_id="wa-1",
+            first_name="Jane",
+            last_name="Doe",
+            email="jane@example.com",
+            age=29,
+            consultation_reason="Ansiedad",
+            location="Bogota",
+            phone="573001112233",
+        ),
+    )
+
+    assert created_patient.whatsapp_user_id == "wa-1"
+    stored_patient = repository.get_by_whatsapp_user("tenant-1", "wa-1")
+    assert stored_patient is not None
+    assert stored_patient.email == "jane@example.com"
+
+
+def test_update_patient_overwrites_patient_data() -> None:
+    service, repository, _, _, _ = build_service()
+    repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Jane",
+            last_name="Doe",
+            email="jane@example.com",
+            age=29,
+            consultation_reason="Ansiedad",
+            location="Bogota",
+            phone="573001112233",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    updated_patient = service.update_patient(
+        claims=build_claims("owner"),
+        whatsapp_user_id="wa-1",
+        update_dto=patient_dto.UpdatePatientDTO(
+            first_name="Jane Updated",
+            last_name="Doe",
+            email="jane.updated@example.com",
+            age=30,
+            consultation_reason="Estrés",
+            location="Cali",
+            phone="573009998877",
+        ),
+    )
+
+    assert updated_patient.first_name == "Jane Updated"
+    assert updated_patient.location == "Cali"
+    stored_patient = repository.get_by_whatsapp_user("tenant-1", "wa-1")
+    assert stored_patient is not None
+    assert stored_patient.phone == "573009998877"
+
+
 def test_delete_patient_requires_owner_role() -> None:
-    service, _, _, _ = build_service()
+    service, _, _, _, _ = build_service()
 
     with pytest.raises(service_exceptions.AuthorizationError):
         service.delete_patient(build_claims("agent"), "wa-1")
 
 
 def test_delete_patient_removes_patient_for_tenant() -> None:
-    service, repository, scheduling_repository, google_provider = build_service()
+    (
+        service,
+        repository,
+        manual_appointment_repository,
+        scheduling_repository,
+        google_provider,
+    ) = build_service()
     repository.save(
         patient_entity.Patient(
             tenant_id="tenant-1",
@@ -215,6 +296,22 @@ def test_delete_patient_removes_patient_for_tenant() -> None:
             updated_at=datetime.datetime(2026, 1, 3, tzinfo=datetime.UTC),
         )
     )
+    manual_appointment_repository.save(
+        manual_appointment_entity.ManualAppointment(
+            id="manual-1",
+            tenant_id="tenant-1",
+            patient_whatsapp_user_id="wa-1",
+            status="SCHEDULED",
+            calendar_event_id="evt-manual-1",
+            start_at=datetime.datetime(2026, 1, 6, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 6, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            summary="Cita - Jane Doe",
+            created_at=datetime.datetime(2026, 1, 6, 9, 0, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 6, 9, 0, tzinfo=datetime.UTC),
+            cancelled_at=None,
+        )
+    )
     scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-booked-2",
@@ -260,7 +357,7 @@ def test_delete_patient_removes_patient_for_tenant() -> None:
 
     assert repository.get_by_whatsapp_user("tenant-1", "wa-1") is None
     assert repository.get_by_whatsapp_user("tenant-2", "wa-1") is not None
-    assert google_provider.deleted_event_ids == ["evt-1"]
+    assert google_provider.deleted_event_ids == ["evt-1", "evt-manual-1"]
     deleted_patient_request = scheduling_repository.get_request_by_id("tenant-1", "req-booked-1")
     deleted_patient_pending_request = scheduling_repository.get_request_by_id(
         "tenant-1", "req-progress-1"
@@ -268,6 +365,10 @@ def test_delete_patient_removes_patient_for_tenant() -> None:
     unaffected_request = scheduling_repository.get_request_by_id("tenant-1", "req-booked-2")
     assert deleted_patient_request is None
     assert deleted_patient_pending_request is None
+    cancelled_manual_appointment = manual_appointment_repository.get_by_id("tenant-1", "manual-1")
+    assert cancelled_manual_appointment is not None
+    assert cancelled_manual_appointment.status == "CANCELLED"
+    assert cancelled_manual_appointment.calendar_event_id is None
     assert unaffected_request is not None
     assert unaffected_request.status == "BOOKED"
     assert unaffected_request.professional_note is None

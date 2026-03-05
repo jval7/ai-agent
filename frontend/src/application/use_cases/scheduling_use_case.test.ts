@@ -50,6 +50,12 @@ vitestModule.describe("SchedulingUseCase", () => {
         status: "COLLECTING_PREFERENCES",
         outboundMessageId: "wamid-2",
         assistantText: "Perfecto, continuemos."
+      })),
+      rescheduleBookedSlot: vitestModule.vi.fn(async () => requestSummary),
+      cancelBookedSlot: vitestModule.vi.fn(async () => ({
+        ...requestSummary,
+        status: "CANCELLED",
+        calendarEventId: null
       }))
     } as Partial<backendApiPort.BackendApiPort> as backendApiPort.BackendApiPort;
 
@@ -70,6 +76,15 @@ vitestModule.describe("SchedulingUseCase", () => {
         }
       ],
       professionalNote: "nota"
+    });
+    await useCase.rescheduleBookedSlot("req-1", {
+      startAt: "2026-03-02T10:00:00Z",
+      endAt: "2026-03-02T11:00:00Z",
+      timezone: "America/Bogota",
+      eventSummary: "Cita reprogramada"
+    });
+    await useCase.cancelBookedSlot("req-1", {
+      reason: "No puede asistir"
     });
 
     vitestModule.expect(requests[0]?.requestId).toBe("req-1");

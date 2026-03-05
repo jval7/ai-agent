@@ -207,6 +207,45 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
             headers={"Authorization": f"Bearer {access_token}"},
         )
 
+    def update_event(
+        self,
+        access_token: str,
+        calendar_id: str,
+        event_id: str,
+        start_at: datetime.datetime,
+        end_at: datetime.datetime,
+        timezone: str,
+        summary: str,
+    ) -> google_calendar_dto.GoogleCalendarEventDTO:
+        encoded_calendar_id = urllib.parse.quote(calendar_id, safe="")
+        encoded_event_id = urllib.parse.quote(event_id, safe="")
+        payload = self._patch_json(
+            url=f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events/{encoded_event_id}",
+            operation_label="updating google calendar event",
+            headers={"Authorization": f"Bearer {access_token}"},
+            body={
+                "summary": summary,
+                "start": {
+                    "dateTime": start_at.isoformat(),
+                    "timeZone": timezone,
+                },
+                "end": {
+                    "dateTime": end_at.isoformat(),
+                    "timeZone": timezone,
+                },
+            },
+        )
+
+        resolved_event_id = payload.get("id")
+        if not isinstance(resolved_event_id, str) or not resolved_event_id:
+            raise service_exceptions.ExternalProviderError("google update event missing id")
+
+        return google_calendar_dto.GoogleCalendarEventDTO(
+            event_id=resolved_event_id,
+            start_at=start_at,
+            end_at=end_at,
+        )
+
     def _validate_oauth_settings(self) -> None:
         if not self._settings.google_oauth_client_id:
             raise service_exceptions.ExternalProviderError("GOOGLE_OAUTH_CLIENT_ID is required")
@@ -392,6 +431,42 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
             raise service_exceptions.ExternalProviderError(
                 f"google rejected request while {operation_label} (status={status_code}, detail={detail})"
             ) from error
+
+    def _patch_json(
+        self,
+        url: str,
+        operation_label: str,
+        headers: dict[str, str],
+        body: dict[str, object],
+    ) -> dict[str, object]:
+        try:
+            response = self._client.patch(url, headers=headers, json=body)
+            response.raise_for_status()
+            payload = response.json()
+        except httpx.TimeoutException as error:
+            raise service_exceptions.ExternalProviderError(
+                f"timeout while {operation_label}"
+            ) from error
+        except httpx.RequestError as error:
+            raise service_exceptions.ExternalProviderError(
+                f"network error while {operation_label}"
+            ) from error
+        except httpx.HTTPStatusError as error:
+            status_code = error.response.status_code
+            detail = self._extract_error_detail(error.response)
+            raise service_exceptions.ExternalProviderError(
+                f"google rejected request while {operation_label} (status={status_code}, detail={detail})"
+            ) from error
+        except json.JSONDecodeError as error:
+            raise service_exceptions.ExternalProviderError(
+                f"invalid json response while {operation_label}"
+            ) from error
+
+        if not isinstance(payload, dict):
+            raise service_exceptions.ExternalProviderError(
+                f"invalid payload while {operation_label}"
+            )
+        return payload
 
     def _extract_error_detail(self, response: httpx.Response) -> str:
         try:

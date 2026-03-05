@@ -75,3 +75,14 @@ export interface ResolveConsultationReviewResult {
   outboundMessageId: string;
   assistantText: string;
 }
+
+export interface RescheduleBookedSlotInput {
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  eventSummary: string | null;
+}
+
+export interface CancelBookedSlotInput {
+  reason: string | null;
+}

@@ -5,6 +5,7 @@ import type * as authModel from "@domain/models/auth";
 import type * as blacklistModel from "@domain/models/blacklist";
 import type * as conversationModel from "@domain/models/conversation";
 import type * as googleCalendarModel from "@domain/models/google_calendar";
+import type * as manualAppointmentModel from "@domain/models/manual_appointment";
 import type * as onboardingModel from "@domain/models/onboarding";
 import type * as patientModel from "@domain/models/patient";
 import type * as backendApiPort from "@ports/backend_api_port";
@@ -176,8 +177,59 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async createPatient(_input: patientModel.CreatePatientInput): Promise<patientModel.Patient> {
+    throw new Error("not used");
+  }
+
+  async updatePatient(
+    _whatsappUserId: string,
+    _input: patientModel.UpdatePatientInput
+  ): Promise<patientModel.Patient> {
+    throw new Error("not used");
+  }
+
   async removePatient(_whatsappUserId: string): Promise<void> {
     return;
+  }
+
+  async listManualAppointments(
+    _status?: manualAppointmentModel.ManualAppointmentStatus
+  ): Promise<manualAppointmentModel.ManualAppointment[]> {
+    throw new Error("not used");
+  }
+
+  async createManualAppointment(
+    _input: manualAppointmentModel.CreateManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    throw new Error("not used");
+  }
+
+  async rescheduleManualAppointment(
+    _appointmentId: string,
+    _input: manualAppointmentModel.RescheduleManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    throw new Error("not used");
+  }
+
+  async cancelManualAppointment(
+    _appointmentId: string,
+    _input: manualAppointmentModel.CancelManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    throw new Error("not used");
+  }
+
+  async rescheduleBookedSlot(
+    _requestId: string,
+    _input: schedulingModel.RescheduleBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    throw new Error("not used");
+  }
+
+  async cancelBookedSlot(
+    _requestId: string,
+    _input: schedulingModel.CancelBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    throw new Error("not used");
   }
 }
 

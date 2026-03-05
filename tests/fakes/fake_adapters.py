@@ -139,9 +139,12 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         self.created_events: list[google_calendar_dto.GoogleCalendarEventDTO] = []
         self.created_event_summaries: list[str] = []
         self.deleted_event_ids: list[str] = []
+        self.updated_events: list[google_calendar_dto.GoogleCalendarEventDTO] = []
+        self.updated_event_summaries: list[str] = []
         self.busy_interval_errors: list[service_exceptions.ExternalProviderError] = []
         self.create_event_errors: list[service_exceptions.ExternalProviderError] = []
         self.delete_event_errors: list[service_exceptions.ExternalProviderError] = []
+        self.update_event_errors: list[service_exceptions.ExternalProviderError] = []
 
     def build_oauth_connect_url(self, state: str, scopes: list[str]) -> str:
         del scopes
@@ -219,3 +222,27 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         del access_token
         del calendar_id
         self.deleted_event_ids.append(event_id)
+
+    def update_event(
+        self,
+        access_token: str,
+        calendar_id: str,
+        event_id: str,
+        start_at: datetime.datetime,
+        end_at: datetime.datetime,
+        timezone: str,
+        summary: str,
+    ) -> google_calendar_dto.GoogleCalendarEventDTO:
+        if self.update_event_errors:
+            raise self.update_event_errors.pop(0)
+        del access_token
+        del calendar_id
+        del timezone
+        self.updated_event_summaries.append(summary)
+        event = google_calendar_dto.GoogleCalendarEventDTO(
+            event_id=event_id,
+            start_at=start_at,
+            end_at=end_at,
+        )
+        self.updated_events.append(event)
+        return event.model_copy(deep=True)

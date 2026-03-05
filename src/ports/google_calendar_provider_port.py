@@ -54,3 +54,16 @@ class GoogleCalendarProviderPort(abc.ABC):
         event_id: str,
     ) -> None:
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def update_event(
+        self,
+        access_token: str,
+        calendar_id: str,
+        event_id: str,
+        start_at: datetime.datetime,
+        end_at: datetime.datetime,
+        timezone: str,
+        summary: str,
+    ) -> google_calendar_dto.GoogleCalendarEventDTO:
+        raise NotImplementedError

@@ -3,6 +3,7 @@ import src.adapters.outbound.firestore.blacklist_repository_adapter as blacklist
 import src.adapters.outbound.firestore.client_factory as firestore_client_factory
 import src.adapters.outbound.firestore.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.firestore.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
+import src.adapters.outbound.firestore.manual_appointment_repository_adapter as manual_appointment_repository_adapter
 import src.adapters.outbound.firestore.memory_admin_adapter as memory_admin_adapter
 import src.adapters.outbound.firestore.patient_repository_adapter as patient_repository_adapter
 import src.adapters.outbound.firestore.processed_webhook_event_repository_adapter as processed_webhook_event_repository_adapter
@@ -26,6 +27,7 @@ import src.services.use_cases.blacklist_service as blacklist_service
 import src.services.use_cases.conversation_control_service as conversation_control_service
 import src.services.use_cases.conversation_query_service as conversation_query_service
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
+import src.services.use_cases.manual_appointment_service as manual_appointment_service
 import src.services.use_cases.memory_admin_service as memory_admin_service
 import src.services.use_cases.onboarding_status_service as onboarding_status_service
 import src.services.use_cases.patient_query_service as patient_query_service
@@ -95,6 +97,11 @@ class AppContainer:
         )
         self.patient_repository = patient_repository_adapter.FirestorePatientRepositoryAdapter(
             self.firestore_client
+        )
+        self.manual_appointment_repository = (
+            manual_appointment_repository_adapter.FirestoreManualAppointmentRepositoryAdapter(
+                self.firestore_client
+            )
         )
         self.refresh_token_repository = (
             refresh_token_repository_adapter.FirestoreRefreshTokenRepositoryAdapter(
@@ -188,6 +195,13 @@ class AppContainer:
             agent_profile_repository=self.agent_profile_repository,
             default_system_prompt=self.settings.default_system_prompt,
         )
+        self.manual_appointment_service = manual_appointment_service.ManualAppointmentService(
+            manual_appointment_repository=self.manual_appointment_repository,
+            patient_repository=self.patient_repository,
+            google_calendar_onboarding_service=self.google_calendar_onboarding_service,
+            id_generator=self.id_generator_adapter,
+            clock=self.clock_adapter,
+        )
 
         self.webhook_service = webhook_service.WebhookService(
             whatsapp_connection_repository=self.whatsapp_connection_repository,
@@ -228,6 +242,7 @@ class AppContainer:
         self.patient_query_service = patient_query_service.PatientQueryService(
             patient_repository=self.patient_repository,
             scheduling_repository=self.scheduling_repository,
+            manual_appointment_repository=self.manual_appointment_repository,
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
             clock=self.clock_adapter,
         )

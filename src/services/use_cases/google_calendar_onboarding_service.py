@@ -229,6 +229,33 @@ class GoogleCalendarOnboardingService:
             event_id=event_id,
         )
 
+    def update_event(
+        self,
+        tenant_id: str,
+        event_id: str,
+        start_at: datetime.datetime,
+        end_at: datetime.datetime,
+        timezone: str,
+        summary: str,
+    ) -> google_calendar_dto.GoogleCalendarEventDTO:
+        connection = self._get_connected_connection_with_fresh_access_token(tenant_id)
+        calendar_id = connection.calendar_id
+        access_token = connection.access_token
+        if calendar_id is None or access_token is None:
+            raise service_exceptions.InvalidStateError(
+                "google calendar connection is missing required metadata"
+            )
+
+        return self._google_calendar_provider.update_event(
+            access_token=access_token,
+            calendar_id=calendar_id,
+            event_id=event_id,
+            start_at=start_at,
+            end_at=end_at,
+            timezone=timezone,
+            summary=summary,
+        )
+
     def _finalize_connection(
         self,
         connection: google_calendar_connection_entity.GoogleCalendarConnection,

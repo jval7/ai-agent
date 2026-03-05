@@ -9,6 +9,7 @@ WHATSAPP_CONNECTION_COLLECTION = "whatsapp_connection"
 GOOGLE_CALENDAR_CONNECTION_COLLECTION = "google_calendar_connection"
 WHATSAPP_USERS_COLLECTION = "whatsapp_users"
 PATIENTS_COLLECTION = "patients"
+MANUAL_APPOINTMENTS_COLLECTION = "manual_appointments"
 CONVERSATIONS_COLLECTION = "conversations"
 MESSAGES_COLLECTION = "messages"
 CONVERSATION_LOOKUP_COLLECTION = "conversation_lookup"
@@ -112,6 +113,21 @@ def tenant_patient_document(
         .collection(PATIENTS_COLLECTION)
         .document(whatsapp_user_id)
     )
+
+
+def tenant_manual_appointments_collection(
+    client: google_cloud_firestore.Client,
+    tenant_id: str,
+) -> google_cloud_firestore.CollectionReference:
+    return tenant_document(client, tenant_id).collection(MANUAL_APPOINTMENTS_COLLECTION)
+
+
+def tenant_manual_appointment_document(
+    client: google_cloud_firestore.Client,
+    tenant_id: str,
+    appointment_id: str,
+) -> google_cloud_firestore.DocumentReference:
+    return tenant_manual_appointments_collection(client, tenant_id).document(appointment_id)
 
 
 def tenant_conversation_document(

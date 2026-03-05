@@ -35,4 +35,12 @@ export class SchedulingUseCase {
   ) {
     return this.api.resolveConsultationReview(conversationId, requestId, input);
   }
+
+  async rescheduleBookedSlot(requestId: string, input: schedulingModel.RescheduleBookedSlotInput) {
+    return this.api.rescheduleBookedSlot(requestId, input);
+  }
+
+  async cancelBookedSlot(requestId: string, input: schedulingModel.CancelBookedSlotInput) {
+    return this.api.cancelBookedSlot(requestId, input);
+  }
 }

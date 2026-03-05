@@ -25,6 +25,25 @@ def get_patient(
     return container.patient_query_service.get_patient(claims, whatsapp_user_id)
 
 
+@router.post("", response_model=patient_dto.PatientDTO)
+def create_patient(
+    create_dto: patient_dto.CreatePatientDTO,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> patient_dto.PatientDTO:
+    return container.patient_query_service.create_patient(claims, create_dto)
+
+
+@router.put("/{whatsapp_user_id}", response_model=patient_dto.PatientDTO)
+def update_patient(
+    whatsapp_user_id: str,
+    update_dto: patient_dto.UpdatePatientDTO,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> patient_dto.PatientDTO:
+    return container.patient_query_service.update_patient(claims, whatsapp_user_id, update_dto)
+
+
 @router.delete("/{whatsapp_user_id}", status_code=fastapi.status.HTTP_204_NO_CONTENT)
 def delete_patient(
     whatsapp_user_id: str,

@@ -1,6 +1,7 @@
 import src.domain.entities.patient as patient_entity
 import src.infra.logs as app_logs
 import src.ports.clock_port as clock_port
+import src.ports.manual_appointment_repository_port as manual_appointment_repository_port
 import src.ports.patient_repository_port as patient_repository_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.services.constants as service_constants
@@ -17,6 +18,9 @@ class PatientQueryService:
         self,
         patient_repository: patient_repository_port.PatientRepositoryPort,
         scheduling_repository: scheduling_repository_port.SchedulingRepositoryPort,
+        manual_appointment_repository: (
+            manual_appointment_repository_port.ManualAppointmentRepositoryPort
+        ),
         google_calendar_onboarding_service: (
             google_calendar_onboarding_service.GoogleCalendarOnboardingService
         ),
@@ -24,6 +28,7 @@ class PatientQueryService:
     ) -> None:
         self._patient_repository = patient_repository
         self._scheduling_repository = scheduling_repository
+        self._manual_appointment_repository = manual_appointment_repository
         self._google_calendar_onboarding_service = google_calendar_onboarding_service
         self._clock = clock
 
@@ -45,6 +50,88 @@ class PatientQueryService:
         if patient is None:
             raise service_exceptions.EntityNotFoundError("patient not found")
         return self._to_patient_dto(patient)
+
+    def create_patient(
+        self,
+        claims: auth_dto.TokenClaimsDTO,
+        create_dto: patient_dto.CreatePatientDTO,
+    ) -> patient_dto.PatientDTO:
+        self._ensure_owner(claims)
+        existing_patient = self._patient_repository.get_by_whatsapp_user(
+            claims.tenant_id,
+            create_dto.whatsapp_user_id,
+        )
+        if existing_patient is not None:
+            raise service_exceptions.InvalidStateError("patient already exists")
+
+        patient = patient_entity.Patient(
+            tenant_id=claims.tenant_id,
+            whatsapp_user_id=create_dto.whatsapp_user_id,
+            first_name=create_dto.first_name,
+            last_name=create_dto.last_name,
+            email=create_dto.email,
+            age=create_dto.age,
+            consultation_reason=create_dto.consultation_reason,
+            location=create_dto.location,
+            phone=create_dto.phone,
+            created_at=self._clock.now(),
+        )
+        self._patient_repository.save(patient)
+        logger.info(
+            "patient.created",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="patient.created",
+                    message="patient record created by owner",
+                    data={
+                        "tenant_id": claims.tenant_id,
+                        "whatsapp_user_id": patient.whatsapp_user_id,
+                    },
+                )
+            },
+        )
+        return self._to_patient_dto(patient)
+
+    def update_patient(
+        self,
+        claims: auth_dto.TokenClaimsDTO,
+        whatsapp_user_id: str,
+        update_dto: patient_dto.UpdatePatientDTO,
+    ) -> patient_dto.PatientDTO:
+        self._ensure_owner(claims)
+        existing_patient = self._patient_repository.get_by_whatsapp_user(
+            claims.tenant_id, whatsapp_user_id
+        )
+        if existing_patient is None:
+            raise service_exceptions.EntityNotFoundError("patient not found")
+
+        updated_patient = patient_entity.Patient(
+            tenant_id=existing_patient.tenant_id,
+            whatsapp_user_id=existing_patient.whatsapp_user_id,
+            first_name=update_dto.first_name,
+            last_name=update_dto.last_name,
+            email=update_dto.email,
+            age=update_dto.age,
+            consultation_reason=update_dto.consultation_reason,
+            location=update_dto.location,
+            phone=update_dto.phone,
+            created_at=existing_patient.created_at,
+        )
+        self._patient_repository.save(updated_patient)
+        logger.info(
+            "patient.updated",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="patient.updated",
+                    message="patient record updated by owner",
+                    data={
+                        "tenant_id": claims.tenant_id,
+                        "whatsapp_user_id": updated_patient.whatsapp_user_id,
+                    },
+                )
+            },
+        )
+        return self._to_patient_dto(updated_patient)
 
     def delete_patient(
         self,
@@ -68,6 +155,28 @@ class PatientQueryService:
             self._scheduling_repository.delete_request(claims.tenant_id, request.id)
             deleted_scheduling_requests_count += 1
 
+        manual_appointments = self._manual_appointment_repository.list_by_patient(
+            tenant_id=claims.tenant_id,
+            patient_whatsapp_user_id=whatsapp_user_id,
+            status="SCHEDULED",
+        )
+        cancelled_manual_appointments_count = 0
+        now_value = self._clock.now()
+        for manual_appointment in manual_appointments:
+            calendar_event_id = manual_appointment.calendar_event_id
+            if calendar_event_id is not None and calendar_event_id not in deleted_event_ids:
+                self._google_calendar_onboarding_service.delete_event(
+                    tenant_id=claims.tenant_id,
+                    event_id=calendar_event_id,
+                )
+                deleted_event_ids.add(calendar_event_id)
+            manual_appointment.status = "CANCELLED"
+            manual_appointment.calendar_event_id = None
+            manual_appointment.cancelled_at = now_value
+            manual_appointment.updated_at = now_value
+            self._manual_appointment_repository.save(manual_appointment)
+            cancelled_manual_appointments_count += 1
+
         self._patient_repository.delete(claims.tenant_id, whatsapp_user_id)
         logger.info(
             "patient.deleted",
@@ -80,6 +189,7 @@ class PatientQueryService:
                         "whatsapp_user_id": whatsapp_user_id,
                         "deleted_calendar_events_count": len(deleted_event_ids),
                         "deleted_scheduling_requests_count": deleted_scheduling_requests_count,
+                        "cancelled_manual_appointments_count": cancelled_manual_appointments_count,
                     },
                 )
             },

@@ -135,3 +135,20 @@ class HandoffToHumanInputDTO(pydantic.BaseModel):
 
 class CancelActiveSchedulingRequestInputDTO(pydantic.BaseModel):
     reason: str | None = None
+
+
+class RescheduleBookedSlotInputDTO(pydantic.BaseModel):
+    start_at: datetime.datetime
+    end_at: datetime.datetime
+    timezone: str
+    event_summary: str | None = None
+
+    @pydantic.model_validator(mode="after")
+    def validate_range(self) -> "RescheduleBookedSlotInputDTO":
+        if self.end_at <= self.start_at:
+            raise ValueError("end_at must be greater than start_at")
+        return self
+
+
+class CancelBookedSlotInputDTO(pydantic.BaseModel):
+    reason: str | None = None

@@ -8,6 +8,7 @@ import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.blacklist_entry as blacklist_entry_entity
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
+import src.domain.entities.manual_appointment as manual_appointment_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
@@ -49,6 +50,9 @@ class InMemoryStore:
             tuple[str, str], whatsapp_user_entity.WhatsappUser
         ] = {}
         self.patient_by_tenant_and_wa_user: dict[tuple[str, str], patient_entity.Patient] = {}
+        self.manual_appointment_by_id: dict[str, manual_appointment_entity.ManualAppointment] = {}
+        self.manual_appointment_ids_by_tenant: dict[str, list[str]] = {}
+        self.manual_appointment_ids_by_patient: dict[tuple[str, str], list[str]] = {}
         self.processed_events: set[tuple[str, str]] = set()
         self.blacklist_by_tenant_and_wa_user: dict[
             tuple[str, str], blacklist_entry_entity.BlacklistEntry
@@ -149,6 +153,9 @@ class InMemoryStore:
             patients=[
                 item.model_copy(deep=True) for item in self.patient_by_tenant_and_wa_user.values()
             ],
+            manual_appointments=[
+                item.model_copy(deep=True) for item in self.manual_appointment_by_id.values()
+            ],
             conversations=[item.model_copy(deep=True) for item in self.conversation_by_id.values()],
             scheduling_requests=[
                 item.model_copy(deep=True) for item in self.scheduling_request_by_id.values()
@@ -209,6 +216,29 @@ class InMemoryStore:
             patient_copy = patient.model_copy(deep=True)
             patient_key = (patient_copy.tenant_id, patient_copy.whatsapp_user_id)
             self.patient_by_tenant_and_wa_user[patient_key] = patient_copy
+
+        for manual_appointment in snapshot.manual_appointments:
+            manual_appointment_copy = manual_appointment.model_copy(deep=True)
+            self.manual_appointment_by_id[manual_appointment_copy.id] = manual_appointment_copy
+            tenant_appointment_ids = self.manual_appointment_ids_by_tenant.get(
+                manual_appointment_copy.tenant_id
+            )
+            if tenant_appointment_ids is None:
+                tenant_appointment_ids = []
+                self.manual_appointment_ids_by_tenant[manual_appointment_copy.tenant_id] = (
+                    tenant_appointment_ids
+                )
+            tenant_appointment_ids.append(manual_appointment_copy.id)
+
+            patient_key = (
+                manual_appointment_copy.tenant_id,
+                manual_appointment_copy.patient_whatsapp_user_id,
+            )
+            patient_appointment_ids = self.manual_appointment_ids_by_patient.get(patient_key)
+            if patient_appointment_ids is None:
+                patient_appointment_ids = []
+                self.manual_appointment_ids_by_patient[patient_key] = patient_appointment_ids
+            patient_appointment_ids.append(manual_appointment_copy.id)
 
         for conversation in snapshot.conversations:
             conversation_copy = conversation.model_copy(deep=True)
@@ -273,6 +303,9 @@ class InMemoryStore:
         self._clear_chat_state()
         self.whatsapp_user_by_tenant_and_id = {}
         self.patient_by_tenant_and_wa_user = {}
+        self.manual_appointment_by_id = {}
+        self.manual_appointment_ids_by_tenant = {}
+        self.manual_appointment_ids_by_patient = {}
         self.blacklist_by_tenant_and_wa_user = {}
 
     def _clear_chat_state(self) -> None:
@@ -285,4 +318,7 @@ class InMemoryStore:
         self.processed_events = set()
         self.whatsapp_user_by_tenant_and_id = {}
         self.patient_by_tenant_and_wa_user = {}
+        self.manual_appointment_by_id = {}
+        self.manual_appointment_ids_by_tenant = {}
+        self.manual_appointment_ids_by_patient = {}
         self.blacklist_by_tenant_and_wa_user = {}

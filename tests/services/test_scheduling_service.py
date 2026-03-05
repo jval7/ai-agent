@@ -576,3 +576,110 @@ def test_confirm_selected_slot_accepts_selected_slot_status() -> None:
 
     assert result.status == "BOOKED"
     assert provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+
+
+def test_reschedule_booked_slot_updates_booked_request() -> None:
+    service, repository, provider = build_service(["req-1"])
+    request = create_waiting_professional_slots_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "BOOKED"
+    stored.selected_slot_id = "slot-1"
+    stored.calendar_event_id = "event-1"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="BOOKED",
+        )
+    ]
+    repository.save_request(stored)
+
+    updated_request = service.reschedule_booked_slot(
+        tenant_id="tenant-1",
+        request_id=request.request_id,
+        input_dto=scheduling_dto.RescheduleBookedSlotInputDTO(
+            start_at=datetime.datetime(2026, 1, 2, 15, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 2, 16, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            event_summary="Cita reprogramada",
+        ),
+    )
+
+    assert updated_request.status == "BOOKED"
+    reloaded = repository.get_request_by_id("tenant-1", request.request_id)
+    assert reloaded is not None
+    assert reloaded.slots[0].start_at == datetime.datetime(2026, 1, 2, 15, 0, tzinfo=datetime.UTC)
+    assert provider.updated_event_summaries == ["Cita reprogramada"]
+
+
+def test_cancel_booked_slot_sets_cancelled_and_clears_calendar_event() -> None:
+    service, repository, provider = build_service(["req-1"])
+    request = create_waiting_professional_slots_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "BOOKED"
+    stored.selected_slot_id = "slot-1"
+    stored.calendar_event_id = "event-1"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="BOOKED",
+        )
+    ]
+    repository.save_request(stored)
+
+    cancelled_request = service.cancel_booked_slot(
+        tenant_id="tenant-1",
+        request_id=request.request_id,
+        input_dto=scheduling_dto.CancelBookedSlotInputDTO(reason="No puede asistir"),
+    )
+
+    assert cancelled_request.status == "CANCELLED"
+    assert provider.deleted_event_ids == ["event-1"]
+    reloaded = repository.get_request_by_id("tenant-1", request.request_id)
+    assert reloaded is not None
+    assert reloaded.calendar_event_id is None
+    assert reloaded.selected_slot_id is None
+    assert reloaded.professional_note == "No puede asistir"
+
+
+def test_cancel_booked_slot_tolerates_google_not_found() -> None:
+    service, repository, provider = build_service(["req-1"])
+    provider.delete_event_errors = [
+        service_exceptions.ExternalProviderError(
+            "google calendar delete event failed (status=404, detail=not found)"
+        )
+    ]
+    request = create_waiting_professional_slots_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "BOOKED"
+    stored.selected_slot_id = "slot-1"
+    stored.calendar_event_id = "event-404"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="BOOKED",
+        )
+    ]
+    repository.save_request(stored)
+
+    cancelled_request = service.cancel_booked_slot(
+        tenant_id="tenant-1",
+        request_id=request.request_id,
+        input_dto=scheduling_dto.CancelBookedSlotInputDTO(reason=None),
+    )
+
+    assert cancelled_request.status == "CANCELLED"
+    reloaded = repository.get_request_by_id("tenant-1", request.request_id)
+    assert reloaded is not None
+    assert reloaded.calendar_event_id is None

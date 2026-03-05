@@ -532,6 +532,112 @@ class SchedulingService:
         )
         return self._to_summary_dto(request)
 
+    def reschedule_booked_slot(
+        self,
+        tenant_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.RescheduleBookedSlotInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+        if request.status != "BOOKED":
+            raise service_exceptions.InvalidStateError("scheduling request is not booked")
+        if request.calendar_event_id is None:
+            raise service_exceptions.InvalidStateError(
+                "booked scheduling request has no calendar event"
+            )
+
+        booked_slot = self._find_booked_slot(request)
+        if booked_slot is None:
+            raise service_exceptions.InvalidStateError(
+                "booked scheduling request has no booked slot"
+            )
+
+        event_summary = self._resolve_booked_event_summary(
+            request=request,
+            requested_summary=input_dto.event_summary,
+        )
+        updated_event = self._google_calendar_onboarding_service.update_event(
+            tenant_id=tenant_id,
+            event_id=request.calendar_event_id,
+            start_at=input_dto.start_at,
+            end_at=input_dto.end_at,
+            timezone=input_dto.timezone,
+            summary=event_summary,
+        )
+
+        booked_slot.start_at = updated_event.start_at
+        booked_slot.end_at = updated_event.end_at
+        booked_slot.timezone = input_dto.timezone
+        now_value = self._clock.now()
+        request.updated_at = now_value
+        self._scheduling_repository.save_request(request)
+        logger.info(
+            "scheduling.booked_slot_rescheduled",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.booked_slot_rescheduled",
+                    message="booked scheduling request rescheduled",
+                    data={
+                        "tenant_id": tenant_id,
+                        "request_id": request.id,
+                        "calendar_event_id": request.calendar_event_id,
+                    },
+                )
+            },
+        )
+        return self._to_summary_dto(request)
+
+    def cancel_booked_slot(
+        self,
+        tenant_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.CancelBookedSlotInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+        if request.status != "BOOKED":
+            raise service_exceptions.InvalidStateError("scheduling request is not booked")
+
+        calendar_event_id = request.calendar_event_id
+        if calendar_event_id is not None:
+            try:
+                self._google_calendar_onboarding_service.delete_event(
+                    tenant_id=tenant_id,
+                    event_id=calendar_event_id,
+                )
+            except service_exceptions.ExternalProviderError as error:
+                if not self._is_google_not_found_error(str(error)):
+                    raise
+
+        now_value = self._clock.now()
+        for slot in request.slots:
+            if slot.status in ("BOOKED", "SELECTED"):
+                slot.status = "REJECTED"
+        request.calendar_event_id = None
+        request.selected_slot_id = None
+        normalized_reason = self._normalize_patient_text(input_dto.reason)
+        if normalized_reason is not None:
+            request.professional_note = normalized_reason
+        request.set_status("CANCELLED", now_value)
+        self._scheduling_repository.save_request(request)
+        logger.info(
+            "scheduling.booked_slot_cancelled",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.booked_slot_cancelled",
+                    message="booked scheduling request cancelled from agenda",
+                    data={
+                        "tenant_id": tenant_id,
+                        "request_id": request.id,
+                    },
+                )
+            },
+        )
+        return self._to_summary_dto(request)
+
     def handoff_to_human(
         self,
         tenant_id: str,
@@ -668,6 +774,19 @@ class SchedulingService:
                 return slot
         return None
 
+    def _find_booked_slot(
+        self,
+        request: scheduling_request_entity.SchedulingRequest,
+    ) -> scheduling_slot_entity.SchedulingSlot | None:
+        if request.selected_slot_id is not None:
+            for slot in request.slots:
+                if slot.id == request.selected_slot_id:
+                    return slot
+        for slot in request.slots:
+            if slot.status == "BOOKED":
+                return slot
+        return None
+
     def _list_remaining_slot_ids(
         self,
         request: scheduling_request_entity.SchedulingRequest,
@@ -709,6 +828,26 @@ class SchedulingService:
     def _is_google_conflict_error(self, error_message: str) -> bool:
         normalized_message = error_message.lower()
         return "status=409" in normalized_message or "conflict" in normalized_message
+
+    def _is_google_not_found_error(self, error_message: str) -> bool:
+        normalized_message = error_message.lower()
+        return "status=404" in normalized_message or "not found" in normalized_message
+
+    def _resolve_booked_event_summary(
+        self,
+        request: scheduling_request_entity.SchedulingRequest,
+        requested_summary: str | None,
+    ) -> str:
+        normalized_summary = self._normalize_patient_text(requested_summary)
+        if normalized_summary is not None:
+            return normalized_summary
+        first_name = self._normalize_patient_text(request.patient_first_name)
+        last_name = self._normalize_patient_text(request.patient_last_name)
+        if first_name is not None and last_name is not None:
+            return f"Cita - {first_name} {last_name}"
+        if first_name is not None:
+            return f"Cita - {first_name}"
+        return f"Cita - {request.whatsapp_user_id}"
 
     def _coalesce_patient_text(
         self,

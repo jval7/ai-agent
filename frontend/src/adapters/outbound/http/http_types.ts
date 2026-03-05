@@ -112,6 +112,65 @@ export interface PatientListApiResponse {
   items: PatientApiResponse[];
 }
 
+export interface CreatePatientApiRequest {
+  whatsapp_user_id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  age: number;
+  consultation_reason: string;
+  location: string;
+  phone: string;
+}
+
+export interface UpdatePatientApiRequest {
+  first_name: string;
+  last_name: string;
+  email: string;
+  age: number;
+  consultation_reason: string;
+  location: string;
+  phone: string;
+}
+
+export interface ManualAppointmentApiResponse {
+  appointment_id: string;
+  tenant_id: string;
+  patient_whatsapp_user_id: string;
+  status: "SCHEDULED" | "CANCELLED";
+  calendar_event_id: string | null;
+  start_at: string;
+  end_at: string;
+  timezone: string;
+  summary: string;
+  created_at: string;
+  updated_at: string;
+  cancelled_at: string | null;
+}
+
+export interface ManualAppointmentListApiResponse {
+  items: ManualAppointmentApiResponse[];
+}
+
+export interface CreateManualAppointmentApiRequest {
+  patient_whatsapp_user_id: string;
+  start_at: string;
+  end_at: string;
+  timezone: string;
+  summary: string | null;
+}
+
+export interface RescheduleManualAppointmentApiRequest {
+  start_at: string;
+  end_at: string;
+  timezone: string;
+  summary: string | null;
+}
+
+export interface CancelManualAppointmentApiRequest {
+  reason: string | null;
+}
+
 export interface SchedulingSlotApiResponse {
   slot_id: string;
   start_at: string;
@@ -193,6 +252,17 @@ export interface ResolveConsultationReviewApiResponse {
     | "HUMAN_HANDOFF";
   outbound_message_id: string;
   assistant_text: string;
+}
+
+export interface RescheduleBookedSlotApiRequest {
+  start_at: string;
+  end_at: string;
+  timezone: string;
+  event_summary: string | null;
+}
+
+export interface CancelBookedSlotApiRequest {
+  reason: string | null;
 }
 
 export interface ApiErrorResponse {

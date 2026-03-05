@@ -1,4 +1,5 @@
 import type * as backendApiPort from "@ports/backend_api_port";
+import type * as patientModel from "@domain/models/patient";
 
 export class PatientUseCase {
   private readonly api: backendApiPort.BackendApiPort;
@@ -17,5 +18,13 @@ export class PatientUseCase {
 
   async removePatient(whatsappUserId: string) {
     return this.api.removePatient(whatsappUserId);
+  }
+
+  async createPatient(input: patientModel.CreatePatientInput) {
+    return this.api.createPatient(input);
+  }
+
+  async updatePatient(whatsappUserId: string, input: patientModel.UpdatePatientInput) {
+    return this.api.updatePatient(whatsappUserId, input);
   }
 }
