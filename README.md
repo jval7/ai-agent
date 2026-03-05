@@ -40,6 +40,10 @@ URLs:
 - Frontend: `http://localhost:5173`
 - Backend API: `http://localhost:8000`
 
+In local Docker runs, backend CORS can be overridden with:
+
+- `CORS_ALLOWED_ORIGINS_OVERRIDE` (comma-separated list)
+
 Stop containers:
 
 ```bash
