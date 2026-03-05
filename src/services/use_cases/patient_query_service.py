@@ -52,14 +52,10 @@ class PatientQueryService:
         whatsapp_user_id: str,
     ) -> None:
         self._ensure_owner(claims)
-        booked_requests = self._scheduling_repository.list_requests_by_tenant(
-            claims.tenant_id,
-            "BOOKED",
-        )
-        now_value = self._clock.now()
+        requests = self._scheduling_repository.list_requests_by_tenant(claims.tenant_id)
         deleted_event_ids: set[str] = set()
-        updated_booked_requests_count = 0
-        for request in booked_requests:
+        deleted_scheduling_requests_count = 0
+        for request in requests:
             if request.whatsapp_user_id != whatsapp_user_id:
                 continue
             calendar_event_id = request.calendar_event_id
@@ -69,10 +65,8 @@ class PatientQueryService:
                     event_id=calendar_event_id,
                 )
                 deleted_event_ids.add(calendar_event_id)
-            request.calendar_event_id = None
-            request.updated_at = now_value
-            self._scheduling_repository.save_request(request)
-            updated_booked_requests_count += 1
+            self._scheduling_repository.delete_request(claims.tenant_id, request.id)
+            deleted_scheduling_requests_count += 1
 
         self._patient_repository.delete(claims.tenant_id, whatsapp_user_id)
         logger.info(
@@ -85,7 +79,7 @@ class PatientQueryService:
                         "tenant_id": claims.tenant_id,
                         "whatsapp_user_id": whatsapp_user_id,
                         "deleted_calendar_events_count": len(deleted_event_ids),
-                        "updated_booked_requests_count": updated_booked_requests_count,
+                        "deleted_scheduling_requests_count": deleted_scheduling_requests_count,
                     },
                 )
             },

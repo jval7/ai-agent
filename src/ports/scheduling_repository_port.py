@@ -15,6 +15,10 @@ class SchedulingRepositoryPort(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def delete_request(self, tenant_id: str, request_id: str) -> None:
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def list_requests_by_tenant(
         self, tenant_id: str, status: str | None = None
     ) -> list[scheduling_request_entity.SchedulingRequest]:

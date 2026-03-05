@@ -235,6 +235,26 @@ def test_delete_patient_removes_patient_for_tenant() -> None:
             updated_at=datetime.datetime(2026, 1, 4, tzinfo=datetime.UTC),
         )
     )
+    scheduling_repository.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="req-progress-1",
+            tenant_id="tenant-1",
+            conversation_id="conv-3",
+            whatsapp_user_id="wa-1",
+            request_kind="INITIAL",
+            status="COLLECTING_PREFERENCES",
+            round_number=1,
+            patient_preference_note="prefiere virtual",
+            rejection_summary=None,
+            professional_note=None,
+            slots=[],
+            slot_options_map={},
+            selected_slot_id=None,
+            calendar_event_id=None,
+            created_at=datetime.datetime(2026, 1, 5, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 5, tzinfo=datetime.UTC),
+        )
+    )
 
     service.delete_patient(build_claims("owner"), "wa-1")
 
@@ -242,12 +262,13 @@ def test_delete_patient_removes_patient_for_tenant() -> None:
     assert repository.get_by_whatsapp_user("tenant-2", "wa-1") is not None
     assert google_provider.deleted_event_ids == ["evt-1"]
     deleted_patient_request = scheduling_repository.get_request_by_id("tenant-1", "req-booked-1")
+    deleted_patient_pending_request = scheduling_repository.get_request_by_id(
+        "tenant-1", "req-progress-1"
+    )
     unaffected_request = scheduling_repository.get_request_by_id("tenant-1", "req-booked-2")
-    assert deleted_patient_request is not None
+    assert deleted_patient_request is None
+    assert deleted_patient_pending_request is None
     assert unaffected_request is not None
-    assert deleted_patient_request.status == "BOOKED"
-    assert deleted_patient_request.professional_note is None
-    assert deleted_patient_request.calendar_event_id is None
     assert unaffected_request.status == "BOOKED"
     assert unaffected_request.professional_note is None
     assert unaffected_request.calendar_event_id == "evt-2"

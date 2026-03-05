@@ -64,6 +64,23 @@ class FirestoreSchedulingRepositoryAdapter(scheduling_repository_port.Scheduling
             return None
         return request
 
+    def delete_request(self, tenant_id: str, request_id: str) -> None:
+        request_document = firestore_paths.tenant_scheduling_request_document(
+            self._client,
+            tenant_id,
+            request_id,
+        )
+        try:
+            request_document.delete()
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete scheduling request from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete scheduling request from firestore"
+            ) from error
+
     def list_requests_by_tenant(
         self,
         tenant_id: str,
