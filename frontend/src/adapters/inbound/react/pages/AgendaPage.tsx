@@ -554,14 +554,14 @@ export function AgendaPage() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <div className="flex border-b border-slate-200">
+          <div className="flex gap-1 overflow-x-auto border-b border-slate-200 pb-1">
             {agendaSections.map((section) => {
               const isActive = activeSectionId === section.id;
               const count = sectionCounts[section.id] ?? 0;
               return (
                 <button
                   className={[
-                    "relative -mb-px px-6 py-3 text-sm font-semibold transition-colors",
+                    "relative -mb-px shrink-0 whitespace-nowrap px-3 py-3 text-sm font-semibold transition-colors sm:px-6",
                     isActive
                       ? "border-b-2 border-brand-teal text-brand-teal"
                       : "text-slate-500 hover:border-b-2 hover:border-slate-300 hover:text-slate-700"
@@ -627,11 +627,11 @@ export function AgendaPage() {
               </p>
             </header>
             <div className="space-y-3 p-3">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm font-semibold text-brand-ink">
                   {visibleMonthStart.toFormat("LLLL yyyy")}
                 </p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
                     className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
                     onClick={() => {
@@ -661,93 +661,98 @@ export function AgendaPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
-                {weekDayLabels.map((label) => (
-                  <span key={label}>{label}</span>
-                ))}
-              </div>
-              <div className="grid grid-cols-7 gap-1">
-                {dayGrid.map((dateCell, index) => {
-                  if (dateCell === null) {
-                    return (
-                      <div className="min-h-28 rounded-md bg-slate-50" key={`empty-${index}`} />
-                    );
-                  }
-                  const isoDate = dateCell.toISODate();
-                  const dayAppointments =
-                    isoDate === null ? [] : (bookedAppointmentsByDay.get(isoDate) ?? []);
-                  const isSelectedDay = isoDate === selectedDayIso;
-                  return (
-                    <div
-                      className={[
-                        "min-h-28 rounded-md border p-1",
-                        isSelectedDay
-                          ? "border-brand-teal bg-teal-50/40"
-                          : "border-slate-200 bg-white"
-                      ].join(" ")}
-                      key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
-                    >
-                      <button
-                        className={[
-                          "w-full rounded px-1 text-left text-xs font-semibold",
-                          isSelectedDay
-                            ? "bg-teal-100 text-brand-teal"
-                            : "text-slate-700 hover:bg-slate-100"
-                        ].join(" ")}
-                        onClick={() => {
-                          if (isoDate === null) {
-                            return;
-                          }
-                          setSelectedDayIso(isoDate);
-                          const firstAppointment = dayAppointments[0];
-                          if (firstAppointment !== undefined) {
-                            setSelectedRequestId(firstAppointment.requestId);
-                          }
-                        }}
-                        type="button"
-                      >
-                        {dateCell.day}
-                      </button>
+              <div className="overflow-x-auto pb-1">
+                <div className="min-w-[42rem]">
+                  <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
+                    {weekDayLabels.map((label) => (
+                      <span key={label}>{label}</span>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-7 gap-1">
+                    {dayGrid.map((dateCell, index) => {
+                      if (dateCell === null) {
+                        return (
+                          <div className="min-h-28 rounded-md bg-slate-50" key={`empty-${index}`} />
+                        );
+                      }
+                      const isoDate = dateCell.toISODate();
+                      const dayAppointments =
+                        isoDate === null ? [] : (bookedAppointmentsByDay.get(isoDate) ?? []);
+                      const isSelectedDay = isoDate === selectedDayIso;
+                      return (
+                        <div
+                          className={[
+                            "min-h-28 rounded-md border p-1",
+                            isSelectedDay
+                              ? "border-brand-teal bg-teal-50/40"
+                              : "border-slate-200 bg-white"
+                          ].join(" ")}
+                          key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
+                        >
+                          <button
+                            className={[
+                              "w-full rounded px-1 text-left text-xs font-semibold",
+                              isSelectedDay
+                                ? "bg-teal-100 text-brand-teal"
+                                : "text-slate-700 hover:bg-slate-100"
+                            ].join(" ")}
+                            onClick={() => {
+                              if (isoDate === null) {
+                                return;
+                              }
+                              setSelectedDayIso(isoDate);
+                              const firstAppointment = dayAppointments[0];
+                              if (firstAppointment !== undefined) {
+                                setSelectedRequestId(firstAppointment.requestId);
+                              }
+                            }}
+                            type="button"
+                          >
+                            {dateCell.day}
+                          </button>
 
-                      <div className="mt-1 space-y-1">
-                        {dayAppointments.slice(0, 2).map((appointment) => {
-                          const isSelectedAppointment = appointment.requestId === selectedRequestId;
-                          return (
-                            <button
-                              className={[
-                                "w-full rounded border px-1 py-1 text-left text-[11px]",
-                                isSelectedAppointment
-                                  ? "border-brand-teal bg-teal-100 text-brand-teal"
-                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                              ].join(" ")}
-                              key={appointment.requestId}
-                              onClick={() => {
-                                setSelectedDayIso(appointment.dayIso);
-                                setSelectedRequestId(appointment.requestId);
-                                setSubmitSuccessMessage(null);
-                                setLocalSubmitErrorMessage(null);
-                              }}
-                              type="button"
-                            >
-                              <span className="block truncate font-semibold">
-                                {appointment.startAt.toFormat("HH:mm")} -{" "}
-                                {appointment.endAt.toFormat("HH:mm")}
-                              </span>
-                              <span className="block truncate">
-                                {appointment.patientDisplayName}
-                              </span>
-                            </button>
-                          );
-                        })}
-                        {dayAppointments.length > 2 ? (
-                          <p className="px-1 text-[11px] font-semibold text-slate-500">
-                            +{dayAppointments.length - 2} más
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  );
-                })}
+                          <div className="mt-1 space-y-1">
+                            {dayAppointments.slice(0, 2).map((appointment) => {
+                              const isSelectedAppointment =
+                                appointment.requestId === selectedRequestId;
+                              return (
+                                <button
+                                  className={[
+                                    "w-full rounded border px-1 py-1 text-left text-[11px]",
+                                    isSelectedAppointment
+                                      ? "border-brand-teal bg-teal-100 text-brand-teal"
+                                      : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                                  ].join(" ")}
+                                  key={appointment.requestId}
+                                  onClick={() => {
+                                    setSelectedDayIso(appointment.dayIso);
+                                    setSelectedRequestId(appointment.requestId);
+                                    setSubmitSuccessMessage(null);
+                                    setLocalSubmitErrorMessage(null);
+                                  }}
+                                  type="button"
+                                >
+                                  <span className="block truncate font-semibold">
+                                    {appointment.startAt.toFormat("HH:mm")} -{" "}
+                                    {appointment.endAt.toFormat("HH:mm")}
+                                  </span>
+                                  <span className="block truncate">
+                                    {appointment.patientDisplayName}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                            {dayAppointments.length > 2 ? (
+                              <p className="px-1 text-[11px] font-semibold text-slate-500">
+                                +{dayAppointments.length - 2} más
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               <section className="rounded-lg border border-slate-200 p-3">
@@ -1026,11 +1031,11 @@ export function AgendaPage() {
               {selectedRequest.status === "AWAITING_PROFESSIONAL_SLOTS" ? (
                 <>
                   <section className="rounded-lg border border-slate-200 p-3">
-                    <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <h4 className="text-sm font-semibold text-brand-ink">
                         Calendario ({timezone}) - {visibleMonthStart.toFormat("LLLL yyyy")}
                       </h4>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
                           onClick={() => {
@@ -1060,40 +1065,47 @@ export function AgendaPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
-                      {weekDayLabels.map((label) => (
-                        <span key={label}>{label}</span>
-                      ))}
-                    </div>
-                    <div className="mt-2 grid grid-cols-7 gap-1">
-                      {dayGrid.map((dateCell, index) => {
-                        if (dateCell === null) {
-                          return (
-                            <div className="h-10 rounded-md bg-slate-50" key={`empty-${index}`} />
-                          );
-                        }
-                        const isoDate = dateCell.toISODate();
-                        const isSelected = isoDate === selectedDayIso;
-                        return (
-                          <button
-                            className={[
-                              "h-10 rounded-md border text-sm",
-                              isSelected
-                                ? "border-brand-teal bg-teal-50 text-brand-teal"
-                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                            ].join(" ")}
-                            key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
-                            onClick={() => {
-                              if (isoDate !== null) {
-                                setSelectedDayIso(isoDate);
-                              }
-                            }}
-                            type="button"
-                          >
-                            {dateCell.day}
-                          </button>
-                        );
-                      })}
+                    <div className="overflow-x-auto pb-1">
+                      <div className="min-w-[22rem]">
+                        <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
+                          {weekDayLabels.map((label) => (
+                            <span key={label}>{label}</span>
+                          ))}
+                        </div>
+                        <div className="mt-2 grid grid-cols-7 gap-1">
+                          {dayGrid.map((dateCell, index) => {
+                            if (dateCell === null) {
+                              return (
+                                <div
+                                  className="h-10 rounded-md bg-slate-50"
+                                  key={`empty-${index}`}
+                                />
+                              );
+                            }
+                            const isoDate = dateCell.toISODate();
+                            const isSelected = isoDate === selectedDayIso;
+                            return (
+                              <button
+                                className={[
+                                  "h-10 rounded-md border text-sm",
+                                  isSelected
+                                    ? "border-brand-teal bg-teal-50 text-brand-teal"
+                                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                                ].join(" ")}
+                                key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
+                                onClick={() => {
+                                  if (isoDate !== null) {
+                                    setSelectedDayIso(isoDate);
+                                  }
+                                }}
+                                type="button"
+                              >
+                                {dateCell.day}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
                     {availabilityQuery.isLoading ? (
                       <p className="mt-3 text-xs text-slate-500">
@@ -1193,9 +1205,9 @@ export function AgendaPage() {
                         value={currentProfessionalNote}
                       />
                     </label>
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <button
-                        className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="w-full rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                         disabled={submitSlotsMutation.isPending}
                         onClick={() => {
                           if (selectedRequest === undefined) {

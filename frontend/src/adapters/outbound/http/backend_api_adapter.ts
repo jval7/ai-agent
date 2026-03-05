@@ -253,6 +253,13 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return payload.control_mode;
   }
 
+  async resetConversationMessages(conversationId: string): Promise<void> {
+    await this.request<void>(`/v1/conversations/${conversationId}/messages`, {
+      method: "DELETE",
+      authRequired: true
+    });
+  }
+
   async listBlacklist(): Promise<blacklistModel.BlacklistEntry[]> {
     const payload = await this.request<httpTypes.BlacklistListApiResponse>("/v1/blacklist", {
       method: "GET",
@@ -306,6 +313,13 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       }
     );
     return mapPatient(payload);
+  }
+
+  async removePatient(whatsappUserId: string): Promise<void> {
+    await this.request<void>(`/v1/patients/${whatsappUserId}`, {
+      method: "DELETE",
+      authRequired: true
+    });
   }
 
   async listSchedulingRequests(

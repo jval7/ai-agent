@@ -19,4 +19,8 @@ export class ConversationUseCase {
   async updateControlMode(conversationId: string, controlMode: conversationModel.ControlMode) {
     return this.api.updateConversationControlMode(conversationId, controlMode);
   }
+
+  async resetMessages(conversationId: string) {
+    return this.api.resetConversationMessages(conversationId);
+  }
 }

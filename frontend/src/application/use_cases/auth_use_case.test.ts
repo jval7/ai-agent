@@ -124,6 +124,10 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async resetConversationMessages(_conversationId: string): Promise<void> {
+    return;
+  }
+
   async listSchedulingRequests(
     _status?: schedulingModel.SchedulingRequestStatus
   ): Promise<schedulingModel.SchedulingRequestSummary[]> {
@@ -170,6 +174,10 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
 
   async getPatient(_whatsappUserId: string): Promise<patientModel.Patient> {
     throw new Error("not used");
+  }
+
+  async removePatient(_whatsappUserId: string): Promise<void> {
+    return;
   }
 }
 

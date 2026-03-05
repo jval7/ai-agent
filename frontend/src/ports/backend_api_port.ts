@@ -34,6 +34,7 @@ export interface BackendApiPort {
     conversationId: string,
     controlMode: conversationModel.ControlMode
   ): Promise<conversationModel.ControlMode>;
+  resetConversationMessages(conversationId: string): Promise<void>;
 
   listBlacklist(): Promise<blacklistModel.BlacklistEntry[]>;
   addBlacklist(whatsappUserId: string): Promise<blacklistModel.BlacklistEntry>;
@@ -41,6 +42,7 @@ export interface BackendApiPort {
 
   listPatients(): Promise<patientModel.Patient[]>;
   getPatient(whatsappUserId: string): Promise<patientModel.Patient>;
+  removePatient(whatsappUserId: string): Promise<void>;
 
   listSchedulingRequests(
     status?: schedulingModel.SchedulingRequestStatus

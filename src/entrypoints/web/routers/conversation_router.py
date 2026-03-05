@@ -40,3 +40,15 @@ def update_control_mode(
         conversation_id=conversation_id,
         update_dto=update_dto,
     )
+
+
+@router.delete("/{conversation_id}/messages", status_code=fastapi.status.HTTP_204_NO_CONTENT)
+def reset_messages(
+    conversation_id: str,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> None:
+    container.conversation_control_service.reset_messages(
+        claims=claims,
+        conversation_id=conversation_id,
+    )

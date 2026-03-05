@@ -193,6 +193,20 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
             end_at=end_at,
         )
 
+    def delete_event(
+        self,
+        access_token: str,
+        calendar_id: str,
+        event_id: str,
+    ) -> None:
+        encoded_calendar_id = urllib.parse.quote(calendar_id, safe="")
+        encoded_event_id = urllib.parse.quote(event_id, safe="")
+        self._delete(
+            url=f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events/{encoded_event_id}",
+            operation_label="deleting google calendar event",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
     def _validate_oauth_settings(self) -> None:
         if not self._settings.google_oauth_client_id:
             raise service_exceptions.ExternalProviderError("GOOGLE_OAUTH_CLIENT_ID is required")
@@ -354,6 +368,30 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
                 f"invalid payload while {operation_label}"
             )
         return payload
+
+    def _delete(
+        self,
+        url: str,
+        operation_label: str,
+        headers: dict[str, str],
+    ) -> None:
+        try:
+            response = self._client.delete(url, headers=headers)
+            response.raise_for_status()
+        except httpx.TimeoutException as error:
+            raise service_exceptions.ExternalProviderError(
+                f"timeout while {operation_label}"
+            ) from error
+        except httpx.RequestError as error:
+            raise service_exceptions.ExternalProviderError(
+                f"network error while {operation_label}"
+            ) from error
+        except httpx.HTTPStatusError as error:
+            status_code = error.response.status_code
+            detail = self._extract_error_detail(error.response)
+            raise service_exceptions.ExternalProviderError(
+                f"google rejected request while {operation_label} (status={status_code}, detail={detail})"
+            ) from error
 
     def _extract_error_detail(self, response: httpx.Response) -> str:
         try:

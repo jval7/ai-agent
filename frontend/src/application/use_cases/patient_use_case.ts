@@ -14,4 +14,8 @@ export class PatientUseCase {
   async getPatient(whatsappUserId: string) {
     return this.api.getPatient(whatsappUserId);
   }
+
+  async removePatient(whatsappUserId: string) {
+    return this.api.removePatient(whatsappUserId);
+  }
 }

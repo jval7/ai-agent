@@ -34,3 +34,9 @@ class InMemoryPatientRepositoryAdapter(patient_repository_port.PatientRepository
                     continue
                 items.append(patient.model_copy(deep=True))
             return items
+
+    def delete(self, tenant_id: str, whatsapp_user_id: str) -> None:
+        with self._store.lock:
+            patient_key = (tenant_id, whatsapp_user_id)
+            self._store.patient_by_tenant_and_wa_user.pop(patient_key, None)
+            self._store.flush()

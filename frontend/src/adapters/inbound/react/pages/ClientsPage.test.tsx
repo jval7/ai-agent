@@ -127,4 +127,56 @@ vitestModule.describe("ClientsPage", () => {
     });
     expect(getPatientMock).toHaveBeenCalledWith("wa-2");
   });
+
+  vitestModule.it("deletes selected patient after confirmation", async () => {
+    const confirmSpy = vitestModule.vi.spyOn(window, "confirm").mockReturnValue(true);
+    const removePatientMock = vitestModule.vi.fn(async () => Promise.resolve());
+    const container = {
+      patientUseCase: {
+        listPatients: vitestModule.vi.fn(async () => [
+          {
+            tenantId: "tenant-1",
+            whatsappUserId: "wa-1",
+            firstName: "Jane",
+            lastName: "Doe",
+            email: "jane@example.com",
+            age: 29,
+            consultationReason: "Ansiedad",
+            location: "Bogota",
+            phone: "573001112233",
+            createdAt: "2026-03-01T10:00:00Z"
+          }
+        ]),
+        getPatient: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          whatsappUserId: "wa-1",
+          firstName: "Jane",
+          lastName: "Doe",
+          email: "jane@example.com",
+          age: 29,
+          consultationReason: "Ansiedad",
+          location: "Bogota",
+          phone: "573001112233",
+          createdAt: "2026-03-01T10:00:00Z"
+        })),
+        removePatient: removePatientMock
+      }
+    };
+
+    renderClientsPage(container);
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Jane Doe")).toBeInTheDocument();
+    });
+
+    const deleteButton = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Eliminar cliente"
+    });
+    testingLibraryReactModule.fireEvent.click(deleteButton);
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(removePatientMock).toHaveBeenCalledWith("wa-1");
+    });
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+  });
 });

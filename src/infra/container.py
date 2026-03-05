@@ -211,6 +211,7 @@ class AppContainer:
         )
         self.conversation_control_service = conversation_control_service.ConversationControlService(
             conversation_repository=self.conversation_repository,
+            scheduling_repository=self.scheduling_repository,
             clock=self.clock_adapter,
         )
         self.blacklist_service = blacklist_service.BlacklistService(
@@ -226,4 +227,7 @@ class AppContainer:
         )
         self.patient_query_service = patient_query_service.PatientQueryService(
             patient_repository=self.patient_repository,
+            scheduling_repository=self.scheduling_repository,
+            google_calendar_onboarding_service=self.google_calendar_onboarding_service,
+            clock=self.clock_adapter,
         )

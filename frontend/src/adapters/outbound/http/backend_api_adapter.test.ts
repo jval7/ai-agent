@@ -303,4 +303,34 @@ vitestModule.describe("BackendApiAdapter", () => {
     vitestModule.expect(patient.location).toBe("Bogota");
     vitestModule.expect(submitResult.outboundMessageId).toBe("wamid-1");
   });
+
+  vitestModule.it("resets conversation messages with DELETE endpoint", async () => {
+    serverModule.server.use(
+      mswModule.http.delete("http://api.test/v1/conversations/conv-1/messages", ({ request }) => {
+        const authHeader = request.headers.get("authorization");
+        vitestModule.expect(authHeader).toBe("Bearer access-1");
+        return new mswModule.HttpResponse(null, { status: 204 });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    await adapter.resetConversationMessages("conv-1");
+  });
+
+  vitestModule.it("deletes patient with DELETE endpoint", async () => {
+    serverModule.server.use(
+      mswModule.http.delete("http://api.test/v1/patients/wa-1", ({ request }) => {
+        const authHeader = request.headers.get("authorization");
+        vitestModule.expect(authHeader).toBe("Bearer access-1");
+        return new mswModule.HttpResponse(null, { status: 204 });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    await adapter.removePatient("wa-1");
+  });
 });

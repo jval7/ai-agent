@@ -11,6 +11,7 @@ const patientsQueryKey = ["patients"] as const;
 
 export function ClientsPage() {
   const appContainer = appContainerContextModule.useAppContainer();
+  const queryClient = reactQueryModule.useQueryClient();
   const patientsQuery = reactQueryModule.useQuery({
     queryKey: patientsQueryKey,
     queryFn: () => appContainer.patientUseCase.listPatients()
@@ -38,9 +39,21 @@ export function ClientsPage() {
     queryFn: () => appContainer.patientUseCase.getPatient(selectedWhatsappUserId ?? "")
   });
 
+  const removePatientMutation = reactQueryModule.useMutation({
+    mutationFn: (whatsappUserId: string) =>
+      appContainer.patientUseCase.removePatient(whatsappUserId),
+    onSuccess: async (_data, whatsappUserId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: patientsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ["patient-detail", whatsappUserId] })
+      ]);
+    }
+  });
+
   const errorMessage = uiErrorModule.resolveUiErrorMessage([
     patientsQuery.error,
-    patientDetailQuery.error
+    patientDetailQuery.error,
+    removePatientMutation.error
   ]);
 
   return (
@@ -143,6 +156,26 @@ export function ClientsPage() {
                     <strong>Creado:</strong>{" "}
                     {dateUtilsModule.formatDateTime(patientDetailQuery.data.createdAt)}
                   </p>
+                  <button
+                    className="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={removePatientMutation.isPending}
+                    onClick={() => {
+                      const currentWhatsappUserId = patientDetailQuery.data?.whatsappUserId;
+                      if (currentWhatsappUserId === undefined) {
+                        return;
+                      }
+                      const isConfirmed = window.confirm(
+                        "¿Seguro que quieres eliminar este paciente? Esta accion no se puede deshacer."
+                      );
+                      if (!isConfirmed) {
+                        return;
+                      }
+                      removePatientMutation.mutate(currentWhatsappUserId);
+                    }}
+                    type="button"
+                  >
+                    {removePatientMutation.isPending ? "Eliminando..." : "Eliminar cliente"}
+                  </button>
                 </>
               ) : null}
             </div>

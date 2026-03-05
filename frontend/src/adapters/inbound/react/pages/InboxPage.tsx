@@ -87,6 +87,17 @@ export function InboxPage() {
     }
   });
 
+  const resetMessagesMutation = reactQueryModule.useMutation({
+    mutationFn: (conversationId: string) =>
+      appContainer.conversationUseCase.resetMessages(conversationId),
+    onSuccess: async (_data, conversationId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] })
+      ]);
+    }
+  });
+
   const selectedWhatsappUserId = selectedConversation?.whatsappUserId ?? null;
   const isBlocked =
     selectedWhatsappUserId !== null
@@ -111,33 +122,57 @@ export function InboxPage() {
             ) : null}
             {conversationsQuery.data?.map((conversation) => {
               const isSelected = conversation.conversationId === selectedConversationId;
+              const isResettingConversation =
+                resetMessagesMutation.isPending &&
+                resetMessagesMutation.variables === conversation.conversationId;
               return (
-                <button
+                <article
                   className={[
-                    "mb-2 w-full rounded-lg border p-3 text-left",
+                    "mb-2 rounded-lg border p-3",
                     isSelected
                       ? "border-brand-teal bg-teal-50"
                       : "border-slate-200 bg-white hover:border-slate-300"
                   ].join(" ")}
                   key={conversation.conversationId}
-                  onClick={() => {
-                    setSelectedConversationId(conversation.conversationId);
-                  }}
-                  type="button"
                 >
-                  <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold text-brand-ink">
-                      {conversation.whatsappUserId}
+                  <button
+                    className="w-full text-left"
+                    onClick={() => {
+                      setSelectedConversationId(conversation.conversationId);
+                    }}
+                    type="button"
+                  >
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-semibold text-brand-ink">
+                        {conversation.whatsappUserId}
+                      </p>
+                      <statusBadgeModule.StatusBadge
+                        label={conversation.controlMode}
+                        tone={conversation.controlMode === "AI" ? "success" : "warning"}
+                      />
+                    </div>
+                    <p className="truncate text-xs text-slate-500">
+                      {conversation.lastMessagePreview ?? "Sin preview"}
                     </p>
-                    <statusBadgeModule.StatusBadge
-                      label={conversation.controlMode}
-                      tone={conversation.controlMode === "AI" ? "success" : "warning"}
-                    />
-                  </div>
-                  <p className="truncate text-xs text-slate-500">
-                    {conversation.lastMessagePreview ?? "Sin preview"}
-                  </p>
-                </button>
+                  </button>
+
+                  <button
+                    className="mt-3 w-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={resetMessagesMutation.isPending}
+                    onClick={() => {
+                      const isConfirmed = window.confirm(
+                        "¿Seguro que quieres resetear este chat? Se borrarán los mensajes activos y la conversación quedará vacía."
+                      );
+                      if (!isConfirmed) {
+                        return;
+                      }
+                      resetMessagesMutation.mutate(conversation.conversationId);
+                    }}
+                    type="button"
+                  >
+                    {isResettingConversation ? "Reseteando..." : "Resetear chat"}
+                  </button>
+                </article>
               );
             })}
           </div>

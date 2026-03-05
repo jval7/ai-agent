@@ -45,3 +45,12 @@ class GoogleCalendarProviderPort(abc.ABC):
         summary: str,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def delete_event(
+        self,
+        access_token: str,
+        calendar_id: str,
+        event_id: str,
+    ) -> None:
+        raise NotImplementedError

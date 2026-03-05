@@ -23,3 +23,12 @@ def get_patient(
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> patient_dto.PatientDTO:
     return container.patient_query_service.get_patient(claims, whatsapp_user_id)
+
+
+@router.delete("/{whatsapp_user_id}", status_code=fastapi.status.HTTP_204_NO_CONTENT)
+def delete_patient(
+    whatsapp_user_id: str,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> None:
+    container.patient_query_service.delete_patient(claims, whatsapp_user_id)

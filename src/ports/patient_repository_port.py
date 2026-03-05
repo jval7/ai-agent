@@ -17,3 +17,7 @@ class PatientRepositoryPort(abc.ABC):
     @abc.abstractmethod
     def list_by_tenant(self, tenant_id: str) -> list[patient_entity.Patient]:
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def delete(self, tenant_id: str, whatsapp_user_id: str) -> None:
+        raise NotImplementedError

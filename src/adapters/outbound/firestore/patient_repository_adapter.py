@@ -93,3 +93,20 @@ class FirestorePatientRepositoryAdapter(patient_repository_port.PatientRepositor
             if patient.tenant_id == tenant_id:
                 patients.append(patient)
         return patients
+
+    def delete(self, tenant_id: str, whatsapp_user_id: str) -> None:
+        patient_document = firestore_paths.tenant_patient_document(
+            self._client,
+            tenant_id,
+            whatsapp_user_id,
+        )
+        try:
+            patient_document.delete()
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete patient from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete patient from firestore"
+            ) from error

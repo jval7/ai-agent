@@ -210,6 +210,25 @@ class GoogleCalendarOnboardingService:
             summary=summary,
         )
 
+    def delete_event(
+        self,
+        tenant_id: str,
+        event_id: str,
+    ) -> None:
+        connection = self._get_connected_connection_with_fresh_access_token(tenant_id)
+        calendar_id = connection.calendar_id
+        access_token = connection.access_token
+        if calendar_id is None or access_token is None:
+            raise service_exceptions.InvalidStateError(
+                "google calendar connection is missing required metadata"
+            )
+
+        self._google_calendar_provider.delete_event(
+            access_token=access_token,
+            calendar_id=calendar_id,
+            event_id=event_id,
+        )
+
     def _finalize_connection(
         self,
         connection: google_calendar_connection_entity.GoogleCalendarConnection,
