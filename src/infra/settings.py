@@ -1,6 +1,9 @@
 import json
+import os
 
 import pydantic
+
+_CORS_ALLOWED_ORIGINS_OVERRIDE_ENV_VAR = "CORS_ALLOWED_ORIGINS_OVERRIDE"
 
 
 class Settings(pydantic.BaseModel):
@@ -43,9 +46,7 @@ class Settings(pydantic.BaseModel):
             adc_project_id=adc_project_id,
             app_config_overrides=app_config_overrides,
         )
-        cors_allowed_origins = cls._parse_csv_env(
-            app_config_overrides.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
-        )
+        cors_allowed_origins = cls._resolve_cors_allowed_origins(app_config_overrides)
         firestore_database_id = app_config_overrides.get(
             "FIRESTORE_DATABASE_ID", "(default)"
         ).strip()
@@ -227,3 +228,16 @@ class Settings(pydantic.BaseModel):
         if normalized_value:
             return normalized_value
         return None
+
+    @classmethod
+    def _resolve_cors_allowed_origins(
+        cls,
+        app_config_overrides: dict[str, str],
+    ) -> list[str]:
+        raw_override_value = os.getenv(_CORS_ALLOWED_ORIGINS_OVERRIDE_ENV_VAR, "")
+        normalized_override_value = raw_override_value.strip()
+        if normalized_override_value != "":
+            return cls._parse_csv_env(normalized_override_value)
+        return cls._parse_csv_env(
+            app_config_overrides.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
+        )

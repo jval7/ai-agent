@@ -68,6 +68,44 @@ export interface CalendarSlotCandidate {
   isPast: boolean;
 }
 
+interface BookedAppointment {
+  requestId: string;
+  patientDisplayName: string;
+  dayIso: string;
+  startAt: luxonModule.DateTime;
+  endAt: luxonModule.DateTime;
+  request: schedulingModel.SchedulingRequestSummary;
+}
+
+function resolvePatientDisplayName(request: schedulingModel.SchedulingRequestSummary): string {
+  const names = [request.patientFirstName, request.patientLastName]
+    .map((value) => value?.trim() ?? "")
+    .filter((value) => value !== "");
+  if (names.length > 0) {
+    return names.join(" ");
+  }
+  return request.whatsappUserId;
+}
+
+function resolveBookedSlot(
+  request: schedulingModel.SchedulingRequestSummary
+): schedulingModel.SchedulingSlot | null {
+  if (request.selectedSlotId !== null) {
+    const selectedSlot = request.slots.find((slot) => slot.slotId === request.selectedSlotId);
+    if (selectedSlot !== undefined) {
+      return selectedSlot;
+    }
+  }
+
+  const bookedSlot = request.slots.find((slot) => slot.status === "BOOKED");
+  if (bookedSlot !== undefined) {
+    return bookedSlot;
+  }
+
+  const firstSlot = request.slots[0];
+  return firstSlot ?? null;
+}
+
 export function buildCalendarSlotCandidates(params: {
   requestId: string;
   timezone: string;
@@ -178,6 +216,7 @@ export function AgendaPage() {
   const filteredRequests = reactModule.useMemo(() => {
     return allRequests.filter((request) => request.status === activeTab);
   }, [allRequests, activeTab]);
+  const isBookedTab = activeTab === "BOOKED";
 
   const handleSectionChange = (sectionId: string) => {
     setActiveSectionId(sectionId);
@@ -276,6 +315,93 @@ export function AgendaPage() {
       now: luxonModule.DateTime.now().setZone(timezone)
     });
   }, [selectedRequest, selectedDayIso, timezone, busyIntervals]);
+
+  const bookedAppointments = reactModule.useMemo<BookedAppointment[]>(() => {
+    if (!isBookedTab) {
+      return [];
+    }
+    return filteredRequests
+      .map((request) => {
+        const selectedSlot = resolveBookedSlot(request);
+        if (selectedSlot === null) {
+          return null;
+        }
+        const appointmentTimezone =
+          selectedSlot.timezone.trim() === "" ? timezone : selectedSlot.timezone;
+        const startAt = luxonModule.DateTime.fromISO(selectedSlot.startAt, {
+          zone: appointmentTimezone
+        }).setZone(timezone);
+        const endAt = luxonModule.DateTime.fromISO(selectedSlot.endAt, {
+          zone: appointmentTimezone
+        }).setZone(timezone);
+        const dayIso = startAt.toISODate();
+        if (!startAt.isValid || !endAt.isValid || dayIso === null) {
+          return null;
+        }
+        return {
+          requestId: request.requestId,
+          patientDisplayName: resolvePatientDisplayName(request),
+          dayIso,
+          startAt,
+          endAt,
+          request
+        };
+      })
+      .filter((appointment): appointment is BookedAppointment => appointment !== null)
+      .sort((left, right) => left.startAt.toMillis() - right.startAt.toMillis());
+  }, [filteredRequests, isBookedTab, timezone]);
+
+  const bookedAppointmentsByDay = reactModule.useMemo(() => {
+    const appointmentsByDay = new Map<string, BookedAppointment[]>();
+    bookedAppointments.forEach((appointment) => {
+      const dayAppointments = appointmentsByDay.get(appointment.dayIso);
+      if (dayAppointments === undefined) {
+        appointmentsByDay.set(appointment.dayIso, [appointment]);
+        return;
+      }
+      appointmentsByDay.set(appointment.dayIso, [...dayAppointments, appointment]);
+    });
+    return appointmentsByDay;
+  }, [bookedAppointments]);
+
+  const selectedBookedAppointment = reactModule.useMemo(() => {
+    if (!isBookedTab || selectedRequestId === null) {
+      return null;
+    }
+    const appointment = bookedAppointments.find(
+      (currentAppointment) => currentAppointment.requestId === selectedRequestId
+    );
+    return appointment ?? null;
+  }, [bookedAppointments, isBookedTab, selectedRequestId]);
+
+  const selectedDayAppointments = reactModule.useMemo(() => {
+    if (!isBookedTab || selectedDayIso === "") {
+      return [];
+    }
+    return bookedAppointmentsByDay.get(selectedDayIso) ?? [];
+  }, [bookedAppointmentsByDay, isBookedTab, selectedDayIso]);
+
+  reactModule.useEffect(() => {
+    if (!isBookedTab || bookedAppointments.length === 0) {
+      return;
+    }
+
+    if (selectedBookedAppointment !== null) {
+      if (selectedBookedAppointment.dayIso !== selectedDayIso) {
+        setSelectedDayIso(selectedBookedAppointment.dayIso);
+      }
+      return;
+    }
+
+    const firstAppointment = bookedAppointments[0];
+    if (firstAppointment === undefined) {
+      return;
+    }
+    setSelectedRequestId(firstAppointment.requestId);
+    if (firstAppointment.dayIso !== selectedDayIso) {
+      setSelectedDayIso(firstAppointment.dayIso);
+    }
+  }, [bookedAppointments, isBookedTab, selectedBookedAppointment, selectedDayIso]);
 
   const selectedSlots =
     selectedRequest !== undefined
@@ -486,56 +612,247 @@ export function AgendaPage() {
         </div>
       </section>
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <article className="rounded-xl border border-slate-200 bg-white">
-          <header className="border-b border-slate-200 p-4">
-            <h3 className="text-base font-semibold">Solicitudes</h3>
-            <p className="text-xs text-slate-500">Estado actual: {activeTab}</p>
-          </header>
-          <div className="max-h-[75vh] space-y-2 overflow-auto p-3">
-            {requestsQuery.isLoading ? <p className="text-sm text-slate-500">Cargando...</p> : null}
-            {filteredRequests.length === 0 ? (
-              <p className="text-sm text-slate-500">No hay solicitudes en este estado.</p>
-            ) : null}
-            {filteredRequests.map((request) => {
-              const isSelected = request.requestId === selectedRequestId;
-              return (
-                <button
-                  className={[
-                    "w-full rounded-lg border p-3 text-left",
-                    isSelected
-                      ? "border-brand-teal bg-teal-50"
-                      : "border-slate-200 bg-white hover:border-slate-300"
-                  ].join(" ")}
-                  key={request.requestId}
-                  onClick={() => {
-                    setSelectedRequestId(request.requestId);
-                    setSubmitSuccessMessage(null);
-                    setLocalSubmitErrorMessage(null);
-                  }}
-                  type="button"
-                >
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <p className="truncate text-sm font-semibold text-brand-ink">
-                      {request.requestId}
-                    </p>
-                    <statusBadgeModule.StatusBadge label={request.status} tone="neutral" />
+      <section
+        className={[
+          "mt-4 grid gap-4",
+          isBookedTab ? "lg:grid-cols-[520px_minmax(0,1fr)]" : "lg:grid-cols-[320px_minmax(0,1fr)]"
+        ].join(" ")}
+      >
+        {isBookedTab ? (
+          <article className="rounded-xl border border-slate-200 bg-white">
+            <header className="border-b border-slate-200 p-4">
+              <h3 className="text-base font-semibold">Calendario de citas agendadas</h3>
+              <p className="text-xs text-slate-500">
+                Fecha, rango de hora y paciente. Haz click para ver el detalle completo.
+              </p>
+            </header>
+            <div className="space-y-3 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-brand-ink">
+                  {visibleMonthStart.toFormat("LLLL yyyy")}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                    onClick={() => {
+                      const previous = visibleMonthStart.minus({ months: 1 });
+                      setVisibleMonth({
+                        year: previous.year,
+                        month: previous.month as luxonModule.MonthNumbers
+                      });
+                    }}
+                    type="button"
+                  >
+                    Anterior
+                  </button>
+                  <button
+                    className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                    onClick={() => {
+                      const next = visibleMonthStart.plus({ months: 1 });
+                      setVisibleMonth({
+                        year: next.year,
+                        month: next.month as luxonModule.MonthNumbers
+                      });
+                    }}
+                    type="button"
+                  >
+                    Siguiente
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
+                {weekDayLabels.map((label) => (
+                  <span key={label}>{label}</span>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {dayGrid.map((dateCell, index) => {
+                  if (dateCell === null) {
+                    return (
+                      <div className="min-h-28 rounded-md bg-slate-50" key={`empty-${index}`} />
+                    );
+                  }
+                  const isoDate = dateCell.toISODate();
+                  const dayAppointments =
+                    isoDate === null ? [] : (bookedAppointmentsByDay.get(isoDate) ?? []);
+                  const isSelectedDay = isoDate === selectedDayIso;
+                  return (
+                    <div
+                      className={[
+                        "min-h-28 rounded-md border p-1",
+                        isSelectedDay
+                          ? "border-brand-teal bg-teal-50/40"
+                          : "border-slate-200 bg-white"
+                      ].join(" ")}
+                      key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
+                    >
+                      <button
+                        className={[
+                          "w-full rounded px-1 text-left text-xs font-semibold",
+                          isSelectedDay
+                            ? "bg-teal-100 text-brand-teal"
+                            : "text-slate-700 hover:bg-slate-100"
+                        ].join(" ")}
+                        onClick={() => {
+                          if (isoDate === null) {
+                            return;
+                          }
+                          setSelectedDayIso(isoDate);
+                          const firstAppointment = dayAppointments[0];
+                          if (firstAppointment !== undefined) {
+                            setSelectedRequestId(firstAppointment.requestId);
+                          }
+                        }}
+                        type="button"
+                      >
+                        {dateCell.day}
+                      </button>
+
+                      <div className="mt-1 space-y-1">
+                        {dayAppointments.slice(0, 2).map((appointment) => {
+                          const isSelectedAppointment = appointment.requestId === selectedRequestId;
+                          return (
+                            <button
+                              className={[
+                                "w-full rounded border px-1 py-1 text-left text-[11px]",
+                                isSelectedAppointment
+                                  ? "border-brand-teal bg-teal-100 text-brand-teal"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                              ].join(" ")}
+                              key={appointment.requestId}
+                              onClick={() => {
+                                setSelectedDayIso(appointment.dayIso);
+                                setSelectedRequestId(appointment.requestId);
+                                setSubmitSuccessMessage(null);
+                                setLocalSubmitErrorMessage(null);
+                              }}
+                              type="button"
+                            >
+                              <span className="block truncate font-semibold">
+                                {appointment.startAt.toFormat("HH:mm")} -{" "}
+                                {appointment.endAt.toFormat("HH:mm")}
+                              </span>
+                              <span className="block truncate">
+                                {appointment.patientDisplayName}
+                              </span>
+                            </button>
+                          );
+                        })}
+                        {dayAppointments.length > 2 ? (
+                          <p className="px-1 text-[11px] font-semibold text-slate-500">
+                            +{dayAppointments.length - 2} más
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <section className="rounded-lg border border-slate-200 p-3">
+                <h4 className="text-sm font-semibold text-brand-ink">
+                  {selectedDayIso !== ""
+                    ? `Citas del ${luxonModule.DateTime.fromISO(selectedDayIso, {
+                        zone: timezone
+                      }).toFormat("dd LLL yyyy")}`
+                    : "Citas del día seleccionado"}
+                </h4>
+                {selectedDayAppointments.length === 0 ? (
+                  <p className="mt-2 text-xs text-slate-500">No hay citas para este día.</p>
+                ) : (
+                  <div className="mt-2 space-y-2">
+                    {selectedDayAppointments.map((appointment) => {
+                      const isSelectedAppointment = appointment.requestId === selectedRequestId;
+                      return (
+                        <button
+                          className={[
+                            "w-full rounded-md border px-3 py-2 text-left",
+                            isSelectedAppointment
+                              ? "border-brand-teal bg-teal-50 text-brand-teal"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                          ].join(" ")}
+                          key={`day-${appointment.requestId}`}
+                          onClick={() => {
+                            setSelectedDayIso(appointment.dayIso);
+                            setSelectedRequestId(appointment.requestId);
+                            setSubmitSuccessMessage(null);
+                            setLocalSubmitErrorMessage(null);
+                          }}
+                          type="button"
+                        >
+                          <p className="text-sm font-semibold">
+                            {appointment.startAt.toFormat("HH:mm")} -{" "}
+                            {appointment.endAt.toFormat("HH:mm")}
+                          </p>
+                          <p className="text-xs">{appointment.patientDisplayName}</p>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <p className="text-xs text-slate-600">Conv: {request.conversationId}</p>
-                  <p className="text-xs text-slate-600">Paciente: {request.whatsappUserId}</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {dateUtilsModule.formatDateTime(request.updatedAt)}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        </article>
+                )}
+              </section>
+
+              <p className="text-xs text-slate-500">Zona horaria de visualización: {timezone}</p>
+            </div>
+          </article>
+        ) : (
+          <article className="rounded-xl border border-slate-200 bg-white">
+            <header className="border-b border-slate-200 p-4">
+              <h3 className="text-base font-semibold">Solicitudes</h3>
+              <p className="text-xs text-slate-500">Estado actual: {activeTab}</p>
+            </header>
+            <div className="max-h-[75vh] space-y-2 overflow-auto p-3">
+              {requestsQuery.isLoading ? (
+                <p className="text-sm text-slate-500">Cargando...</p>
+              ) : null}
+              {filteredRequests.length === 0 ? (
+                <p className="text-sm text-slate-500">No hay solicitudes en este estado.</p>
+              ) : null}
+              {filteredRequests.map((request) => {
+                const isSelected = request.requestId === selectedRequestId;
+                return (
+                  <button
+                    className={[
+                      "w-full rounded-lg border p-3 text-left",
+                      isSelected
+                        ? "border-brand-teal bg-teal-50"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    ].join(" ")}
+                    key={request.requestId}
+                    onClick={() => {
+                      setSelectedRequestId(request.requestId);
+                      setSubmitSuccessMessage(null);
+                      setLocalSubmitErrorMessage(null);
+                    }}
+                    type="button"
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="truncate text-sm font-semibold text-brand-ink">
+                        {request.requestId}
+                      </p>
+                      <statusBadgeModule.StatusBadge label={request.status} tone="neutral" />
+                    </div>
+                    <p className="text-xs text-slate-600">Conv: {request.conversationId}</p>
+                    <p className="text-xs text-slate-600">
+                      Paciente: {resolvePatientDisplayName(request)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {dateUtilsModule.formatDateTime(request.updatedAt)}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </article>
+        )}
 
         <article className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
           {selectedRequest === undefined ? (
             <p className="text-sm text-slate-500">
-              Selecciona una solicitud para ver detalle y gestionar slots.
+              {isBookedTab
+                ? "Selecciona una cita en el calendario para ver todos los detalles."
+                : "Selecciona una solicitud para ver detalle y gestionar slots."}
             </p>
           ) : (
             <>
@@ -550,7 +867,10 @@ export function AgendaPage() {
                       <strong>Conversación:</strong> {selectedRequest.conversationId}
                     </p>
                     <p>
-                      <strong>Paciente:</strong> {selectedRequest.whatsappUserId}
+                      <strong>Paciente:</strong> {resolvePatientDisplayName(selectedRequest)}
+                    </p>
+                    <p>
+                      <strong>Contacto:</strong> {selectedRequest.whatsappUserId}
                     </p>
                     <p>
                       <strong>Tipo:</strong> {selectedRequest.requestKind}
@@ -561,6 +881,16 @@ export function AgendaPage() {
                     <p>
                       <strong>Estado:</strong> {selectedRequest.status}
                     </p>
+                    {isBookedTab ? (
+                      <p>
+                        <strong>Cita:</strong>{" "}
+                        {selectedBookedAppointment === null
+                          ? "-"
+                          : `${selectedBookedAppointment.startAt.toFormat(
+                              "dd LLL yyyy HH:mm"
+                            )} - ${selectedBookedAppointment.endAt.toFormat("HH:mm")}`}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="rounded-lg border border-slate-200 p-3">
@@ -893,7 +1223,15 @@ export function AgendaPage() {
                     </div>
                   </section>
                 </>
-              ) : selectedRequest.status === "AWAITING_CONSULTATION_REVIEW" ? null : (
+              ) : selectedRequest.status ===
+                "AWAITING_CONSULTATION_REVIEW" ? null : selectedRequest.status === "BOOKED" ? (
+                <section className="rounded-lg border border-slate-200 p-3">
+                  <p className="text-sm text-slate-600">
+                    Cita confirmada. Puedes explorar otras citas del calendario para revisar más
+                    detalles.
+                  </p>
+                </section>
+              ) : (
                 <section className="rounded-lg border border-slate-200 p-3">
                   <p className="text-sm text-slate-600">
                     Esta solicitud está en modo lectura para este estado.
