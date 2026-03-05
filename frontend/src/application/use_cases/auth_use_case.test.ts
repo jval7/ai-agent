@@ -55,10 +55,6 @@ class InMemoryTokenSession {
 class FakeBackendApi implements backendApiPort.BackendApiPort {
   refreshCalls = 0;
 
-  async register(_input: authModel.RegisterInput): Promise<authModel.AuthTokens> {
-    throw new Error("not used");
-  }
-
   async login(_input: authModel.LoginInput): Promise<authModel.AuthTokens> {
     throw new Error("not used");
   }

@@ -7,14 +7,6 @@ import src.services.dto.auth_dto as auth_dto
 router = fastapi.APIRouter(prefix="/v1/auth", tags=["auth"])
 
 
-@router.post("/register", response_model=auth_dto.AuthTokensDTO)
-def register(
-    register_dto: auth_dto.RegisterUserDTO,
-    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
-) -> auth_dto.AuthTokensDTO:
-    return container.auth_service.register(register_dto)
-
-
 @router.post("/login", response_model=auth_dto.AuthTokensDTO)
 def login(
     login_dto: auth_dto.LoginDTO,

@@ -10,6 +10,7 @@ class User(pydantic.BaseModel):
     password_hash: str
     role: str
     is_active: bool
+    is_master: bool = False
     created_at: datetime.datetime
 
     @pydantic.field_validator("email")

@@ -33,10 +33,14 @@
 
 ## Funcionalidad implementada
 - Auth:
-  - `POST /v1/auth/register`
+  - `POST /v1/auth/register` deshabilitado (`404`)
   - `POST /v1/auth/login`
   - `POST /v1/auth/refresh`
   - `POST /v1/auth/logout`
+- User admin local (sin endpoint HTTP):
+  - `make user-bootstrap-master`
+  - `make user-create`
+  - `make user-delete`
 - Prompt del agente:
   - `GET /v1/agent/system-prompt`
   - `PUT /v1/agent/system-prompt`
@@ -100,6 +104,7 @@
   - `make static-checks`
   - `uv run pytest tests/services -q`
 - Flujo OAuth local:
+  - `make user-bootstrap-master` (solo primera vez)
   - `make oauth-flow`
   - `make memory-reset`
   - `make chat-memory-reset`

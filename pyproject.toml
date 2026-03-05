@@ -56,6 +56,14 @@ warn_unused_ignores = true
 warn_no_return = true
 follow_imports = "normal"
 
+[[tool.mypy.overrides]]
+module = ["google.cloud", "google.cloud.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["src.adapters.outbound.firestore.*"]
+disable_error_code = ["import-untyped"]
+
 [tool.bandit]
 exclude_dirs = ["tests"]
 severity = ["LOW", "MEDIUM", "HIGH"]

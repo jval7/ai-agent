@@ -6,7 +6,6 @@ import * as inboxPageModule from "@adapters/inbound/react/pages/InboxPage";
 import * as loginPageModule from "@adapters/inbound/react/pages/LoginPage";
 import * as onboardingPageModule from "@adapters/inbound/react/pages/OnboardingPage";
 import * as promptPageModule from "@adapters/inbound/react/pages/PromptPage";
-import * as registerPageModule from "@adapters/inbound/react/pages/RegisterPage";
 
 import * as onboardingReadyRouteModule from "./OnboardingReadyRoute";
 import * as protectedRouteModule from "./ProtectedRoute";
@@ -28,14 +27,6 @@ export function AppRouter() {
             </publicOnlyRouteModule.PublicOnlyRoute>
           }
           path="/login"
-        />
-        <reactRouterDomModule.Route
-          element={
-            <publicOnlyRouteModule.PublicOnlyRoute>
-              <registerPageModule.RegisterPage />
-            </publicOnlyRouteModule.PublicOnlyRoute>
-          }
-          path="/register"
         />
 
         <reactRouterDomModule.Route

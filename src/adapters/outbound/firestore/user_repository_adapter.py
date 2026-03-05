@@ -168,3 +168,54 @@ class FirestoreUserRepositoryAdapter(user_repository_port.UserRepositoryPort):
         if user_raw_data is None:
             return None
         return firestore_model_mapper.parse_document(user_raw_data, user_entity.User, "user")
+
+    def delete_by_id(self, user_id: str) -> bool:
+        user_id_index_document = firestore_paths.user_id_index_document(self._client, user_id)
+        try:
+            user_id_index_snapshot = user_id_index_document.get()
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete user from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete user from firestore"
+            ) from error
+
+        if not user_id_index_snapshot.exists:
+            return False
+        user_id_index_raw_data = user_id_index_snapshot.to_dict()
+        if user_id_index_raw_data is None:
+            return False
+
+        tenant_id_value = user_id_index_raw_data.get("tenant_id")
+        email_value = user_id_index_raw_data.get("email")
+        if not isinstance(tenant_id_value, str):
+            raise firestore_errors.FirestoreRepositoryError(
+                "invalid user id index format in firestore"
+            )
+        if not isinstance(email_value, str):
+            raise firestore_errors.FirestoreRepositoryError(
+                "invalid user id index format in firestore"
+            )
+
+        user_document = firestore_paths.tenant_user_document(self._client, tenant_id_value, user_id)
+        email_index_document = firestore_paths.user_email_index_document(
+            self._client,
+            email_value.lower(),
+        )
+        batch = self._client.batch()
+        batch.delete(user_document)
+        batch.delete(user_id_index_document)
+        batch.delete(email_index_document)
+        try:
+            batch.commit()
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete user from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete user from firestore"
+            ) from error
+        return True

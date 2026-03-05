@@ -7,7 +7,6 @@ import * as appContainerContextModule from "./AppContainerContext";
 interface AuthContextValue {
   status: authModel.AuthStatus;
   login(input: authModel.LoginInput): Promise<void>;
-  register(input: authModel.RegisterInput): Promise<void>;
   logout(): Promise<void>;
 }
 
@@ -40,10 +39,6 @@ export function AuthProvider(props: { children: reactModule.ReactNode }) {
       status,
       login: async (input) => {
         await appContainer.authUseCase.login(input);
-        setStatus("authenticated");
-      },
-      register: async (input) => {
-        await appContainer.authUseCase.register(input);
         setStatus("authenticated");
       },
       logout: async () => {

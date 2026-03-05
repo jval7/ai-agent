@@ -43,11 +43,6 @@ export class AuthUseCase {
     this.persistTokens(tokens);
   }
 
-  async register(input: authModel.RegisterInput): Promise<void> {
-    const tokens = await this.api.register(input);
-    this.persistTokens(tokens);
-  }
-
   async logout(): Promise<void> {
     const refreshToken = this.tokenSession.getRefreshToken();
     if (refreshToken !== null) {

@@ -4,12 +4,6 @@ export interface AuthTokens {
   expiresInSeconds: number;
 }
 
-export interface RegisterInput {
-  tenantName: string;
-  email: string;
-  password: string;
-}
-
 export interface LoginInput {
   email: string;
   password: string;

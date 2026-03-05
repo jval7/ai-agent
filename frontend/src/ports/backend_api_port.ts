@@ -9,7 +9,6 @@ import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
 
 export interface BackendApiPort {
-  register(input: authModel.RegisterInput): Promise<authModel.AuthTokens>;
   login(input: authModel.LoginInput): Promise<authModel.AuthTokens>;
   refresh(refreshToken: string): Promise<authModel.AuthTokens>;
   logout(refreshToken: string): Promise<void>;

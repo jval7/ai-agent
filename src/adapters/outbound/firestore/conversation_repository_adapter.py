@@ -205,7 +205,9 @@ class FirestoreConversationRepositoryAdapter(
         transaction = self._client.transaction()
 
         @google_cloud_firestore.transactional  # type: ignore[misc]
-        def _append_message(current_transaction: google_cloud_firestore.Transaction) -> None:
+        def _append_message(
+            current_transaction: google_cloud_firestore.Transaction,
+        ) -> None:
             snapshot = conversation_document.get(transaction=current_transaction)
             if not snapshot.exists:
                 raise firestore_errors.FirestoreRepositoryError(

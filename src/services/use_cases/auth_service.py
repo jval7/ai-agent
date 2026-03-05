@@ -86,6 +86,7 @@ class AuthService:
             password_hash=password_hash,
             role=service_constants.DEFAULT_OWNER_ROLE,
             is_active=True,
+            is_master=False,
             created_at=now_value,
         )
         self._user_repository.save(user)

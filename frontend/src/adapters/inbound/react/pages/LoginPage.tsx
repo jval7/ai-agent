@@ -1,6 +1,5 @@
 import * as reactModule from "react";
 import * as reactRouterDomModule from "react-router-dom";
-
 import * as authContextModule from "@adapters/inbound/react/app/AuthContext";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as authSharedModule from "@adapters/inbound/react/components/AuthShared";
@@ -105,13 +104,7 @@ export function LoginPage() {
         <authSharedModule.SecurityHint />
 
         <p className="mt-8 text-center text-base text-slate-600 md:text-xl">
-          ¿No tienes cuenta?{" "}
-          <reactRouterDomModule.Link
-            className="font-semibold text-teal-700 hover:underline"
-            to="/register"
-          >
-            Crear cuenta
-          </reactRouterDomModule.Link>
+          El registro está deshabilitado. Solicita acceso al administrador local.
         </p>
       </authSharedModule.AuthCard>
     </authSharedModule.AuthScreenContainer>

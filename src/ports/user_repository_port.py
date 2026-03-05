@@ -15,3 +15,7 @@ class UserRepositoryPort(abc.ABC):
     @abc.abstractmethod
     def get_by_id(self, user_id: str) -> user_entity.User | None:
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def delete_by_id(self, user_id: str) -> bool:
+        raise NotImplementedError

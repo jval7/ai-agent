@@ -33,19 +33,6 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     this.refreshInFlight = null;
   }
 
-  async register(input: authModel.RegisterInput): Promise<authModel.AuthTokens> {
-    const payload = await this.request<httpTypes.AuthTokensApiResponse>("/v1/auth/register", {
-      method: "POST",
-      authRequired: false,
-      body: JSON.stringify({
-        tenant_name: input.tenantName,
-        email: input.email,
-        password: input.password
-      })
-    });
-    return mapAuthTokens(payload);
-  }
-
   async login(input: authModel.LoginInput): Promise<authModel.AuthTokens> {
     const payload = await this.request<httpTypes.AuthTokensApiResponse>("/v1/auth/login", {
       method: "POST",

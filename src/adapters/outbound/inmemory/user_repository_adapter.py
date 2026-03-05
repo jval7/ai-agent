@@ -27,3 +27,14 @@ class InMemoryUserRepositoryAdapter(user_repository_port.UserRepositoryPort):
             if user is None:
                 return None
             return user.model_copy(deep=True)
+
+    def delete_by_id(self, user_id: str) -> bool:
+        with self._store.lock:
+            user = self._store.users_by_id.get(user_id)
+            if user is None:
+                return False
+            del self._store.users_by_id[user_id]
+            if user.email in self._store.users_by_email:
+                del self._store.users_by_email[user.email]
+            self._store.flush()
+            return True

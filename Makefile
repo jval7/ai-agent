@@ -21,6 +21,10 @@ API_BASE ?= http://localhost:8000
 TENANT_NAME ?= Acme
 OWNER_EMAIL ?= owner@acme.com
 OWNER_PASSWORD ?= supersecret
+MASTER_EMAIL ?= $(OWNER_EMAIL)
+MASTER_PASSWORD ?= $(OWNER_PASSWORD)
+USER_EMAIL ?=
+USER_PASSWORD ?=
 OWNER_EMAIL_ORIGIN := $(origin OWNER_EMAIL)
 OWNER_PASSWORD_ORIGIN := $(origin OWNER_PASSWORD)
 FLOW_DIR ?= .make-flow
@@ -64,6 +68,9 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 
 .PHONY: \
 	oauth-flow \
+	user-bootstrap-master \
+	user-create \
+	user-delete \
 	save-api-base \
 	save-credentials \
 	memory-reset \
@@ -95,13 +102,16 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 oauth-flow:
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@mkdir -p "$(FLOW_DIR)"
-	@register_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/register" \
+	@login_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/login" \
 		-H "Content-Type: application/json" \
-		-d '{"tenant_name":"$(TENANT_NAME)","email":"$(OWNER_EMAIL)","password":"$(OWNER_PASSWORD)"}'); \
-	access_token=$$(echo "$$register_response" | jq -r '.access_token'); \
+		-d '{"email":"$(OWNER_EMAIL)","password":"$(OWNER_PASSWORD)"}'); \
+	access_token=$$(echo "$$login_response" | jq -r '.access_token'); \
 	if [[ "$$access_token" == "null" || -z "$$access_token" ]]; then \
-		echo "Register failed:"; \
-		echo "$$register_response" | jq . 2>/dev/null || echo "$$register_response"; \
+		echo "Login failed:"; \
+		echo "$$login_response" | jq . 2>/dev/null || echo "$$login_response"; \
+		echo ""; \
+		echo "Si es la primera vez en este ambiente, bootstrap del master:"; \
+		echo "make user-bootstrap-master TENANT_NAME='$(TENANT_NAME)' MASTER_EMAIL='$(MASTER_EMAIL)' MASTER_PASSWORD='$(MASTER_PASSWORD)'"; \
 		exit 1; \
 	fi; \
 	echo "$$access_token" > "$(FLOW_DIR)/access_token"; \
@@ -142,6 +152,37 @@ save-credentials:
 	@printf "OWNER_EMAIL=%s\nOWNER_PASSWORD=%s\n" "$(OWNER_EMAIL)" "$(OWNER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"
 	@chmod 600 "$(MAKE_CREDENTIALS_FILE)"
 	@echo "Saved OWNER_EMAIL/OWNER_PASSWORD to $(MAKE_CREDENTIALS_FILE)"
+
+user-bootstrap-master:
+	@uv run python -m src.entrypoints.local.user_admin_cli bootstrap-master \
+		--tenant-name "$(TENANT_NAME)" \
+		--master-email "$(MASTER_EMAIL)" \
+		--master-password "$(MASTER_PASSWORD)"
+
+user-create:
+	@if [[ -z "$(USER_EMAIL)" ]]; then \
+		echo "USER_EMAIL is required. Example: make user-create USER_EMAIL=user@acme.com USER_PASSWORD=supersecret"; \
+		exit 1; \
+	fi
+	@if [[ -z "$(USER_PASSWORD)" ]]; then \
+		echo "USER_PASSWORD is required. Example: make user-create USER_EMAIL=user@acme.com USER_PASSWORD=supersecret"; \
+		exit 1; \
+	fi
+	@uv run python -m src.entrypoints.local.user_admin_cli create-user \
+		--master-email "$(MASTER_EMAIL)" \
+		--master-password "$(MASTER_PASSWORD)" \
+		--email "$(USER_EMAIL)" \
+		--password "$(USER_PASSWORD)"
+
+user-delete:
+	@if [[ -z "$(USER_EMAIL)" ]]; then \
+		echo "USER_EMAIL is required. Example: make user-delete USER_EMAIL=user@acme.com"; \
+		exit 1; \
+	fi
+	@uv run python -m src.entrypoints.local.user_admin_cli delete-user \
+		--master-email "$(MASTER_EMAIL)" \
+		--master-password "$(MASTER_PASSWORD)" \
+		--email "$(USER_EMAIL)"
 
 memory-reset:
 	@if [[ -f "$(FLOW_DIR)/access_token" ]]; then \

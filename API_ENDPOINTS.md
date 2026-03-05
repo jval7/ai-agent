@@ -35,12 +35,16 @@ Este documento describe qué hace cada endpoint del backend.
 ## Auth
 
 ### `POST /v1/auth/register`
+- Estado: deshabilitado.
+- Resultado: `404 Not Found`.
+- Nota: la creación/eliminación de usuarios se hace solo por comandos locales (`make user-bootstrap-master`, `make user-create`, `make user-delete`).
+
+### `POST /v1/auth/login`
 - Auth: no
-- Qué hace: crea `Tenant` + `User owner`, inicializa prompt por defecto y devuelve tokens.
+- Qué hace: valida credenciales y emite tokens.
 - Request body:
 ```json
 {
-  "tenant_name": "Acme",
   "email": "owner@acme.com",
   "password": "supersecret"
 }
@@ -55,18 +59,6 @@ Este documento describe qué hace cada endpoint del backend.
 }
 ```
 
-### `POST /v1/auth/login`
-- Auth: no
-- Qué hace: valida credenciales y emite tokens.
-- Request body:
-```json
-{
-  "email": "owner@acme.com",
-  "password": "supersecret"
-}
-```
-- Response body: igual que `register`.
-
 ### `POST /v1/auth/refresh`
 - Auth: no
 - Qué hace: rota refresh token y devuelve nuevo par de tokens.
@@ -76,7 +68,7 @@ Este documento describe qué hace cada endpoint del backend.
   "refresh_token": "..."
 }
 ```
-- Response body: igual que `register`.
+- Response body: igual que `login`.
 
 ### `POST /v1/auth/logout`
 - Auth: sí (access token)
@@ -343,11 +335,12 @@ Este documento describe qué hace cada endpoint del backend.
 
 ## Flujo mínimo recomendado (manual)
 
-1. `POST /v1/auth/register`
-2. `POST /v1/whatsapp/embedded-signup/session`
-3. `POST /v1/whatsapp/embedded-signup/complete`
-4. `GET /v1/whatsapp/dev/verify-token` (solo dev; en producción usar directamente `META_WEBHOOK_VERIFY_TOKEN`)
-5. `GET /v1/whatsapp/connection`
-6. Enviar mensaje de prueba en WhatsApp
-7. `GET /v1/conversations`
-8. `GET /v1/conversations/{conversation_id}/messages`
+1. `make user-bootstrap-master TENANT_NAME=... MASTER_EMAIL=... MASTER_PASSWORD=...` (solo primera vez por ambiente)
+2. `POST /v1/auth/login`
+3. `POST /v1/whatsapp/embedded-signup/session`
+4. `POST /v1/whatsapp/embedded-signup/complete`
+5. `GET /v1/whatsapp/dev/verify-token` (solo dev; en producción usar directamente `META_WEBHOOK_VERIFY_TOKEN`)
+6. `GET /v1/whatsapp/connection`
+7. Enviar mensaje de prueba en WhatsApp
+8. `GET /v1/conversations`
+9. `GET /v1/conversations/{conversation_id}/messages`
