@@ -169,4 +169,173 @@ vitestModule.describe("AgendaPage", () => {
       ).toBeInTheDocument();
     });
   });
+
+  vitestModule.it(
+    "renders booked appointments in calendar and opens details on click",
+    async () => {
+      vitestModule.vi
+        .spyOn(luxonModule.DateTime, "now")
+        .mockReturnValue(
+          luxonModule.DateTime.utc(2026, 3, 1, 0, 0, 0) as luxonModule.DateTime<true>
+        );
+
+      const listRequestsMock = vitestModule.vi.fn(async () => [
+        {
+          requestId: "req-booked-1",
+          conversationId: "conv-booked-1",
+          whatsappUserId: "wa-booked-1",
+          requestKind: "INITIAL",
+          status: "BOOKED",
+          roundNumber: 1,
+          patientPreferenceNote: "prefiere mañana",
+          rejectionSummary: null,
+          professionalNote: null,
+          patientFirstName: "Ana",
+          patientLastName: "Lopez",
+          patientAge: 29,
+          consultationReason: "Ansiedad",
+          consultationDetails: null,
+          appointmentModality: "PRESENCIAL",
+          patientLocation: "Cali",
+          slotOptionsMap: {},
+          selectedSlotId: "slot-booked-1",
+          calendarEventId: "event-booked-1",
+          createdAt: "2026-03-01T00:00:00Z",
+          updatedAt: "2026-03-01T00:00:00Z",
+          slots: [
+            {
+              slotId: "slot-booked-1",
+              startAt: "2026-03-12T09:00:00Z",
+              endAt: "2026-03-12T10:00:00Z",
+              timezone: "UTC",
+              status: "BOOKED"
+            }
+          ]
+        },
+        {
+          requestId: "req-booked-2",
+          conversationId: "conv-booked-2",
+          whatsappUserId: "wa-booked-2",
+          requestKind: "INITIAL",
+          status: "BOOKED",
+          roundNumber: 1,
+          patientPreferenceNote: "prefiere tarde",
+          rejectionSummary: null,
+          professionalNote: null,
+          patientFirstName: "Juan",
+          patientLastName: "Perez",
+          patientAge: 35,
+          consultationReason: "Estrés",
+          consultationDetails: null,
+          appointmentModality: "VIRTUAL",
+          patientLocation: "Bogotá",
+          slotOptionsMap: {},
+          selectedSlotId: "slot-booked-2",
+          calendarEventId: "event-booked-2",
+          createdAt: "2026-03-01T00:00:00Z",
+          updatedAt: "2026-03-01T00:00:00Z",
+          slots: [
+            {
+              slotId: "slot-booked-2",
+              startAt: "2026-03-12T11:00:00Z",
+              endAt: "2026-03-12T12:00:00Z",
+              timezone: "UTC",
+              status: "BOOKED"
+            }
+          ]
+        },
+        {
+          requestId: "req-booked-3",
+          conversationId: "conv-booked-3",
+          whatsappUserId: "wa-booked-3",
+          requestKind: "INITIAL",
+          status: "BOOKED",
+          roundNumber: 1,
+          patientPreferenceNote: "prefiere mediodía",
+          rejectionSummary: null,
+          professionalNote: null,
+          patientFirstName: "Camila",
+          patientLastName: "Diaz",
+          patientAge: 31,
+          consultationReason: "Insomnio",
+          consultationDetails: null,
+          appointmentModality: "PRESENCIAL",
+          patientLocation: "Medellín",
+          slotOptionsMap: {},
+          selectedSlotId: "slot-booked-3",
+          calendarEventId: "event-booked-3",
+          createdAt: "2026-03-01T00:00:00Z",
+          updatedAt: "2026-03-01T00:00:00Z",
+          slots: [
+            {
+              slotId: "slot-booked-3",
+              startAt: "2026-03-12T13:00:00Z",
+              endAt: "2026-03-12T14:00:00Z",
+              timezone: "UTC",
+              status: "BOOKED"
+            }
+          ]
+        }
+      ]);
+
+      const container = {
+        onboardingUseCase: {
+          getGoogleCalendarConnectionStatus: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            status: "CONNECTED",
+            calendarId: "primary",
+            professionalTimezone: "UTC",
+            connectedAt: "2026-03-01T00:00:00Z"
+          }))
+        },
+        schedulingUseCase: {
+          listRequests: listRequestsMock,
+          getAvailability: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            calendarId: "primary",
+            timezone: "UTC",
+            busyIntervals: []
+          })),
+          submitProfessionalSlots: vitestModule.vi.fn()
+        }
+      };
+
+      renderAgendaPage(container);
+
+      testingLibraryReactModule.fireEvent.click(
+        testingLibraryReactModule.screen.getByRole("button", {
+          name: /Agenda e Historial/
+        })
+      );
+
+      testingLibraryReactModule.fireEvent.click(
+        testingLibraryReactModule.screen.getByRole("button", {
+          name: /Agendadas/
+        })
+      );
+
+      await testingLibraryReactModule.waitFor(() => {
+        expect(
+          testingLibraryReactModule.screen.getByText("Calendario de citas agendadas")
+        ).toBeInTheDocument();
+        expect(testingLibraryReactModule.screen.getByText("+1 más")).toBeInTheDocument();
+        expect(testingLibraryReactModule.screen.getByText("req-booked-1")).toBeInTheDocument();
+      });
+
+      const [secondAppointmentButton] = testingLibraryReactModule.screen.getAllByRole("button", {
+        name: /11:00 - 12:00\s+Juan Perez/
+      });
+      if (secondAppointmentButton === undefined) {
+        throw new Error("No se encontró la cita de Juan Perez.");
+      }
+      testingLibraryReactModule.fireEvent.click(secondAppointmentButton);
+
+      await testingLibraryReactModule.waitFor(() => {
+        expect(testingLibraryReactModule.screen.getByText("req-booked-2")).toBeInTheDocument();
+        expect(
+          testingLibraryReactModule.screen.getByText(/12 Mar 2026 11:00 - 12:00/)
+        ).toBeInTheDocument();
+      });
+    }
+  );
 });
