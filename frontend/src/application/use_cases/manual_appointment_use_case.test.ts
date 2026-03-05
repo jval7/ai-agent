@@ -17,6 +17,10 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       endAt: "2026-03-10T11:00:00Z",
       timezone: "America/Bogota",
       summary: "Cita - Jane Doe",
+      paymentAmountCop: null,
+      paymentMethod: null,
+      paymentStatus: "PENDING",
+      paymentUpdatedAt: null,
       createdAt: "2026-03-01T10:00:00Z",
       updatedAt: "2026-03-01T10:00:00Z",
       cancelledAt: null
@@ -31,6 +35,10 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       endAt: "2026-03-11T11:00:00Z",
       timezone: "America/Bogota",
       summary: "Cita - Jane Doe",
+      paymentAmountCop: null,
+      paymentMethod: null,
+      paymentStatus: "PENDING",
+      paymentUpdatedAt: null,
       createdAt: "2026-03-01T10:00:00Z",
       updatedAt: "2026-03-02T10:00:00Z",
       cancelledAt: null
@@ -45,15 +53,38 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       endAt: "2026-03-11T11:00:00Z",
       timezone: "America/Bogota",
       summary: "Cita - Jane Doe",
+      paymentAmountCop: 100000,
+      paymentMethod: "CASH",
+      paymentStatus: "PENDING",
+      paymentUpdatedAt: "2026-03-03T09:00:00Z",
       createdAt: "2026-03-01T10:00:00Z",
       updatedAt: "2026-03-03T10:00:00Z",
       cancelledAt: "2026-03-03T10:00:00Z"
+    }));
+    const updateManualAppointmentPaymentMock = vitestModule.vi.fn(async () => ({
+      appointmentId: "appt-1",
+      tenantId: "tenant-1",
+      patientWhatsappUserId: "wa-1",
+      status: "SCHEDULED",
+      calendarEventId: "event-1",
+      startAt: "2026-03-11T10:00:00Z",
+      endAt: "2026-03-11T11:00:00Z",
+      timezone: "America/Bogota",
+      summary: "Cita - Jane Doe",
+      paymentAmountCop: 100000,
+      paymentMethod: "TRANSFER",
+      paymentStatus: "PAID",
+      paymentUpdatedAt: "2026-03-03T11:00:00Z",
+      createdAt: "2026-03-01T10:00:00Z",
+      updatedAt: "2026-03-03T11:00:00Z",
+      cancelledAt: null
     }));
     const apiMock = {
       listManualAppointments: listManualAppointmentsMock,
       createManualAppointment: createManualAppointmentMock,
       rescheduleManualAppointment: rescheduleManualAppointmentMock,
-      cancelManualAppointment: cancelManualAppointmentMock
+      cancelManualAppointment: cancelManualAppointmentMock,
+      updateManualAppointmentPayment: updateManualAppointmentPaymentMock
     } as Partial<backendApiPort.BackendApiPort> as backendApiPort.BackendApiPort;
 
     const useCase = new manualAppointmentUseCaseModule.ManualAppointmentUseCase(apiMock);
@@ -73,10 +104,16 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       summary: "Cita - Jane Doe"
     });
     await useCase.cancelAppointment("appt-1", { reason: "Paciente reagenda" });
+    await useCase.updatePayment("appt-1", {
+      paymentAmountCop: 100000,
+      paymentMethod: "TRANSFER",
+      paymentStatus: "PAID"
+    });
 
     vitestModule.expect(listManualAppointmentsMock).toHaveBeenCalledTimes(1);
     vitestModule.expect(createManualAppointmentMock).toHaveBeenCalledTimes(1);
     vitestModule.expect(rescheduleManualAppointmentMock).toHaveBeenCalledTimes(1);
     vitestModule.expect(cancelManualAppointmentMock).toHaveBeenCalledTimes(1);
+    vitestModule.expect(updateManualAppointmentPaymentMock).toHaveBeenCalledTimes(1);
   });
 });

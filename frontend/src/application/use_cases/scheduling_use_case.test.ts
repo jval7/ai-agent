@@ -27,6 +27,10 @@ vitestModule.describe("SchedulingUseCase", () => {
       slotOptionsMap: {},
       selectedSlotId: null,
       calendarEventId: null,
+      paymentAmountCop: null,
+      paymentMethod: null,
+      paymentStatus: "PENDING",
+      paymentUpdatedAt: null,
       createdAt: "2026-03-01T10:00:00Z",
       updatedAt: "2026-03-01T10:00:00Z",
       slots: []
@@ -56,6 +60,13 @@ vitestModule.describe("SchedulingUseCase", () => {
         ...requestSummary,
         status: "CANCELLED",
         calendarEventId: null
+      })),
+      updateBookedSlotPayment: vitestModule.vi.fn(async () => ({
+        ...requestSummary,
+        paymentAmountCop: 150000,
+        paymentMethod: "TRANSFER",
+        paymentStatus: "PAID",
+        paymentUpdatedAt: "2026-03-02T10:00:00Z"
       }))
     } as Partial<backendApiPort.BackendApiPort> as backendApiPort.BackendApiPort;
 
@@ -85,6 +96,11 @@ vitestModule.describe("SchedulingUseCase", () => {
     });
     await useCase.cancelBookedSlot("req-1", {
       reason: "No puede asistir"
+    });
+    await useCase.updateBookedPayment("req-1", {
+      paymentAmountCop: 150000,
+      paymentMethod: "TRANSFER",
+      paymentStatus: "PAID"
     });
 
     vitestModule.expect(requests[0]?.requestId).toBe("req-1");

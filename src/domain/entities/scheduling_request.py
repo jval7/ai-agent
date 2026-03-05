@@ -38,6 +38,10 @@ class SchedulingRequest(pydantic.BaseModel):
     slot_options_map: dict[str, str]
     selected_slot_id: str | None
     calendar_event_id: str | None
+    payment_amount_cop: int | None = None
+    payment_method: typing.Literal["CASH", "TRANSFER"] | None = None
+    payment_status: typing.Literal["PENDING", "PAID"] = "PENDING"
+    payment_updated_at: datetime.datetime | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -56,6 +60,15 @@ class SchedulingRequest(pydantic.BaseModel):
     def validate_round_number(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("round_number must be greater than zero")
+        return value
+
+    @pydantic.field_validator("payment_amount_cop")
+    @classmethod
+    def validate_payment_amount_cop(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value <= 0:
+            raise ValueError("payment_amount_cop must be greater than zero")
         return value
 
     def set_status(

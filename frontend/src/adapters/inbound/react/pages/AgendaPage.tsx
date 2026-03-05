@@ -62,6 +62,11 @@ const agendaSections: AgendaSection[] = [
     id: "MANUAL_SCHEDULING",
     label: "Agendamiento manual",
     statuses: []
+  },
+  {
+    id: "FINANCE",
+    label: "Finanzas",
+    statuses: []
   }
 ];
 
@@ -139,6 +144,30 @@ interface BookedAppointmentFormState {
   cancelReason: string;
 }
 
+interface PaymentFormState {
+  paymentAmountCop: string;
+  paymentMethod: "CASH" | "TRANSFER";
+  paymentStatus: "PENDING" | "PAID";
+}
+
+type FinancePaymentStatusFilter = "ALL" | "PENDING" | "PAID";
+type FinancePaymentMethodFilter = "ALL" | "CASH" | "TRANSFER";
+type FinanceSourceFilter = "ALL" | "CHATBOT" | "MANUAL";
+
+interface FinanceAppointmentItem {
+  itemKey: string;
+  source: "CHATBOT" | "MANUAL";
+  patientDisplayName: string;
+  whatsappUserId: string;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  paymentAmountCop: number | null;
+  paymentMethod: "CASH" | "TRANSFER" | null;
+  paymentStatus: "PENDING" | "PAID";
+  paymentUpdatedAt: string | null;
+}
+
 function emptyPatientForm(): PatientFormState {
   return {
     whatsappUserId: "",
@@ -180,6 +209,14 @@ function emptyBookedAppointmentForm(timezone: string): BookedAppointmentFormStat
     timezone,
     eventSummary: "",
     cancelReason: ""
+  };
+}
+
+function emptyPaymentForm(): PaymentFormState {
+  return {
+    paymentAmountCop: "",
+    paymentMethod: "CASH",
+    paymentStatus: "PENDING"
   };
 }
 
@@ -273,6 +310,14 @@ function isThirtyMinuteAligned(isoValue: string, timezone: string): boolean {
     return false;
   }
   return dateValue.minute % 30 === 0;
+}
+
+function formatCopCurrency(value: number): string {
+  return new Intl.NumberFormat("es-CO", {
+    style: "currency",
+    currency: "COP",
+    maximumFractionDigits: 0
+  }).format(value);
 }
 
 function resolvePatientDisplayName(request: schedulingModel.SchedulingRequestSummary): string {
@@ -417,6 +462,19 @@ export function AgendaPage() {
     reactModule.useState<ManualAppointmentFormState>(emptyManualAppointmentForm());
   const [bookedAppointmentFormState, setBookedAppointmentFormState] =
     reactModule.useState<BookedAppointmentFormState>(emptyBookedAppointmentForm("UTC"));
+  const [manualPaymentFormState, setManualPaymentFormState] =
+    reactModule.useState<PaymentFormState>(emptyPaymentForm());
+  const [bookedPaymentFormState, setBookedPaymentFormState] =
+    reactModule.useState<PaymentFormState>(emptyPaymentForm());
+  const [financeFromDate, setFinanceFromDate] = reactModule.useState<string>("");
+  const [financeToDate, setFinanceToDate] = reactModule.useState<string>("");
+  const [financePaymentStatusFilter, setFinancePaymentStatusFilter] =
+    reactModule.useState<FinancePaymentStatusFilter>("ALL");
+  const [financePaymentMethodFilter, setFinancePaymentMethodFilter] =
+    reactModule.useState<FinancePaymentMethodFilter>("ALL");
+  const [financeSourceFilter, setFinanceSourceFilter] =
+    reactModule.useState<FinanceSourceFilter>("ALL");
+  const [financeSearchTerm, setFinanceSearchTerm] = reactModule.useState<string>("");
 
   const allRequests = requestsQuery.data ?? [];
   const allPatients = patientsQuery.data ?? [];
@@ -439,6 +497,14 @@ export function AgendaPage() {
         ).length;
         return;
       }
+      if (section.id === "FINANCE") {
+        const bookedCount = allRequests.filter((request) => request.status === "BOOKED").length;
+        const manualCount = allManualAppointments.filter(
+          (appointment) => appointment.status === "SCHEDULED"
+        ).length;
+        counts[section.id] = bookedCount + manualCount;
+        return;
+      }
       let sectionCount = 0;
       section.statuses.forEach((statusConfig) => {
         sectionCount += requestCountByStatus.get(statusConfig.status) ?? 0;
@@ -452,6 +518,7 @@ export function AgendaPage() {
     return allRequests.filter((request) => request.status === activeTab);
   }, [allRequests, activeTab]);
   const isManualSchedulingSection = activeSectionId === "MANUAL_SCHEDULING";
+  const isFinanceSection = activeSectionId === "FINANCE";
   const isBookedTab = activeTab === "BOOKED";
   const patientsByWhatsappUserId = reactModule.useMemo(() => {
     const map = new Map<string, patientModel.Patient>();
@@ -690,6 +757,126 @@ export function AgendaPage() {
     return bookedAppointmentsByDay.get(selectedDayIso) ?? [];
   }, [bookedAppointmentsByDay, isBookedTab, selectedDayIso]);
 
+  const financeAppointments = reactModule.useMemo<FinanceAppointmentItem[]>(() => {
+    const items: FinanceAppointmentItem[] = [];
+    allRequests
+      .filter((request) => request.status === "BOOKED")
+      .forEach((request) => {
+        const bookedSlot = resolveBookedSlot(request);
+        if (bookedSlot === null) {
+          return;
+        }
+        items.push({
+          itemKey: `finance-bot:${request.requestId}`,
+          source: "CHATBOT",
+          patientDisplayName: resolvePatientDisplayName(request),
+          whatsappUserId: request.whatsappUserId,
+          startAt: bookedSlot.startAt,
+          endAt: bookedSlot.endAt,
+          timezone: bookedSlot.timezone.trim() === "" ? timezone : bookedSlot.timezone,
+          paymentAmountCop: request.paymentAmountCop ?? null,
+          paymentMethod: request.paymentMethod ?? null,
+          paymentStatus: request.paymentStatus ?? "PENDING",
+          paymentUpdatedAt: request.paymentUpdatedAt ?? null
+        });
+      });
+
+    allManualAppointments
+      .filter((appointment) => appointment.status === "SCHEDULED")
+      .forEach((appointment) => {
+        const patient = patientsByWhatsappUserId.get(appointment.patientWhatsappUserId);
+        items.push({
+          itemKey: `finance-manual:${appointment.appointmentId}`,
+          source: "MANUAL",
+          patientDisplayName:
+            patient === undefined
+              ? appointment.patientWhatsappUserId
+              : `${patient.firstName} ${patient.lastName}`,
+          whatsappUserId: appointment.patientWhatsappUserId,
+          startAt: appointment.startAt,
+          endAt: appointment.endAt,
+          timezone: appointment.timezone.trim() === "" ? colombiaTimezone : appointment.timezone,
+          paymentAmountCop: appointment.paymentAmountCop ?? null,
+          paymentMethod: appointment.paymentMethod ?? null,
+          paymentStatus: appointment.paymentStatus ?? "PENDING",
+          paymentUpdatedAt: appointment.paymentUpdatedAt ?? null
+        });
+      });
+
+    return items.sort((left, right) => left.startAt.localeCompare(right.startAt));
+  }, [allManualAppointments, allRequests, patientsByWhatsappUserId, timezone]);
+
+  const filteredFinanceAppointments = reactModule.useMemo(() => {
+    const normalizedSearchTerm = financeSearchTerm.trim().toLowerCase();
+    return financeAppointments.filter((appointment) => {
+      const startDate = luxonModule.DateTime.fromISO(appointment.startAt, {
+        zone: appointment.timezone
+      }).toISODate();
+      if (startDate === null) {
+        return false;
+      }
+      if (financeFromDate !== "" && startDate < financeFromDate) {
+        return false;
+      }
+      if (financeToDate !== "" && startDate > financeToDate) {
+        return false;
+      }
+      if (
+        financePaymentStatusFilter !== "ALL" &&
+        appointment.paymentStatus !== financePaymentStatusFilter
+      ) {
+        return false;
+      }
+      if (
+        financePaymentMethodFilter !== "ALL" &&
+        appointment.paymentMethod !== financePaymentMethodFilter
+      ) {
+        return false;
+      }
+      if (financeSourceFilter !== "ALL" && appointment.source !== financeSourceFilter) {
+        return false;
+      }
+      if (normalizedSearchTerm === "") {
+        return true;
+      }
+      const patientName = appointment.patientDisplayName.toLowerCase();
+      const whatsappUserId = appointment.whatsappUserId.toLowerCase();
+      return (
+        patientName.includes(normalizedSearchTerm) || whatsappUserId.includes(normalizedSearchTerm)
+      );
+    });
+  }, [
+    financeAppointments,
+    financeFromDate,
+    financePaymentMethodFilter,
+    financePaymentStatusFilter,
+    financeSearchTerm,
+    financeSourceFilter,
+    financeToDate
+  ]);
+
+  const financeMetrics = reactModule.useMemo(() => {
+    const totalAppointments = filteredFinanceAppointments.length;
+    const pendingAppointments = filteredFinanceAppointments.filter(
+      (appointment) => appointment.paymentStatus === "PENDING"
+    ).length;
+    const paidAppointments = filteredFinanceAppointments.filter(
+      (appointment) => appointment.paymentStatus === "PAID"
+    ).length;
+    const totalPaidCop = filteredFinanceAppointments.reduce((accumulator, appointment) => {
+      if (appointment.paymentStatus !== "PAID" || appointment.paymentAmountCop === null) {
+        return accumulator;
+      }
+      return accumulator + appointment.paymentAmountCop;
+    }, 0);
+    return {
+      totalAppointments,
+      pendingAppointments,
+      paidAppointments,
+      totalPaidCop
+    };
+  }, [filteredFinanceAppointments]);
+
   reactModule.useEffect(() => {
     if (!isBookedTab) {
       return;
@@ -746,6 +933,37 @@ export function AgendaPage() {
       cancelReason: ""
     });
   }, [selectedBookedAppointment, selectedBookedBotRequest, timezone]);
+  reactModule.useEffect(() => {
+    if (
+      selectedBookedAppointment?.source !== "MANUAL" ||
+      selectedBookedAppointment.manualAppointment === null
+    ) {
+      setManualPaymentFormState(emptyPaymentForm());
+      return;
+    }
+    setManualPaymentFormState({
+      paymentAmountCop:
+        selectedBookedAppointment.manualAppointment.paymentAmountCop == null
+          ? ""
+          : String(selectedBookedAppointment.manualAppointment.paymentAmountCop),
+      paymentMethod: selectedBookedAppointment.manualAppointment.paymentMethod ?? "CASH",
+      paymentStatus: selectedBookedAppointment.manualAppointment.paymentStatus ?? "PENDING"
+    });
+  }, [selectedBookedAppointment]);
+  reactModule.useEffect(() => {
+    if (selectedBookedBotRequest === null) {
+      setBookedPaymentFormState(emptyPaymentForm());
+      return;
+    }
+    setBookedPaymentFormState({
+      paymentAmountCop:
+        selectedBookedBotRequest.paymentAmountCop == null
+          ? ""
+          : String(selectedBookedBotRequest.paymentAmountCop),
+      paymentMethod: selectedBookedBotRequest.paymentMethod ?? "CASH",
+      paymentStatus: selectedBookedBotRequest.paymentStatus ?? "PENDING"
+    });
+  }, [selectedBookedBotRequest]);
 
   const selectedSlots =
     selectedRequest !== undefined
@@ -942,6 +1160,23 @@ export function AgendaPage() {
     }
   });
 
+  const updateManualPaymentMutation = reactQueryModule.useMutation({
+    mutationFn: (payload: {
+      appointmentId: string;
+      input: manualAppointmentModel.UpdateManualAppointmentPaymentInput;
+    }) => {
+      return appContainer.manualAppointmentUseCase.updatePayment(
+        payload.appointmentId,
+        payload.input
+      );
+    },
+    onSuccess: async () => {
+      setSubmitSuccessMessage("Pago de cita manual actualizado.");
+      setLocalSubmitErrorMessage(null);
+      await queryClient.invalidateQueries({ queryKey: manualAppointmentsQueryKey });
+    }
+  });
+
   const rescheduleBookedSlotMutation = reactQueryModule.useMutation({
     mutationFn: (payload: {
       requestId: string;
@@ -967,6 +1202,20 @@ export function AgendaPage() {
     }
   });
 
+  const updateBookedPaymentMutation = reactQueryModule.useMutation({
+    mutationFn: (payload: {
+      requestId: string;
+      input: schedulingModel.UpdateBookedSlotPaymentInput;
+    }) => {
+      return appContainer.schedulingUseCase.updateBookedPayment(payload.requestId, payload.input);
+    },
+    onSuccess: async () => {
+      setSubmitSuccessMessage("Pago de cita chatbot actualizado.");
+      setLocalSubmitErrorMessage(null);
+      await queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey });
+    }
+  });
+
   const submitErrorMessage = uiErrorModule.resolveUiErrorMessage([
     submitSlotsMutation.error,
     resolveConsultationReviewMutation.error,
@@ -976,8 +1225,10 @@ export function AgendaPage() {
     createManualAppointmentMutation.error,
     rescheduleManualAppointmentMutation.error,
     cancelManualAppointmentMutation.error,
+    updateManualPaymentMutation.error,
     rescheduleBookedSlotMutation.error,
-    cancelBookedSlotMutation.error
+    cancelBookedSlotMutation.error,
+    updateBookedPaymentMutation.error
   ]);
   const loadingErrorMessage = uiErrorModule.resolveUiErrorMessage([
     requestsQuery.error,
@@ -1086,7 +1337,7 @@ export function AgendaPage() {
         </div>
       </section>
 
-      {!isManualSchedulingSection ? (
+      {!isManualSchedulingSection && !isFinanceSection ? (
         <section
           className={[
             "mt-4 grid gap-4",
@@ -1364,6 +1615,92 @@ export function AgendaPage() {
                   <p>
                     <strong>Origen:</strong> Agendamiento manual
                   </p>
+                </div>
+                <div className="rounded-lg border border-slate-200 p-3">
+                  <h5 className="text-sm font-semibold text-brand-ink">Pago de cita</h5>
+                  <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Valor (COP)
+                      <input
+                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        min={1}
+                        onChange={(event) => {
+                          setManualPaymentFormState((currentValue) => ({
+                            ...currentValue,
+                            paymentAmountCop: event.target.value
+                          }));
+                        }}
+                        type="number"
+                        value={manualPaymentFormState.paymentAmountCop}
+                      />
+                    </label>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Categoría
+                      <select
+                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        onChange={(event) => {
+                          setManualPaymentFormState((currentValue) => ({
+                            ...currentValue,
+                            paymentMethod: event.target.value as "CASH" | "TRANSFER"
+                          }));
+                        }}
+                        value={manualPaymentFormState.paymentMethod}
+                      >
+                        <option value="CASH">Efectivo</option>
+                        <option value="TRANSFER">Transferencia</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Estado
+                      <select
+                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        onChange={(event) => {
+                          setManualPaymentFormState((currentValue) => ({
+                            ...currentValue,
+                            paymentStatus: event.target.value as "PENDING" | "PAID"
+                          }));
+                        }}
+                        value={manualPaymentFormState.paymentStatus}
+                      >
+                        <option value="PENDING">Pendiente por pago</option>
+                        <option value="PAID">Pagada</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="mt-3">
+                    <button
+                      className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={updateManualPaymentMutation.isPending}
+                      onClick={() => {
+                        if (selectedBookedAppointment.manualAppointmentId === null) {
+                          return;
+                        }
+                        const paymentAmountCop = Number.parseInt(
+                          manualPaymentFormState.paymentAmountCop,
+                          10
+                        );
+                        if (Number.isNaN(paymentAmountCop) || paymentAmountCop <= 0) {
+                          setLocalSubmitErrorMessage("El valor del pago debe ser mayor a cero.");
+                          return;
+                        }
+                        setLocalSubmitErrorMessage(null);
+                        setSubmitSuccessMessage(null);
+                        updateManualPaymentMutation.mutate({
+                          appointmentId: selectedBookedAppointment.manualAppointmentId,
+                          input: {
+                            paymentAmountCop,
+                            paymentMethod: manualPaymentFormState.paymentMethod,
+                            paymentStatus: manualPaymentFormState.paymentStatus
+                          }
+                        });
+                      }}
+                      type="button"
+                    >
+                      {updateManualPaymentMutation.isPending
+                        ? "Guardando pago..."
+                        : "Guardar pago manual"}
+                    </button>
+                  </div>
                 </div>
               </section>
             ) : selectedRequest === undefined ? (
@@ -1924,6 +2261,95 @@ export function AgendaPage() {
                       >
                         {cancelBookedSlotMutation.isPending ? "Cancelando..." : "Cancelar cita bot"}
                       </button>
+                    </div>
+
+                    <div className="mt-5 rounded-md border border-slate-200 p-3">
+                      <h5 className="text-sm font-semibold text-brand-ink">Pago de cita</h5>
+                      <div className="mt-3 grid gap-3 md:grid-cols-3">
+                        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Valor (COP)
+                          <input
+                            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            min={1}
+                            onChange={(event) => {
+                              setBookedPaymentFormState((currentValue) => ({
+                                ...currentValue,
+                                paymentAmountCop: event.target.value
+                              }));
+                            }}
+                            type="number"
+                            value={bookedPaymentFormState.paymentAmountCop}
+                          />
+                        </label>
+                        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Categoría
+                          <select
+                            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            onChange={(event) => {
+                              setBookedPaymentFormState((currentValue) => ({
+                                ...currentValue,
+                                paymentMethod: event.target.value as "CASH" | "TRANSFER"
+                              }));
+                            }}
+                            value={bookedPaymentFormState.paymentMethod}
+                          >
+                            <option value="CASH">Efectivo</option>
+                            <option value="TRANSFER">Transferencia</option>
+                          </select>
+                        </label>
+                        <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Estado
+                          <select
+                            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            onChange={(event) => {
+                              setBookedPaymentFormState((currentValue) => ({
+                                ...currentValue,
+                                paymentStatus: event.target.value as "PENDING" | "PAID"
+                              }));
+                            }}
+                            value={bookedPaymentFormState.paymentStatus}
+                          >
+                            <option value="PENDING">Pendiente por pago</option>
+                            <option value="PAID">Pagada</option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="mt-3">
+                        <button
+                          className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={updateBookedPaymentMutation.isPending}
+                          onClick={() => {
+                            if (selectedBookedBotRequest === null) {
+                              return;
+                            }
+                            const paymentAmountCop = Number.parseInt(
+                              bookedPaymentFormState.paymentAmountCop,
+                              10
+                            );
+                            if (Number.isNaN(paymentAmountCop) || paymentAmountCop <= 0) {
+                              setLocalSubmitErrorMessage(
+                                "El valor del pago debe ser mayor a cero."
+                              );
+                              return;
+                            }
+                            setLocalSubmitErrorMessage(null);
+                            setSubmitSuccessMessage(null);
+                            updateBookedPaymentMutation.mutate({
+                              requestId: selectedBookedBotRequest.requestId,
+                              input: {
+                                paymentAmountCop,
+                                paymentMethod: bookedPaymentFormState.paymentMethod,
+                                paymentStatus: bookedPaymentFormState.paymentStatus
+                              }
+                            });
+                          }}
+                          type="button"
+                        >
+                          {updateBookedPaymentMutation.isPending
+                            ? "Guardando pago..."
+                            : "Guardar pago chatbot"}
+                        </button>
+                      </div>
                     </div>
                   </section>
                 ) : (
@@ -2925,6 +3351,209 @@ export function AgendaPage() {
                   );
                 })}
               </div>
+            </section>
+          </article>
+        </section>
+      ) : null}
+
+      {isFinanceSection ? (
+        <section className="mt-6 space-y-4">
+          <article className="rounded-xl border border-slate-200 bg-white p-4">
+            <header className="mb-4">
+              <h3 className="text-base font-semibold text-brand-ink">Finanzas</h3>
+              <p className="text-xs text-slate-500">
+                Seguimiento de pagos para citas agendadas (chatbot y manuales).
+              </p>
+            </header>
+
+            <section className="rounded-lg border border-slate-200 p-3">
+              <h4 className="text-sm font-semibold text-brand-ink">Filtros</h4>
+              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Desde (fecha cita)
+                  <input
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) => setFinanceFromDate(event.target.value)}
+                    type="date"
+                    value={financeFromDate}
+                  />
+                </label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Hasta (fecha cita)
+                  <input
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) => setFinanceToDate(event.target.value)}
+                    type="date"
+                    value={financeToDate}
+                  />
+                </label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Estado de pago
+                  <select
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) =>
+                      setFinancePaymentStatusFilter(
+                        event.target.value as FinancePaymentStatusFilter
+                      )
+                    }
+                    value={financePaymentStatusFilter}
+                  >
+                    <option value="ALL">Todos</option>
+                    <option value="PENDING">Pendiente por pago</option>
+                    <option value="PAID">Pagada</option>
+                  </select>
+                </label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Método de pago
+                  <select
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) =>
+                      setFinancePaymentMethodFilter(
+                        event.target.value as FinancePaymentMethodFilter
+                      )
+                    }
+                    value={financePaymentMethodFilter}
+                  >
+                    <option value="ALL">Todos</option>
+                    <option value="CASH">Efectivo</option>
+                    <option value="TRANSFER">Transferencia</option>
+                  </select>
+                </label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Origen
+                  <select
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) =>
+                      setFinanceSourceFilter(event.target.value as FinanceSourceFilter)
+                    }
+                    value={financeSourceFilter}
+                  >
+                    <option value="ALL">Todos</option>
+                    <option value="CHATBOT">Chatbot</option>
+                    <option value="MANUAL">Manual</option>
+                  </select>
+                </label>
+                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Buscar paciente
+                  <input
+                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    onChange={(event) => setFinanceSearchTerm(event.target.value)}
+                    placeholder="Nombre o WhatsApp"
+                    type="text"
+                    value={financeSearchTerm}
+                  />
+                </label>
+              </div>
+              <div className="mt-3">
+                <button
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                  onClick={() => {
+                    setFinanceFromDate("");
+                    setFinanceToDate("");
+                    setFinancePaymentStatusFilter("ALL");
+                    setFinancePaymentMethodFilter("ALL");
+                    setFinanceSourceFilter("ALL");
+                    setFinanceSearchTerm("");
+                  }}
+                  type="button"
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            </section>
+
+            <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Total citas
+                </p>
+                <p className="mt-1 text-xl font-semibold text-brand-ink">
+                  {financeMetrics.totalAppointments}
+                </p>
+              </article>
+              <article className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                  Pendientes
+                </p>
+                <p className="mt-1 text-xl font-semibold text-amber-700">
+                  {financeMetrics.pendingAppointments}
+                </p>
+              </article>
+              <article className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                  Pagadas
+                </p>
+                <p className="mt-1 text-xl font-semibold text-emerald-700">
+                  {financeMetrics.paidAppointments}
+                </p>
+              </article>
+              <article className="rounded-lg border border-teal-200 bg-teal-50 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-brand-teal">
+                  Total pagado
+                </p>
+                <p className="mt-1 text-xl font-semibold text-brand-teal">
+                  {formatCopCurrency(financeMetrics.totalPaidCop)}
+                </p>
+              </article>
+            </section>
+
+            <section className="mt-4 rounded-lg border border-slate-200 p-3">
+              <h4 className="text-sm font-semibold text-brand-ink">Detalle de citas</h4>
+              {filteredFinanceAppointments.length === 0 ? (
+                <p className="mt-3 text-sm text-slate-500">
+                  No hay citas que coincidan con los filtros seleccionados.
+                </p>
+              ) : (
+                <div className="mt-3 space-y-2">
+                  {filteredFinanceAppointments.map((appointment) => {
+                    const startAt = luxonModule.DateTime.fromISO(appointment.startAt, {
+                      zone: appointment.timezone
+                    });
+                    const endAt = luxonModule.DateTime.fromISO(appointment.endAt, {
+                      zone: appointment.timezone
+                    });
+                    const dateText =
+                      !startAt.isValid || !endAt.isValid
+                        ? "-"
+                        : `${startAt.toFormat("dd LLL yyyy HH:mm")} - ${endAt.toFormat("HH:mm")}`;
+                    const paymentMethodLabel =
+                      appointment.paymentMethod === "CASH"
+                        ? "Efectivo"
+                        : appointment.paymentMethod === "TRANSFER"
+                          ? "Transferencia"
+                          : "-";
+                    const paymentStatusLabel =
+                      appointment.paymentStatus === "PAID" ? "Pagada" : "Pendiente por pago";
+                    const paymentAmountLabel =
+                      appointment.paymentAmountCop === null
+                        ? "-"
+                        : formatCopCurrency(appointment.paymentAmountCop);
+                    return (
+                      <article
+                        className="rounded-md border border-slate-200 bg-white px-3 py-2"
+                        key={appointment.itemKey}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-brand-ink">
+                            {appointment.patientDisplayName}
+                          </p>
+                          <statusBadgeModule.StatusBadge
+                            label={paymentStatusLabel}
+                            tone={appointment.paymentStatus === "PAID" ? "success" : "warning"}
+                          />
+                        </div>
+                        <p className="text-xs text-slate-600">
+                          WhatsApp: {appointment.whatsappUserId}
+                        </p>
+                        <p className="text-xs text-slate-600">Cita: {dateText}</p>
+                        <p className="text-xs text-slate-600">Origen: {appointment.source}</p>
+                        <p className="text-xs text-slate-600">Valor: {paymentAmountLabel}</p>
+                        <p className="text-xs text-slate-600">Método: {paymentMethodLabel}</p>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           </article>
         </section>

@@ -43,4 +43,11 @@ export class SchedulingUseCase {
   async cancelBookedSlot(requestId: string, input: schedulingModel.CancelBookedSlotInput) {
     return this.api.cancelBookedSlot(requestId, input);
   }
+
+  async updateBookedPayment(
+    requestId: string,
+    input: schedulingModel.UpdateBookedSlotPaymentInput
+  ) {
+    return this.api.updateBookedSlotPayment(requestId, input);
+  }
 }

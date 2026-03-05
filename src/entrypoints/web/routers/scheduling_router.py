@@ -120,3 +120,22 @@ def cancel_booked_slot(
         request_id=request_id,
         input_dto=resolved_input_dto,
     )
+
+
+@router.put(
+    "/v1/scheduling-requests/{request_id}/booked-slot/payment",
+    response_model=scheduling_dto.SchedulingRequestSummaryDTO,
+)
+def update_booked_slot_payment(
+    request_id: str,
+    input_dto: scheduling_dto.UpdateBookedSlotPaymentInputDTO,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> scheduling_dto.SchedulingRequestSummaryDTO:
+    if claims.role != service_constants.DEFAULT_OWNER_ROLE:
+        raise service_exceptions.AuthorizationError("owner role required")
+    return container.scheduling_service.update_booked_payment(
+        tenant_id=claims.tenant_id,
+        request_id=request_id,
+        input_dto=input_dto,
+    )

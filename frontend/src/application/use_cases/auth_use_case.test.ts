@@ -218,6 +218,13 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async updateManualAppointmentPayment(
+    _appointmentId: string,
+    _input: manualAppointmentModel.UpdateManualAppointmentPaymentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    throw new Error("not used");
+  }
+
   async rescheduleBookedSlot(
     _requestId: string,
     _input: schedulingModel.RescheduleBookedSlotInput
@@ -228,6 +235,13 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
   async cancelBookedSlot(
     _requestId: string,
     _input: schedulingModel.CancelBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    throw new Error("not used");
+  }
+
+  async updateBookedSlotPayment(
+    _requestId: string,
+    _input: schedulingModel.UpdateBookedSlotPaymentInput
   ): Promise<schedulingModel.SchedulingRequestSummary> {
     throw new Error("not used");
   }

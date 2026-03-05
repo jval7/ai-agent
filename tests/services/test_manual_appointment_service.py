@@ -1,5 +1,6 @@
 import datetime
 
+import pydantic
 import pytest
 
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
@@ -228,4 +229,104 @@ def test_cancel_manual_appointment_keeps_consistency_on_google_error() -> None:
             claims=build_claims("owner"),
             appointment_id=created.appointment_id,
             input_dto=manual_appointment_dto.CancelManualAppointmentDTO(reason=None),
+        )
+
+
+def test_update_payment_updates_manual_scheduled_appointment() -> None:
+    service, manual_repository, patient_repository, _ = build_service()
+    patient_repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Jane",
+            last_name="Doe",
+            email="jane@example.com",
+            age=29,
+            consultation_reason="Ansiedad",
+            location="Bogota",
+            phone="573001112233",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    created = service.create_appointment(
+        claims=build_claims("owner"),
+        create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
+            patient_whatsapp_user_id="wa-1",
+            start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            summary="Cita Jane",
+        ),
+    )
+
+    updated = service.update_payment(
+        claims=build_claims("owner"),
+        appointment_id=created.appointment_id,
+        input_dto=manual_appointment_dto.UpdateManualAppointmentPaymentDTO(
+            payment_amount_cop=120000,
+            payment_method="TRANSFER",
+            payment_status="PAID",
+        ),
+    )
+
+    assert updated.payment_amount_cop == 120000
+    assert updated.payment_method == "TRANSFER"
+    assert updated.payment_status == "PAID"
+    assert updated.payment_updated_at is not None
+    stored = manual_repository.get_by_id("tenant-1", created.appointment_id)
+    assert stored is not None
+    assert stored.payment_amount_cop == 120000
+    assert stored.payment_status == "PAID"
+
+
+def test_update_payment_rejects_cancelled_manual_appointment() -> None:
+    service, _, patient_repository, _ = build_service()
+    patient_repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Jane",
+            last_name="Doe",
+            email="jane@example.com",
+            age=29,
+            consultation_reason="Ansiedad",
+            location="Bogota",
+            phone="573001112233",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    created = service.create_appointment(
+        claims=build_claims("owner"),
+        create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
+            patient_whatsapp_user_id="wa-1",
+            start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            summary="Cita Jane",
+        ),
+    )
+    service.cancel_appointment(
+        claims=build_claims("owner"),
+        appointment_id=created.appointment_id,
+        input_dto=manual_appointment_dto.CancelManualAppointmentDTO(reason="cancelada"),
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.update_payment(
+            claims=build_claims("owner"),
+            appointment_id=created.appointment_id,
+            input_dto=manual_appointment_dto.UpdateManualAppointmentPaymentDTO(
+                payment_amount_cop=120000,
+                payment_method="CASH",
+                payment_status="PENDING",
+            ),
+        )
+
+
+def test_update_manual_payment_dto_rejects_non_positive_amount() -> None:
+    with pytest.raises(pydantic.ValidationError):
+        manual_appointment_dto.UpdateManualAppointmentPaymentDTO(
+            payment_amount_cop=0,
+            payment_method="CASH",
+            payment_status="PENDING",
         )

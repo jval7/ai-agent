@@ -438,6 +438,25 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return mapManualAppointment(payload);
   }
 
+  async updateManualAppointmentPayment(
+    appointmentId: string,
+    input: manualAppointmentModel.UpdateManualAppointmentPaymentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
+      `/v1/manual-appointments/${appointmentId}/payment`,
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify({
+          payment_amount_cop: input.paymentAmountCop,
+          payment_method: input.paymentMethod,
+          payment_status: input.paymentStatus
+        } satisfies httpTypes.UpdateManualAppointmentPaymentApiRequest)
+      }
+    );
+    return mapManualAppointment(payload);
+  }
+
   async listSchedulingRequests(
     status?: schedulingModel.SchedulingRequestStatus
   ): Promise<schedulingModel.SchedulingRequestSummary[]> {
@@ -556,6 +575,25 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         body: JSON.stringify({
           reason: input.reason
         } satisfies httpTypes.CancelBookedSlotApiRequest)
+      }
+    );
+    return mapSchedulingRequestSummary(payload);
+  }
+
+  async updateBookedSlotPayment(
+    requestId: string,
+    input: schedulingModel.UpdateBookedSlotPaymentInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    const payload = await this.request<httpTypes.SchedulingRequestSummaryApiResponse>(
+      `/v1/scheduling-requests/${requestId}/booked-slot/payment`,
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify({
+          payment_amount_cop: input.paymentAmountCop,
+          payment_method: input.paymentMethod,
+          payment_status: input.paymentStatus
+        } satisfies httpTypes.UpdateBookedSlotPaymentApiRequest)
       }
     );
     return mapSchedulingRequestSummary(payload);
@@ -749,6 +787,10 @@ function mapManualAppointment(
     endAt: payload.end_at,
     timezone: payload.timezone,
     summary: payload.summary,
+    paymentAmountCop: payload.payment_amount_cop ?? null,
+    paymentMethod: payload.payment_method ?? null,
+    paymentStatus: payload.payment_status ?? "PENDING",
+    paymentUpdatedAt: payload.payment_updated_at ?? null,
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
     cancelledAt: payload.cancelled_at
@@ -778,6 +820,10 @@ function mapSchedulingRequestSummary(
     slotOptionsMap: payload.slot_options_map,
     selectedSlotId: payload.selected_slot_id,
     calendarEventId: payload.calendar_event_id,
+    paymentAmountCop: payload.payment_amount_cop ?? null,
+    paymentMethod: payload.payment_method ?? null,
+    paymentStatus: payload.payment_status ?? "PENDING",
+    paymentUpdatedAt: payload.payment_updated_at ?? null,
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
     slots: payload.slots.map((slot) => ({

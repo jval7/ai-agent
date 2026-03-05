@@ -14,6 +14,10 @@ class ManualAppointmentDTO(pydantic.BaseModel):
     end_at: datetime.datetime
     timezone: str
     summary: str
+    payment_amount_cop: int | None
+    payment_method: typing.Literal["CASH", "TRANSFER"] | None
+    payment_status: typing.Literal["PENDING", "PAID"]
+    payment_updated_at: datetime.datetime | None
     created_at: datetime.datetime
     updated_at: datetime.datetime
     cancelled_at: datetime.datetime | None
@@ -68,3 +72,16 @@ class RescheduleManualAppointmentDTO(pydantic.BaseModel):
 
 class CancelManualAppointmentDTO(pydantic.BaseModel):
     reason: str | None = None
+
+
+class UpdateManualAppointmentPaymentDTO(pydantic.BaseModel):
+    payment_amount_cop: int
+    payment_method: typing.Literal["CASH", "TRANSFER"]
+    payment_status: typing.Literal["PENDING", "PAID"]
+
+    @pydantic.field_validator("payment_amount_cop")
+    @classmethod
+    def validate_payment_amount_cop(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("payment_amount_cop must be greater than zero")
+        return value

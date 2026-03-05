@@ -198,6 +198,10 @@ vitestModule.describe("BackendApiAdapter", () => {
               slot_options_map: {},
               selected_slot_id: null,
               calendar_event_id: null,
+              payment_amount_cop: null,
+              payment_method: null,
+              payment_status: "PENDING",
+              payment_updated_at: null,
               created_at: "2026-03-01T10:00:00Z",
               updated_at: "2026-03-01T10:00:00Z",
               slots: []
@@ -264,6 +268,86 @@ vitestModule.describe("BackendApiAdapter", () => {
             assistant_text: "Listo, ya te mostré opciones."
           });
         }
+      ),
+      mswModule.http.put(
+        "http://api.test/v1/manual-appointments/appt-1/payment",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            payment_amount_cop: number;
+            payment_method: "CASH" | "TRANSFER";
+            payment_status: "PENDING" | "PAID";
+          };
+          vitestModule.expect(body.payment_amount_cop).toBe(120000);
+          vitestModule.expect(body.payment_method).toBe("TRANSFER");
+          vitestModule.expect(body.payment_status).toBe("PAID");
+          return mswModule.HttpResponse.json({
+            appointment_id: "appt-1",
+            tenant_id: "tenant-1",
+            patient_whatsapp_user_id: "wa-1",
+            status: "SCHEDULED",
+            calendar_event_id: "event-1",
+            start_at: "2026-03-10T10:00:00Z",
+            end_at: "2026-03-10T11:00:00Z",
+            timezone: "America/Bogota",
+            summary: "Cita control",
+            payment_amount_cop: 120000,
+            payment_method: "TRANSFER",
+            payment_status: "PAID",
+            payment_updated_at: "2026-03-10T09:00:00Z",
+            created_at: "2026-03-01T10:00:00Z",
+            updated_at: "2026-03-10T09:00:00Z",
+            cancelled_at: null
+          });
+        }
+      ),
+      mswModule.http.put(
+        "http://api.test/v1/scheduling-requests/req-1/booked-slot/payment",
+        async ({ request }) => {
+          const body = (await request.json()) as {
+            payment_amount_cop: number;
+            payment_method: "CASH" | "TRANSFER";
+            payment_status: "PENDING" | "PAID";
+          };
+          vitestModule.expect(body.payment_amount_cop).toBe(80000);
+          vitestModule.expect(body.payment_method).toBe("CASH");
+          vitestModule.expect(body.payment_status).toBe("PENDING");
+          return mswModule.HttpResponse.json({
+            request_id: "req-1",
+            conversation_id: "conv-1",
+            whatsapp_user_id: "wa-1",
+            request_kind: "INITIAL",
+            status: "BOOKED",
+            round_number: 1,
+            patient_preference_note: "prefiere tarde",
+            rejection_summary: null,
+            professional_note: null,
+            patient_first_name: "Jane",
+            patient_last_name: "Doe",
+            patient_age: 30,
+            consultation_reason: "Control",
+            consultation_details: null,
+            appointment_modality: "VIRTUAL",
+            patient_location: "Bogota",
+            slot_options_map: {},
+            selected_slot_id: "slot-1",
+            calendar_event_id: "event-1",
+            payment_amount_cop: 80000,
+            payment_method: "CASH",
+            payment_status: "PENDING",
+            payment_updated_at: "2026-03-10T10:30:00Z",
+            created_at: "2026-03-01T10:00:00Z",
+            updated_at: "2026-03-10T10:30:00Z",
+            slots: [
+              {
+                slot_id: "slot-1",
+                start_at: "2026-03-10T10:00:00Z",
+                end_at: "2026-03-10T11:00:00Z",
+                timezone: "America/Bogota",
+                status: "BOOKED"
+              }
+            ]
+          });
+        }
       )
     );
 
@@ -292,6 +376,16 @@ vitestModule.describe("BackendApiAdapter", () => {
       ],
       professionalNote: "elige cualquiera"
     });
+    const manualPaymentUpdate = await adapter.updateManualAppointmentPayment("appt-1", {
+      paymentAmountCop: 120000,
+      paymentMethod: "TRANSFER",
+      paymentStatus: "PAID"
+    });
+    const bookedPaymentUpdate = await adapter.updateBookedSlotPayment("req-1", {
+      paymentAmountCop: 80000,
+      paymentMethod: "CASH",
+      paymentStatus: "PENDING"
+    });
 
     vitestModule.expect(googleSession.connectUrl).toBe("https://google.test/oauth");
     vitestModule.expect(googleConnection.professionalTimezone).toBe("America/Bogota");
@@ -302,6 +396,8 @@ vitestModule.describe("BackendApiAdapter", () => {
     vitestModule.expect(patients[0]?.firstName).toBe("Jane");
     vitestModule.expect(patient.location).toBe("Bogota");
     vitestModule.expect(submitResult.outboundMessageId).toBe("wamid-1");
+    vitestModule.expect(manualPaymentUpdate.paymentStatus).toBe("PAID");
+    vitestModule.expect(bookedPaymentUpdate.paymentAmountCop).toBe(80000);
   });
 
   vitestModule.it("resets conversation messages with DELETE endpoint", async () => {

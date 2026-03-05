@@ -638,6 +638,43 @@ class SchedulingService:
         )
         return self._to_summary_dto(request)
 
+    def update_booked_payment(
+        self,
+        tenant_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.UpdateBookedSlotPaymentInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+        if request.status != "BOOKED":
+            raise service_exceptions.InvalidStateError("scheduling request is not booked")
+
+        now_value = self._clock.now()
+        request.payment_amount_cop = input_dto.payment_amount_cop
+        request.payment_method = input_dto.payment_method
+        request.payment_status = input_dto.payment_status
+        request.payment_updated_at = now_value
+        request.updated_at = now_value
+        self._scheduling_repository.save_request(request)
+        logger.info(
+            "scheduling.booked_payment_updated",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.booked_payment_updated",
+                    message="booked scheduling request payment updated",
+                    data={
+                        "tenant_id": tenant_id,
+                        "request_id": request.id,
+                        "payment_status": request.payment_status,
+                        "payment_method": request.payment_method,
+                        "payment_amount_cop": request.payment_amount_cop,
+                    },
+                )
+            },
+        )
+        return self._to_summary_dto(request)
+
     def handoff_to_human(
         self,
         tenant_id: str,
@@ -943,6 +980,10 @@ class SchedulingService:
             slot_options_map=request.slot_options_map,
             selected_slot_id=request.selected_slot_id,
             calendar_event_id=request.calendar_event_id,
+            payment_amount_cop=request.payment_amount_cop,
+            payment_method=request.payment_method,
+            payment_status=request.payment_status,
+            payment_updated_at=request.payment_updated_at,
             created_at=request.created_at,
             updated_at=request.updated_at,
             slots=slots,

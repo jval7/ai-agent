@@ -1,4 +1,6 @@
 export type SchedulingRequestKind = "INITIAL" | "RETRY";
+export type AppointmentPaymentMethod = "CASH" | "TRANSFER";
+export type AppointmentPaymentStatus = "PENDING" | "PAID";
 
 export type SchedulingRequestStatus =
   | "AWAITING_CONSULTATION_REVIEW"
@@ -41,6 +43,10 @@ export interface SchedulingRequestSummary {
   slotOptionsMap: Record<string, string>;
   selectedSlotId: string | null;
   calendarEventId: string | null;
+  paymentAmountCop: number | null;
+  paymentMethod: AppointmentPaymentMethod | null;
+  paymentStatus: AppointmentPaymentStatus;
+  paymentUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
   slots: SchedulingSlot[];
@@ -85,4 +91,10 @@ export interface RescheduleBookedSlotInput {
 
 export interface CancelBookedSlotInput {
   reason: string | null;
+}
+
+export interface UpdateBookedSlotPaymentInput {
+  paymentAmountCop: number;
+  paymentMethod: AppointmentPaymentMethod;
+  paymentStatus: AppointmentPaymentStatus;
 }

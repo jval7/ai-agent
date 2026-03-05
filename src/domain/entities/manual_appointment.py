@@ -14,6 +14,10 @@ class ManualAppointment(pydantic.BaseModel):
     end_at: datetime.datetime
     timezone: str
     summary: str
+    payment_amount_cop: int | None = None
+    payment_method: typing.Literal["CASH", "TRANSFER"] | None = None
+    payment_status: typing.Literal["PENDING", "PAID"] = "PENDING"
+    payment_updated_at: datetime.datetime | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
     cancelled_at: datetime.datetime | None = None
@@ -31,3 +35,12 @@ class ManualAppointment(pydantic.BaseModel):
         if normalized_value == "":
             raise ValueError("manual appointment text fields cannot be empty")
         return normalized_value
+
+    @pydantic.field_validator("payment_amount_cop")
+    @classmethod
+    def validate_payment_amount_cop(cls, value: int | None) -> int | None:
+        if value is None:
+            return None
+        if value <= 0:
+            raise ValueError("payment_amount_cop must be greater than zero")
+        return value

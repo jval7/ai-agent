@@ -61,3 +61,17 @@ def cancel_manual_appointment(
         appointment_id=appointment_id,
         input_dto=resolved_input_dto,
     )
+
+
+@router.put("/{appointment_id}/payment", response_model=manual_appointment_dto.ManualAppointmentDTO)
+def update_manual_appointment_payment(
+    appointment_id: str,
+    input_dto: manual_appointment_dto.UpdateManualAppointmentPaymentDTO,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> manual_appointment_dto.ManualAppointmentDTO:
+    return container.manual_appointment_service.update_payment(
+        claims=claims,
+        appointment_id=appointment_id,
+        input_dto=input_dto,
+    )

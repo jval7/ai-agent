@@ -198,6 +198,46 @@ class ManualAppointmentService:
         )
         return self._to_dto(appointment)
 
+    def update_payment(
+        self,
+        claims: auth_dto.TokenClaimsDTO,
+        appointment_id: str,
+        input_dto: manual_appointment_dto.UpdateManualAppointmentPaymentDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
+        self._ensure_owner(claims)
+        appointment = self._manual_appointment_repository.get_by_id(
+            claims.tenant_id, appointment_id
+        )
+        if appointment is None:
+            raise service_exceptions.EntityNotFoundError("manual appointment not found")
+        if appointment.status != "SCHEDULED":
+            raise service_exceptions.InvalidStateError("manual appointment is not scheduled")
+
+        now_value = self._clock.now()
+        appointment.payment_amount_cop = input_dto.payment_amount_cop
+        appointment.payment_method = input_dto.payment_method
+        appointment.payment_status = input_dto.payment_status
+        appointment.payment_updated_at = now_value
+        appointment.updated_at = now_value
+        self._manual_appointment_repository.save(appointment)
+        logger.info(
+            "manual_appointment.payment_updated",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="manual_appointment.payment_updated",
+                    message="manual appointment payment updated",
+                    data={
+                        "tenant_id": claims.tenant_id,
+                        "appointment_id": appointment.id,
+                        "payment_status": appointment.payment_status,
+                        "payment_method": appointment.payment_method,
+                        "payment_amount_cop": appointment.payment_amount_cop,
+                    },
+                )
+            },
+        )
+        return self._to_dto(appointment)
+
     def _resolve_summary(
         self,
         requested_summary: str | None,
@@ -238,6 +278,10 @@ class ManualAppointmentService:
             end_at=appointment.end_at,
             timezone=appointment.timezone,
             summary=appointment.summary,
+            payment_amount_cop=appointment.payment_amount_cop,
+            payment_method=appointment.payment_method,
+            payment_status=appointment.payment_status,
+            payment_updated_at=appointment.payment_updated_at,
             created_at=appointment.created_at,
             updated_at=appointment.updated_at,
             cancelled_at=appointment.cancelled_at,

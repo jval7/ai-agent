@@ -1,5 +1,6 @@
 import datetime
 
+import pydantic
 import pytest
 
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
@@ -683,3 +684,71 @@ def test_cancel_booked_slot_tolerates_google_not_found() -> None:
     reloaded = repository.get_request_by_id("tenant-1", request.request_id)
     assert reloaded is not None
     assert reloaded.calendar_event_id is None
+
+
+def test_update_booked_payment_updates_request() -> None:
+    service, repository, _ = build_service(["req-1"])
+    request = create_waiting_professional_slots_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "BOOKED"
+    stored.selected_slot_id = "slot-1"
+    stored.calendar_event_id = "event-1"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="BOOKED",
+        )
+    ]
+    repository.save_request(stored)
+
+    updated = service.update_booked_payment(
+        tenant_id="tenant-1",
+        request_id=request.request_id,
+        input_dto=scheduling_dto.UpdateBookedSlotPaymentInputDTO(
+            payment_amount_cop=90000,
+            payment_method="CASH",
+            payment_status="PAID",
+        ),
+    )
+
+    assert updated.payment_amount_cop == 90000
+    assert updated.payment_method == "CASH"
+    assert updated.payment_status == "PAID"
+    assert updated.payment_updated_at is not None
+    reloaded = repository.get_request_by_id("tenant-1", request.request_id)
+    assert reloaded is not None
+    assert reloaded.payment_amount_cop == 90000
+    assert reloaded.payment_status == "PAID"
+
+
+def test_update_booked_payment_rejects_non_booked_request() -> None:
+    service, repository, _ = build_service(["req-1"])
+    request = create_waiting_professional_slots_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "AWAITING_PROFESSIONAL_SLOTS"
+    repository.save_request(stored)
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.update_booked_payment(
+            tenant_id="tenant-1",
+            request_id=request.request_id,
+            input_dto=scheduling_dto.UpdateBookedSlotPaymentInputDTO(
+                payment_amount_cop=90000,
+                payment_method="TRANSFER",
+                payment_status="PENDING",
+            ),
+        )
+
+
+def test_update_booked_payment_dto_rejects_non_positive_amount() -> None:
+    with pytest.raises(pydantic.ValidationError):
+        scheduling_dto.UpdateBookedSlotPaymentInputDTO(
+            payment_amount_cop=0,
+            payment_method="TRANSFER",
+            payment_status="PENDING",
+        )

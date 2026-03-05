@@ -859,4 +859,406 @@ vitestModule.describe("AgendaPage", () => {
     });
     expect(confirmSpy).toHaveBeenCalledTimes(1);
   });
+
+  vitestModule.it("updates manual appointment payment from booked detail", async () => {
+    const updateManualPaymentMock = vitestModule.vi.fn(async () => ({
+      appointmentId: "manual-1",
+      tenantId: "tenant-1",
+      patientWhatsappUserId: "wa-manual-1",
+      status: "SCHEDULED",
+      calendarEventId: "event-manual-1",
+      startAt: "2026-03-12T15:00:00Z",
+      endAt: "2026-03-12T16:00:00Z",
+      timezone: "UTC",
+      summary: "Cita control",
+      paymentAmountCop: 120000,
+      paymentMethod: "TRANSFER",
+      paymentStatus: "PAID",
+      paymentUpdatedAt: "2026-03-10T10:00:00Z",
+      createdAt: "2026-03-01T00:00:00Z",
+      updatedAt: "2026-03-10T10:00:00Z",
+      cancelledAt: null
+    }));
+    const container = {
+      onboardingUseCase: {
+        getGoogleCalendarConnectionStatus: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          status: "CONNECTED",
+          calendarId: "primary",
+          professionalTimezone: "UTC",
+          connectedAt: "2026-03-01T00:00:00Z"
+        }))
+      },
+      schedulingUseCase: {
+        listRequests: vitestModule.vi.fn(async () => []),
+        getAvailability: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          calendarId: "primary",
+          timezone: "UTC",
+          busyIntervals: []
+        })),
+        submitProfessionalSlots: vitestModule.vi.fn(),
+        resolveConsultationReview: vitestModule.vi.fn(),
+        rescheduleBookedSlot: vitestModule.vi.fn(),
+        cancelBookedSlot: vitestModule.vi.fn(),
+        updateBookedPayment: vitestModule.vi.fn()
+      },
+      patientUseCase: {
+        listPatients: vitestModule.vi.fn(async () => [
+          {
+            tenantId: "tenant-1",
+            whatsappUserId: "wa-manual-1",
+            firstName: "Maria",
+            lastName: "Manual",
+            email: "maria@example.com",
+            age: 30,
+            consultationReason: "Control",
+            location: "Bogota",
+            phone: "573001001001",
+            createdAt: "2026-03-01T00:00:00Z"
+          }
+        ])
+      },
+      manualAppointmentUseCase: {
+        listAppointments: vitestModule.vi.fn(async () => [
+          {
+            appointmentId: "manual-1",
+            tenantId: "tenant-1",
+            patientWhatsappUserId: "wa-manual-1",
+            status: "SCHEDULED",
+            calendarEventId: "event-manual-1",
+            startAt: "2026-03-12T15:00:00Z",
+            endAt: "2026-03-12T16:00:00Z",
+            timezone: "UTC",
+            summary: "Cita control",
+            paymentAmountCop: null,
+            paymentMethod: null,
+            paymentStatus: "PENDING",
+            paymentUpdatedAt: null,
+            createdAt: "2026-03-01T00:00:00Z",
+            updatedAt: "2026-03-01T00:00:00Z",
+            cancelledAt: null
+          }
+        ]),
+        updatePayment: updateManualPaymentMock
+      }
+    };
+
+    renderAgendaPage(container);
+
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", { name: /Agenda e Historial/ })
+    );
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", { name: /Agendadas/ })
+    );
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Detalle cita manual")).toBeInTheDocument();
+    });
+
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByRole("spinbutton", {
+        name: /Valor \(COP\)/i
+      }),
+      {
+        target: { value: "120000" }
+      }
+    );
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByRole("combobox", { name: /^Categoría$/i }),
+      {
+        target: { value: "TRANSFER" }
+      }
+    );
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByRole("combobox", { name: /^Estado$/i }),
+      {
+        target: { value: "PAID" }
+      }
+    );
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", { name: "Guardar pago manual" })
+    );
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(updateManualPaymentMock).toHaveBeenCalledWith("manual-1", {
+        paymentAmountCop: 120000,
+        paymentMethod: "TRANSFER",
+        paymentStatus: "PAID"
+      });
+    });
+  });
+
+  vitestModule.it("updates chatbot appointment payment from booked detail", async () => {
+    const updateBookedPaymentMock = vitestModule.vi.fn(async () => ({
+      requestId: "req-booked-1",
+      conversationId: "conv-booked-1",
+      whatsappUserId: "wa-booked-1",
+      requestKind: "INITIAL",
+      status: "BOOKED",
+      roundNumber: 1,
+      patientPreferenceNote: null,
+      rejectionSummary: null,
+      professionalNote: null,
+      patientFirstName: "Ana",
+      patientLastName: "Lopez",
+      patientAge: 29,
+      consultationReason: "Ansiedad",
+      consultationDetails: null,
+      appointmentModality: "PRESENCIAL",
+      patientLocation: "Cali",
+      slotOptionsMap: {},
+      selectedSlotId: "slot-1",
+      calendarEventId: "event-1",
+      paymentAmountCop: 80000,
+      paymentMethod: "CASH",
+      paymentStatus: "PENDING",
+      paymentUpdatedAt: "2026-03-12T08:00:00Z",
+      createdAt: "2026-03-01T00:00:00Z",
+      updatedAt: "2026-03-12T08:00:00Z",
+      slots: [
+        {
+          slotId: "slot-1",
+          startAt: "2026-03-12T09:00:00Z",
+          endAt: "2026-03-12T10:00:00Z",
+          timezone: "UTC",
+          status: "BOOKED"
+        }
+      ]
+    }));
+    const container = {
+      onboardingUseCase: {
+        getGoogleCalendarConnectionStatus: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          status: "CONNECTED",
+          calendarId: "primary",
+          professionalTimezone: "UTC",
+          connectedAt: "2026-03-01T00:00:00Z"
+        }))
+      },
+      schedulingUseCase: {
+        listRequests: vitestModule.vi.fn(async () => [
+          {
+            requestId: "req-booked-1",
+            conversationId: "conv-booked-1",
+            whatsappUserId: "wa-booked-1",
+            requestKind: "INITIAL",
+            status: "BOOKED",
+            roundNumber: 1,
+            patientPreferenceNote: null,
+            rejectionSummary: null,
+            professionalNote: null,
+            patientFirstName: "Ana",
+            patientLastName: "Lopez",
+            patientAge: 29,
+            consultationReason: "Ansiedad",
+            consultationDetails: null,
+            appointmentModality: "PRESENCIAL",
+            patientLocation: "Cali",
+            slotOptionsMap: {},
+            selectedSlotId: "slot-1",
+            calendarEventId: "event-1",
+            paymentAmountCop: null,
+            paymentMethod: null,
+            paymentStatus: "PENDING",
+            paymentUpdatedAt: null,
+            createdAt: "2026-03-01T00:00:00Z",
+            updatedAt: "2026-03-01T00:00:00Z",
+            slots: [
+              {
+                slotId: "slot-1",
+                startAt: "2026-03-12T09:00:00Z",
+                endAt: "2026-03-12T10:00:00Z",
+                timezone: "UTC",
+                status: "BOOKED"
+              }
+            ]
+          }
+        ]),
+        getAvailability: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          calendarId: "primary",
+          timezone: "UTC",
+          busyIntervals: []
+        })),
+        submitProfessionalSlots: vitestModule.vi.fn(),
+        resolveConsultationReview: vitestModule.vi.fn(),
+        rescheduleBookedSlot: vitestModule.vi.fn(),
+        cancelBookedSlot: vitestModule.vi.fn(),
+        updateBookedPayment: updateBookedPaymentMock
+      },
+      patientUseCase: {
+        listPatients: vitestModule.vi.fn(async () => [])
+      },
+      manualAppointmentUseCase: {
+        listAppointments: vitestModule.vi.fn(async () => []),
+        updatePayment: vitestModule.vi.fn()
+      }
+    };
+
+    renderAgendaPage(container);
+
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", { name: /Agenda e Historial/ })
+    );
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", { name: /Agendadas/ })
+    );
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(
+        testingLibraryReactModule.screen.getByRole("button", { name: "Guardar pago chatbot" })
+      ).toBeInTheDocument();
+    });
+
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByRole("spinbutton", {
+        name: /Valor \(COP\)/i
+      }),
+      {
+        target: { value: "80000" }
+      }
+    );
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", { name: "Guardar pago chatbot" })
+    );
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(updateBookedPaymentMock).toHaveBeenCalledWith("req-booked-1", {
+        paymentAmountCop: 80000,
+        paymentMethod: "CASH",
+        paymentStatus: "PENDING"
+      });
+    });
+  });
+
+  vitestModule.it("filters finance tab by payment status", async () => {
+    const container = {
+      onboardingUseCase: {
+        getGoogleCalendarConnectionStatus: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          status: "CONNECTED",
+          calendarId: "primary",
+          professionalTimezone: "UTC",
+          connectedAt: "2026-03-01T00:00:00Z"
+        }))
+      },
+      schedulingUseCase: {
+        listRequests: vitestModule.vi.fn(async () => [
+          {
+            requestId: "req-booked-1",
+            conversationId: "conv-booked-1",
+            whatsappUserId: "wa-bot-1",
+            requestKind: "INITIAL",
+            status: "BOOKED",
+            roundNumber: 1,
+            patientPreferenceNote: null,
+            rejectionSummary: null,
+            professionalNote: null,
+            patientFirstName: "Paciente",
+            patientLastName: "Bot",
+            patientAge: 29,
+            consultationReason: "Ansiedad",
+            consultationDetails: null,
+            appointmentModality: "PRESENCIAL",
+            patientLocation: "Cali",
+            slotOptionsMap: {},
+            selectedSlotId: "slot-1",
+            calendarEventId: "event-1",
+            paymentAmountCop: 100000,
+            paymentMethod: "TRANSFER",
+            paymentStatus: "PAID",
+            paymentUpdatedAt: "2026-03-12T08:00:00Z",
+            createdAt: "2026-03-01T00:00:00Z",
+            updatedAt: "2026-03-01T00:00:00Z",
+            slots: [
+              {
+                slotId: "slot-1",
+                startAt: "2026-03-12T09:00:00Z",
+                endAt: "2026-03-12T10:00:00Z",
+                timezone: "UTC",
+                status: "BOOKED"
+              }
+            ]
+          }
+        ]),
+        getAvailability: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          calendarId: "primary",
+          timezone: "UTC",
+          busyIntervals: []
+        })),
+        submitProfessionalSlots: vitestModule.vi.fn(),
+        resolveConsultationReview: vitestModule.vi.fn(),
+        rescheduleBookedSlot: vitestModule.vi.fn(),
+        cancelBookedSlot: vitestModule.vi.fn(),
+        updateBookedPayment: vitestModule.vi.fn()
+      },
+      patientUseCase: {
+        listPatients: vitestModule.vi.fn(async () => [
+          {
+            tenantId: "tenant-1",
+            whatsappUserId: "wa-manual-1",
+            firstName: "Paciente",
+            lastName: "Manual",
+            email: "manual@example.com",
+            age: 33,
+            consultationReason: "Control",
+            location: "Bogota",
+            phone: "573000000000",
+            createdAt: "2026-03-01T00:00:00Z"
+          }
+        ])
+      },
+      manualAppointmentUseCase: {
+        listAppointments: vitestModule.vi.fn(async () => [
+          {
+            appointmentId: "manual-1",
+            tenantId: "tenant-1",
+            patientWhatsappUserId: "wa-manual-1",
+            status: "SCHEDULED",
+            calendarEventId: "event-manual-1",
+            startAt: "2026-03-11T15:00:00Z",
+            endAt: "2026-03-11T16:00:00Z",
+            timezone: "UTC",
+            summary: "Cita manual",
+            paymentAmountCop: null,
+            paymentMethod: null,
+            paymentStatus: "PENDING",
+            paymentUpdatedAt: null,
+            createdAt: "2026-03-01T00:00:00Z",
+            updatedAt: "2026-03-01T00:00:00Z",
+            cancelledAt: null
+          }
+        ]),
+        updatePayment: vitestModule.vi.fn()
+      }
+    };
+
+    renderAgendaPage(container);
+
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", { name: /Finanzas/ })
+    );
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Paciente Bot")).toBeInTheDocument();
+      expect(testingLibraryReactModule.screen.getByText("Paciente Manual")).toBeInTheDocument();
+    });
+
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByRole("combobox", {
+        name: /Estado de pago/i
+      }),
+      {
+        target: { value: "PAID" }
+      }
+    );
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Paciente Bot")).toBeInTheDocument();
+      expect(testingLibraryReactModule.screen.queryByText("Paciente Manual")).toBeNull();
+    });
+  });
 });

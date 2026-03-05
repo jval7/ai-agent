@@ -64,6 +64,10 @@ export interface BackendApiPort {
     appointmentId: string,
     input: manualAppointmentModel.CancelManualAppointmentInput
   ): Promise<manualAppointmentModel.ManualAppointment>;
+  updateManualAppointmentPayment(
+    appointmentId: string,
+    input: manualAppointmentModel.UpdateManualAppointmentPaymentInput
+  ): Promise<manualAppointmentModel.ManualAppointment>;
 
   listSchedulingRequests(
     status?: schedulingModel.SchedulingRequestStatus
@@ -88,5 +92,9 @@ export interface BackendApiPort {
   cancelBookedSlot(
     requestId: string,
     input: schedulingModel.CancelBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary>;
+  updateBookedSlotPayment(
+    requestId: string,
+    input: schedulingModel.UpdateBookedSlotPaymentInput
   ): Promise<schedulingModel.SchedulingRequestSummary>;
 }

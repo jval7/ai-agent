@@ -1,4 +1,6 @@
 export type ManualAppointmentStatus = "SCHEDULED" | "CANCELLED";
+export type AppointmentPaymentMethod = "CASH" | "TRANSFER";
+export type AppointmentPaymentStatus = "PENDING" | "PAID";
 
 export interface ManualAppointment {
   appointmentId: string;
@@ -10,6 +12,10 @@ export interface ManualAppointment {
   endAt: string;
   timezone: string;
   summary: string;
+  paymentAmountCop: number | null;
+  paymentMethod: AppointmentPaymentMethod | null;
+  paymentStatus: AppointmentPaymentStatus;
+  paymentUpdatedAt: string | null;
   createdAt: string;
   updatedAt: string;
   cancelledAt: string | null;
@@ -32,4 +38,10 @@ export interface RescheduleManualAppointmentInput {
 
 export interface CancelManualAppointmentInput {
   reason: string | null;
+}
+
+export interface UpdateManualAppointmentPaymentInput {
+  paymentAmountCop: number;
+  paymentMethod: AppointmentPaymentMethod;
+  paymentStatus: AppointmentPaymentStatus;
 }

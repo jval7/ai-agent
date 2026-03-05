@@ -143,6 +143,10 @@ export interface ManualAppointmentApiResponse {
   end_at: string;
   timezone: string;
   summary: string;
+  payment_amount_cop: number | null;
+  payment_method: "CASH" | "TRANSFER" | null;
+  payment_status: "PENDING" | "PAID";
+  payment_updated_at: string | null;
   created_at: string;
   updated_at: string;
   cancelled_at: string | null;
@@ -169,6 +173,12 @@ export interface RescheduleManualAppointmentApiRequest {
 
 export interface CancelManualAppointmentApiRequest {
   reason: string | null;
+}
+
+export interface UpdateManualAppointmentPaymentApiRequest {
+  payment_amount_cop: number;
+  payment_method: "CASH" | "TRANSFER";
+  payment_status: "PENDING" | "PAID";
 }
 
 export interface SchedulingSlotApiResponse {
@@ -208,6 +218,10 @@ export interface SchedulingRequestSummaryApiResponse {
   slot_options_map: Record<string, string>;
   selected_slot_id: string | null;
   calendar_event_id: string | null;
+  payment_amount_cop: number | null;
+  payment_method: "CASH" | "TRANSFER" | null;
+  payment_status: "PENDING" | "PAID";
+  payment_updated_at: string | null;
   created_at: string;
   updated_at: string;
   slots: SchedulingSlotApiResponse[];
@@ -263,6 +277,12 @@ export interface RescheduleBookedSlotApiRequest {
 
 export interface CancelBookedSlotApiRequest {
   reason: string | null;
+}
+
+export interface UpdateBookedSlotPaymentApiRequest {
+  payment_amount_cop: number;
+  payment_method: "CASH" | "TRANSFER";
+  payment_status: "PENDING" | "PAID";
 }
 
 export interface ApiErrorResponse {
