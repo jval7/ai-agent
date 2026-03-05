@@ -245,7 +245,9 @@ def test_delete_patient_removes_patient_for_tenant() -> None:
     unaffected_request = scheduling_repository.get_request_by_id("tenant-1", "req-booked-2")
     assert deleted_patient_request is not None
     assert unaffected_request is not None
-    assert deleted_patient_request.status == "CANCELLED"
+    assert deleted_patient_request.status == "BOOKED"
+    assert deleted_patient_request.professional_note is None
     assert deleted_patient_request.calendar_event_id is None
     assert unaffected_request.status == "BOOKED"
+    assert unaffected_request.professional_note is None
     assert unaffected_request.calendar_event_id == "evt-2"

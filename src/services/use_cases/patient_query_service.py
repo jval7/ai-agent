@@ -58,7 +58,7 @@ class PatientQueryService:
         )
         now_value = self._clock.now()
         deleted_event_ids: set[str] = set()
-        cancelled_requests_count = 0
+        updated_booked_requests_count = 0
         for request in booked_requests:
             if request.whatsapp_user_id != whatsapp_user_id:
                 continue
@@ -70,10 +70,9 @@ class PatientQueryService:
                 )
                 deleted_event_ids.add(calendar_event_id)
             request.calendar_event_id = None
-            request.professional_note = "patient deleted by owner"
-            request.set_status("CANCELLED", now_value)
+            request.updated_at = now_value
             self._scheduling_repository.save_request(request)
-            cancelled_requests_count += 1
+            updated_booked_requests_count += 1
 
         self._patient_repository.delete(claims.tenant_id, whatsapp_user_id)
         logger.info(
@@ -86,7 +85,7 @@ class PatientQueryService:
                         "tenant_id": claims.tenant_id,
                         "whatsapp_user_id": whatsapp_user_id,
                         "deleted_calendar_events_count": len(deleted_event_ids),
-                        "cancelled_requests_count": cancelled_requests_count,
+                        "updated_booked_requests_count": updated_booked_requests_count,
                     },
                 )
             },
