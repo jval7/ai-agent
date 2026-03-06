@@ -1259,7 +1259,7 @@ export function AgendaPage() {
             </p>
           </div>
           <button
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+            className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
             onClick={() => {
               void queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey });
               void queryClient.invalidateQueries({ queryKey: googleCalendarConnectionQueryKey });
@@ -1276,7 +1276,7 @@ export function AgendaPage() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <div className="flex gap-1 overflow-x-auto border-b border-slate-200 pb-1">
+          <div className="flex gap-1 overflow-x-auto border-b border-border-subtle pb-1">
             {agendaSections.map((section) => {
               const isActive = activeSectionId === section.id;
               const count = sectionCounts[section.id] ?? 0;
@@ -1297,7 +1297,9 @@ export function AgendaPage() {
                     <span
                       className={[
                         "ml-2 rounded-full px-2 py-0.5 text-xs",
-                        isActive ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-600"
+                        isActive
+                          ? "bg-brand-accent-light text-brand-teal"
+                          : "bg-slate-100 text-slate-600"
                       ].join(" ")}
                     >
                       {count}
@@ -1317,7 +1319,7 @@ export function AgendaPage() {
                     className={[
                       "rounded-md border px-3 py-2 text-sm font-semibold",
                       activeTab === tab.status
-                        ? "border-brand-teal bg-teal-50 text-brand-teal"
+                        ? "border-brand-teal bg-brand-accent-light text-brand-teal"
                         : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                     ].join(" ")}
                     key={tab.status}
@@ -1347,8 +1349,8 @@ export function AgendaPage() {
           ].join(" ")}
         >
           {isBookedTab ? (
-            <article className="rounded-xl border border-slate-200 bg-white">
-              <header className="border-b border-slate-200 p-4">
+            <article className="rounded-xl border border-border-subtle bg-white shadow-card">
+              <header className="border-b border-border-subtle p-4">
                 <h3 className="text-base font-semibold">Calendario de citas agendadas</h3>
                 <p className="text-xs text-slate-500">
                   Integra citas del chatbot y manuales. Haz click para ver el detalle completo.
@@ -1361,7 +1363,7 @@ export function AgendaPage() {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
-                      className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                      className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
                       onClick={() => {
                         const previous = visibleMonthStart.minus({ months: 1 });
                         setVisibleMonth({
@@ -1374,7 +1376,7 @@ export function AgendaPage() {
                       Anterior
                     </button>
                     <button
-                      className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                      className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
                       onClick={() => {
                         const next = visibleMonthStart.plus({ months: 1 });
                         setVisibleMonth({
@@ -1415,7 +1417,7 @@ export function AgendaPage() {
                             className={[
                               "min-h-32 rounded-md border p-1.5",
                               isSelectedDay
-                                ? "border-brand-teal bg-teal-50/40"
+                                ? "border-brand-teal bg-brand-accent-light/40"
                                 : "border-slate-200 bg-white"
                             ].join(" ")}
                             key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
@@ -1424,7 +1426,7 @@ export function AgendaPage() {
                               className={[
                                 "w-full rounded px-1 text-left text-xs font-semibold",
                                 isSelectedDay
-                                  ? "bg-teal-100 text-brand-teal"
+                                  ? "bg-brand-accent-light text-brand-teal"
                                   : "text-slate-700 hover:bg-slate-100"
                               ].join(" ")}
                               onClick={() => {
@@ -1452,7 +1454,7 @@ export function AgendaPage() {
                                     className={[
                                       "w-full rounded border px-1.5 py-1.5 text-left text-[11px]",
                                       isSelectedAppointment
-                                        ? "border-brand-teal bg-teal-100 text-brand-teal"
+                                        ? "border-brand-teal bg-brand-accent-light text-brand-teal"
                                         : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                                     ].join(" ")}
                                     key={appointment.itemKey}
@@ -1490,7 +1492,7 @@ export function AgendaPage() {
                   </div>
                 </div>
 
-                <section className="rounded-lg border border-slate-200 p-3">
+                <section className="rounded-lg border border-border-subtle p-3">
                   <h4 className="text-sm font-semibold text-brand-ink">
                     {selectedDayIso !== ""
                       ? `Citas del ${luxonModule.DateTime.fromISO(selectedDayIso, {
@@ -1509,7 +1511,7 @@ export function AgendaPage() {
                             className={[
                               "w-full rounded-md border px-3 py-2 text-left",
                               isSelectedAppointment
-                                ? "border-brand-teal bg-teal-50 text-brand-teal"
+                                ? "border-brand-teal bg-brand-accent-light text-brand-teal"
                                 : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                             ].join(" ")}
                             key={`day-${appointment.itemKey}`}
@@ -1541,12 +1543,12 @@ export function AgendaPage() {
               </div>
             </article>
           ) : (
-            <article className="rounded-xl border border-slate-200 bg-white">
-              <header className="border-b border-slate-200 p-4">
+            <article className="rounded-xl border border-border-subtle bg-white shadow-card">
+              <header className="border-b border-border-subtle p-4">
                 <h3 className="text-base font-semibold">Solicitudes</h3>
                 <p className="text-xs text-slate-500">Estado actual: {activeTab}</p>
               </header>
-              <div className="max-h-[75vh] space-y-2 overflow-auto p-3">
+              <div className="max-h-[calc(100vh-12rem)] space-y-2 overflow-auto p-3">
                 {requestsQuery.isLoading ? (
                   <p className="text-sm text-slate-500">Cargando...</p>
                 ) : null}
@@ -1560,7 +1562,7 @@ export function AgendaPage() {
                       className={[
                         "w-full rounded-lg border p-3 text-left",
                         isSelected
-                          ? "border-brand-teal bg-teal-50"
+                          ? "border-brand-teal bg-brand-accent-light"
                           : "border-slate-200 bg-white hover:border-slate-300"
                       ].join(" ")}
                       key={request.requestId}
@@ -1591,13 +1593,13 @@ export function AgendaPage() {
             </article>
           )}
 
-          <article className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+          <article className="space-y-4 rounded-xl border border-border-subtle bg-white shadow-card p-4">
             {isBookedTab &&
             selectedBookedAppointment !== null &&
             selectedBookedAppointment.source === "MANUAL" ? (
               <section className="space-y-3">
                 <h4 className="text-sm font-semibold text-brand-ink">Detalle cita manual</h4>
-                <div className="rounded-lg border border-slate-200 p-3 text-xs text-slate-700">
+                <div className="rounded-lg border border-border-subtle p-3 text-xs text-slate-700">
                   <p>
                     <strong>ID:</strong> {selectedBookedAppointment.manualAppointmentId}
                   </p>
@@ -1616,13 +1618,13 @@ export function AgendaPage() {
                     <strong>Origen:</strong> Agendamiento manual
                   </p>
                 </div>
-                <div className="rounded-lg border border-slate-200 p-3">
+                <div className="rounded-lg border border-border-subtle p-3">
                   <h5 className="text-sm font-semibold text-brand-ink">Pago de cita</h5>
                   <div className="mt-3 grid gap-3 md:grid-cols-3">
                     <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Valor (COP)
                       <input
-                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                         min={1}
                         onChange={(event) => {
                           setManualPaymentFormState((currentValue) => ({
@@ -1637,7 +1639,7 @@ export function AgendaPage() {
                     <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Categoría
                       <select
-                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                         onChange={(event) => {
                           setManualPaymentFormState((currentValue) => ({
                             ...currentValue,
@@ -1653,7 +1655,7 @@ export function AgendaPage() {
                     <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Estado
                       <select
-                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                         onChange={(event) => {
                           setManualPaymentFormState((currentValue) => ({
                             ...currentValue,
@@ -1669,7 +1671,7 @@ export function AgendaPage() {
                   </div>
                   <div className="mt-3">
                     <button
-                      className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                       disabled={updateManualPaymentMutation.isPending}
                       onClick={() => {
                         if (selectedBookedAppointment.manualAppointmentId === null) {
@@ -1712,7 +1714,7 @@ export function AgendaPage() {
             ) : (
               <>
                 <section className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="rounded-lg border border-border-subtle p-3">
                     <h4 className="text-sm font-semibold text-brand-ink">Detalle</h4>
                     <div className="mt-2 space-y-1 text-xs text-slate-700">
                       <p>
@@ -1748,7 +1750,7 @@ export function AgendaPage() {
                       ) : null}
                     </div>
                   </div>
-                  <div className="rounded-lg border border-slate-200 p-3">
+                  <div className="rounded-lg border border-border-subtle p-3">
                     <h4 className="text-sm font-semibold text-brand-ink">
                       Preferencias del paciente
                     </h4>
@@ -1784,7 +1786,7 @@ export function AgendaPage() {
                 </section>
 
                 {selectedRequest.status === "AWAITING_CONSULTATION_REVIEW" ? (
-                  <section className="rounded-lg border border-slate-200 p-3">
+                  <section className="rounded-lg border border-border-subtle p-3">
                     <h4 className="text-sm font-semibold text-brand-ink">
                       Resolver motivo de consulta
                     </h4>
@@ -1794,7 +1796,7 @@ export function AgendaPage() {
                     <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Nota para el bot
                       <textarea
-                        className="mt-1 min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                        className="mt-1 min-h-24 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                         onChange={(event) => {
                           if (selectedRequest === undefined) {
                             return;
@@ -1880,14 +1882,14 @@ export function AgendaPage() {
 
                 {selectedRequest.status === "AWAITING_PROFESSIONAL_SLOTS" ? (
                   <>
-                    <section className="rounded-lg border border-slate-200 p-3">
+                    <section className="rounded-lg border border-border-subtle p-3">
                       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                         <h4 className="text-sm font-semibold text-brand-ink">
                           Calendario ({timezone}) - {visibleMonthStart.toFormat("LLLL yyyy")}
                         </h4>
                         <div className="flex flex-wrap gap-2">
                           <button
-                            className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                            className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
                             onClick={() => {
                               const previous = visibleMonthStart.minus({ months: 1 });
                               setVisibleMonth({
@@ -1900,7 +1902,7 @@ export function AgendaPage() {
                             Anterior
                           </button>
                           <button
-                            className="rounded-md border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:bg-slate-100"
+                            className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
                             onClick={() => {
                               const next = visibleMonthStart.plus({ months: 1 });
                               setVisibleMonth({
@@ -1939,7 +1941,7 @@ export function AgendaPage() {
                                   className={[
                                     "h-10 rounded-md border text-sm",
                                     isSelected
-                                      ? "border-brand-teal bg-teal-50 text-brand-teal"
+                                      ? "border-brand-teal bg-brand-accent-light text-brand-teal"
                                       : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
                                   ].join(" ")}
                                   key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
@@ -1964,7 +1966,7 @@ export function AgendaPage() {
                       ) : null}
                     </section>
 
-                    <section className="rounded-lg border border-slate-200 p-3">
+                    <section className="rounded-lg border border-border-subtle p-3">
                       <h4 className="text-sm font-semibold text-brand-ink">
                         Slots de 60 min (06:00 a 22:00)
                       </h4>
@@ -1988,7 +1990,7 @@ export function AgendaPage() {
                                 isDisabled
                                   ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
                                   : isSelected
-                                    ? "border-brand-teal bg-teal-50 text-brand-teal"
+                                    ? "border-brand-teal bg-brand-accent-light text-brand-teal"
                                     : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                               ].join(" ")}
                               disabled={isDisabled}
@@ -2041,7 +2043,7 @@ export function AgendaPage() {
                       <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Nota para paciente (opcional)
                         <textarea
-                          className="mt-1 min-h-24 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                          className="mt-1 min-h-24 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                           onChange={(event) => {
                             if (selectedRequest === undefined) {
                               return;
@@ -2057,7 +2059,7 @@ export function AgendaPage() {
                       </label>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
-                          className="w-full rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                          className="w-full rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
                           disabled={submitSlotsMutation.isPending}
                           onClick={() => {
                             if (selectedRequest === undefined) {
@@ -2089,7 +2091,7 @@ export function AgendaPage() {
                   </>
                 ) : selectedRequest.status ===
                   "AWAITING_CONSULTATION_REVIEW" ? null : selectedRequest.status === "BOOKED" ? (
-                  <section className="rounded-lg border border-slate-200 p-3">
+                  <section className="rounded-lg border border-border-subtle p-3">
                     <h4 className="text-sm font-semibold text-brand-ink">
                       Gestionar cita del chatbot
                     </h4>
@@ -2100,7 +2102,7 @@ export function AgendaPage() {
                       <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Inicio
                         <input
-                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                           onChange={(event) => {
                             const nextValue = event.target.value;
                             setBookedAppointmentFormState((currentValue) => ({
@@ -2115,7 +2117,7 @@ export function AgendaPage() {
                       <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Fin
                         <input
-                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                           onChange={(event) => {
                             const nextValue = event.target.value;
                             setBookedAppointmentFormState((currentValue) => ({
@@ -2130,7 +2132,7 @@ export function AgendaPage() {
                       <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Timezone
                         <input
-                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                           onChange={(event) => {
                             const nextValue = event.target.value;
                             setBookedAppointmentFormState((currentValue) => ({
@@ -2145,7 +2147,7 @@ export function AgendaPage() {
                       <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Resumen evento
                         <input
-                          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                           onChange={(event) => {
                             const nextValue = event.target.value;
                             setBookedAppointmentFormState((currentValue) => ({
@@ -2160,7 +2162,7 @@ export function AgendaPage() {
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
-                        className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                         disabled={rescheduleBookedSlotMutation.isPending}
                         onClick={() => {
                           if (selectedBookedBotRequest === null) {
@@ -2220,7 +2222,7 @@ export function AgendaPage() {
                     <label className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Motivo de cancelación (opcional)
                       <textarea
-                        className="mt-1 min-h-20 w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-700"
+                        className="mt-1 min-h-20 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
                         onChange={(event) => {
                           const nextValue = event.target.value;
                           setBookedAppointmentFormState((currentValue) => ({
@@ -2263,13 +2265,13 @@ export function AgendaPage() {
                       </button>
                     </div>
 
-                    <div className="mt-5 rounded-md border border-slate-200 p-3">
+                    <div className="mt-5 rounded-lg border border-border-subtle p-3">
                       <h5 className="text-sm font-semibold text-brand-ink">Pago de cita</h5>
                       <div className="mt-3 grid gap-3 md:grid-cols-3">
                         <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Valor (COP)
                           <input
-                            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                             min={1}
                             onChange={(event) => {
                               setBookedPaymentFormState((currentValue) => ({
@@ -2284,7 +2286,7 @@ export function AgendaPage() {
                         <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Categoría
                           <select
-                            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                             onChange={(event) => {
                               setBookedPaymentFormState((currentValue) => ({
                                 ...currentValue,
@@ -2300,7 +2302,7 @@ export function AgendaPage() {
                         <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                           Estado
                           <select
-                            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                             onChange={(event) => {
                               setBookedPaymentFormState((currentValue) => ({
                                 ...currentValue,
@@ -2316,7 +2318,7 @@ export function AgendaPage() {
                       </div>
                       <div className="mt-3">
                         <button
-                          className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                           disabled={updateBookedPaymentMutation.isPending}
                           onClick={() => {
                             if (selectedBookedBotRequest === null) {
@@ -2353,7 +2355,7 @@ export function AgendaPage() {
                     </div>
                   </section>
                 ) : (
-                  <section className="rounded-lg border border-slate-200 p-3">
+                  <section className="rounded-lg border border-border-subtle p-3">
                     <p className="text-sm text-slate-600">
                       Esta solicitud está en modo lectura para este estado.
                     </p>
@@ -2382,7 +2384,7 @@ export function AgendaPage() {
 
       {isManualSchedulingSection ? (
         <section className="mt-6 grid gap-4 xl:grid-cols-2">
-          <article className="rounded-xl border border-slate-200 bg-white p-4">
+          <article className="rounded-xl border border-border-subtle bg-white shadow-card p-4">
             <header className="mb-3">
               <h3 className="text-base font-semibold text-brand-ink">Pacientes</h3>
               <p className="text-xs text-slate-500">
@@ -2390,13 +2392,13 @@ export function AgendaPage() {
               </p>
             </header>
 
-            <section className="rounded-lg border border-slate-200 p-3">
+            <section className="rounded-lg border border-border-subtle p-3">
               <h4 className="text-sm font-semibold text-brand-ink">Crear paciente</h4>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   WhatsApp ID
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => {
                       const nextValue = event.target.value;
                       setPatientFormState((currentValue) => ({
@@ -2411,7 +2413,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Nombre
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => {
                       const nextValue = event.target.value;
                       setPatientFormState((currentValue) => ({
@@ -2426,7 +2428,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Apellido
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => {
                       const nextValue = event.target.value;
                       setPatientFormState((currentValue) => ({
@@ -2441,7 +2443,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Email
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => {
                       const nextValue = event.target.value;
                       setPatientFormState((currentValue) => ({
@@ -2456,7 +2458,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Edad
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     min={1}
                     onChange={(event) => {
                       const nextValue = event.target.value;
@@ -2472,7 +2474,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Teléfono
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => {
                       const nextValue = event.target.value;
                       setPatientFormState((currentValue) => ({
@@ -2487,7 +2489,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
                   Motivo de consulta
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => {
                       const nextValue = event.target.value;
                       setPatientFormState((currentValue) => ({
@@ -2502,7 +2504,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
                   Ubicación
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => {
                       const nextValue = event.target.value;
                       setPatientFormState((currentValue) => ({
@@ -2517,7 +2519,7 @@ export function AgendaPage() {
               </div>
               <div className="mt-3">
                 <button
-                  className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={createPatientMutation.isPending}
                   onClick={() => {
                     const trimmedWhatsappUserId = patientFormState.whatsappUserId.trim();
@@ -2564,7 +2566,7 @@ export function AgendaPage() {
               </div>
             </section>
 
-            <section className="mt-4 rounded-lg border border-slate-200 p-3">
+            <section className="mt-4 rounded-lg border border-border-subtle p-3">
               <h4 className="text-sm font-semibold text-brand-ink">Listado de pacientes</h4>
               <div className="mt-3 space-y-2">
                 {patientsQuery.isLoading ? (
@@ -2575,7 +2577,7 @@ export function AgendaPage() {
                 ) : null}
                 {allPatients.map((patient) => (
                   <div
-                    className="rounded-md border border-slate-200 bg-white p-3"
+                    className="rounded-lg border border-border-subtle bg-white p-3"
                     key={patient.whatsappUserId}
                   >
                     <p className="text-sm font-semibold text-brand-ink">
@@ -2628,7 +2630,7 @@ export function AgendaPage() {
             </section>
 
             {editingPatientWhatsappUserId !== null ? (
-              <section className="mt-4 rounded-lg border border-slate-200 p-3">
+              <section className="mt-4 rounded-lg border border-border-subtle p-3">
                 <h4 className="text-sm font-semibold text-brand-ink">Editar paciente</h4>
                 <p className="mt-1 text-xs text-slate-500">
                   WhatsApp ID fijo: {editingPatientWhatsappUserId}
@@ -2637,7 +2639,7 @@ export function AgendaPage() {
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Nombre
                     <input
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         setPatientUpdateFormState((currentValue) => ({
@@ -2652,7 +2654,7 @@ export function AgendaPage() {
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Apellido
                     <input
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         setPatientUpdateFormState((currentValue) => ({
@@ -2667,7 +2669,7 @@ export function AgendaPage() {
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Email
                     <input
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         setPatientUpdateFormState((currentValue) => ({
@@ -2682,7 +2684,7 @@ export function AgendaPage() {
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Edad
                     <input
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                       min={1}
                       onChange={(event) => {
                         const nextValue = event.target.value;
@@ -2698,7 +2700,7 @@ export function AgendaPage() {
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Teléfono
                     <input
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         setPatientUpdateFormState((currentValue) => ({
@@ -2713,7 +2715,7 @@ export function AgendaPage() {
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
                     Motivo de consulta
                     <input
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         setPatientUpdateFormState((currentValue) => ({
@@ -2728,7 +2730,7 @@ export function AgendaPage() {
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
                     Ubicación
                     <input
-                      className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                       onChange={(event) => {
                         const nextValue = event.target.value;
                         setPatientUpdateFormState((currentValue) => ({
@@ -2743,7 +2745,7 @@ export function AgendaPage() {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
-                    className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={updatePatientMutation.isPending}
                     onClick={() => {
                       if (editingPatientWhatsappUserId === null) {
@@ -2792,7 +2794,7 @@ export function AgendaPage() {
                     {updatePatientMutation.isPending ? "Guardando..." : "Guardar cambios"}
                   </button>
                   <button
-                    className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                    className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
                     onClick={() => {
                       setEditingPatientWhatsappUserId(null);
                       setPatientUpdateFormState(emptyPatientUpdateForm());
@@ -2806,7 +2808,7 @@ export function AgendaPage() {
             ) : null}
           </article>
 
-          <article className="rounded-xl border border-slate-200 bg-white p-4">
+          <article className="rounded-xl border border-border-subtle bg-white shadow-card p-4">
             <header className="mb-3">
               <h3 className="text-base font-semibold text-brand-ink">Citas manuales</h3>
               <p className="text-xs text-slate-500">
@@ -2814,7 +2816,7 @@ export function AgendaPage() {
               </p>
             </header>
 
-            <section className="rounded-lg border border-slate-200 p-3">
+            <section className="rounded-lg border border-border-subtle p-3">
               <h4 className="text-sm font-semibold text-brand-ink">Nueva cita manual</h4>
               {allPatients.length === 0 ? (
                 <p className="mt-2 text-sm text-slate-500">
@@ -2825,7 +2827,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500 md:col-span-2">
                   Paciente
                   <select
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => {
                       const nextValue = event.target.value;
                       setManualAppointmentFormState((currentValue) => ({
@@ -2849,7 +2851,7 @@ export function AgendaPage() {
                     <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       Fecha
                       <input
-                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                         onChange={(event) => {
                           const nextDate = event.target.value;
                           setManualAppointmentFormState((currentValue) => ({
@@ -2866,7 +2868,7 @@ export function AgendaPage() {
                     <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       Hora
                       <select
-                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                         onChange={(event) => {
                           const nextHour = event.target.value;
                           setManualAppointmentFormState((currentValue) => ({
@@ -2888,7 +2890,7 @@ export function AgendaPage() {
                     <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       Minuto
                       <select
-                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                        className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                         onChange={(event) => {
                           const nextMinute = event.target.value as LocalDateTimeParts["minute"];
                           setManualAppointmentFormState((currentValue) => ({
@@ -2912,7 +2914,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Duración
                   <select
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => {
                       const nextValue = event.target.value;
                       setManualAppointmentFormState((currentValue) => ({
@@ -2942,7 +2944,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Resumen
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => {
                       const nextValue = event.target.value;
                       setManualAppointmentFormState((currentValue) => ({
@@ -2957,7 +2959,7 @@ export function AgendaPage() {
               </div>
               <div className="mt-3">
                 <button
-                  className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={createManualAppointmentMutation.isPending || allPatients.length === 0}
                   onClick={() => {
                     if (manualAppointmentFormState.patientWhatsappUserId.trim() === "") {
@@ -3025,14 +3027,14 @@ export function AgendaPage() {
               </div>
             </section>
 
-            <section className="mt-4 rounded-lg border border-slate-200 p-3">
+            <section className="mt-4 rounded-lg border border-border-subtle p-3">
               <h4 className="text-sm font-semibold text-brand-ink">Listado de citas manuales</h4>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   className={[
                     "rounded-md border px-3 py-1.5 text-xs font-semibold",
                     manualAppointmentListFilter === "SCHEDULED"
-                      ? "border-brand-teal bg-teal-50 text-brand-teal"
+                      ? "border-brand-teal bg-brand-accent-light text-brand-teal"
                       : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                   ].join(" ")}
                   onClick={() => {
@@ -3047,7 +3049,7 @@ export function AgendaPage() {
                   className={[
                     "rounded-md border px-3 py-1.5 text-xs font-semibold",
                     manualAppointmentListFilter === "CANCELLED"
-                      ? "border-brand-teal bg-teal-50 text-brand-teal"
+                      ? "border-brand-teal bg-brand-accent-light text-brand-teal"
                       : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                   ].join(" ")}
                   onClick={() => {
@@ -3082,7 +3084,7 @@ export function AgendaPage() {
                   const isScheduled = appointment.status === "SCHEDULED";
                   return (
                     <div
-                      className="rounded-md border border-slate-200 bg-white p-3"
+                      className="rounded-lg border border-border-subtle bg-white p-3"
                       key={appointment.appointmentId}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3147,14 +3149,14 @@ export function AgendaPage() {
                         </div>
                       ) : null}
                       {isEditing ? (
-                        <div className="mt-3 grid gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 md:grid-cols-2">
+                        <div className="mt-3 grid gap-3 rounded-lg border border-border-subtle bg-slate-50 p-3 md:grid-cols-2">
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                             <p className="block">Inicio</p>
                             <div className="mt-1 grid grid-cols-3 gap-2">
                               <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                 Fecha
                                 <input
-                                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                                   onChange={(event) => {
                                     const nextDate = event.target.value;
                                     setManualRescheduleFormState((currentValue) => ({
@@ -3171,7 +3173,7 @@ export function AgendaPage() {
                               <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                 Hora
                                 <select
-                                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                                   onChange={(event) => {
                                     const nextHour = event.target.value;
                                     setManualRescheduleFormState((currentValue) => ({
@@ -3193,7 +3195,7 @@ export function AgendaPage() {
                               <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                                 Minuto
                                 <select
-                                  className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                                   onChange={(event) => {
                                     const nextMinute = event.target
                                       .value as LocalDateTimeParts["minute"];
@@ -3218,7 +3220,7 @@ export function AgendaPage() {
                           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                             Duración
                             <select
-                              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                               onChange={(event) => {
                                 const nextValue = event.target.value;
                                 setManualRescheduleFormState((currentValue) => ({
@@ -3248,7 +3250,7 @@ export function AgendaPage() {
                           <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                             Resumen
                             <input
-                              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                               onChange={(event) => {
                                 const nextValue = event.target.value;
                                 setManualRescheduleFormState((currentValue) => ({
@@ -3262,7 +3264,7 @@ export function AgendaPage() {
                           </label>
                           <div className="md:col-span-2 flex flex-wrap gap-2">
                             <button
-                              className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                               disabled={rescheduleManualAppointmentMutation.isPending}
                               onClick={() => {
                                 const startAtIso = toApiDateTime(
@@ -3336,7 +3338,7 @@ export function AgendaPage() {
                                 : "Guardar reprogramación"}
                             </button>
                             <button
-                              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                              className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
                               onClick={() => {
                                 setEditingManualAppointmentId(null);
                               }}
@@ -3358,7 +3360,7 @@ export function AgendaPage() {
 
       {isFinanceSection ? (
         <section className="mt-6 space-y-4">
-          <article className="rounded-xl border border-slate-200 bg-white p-4">
+          <article className="rounded-xl border border-border-subtle bg-white shadow-card p-4">
             <header className="mb-4">
               <h3 className="text-base font-semibold text-brand-ink">Finanzas</h3>
               <p className="text-xs text-slate-500">
@@ -3366,13 +3368,13 @@ export function AgendaPage() {
               </p>
             </header>
 
-            <section className="rounded-lg border border-slate-200 p-3">
+            <section className="rounded-lg border border-border-subtle p-3">
               <h4 className="text-sm font-semibold text-brand-ink">Filtros</h4>
               <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Desde (fecha cita)
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => setFinanceFromDate(event.target.value)}
                     type="date"
                     value={financeFromDate}
@@ -3381,7 +3383,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Hasta (fecha cita)
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => setFinanceToDate(event.target.value)}
                     type="date"
                     value={financeToDate}
@@ -3390,7 +3392,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Estado de pago
                   <select
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) =>
                       setFinancePaymentStatusFilter(
                         event.target.value as FinancePaymentStatusFilter
@@ -3406,7 +3408,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Método de pago
                   <select
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) =>
                       setFinancePaymentMethodFilter(
                         event.target.value as FinancePaymentMethodFilter
@@ -3422,7 +3424,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Origen
                   <select
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) =>
                       setFinanceSourceFilter(event.target.value as FinanceSourceFilter)
                     }
@@ -3436,7 +3438,7 @@ export function AgendaPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Buscar paciente
                   <input
-                    className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     onChange={(event) => setFinanceSearchTerm(event.target.value)}
                     placeholder="Nombre o WhatsApp"
                     type="text"
@@ -3463,7 +3465,7 @@ export function AgendaPage() {
             </section>
 
             <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <article className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <article className="rounded-lg border border-border-subtle bg-slate-50 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Total citas
                 </p>
@@ -3487,7 +3489,7 @@ export function AgendaPage() {
                   {financeMetrics.paidAppointments}
                 </p>
               </article>
-              <article className="rounded-lg border border-teal-200 bg-teal-50 p-3">
+              <article className="rounded-lg border border-palette-sage bg-brand-accent-light p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-brand-teal">
                   Total pagado
                 </p>
@@ -3497,7 +3499,7 @@ export function AgendaPage() {
               </article>
             </section>
 
-            <section className="mt-4 rounded-lg border border-slate-200 p-3">
+            <section className="mt-4 rounded-lg border border-border-subtle p-3">
               <h4 className="text-sm font-semibold text-brand-ink">Detalle de citas</h4>
               {filteredFinanceAppointments.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-500">

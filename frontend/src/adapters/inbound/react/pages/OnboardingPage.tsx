@@ -107,8 +107,8 @@ export function OnboardingPage() {
         ) : null}
       </section>
 
-      <section className="mt-4 grid gap-6 md:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="mt-4 grid max-w-5xl gap-6 md:grid-cols-2">
+        <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
           <h2 className="text-xl font-semibold text-brand-ink">Estado de WhatsApp</h2>
           <p className="mt-1 text-sm text-slate-600">
             Conecta la línea de negocio para recibir y responder chats.
@@ -135,7 +135,7 @@ export function OnboardingPage() {
 
           <div className="mt-6">
             <button
-              className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
               disabled={whatsappSessionMutation.isPending}
               onClick={() => {
                 whatsappSessionMutation.mutate();
@@ -147,7 +147,7 @@ export function OnboardingPage() {
           </div>
         </article>
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
           <h2 className="text-xl font-semibold text-brand-ink">Estado de Google Calendar</h2>
           <p className="mt-1 text-sm text-slate-600">
             Conecta el calendario principal del profesional para disponibilidad y agenda.
@@ -179,7 +179,7 @@ export function OnboardingPage() {
 
           <div className="mt-6">
             <button
-              className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
               disabled={googleSessionMutation.isPending}
               onClick={() => {
                 googleSessionMutation.mutate();
@@ -192,8 +192,8 @@ export function OnboardingPage() {
         </article>
       </section>
 
-      <section className="mt-6 grid gap-6 md:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="mt-6 grid max-w-5xl gap-6 md:grid-cols-2">
+        <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
           <h3 className="text-lg font-semibold text-brand-ink">Estado general de onboarding</h3>
           <div className="mt-3 flex items-center gap-2">
             <span className="text-sm font-medium text-slate-700">Estado:</span>
@@ -211,7 +211,7 @@ export function OnboardingPage() {
           </div>
           <div className="mt-6 flex flex-wrap gap-3">
             <button
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
               onClick={() => {
                 void queryClient.invalidateQueries({ queryKey: whatsappConnectionQueryKey });
                 void queryClient.invalidateQueries({ queryKey: googleCalendarConnectionQueryKey });
@@ -222,7 +222,7 @@ export function OnboardingPage() {
               Refrescar estado
             </button>
             <button
-              className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
               disabled={onboardingStatusQuery.data?.ready !== true}
               onClick={() => {
                 void navigate("/inbox");
@@ -234,7 +234,7 @@ export function OnboardingPage() {
           </div>
         </article>
 
-        <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
           <h3 className="text-lg font-semibold text-brand-ink">Flujo recomendado</h3>
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-700">
             <li>Conecta WhatsApp y Google Calendar.</li>

@@ -10,7 +10,9 @@ export function StatusBadge(props: {
   } as const;
 
   return (
-    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${toneClassByType[props.tone]}`}>
+    <span
+      className={`rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide ${toneClassByType[props.tone]}`}
+    >
       {props.label}
     </span>
   );

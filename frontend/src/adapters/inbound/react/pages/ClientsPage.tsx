@@ -68,12 +68,12 @@ export function ClientsPage() {
 
         {errorMessage !== null ? <errorBannerModule.ErrorBanner message={errorMessage} /> : null}
 
-        <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <article className="rounded-xl border border-slate-200 bg-white">
-            <header className="border-b border-slate-200 p-4">
+        <div className="grid max-w-6xl gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+          <article className="rounded-xl border border-border-subtle bg-white shadow-card">
+            <header className="border-b border-border-subtle px-5 py-4">
               <h3 className="text-base font-semibold">Pacientes</h3>
             </header>
-            <div className="max-h-[70vh] overflow-auto p-2">
+            <div className="max-h-[calc(100vh-12rem)] overflow-auto p-2">
               {patientsQuery.isLoading ? (
                 <p className="p-3 text-sm text-slate-500">Cargando pacientes...</p>
               ) : null}
@@ -87,7 +87,7 @@ export function ClientsPage() {
                     className={[
                       "mb-2 w-full rounded-lg border p-3 text-left",
                       isSelected
-                        ? "border-brand-teal bg-teal-50"
+                        ? "border-brand-teal bg-brand-accent-light"
                         : "border-slate-200 bg-white hover:border-slate-300"
                     ].join(" ")}
                     key={patient.whatsappUserId}
@@ -113,8 +113,8 @@ export function ClientsPage() {
             </div>
           </article>
 
-          <article className="rounded-xl border border-slate-200 bg-white">
-            <header className="border-b border-slate-200 p-4">
+          <article className="rounded-xl border border-border-subtle bg-white shadow-card">
+            <header className="border-b border-border-subtle px-5 py-4">
               <h3 className="text-base font-semibold">Detalle del cliente</h3>
             </header>
             <div className="space-y-3 p-4 text-sm text-slate-700">

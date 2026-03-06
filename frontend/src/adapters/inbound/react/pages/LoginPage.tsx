@@ -6,7 +6,7 @@ import * as authSharedModule from "@adapters/inbound/react/components/AuthShared
 import * as uiErrorModule from "@shared/http/ui_error";
 
 const inputClassName =
-  "h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base text-slate-800 placeholder:text-slate-400 focus:border-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-700/20 md:h-14 md:text-lg";
+  "h-12 w-full rounded-xl border border-palette-mist bg-white px-4 text-base text-slate-800 placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 md:h-14 md:text-lg";
 
 export function LoginPage() {
   const auth = authContextModule.useAuth();
@@ -93,7 +93,7 @@ export function LoginPage() {
           ) : null}
 
           <button
-            className="mt-2 h-12 w-full rounded-xl bg-teal-700 px-4 text-base font-semibold text-white transition hover:bg-teal-800 disabled:cursor-not-allowed disabled:opacity-60 md:h-14 md:text-xl"
+            className="mt-2 h-12 w-full rounded-xl bg-brand-teal px-4 text-base font-semibold text-white transition hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60 md:h-14 md:text-xl"
             disabled={isSubmitting}
             type="submit"
           >

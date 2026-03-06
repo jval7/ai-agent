@@ -108,12 +108,12 @@ export function InboxPage() {
   return (
     <appShellModule.AppShell>
       <section className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
-        <article className="rounded-xl border border-slate-200 bg-white">
-          <header className="border-b border-slate-200 p-4">
+        <article className="rounded-xl border border-border-subtle bg-white shadow-card">
+          <header className="border-b border-border-subtle px-5 py-4">
             <h2 className="text-base font-semibold">Conversaciones</h2>
             <p className="text-xs text-slate-500">Selecciona una conversación para ver detalle.</p>
           </header>
-          <div className="max-h-[70vh] overflow-auto p-2">
+          <div className="max-h-[calc(100vh-10rem)] overflow-auto p-2">
             {conversationsQuery.isLoading ? (
               <p className="p-3 text-sm text-slate-500">Cargando...</p>
             ) : null}
@@ -130,7 +130,7 @@ export function InboxPage() {
                   className={[
                     "mb-2 rounded-lg border p-3",
                     isSelected
-                      ? "border-brand-teal bg-teal-50"
+                      ? "border-brand-teal bg-brand-accent-light"
                       : "border-slate-200 bg-white hover:border-slate-300"
                   ].join(" ")}
                   key={conversation.conversationId}
@@ -178,8 +178,8 @@ export function InboxPage() {
           </div>
         </article>
 
-        <article className="rounded-xl border border-slate-200 bg-white">
-          <header className="border-b border-slate-200 p-4">
+        <article className="rounded-xl border border-border-subtle bg-white shadow-card">
+          <header className="border-b border-border-subtle px-5 py-4">
             <h2 className="text-base font-semibold">Mensajes</h2>
             {selectedConversation !== undefined ? (
               <p className="text-xs text-slate-500">{selectedConversation.whatsappUserId}</p>
@@ -187,7 +187,7 @@ export function InboxPage() {
               <p className="text-xs text-slate-500">Selecciona una conversación.</p>
             )}
           </header>
-          <div className="max-h-[70vh] space-y-3 overflow-auto p-4">
+          <div className="max-h-[calc(100vh-10rem)] space-y-3 overflow-auto p-4">
             {messagesQuery.isLoading && selectedConversationId !== null ? (
               <p className="text-sm text-slate-500">Cargando historial...</p>
             ) : null}
@@ -219,7 +219,7 @@ export function InboxPage() {
           </div>
         </article>
 
-        <article className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
+        <article className="space-y-4 rounded-xl border border-border-subtle bg-white shadow-card p-4">
           <h2 className="text-base font-semibold">Control</h2>
 
           {selectedConversation === undefined ? (
@@ -228,7 +228,7 @@ export function InboxPage() {
             </p>
           ) : (
             <>
-              <div className="rounded-lg border border-slate-200 p-3">
+              <div className="rounded-lg border border-border-subtle p-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Modo de control
                 </p>
@@ -249,7 +249,7 @@ export function InboxPage() {
                 </p>
               </div>
 
-              <div className="rounded-lg border border-slate-200 p-3">
+              <div className="rounded-lg border border-border-subtle p-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Blacklist
                 </p>

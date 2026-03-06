@@ -67,7 +67,7 @@ export function SecurityHint() {
 function BrandLockup() {
   return (
     <div className="flex items-center justify-center gap-4">
-      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-teal-700 shadow-md">
+      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-teal shadow-md">
         <ChatIcon />
       </div>
       <div>

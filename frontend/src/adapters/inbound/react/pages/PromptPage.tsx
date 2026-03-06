@@ -40,14 +40,14 @@ export function PromptPage() {
 
   return (
     <appShellModule.AppShell>
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
         <h2 className="text-xl font-semibold text-brand-ink">System Prompt</h2>
         <p className="mt-1 text-sm text-slate-600">
           Define el comportamiento base del agente por tenant.
         </p>
 
         <textarea
-          className="mt-4 min-h-[220px] w-full rounded-md border border-slate-300 px-3 py-2 text-sm leading-6 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/30"
+          className="mt-4 min-h-[350px] w-full rounded-lg border border-border-subtle px-3 py-2 text-sm leading-6 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
           onChange={(event) => {
             setSystemPrompt(event.target.value);
           }}
@@ -60,7 +60,7 @@ export function PromptPage() {
 
         <div className="mt-4 flex gap-3">
           <button
-            className="rounded-md bg-brand-teal px-4 py-2 text-sm font-semibold text-white hover:bg-teal-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
             disabled={updateMutation.isPending || promptQuery.isLoading}
             onClick={() => {
               updateMutation.mutate();
