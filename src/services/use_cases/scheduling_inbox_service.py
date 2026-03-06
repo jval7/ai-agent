@@ -11,6 +11,7 @@ import src.ports.llm_provider_port as llm_provider_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
+import src.services.agentic.prompt_builder as prompt_builder
 import src.services.constants as service_constants
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.llm_dto as llm_dto
@@ -55,6 +56,7 @@ class SchedulingInboxService:
         self._llm_provider = llm_provider
         self._agent_profile_repository = agent_profile_repository
         self._default_system_prompt = default_system_prompt
+        self._prompt_builder = prompt_builder.RuntimePromptBuilder()
 
     def list_requests(
         self,
@@ -127,6 +129,70 @@ class SchedulingInboxService:
             assistant_text=assistant_text,
         )
 
+    def resolve_payment_review(
+        self,
+        claims: auth_dto.TokenClaimsDTO,
+        conversation_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.PaymentReviewDecisionDTO,
+    ) -> scheduling_dto.PaymentReviewDecisionResponseDTO:
+        self._ensure_owner(claims)
+
+        request = self._scheduling_service.approve_payment(
+            tenant_id=claims.tenant_id,
+            conversation_id=conversation_id,
+            request_id=request_id,
+            input_dto=input_dto,
+        )
+        conversation = self._conversation_repository.get_conversation_by_id(
+            claims.tenant_id,
+            conversation_id,
+        )
+        if conversation is None:
+            raise service_exceptions.EntityNotFoundError("conversation not found")
+        connection = self._whatsapp_connection_repository.get_by_tenant_id(claims.tenant_id)
+        if connection is None:
+            raise service_exceptions.InvalidStateError("whatsapp connection not found")
+        if connection.access_token is None or connection.phone_number_id is None:
+            raise service_exceptions.InvalidStateError("whatsapp connection is missing credentials")
+
+        assistant_text = self._build_payment_review_message(
+            tenant_id=claims.tenant_id,
+            request=request,
+            decision=input_dto.decision,
+            professional_note=input_dto.professional_note,
+        )
+
+        outbound_provider_message_id = self._whatsapp_provider.send_text_message(
+            access_token=connection.access_token,
+            phone_number_id=connection.phone_number_id,
+            whatsapp_user_id=request.whatsapp_user_id,
+            text=assistant_text,
+        )
+        outbound_message = message_entity.Message(
+            id=self._id_generator.new_id(),
+            conversation_id=conversation.id,
+            tenant_id=claims.tenant_id,
+            direction="OUTBOUND",
+            role="assistant",
+            content=assistant_text,
+            provider_message_id=outbound_provider_message_id,
+            created_at=self._clock.now(),
+        )
+        self._conversation_repository.save_message(outbound_message)
+        conversation.append_message(
+            outbound_message.id,
+            outbound_message.content,
+            outbound_message.created_at,
+        )
+        self._conversation_repository.save_conversation(conversation)
+
+        return scheduling_dto.PaymentReviewDecisionResponseDTO(
+            status=request.status,
+            outbound_message_id=outbound_provider_message_id,
+            assistant_text=assistant_text,
+        )
+
     def submit_professional_slots(
         self,
         claims: auth_dto.TokenClaimsDTO,
@@ -143,7 +209,7 @@ class SchedulingInboxService:
             raise service_exceptions.AuthorizationError(
                 "scheduling request does not belong to conversation"
             )
-        if request.status != "AWAITING_PROFESSIONAL_SLOTS":
+        if request.status not in ("AWAITING_CONSULTATION_REVIEW", "AWAITING_PATIENT_CHOICE"):
             raise service_exceptions.InvalidStateError(
                 "scheduling request is not waiting for professional slots"
             )
@@ -261,8 +327,6 @@ class SchedulingInboxService:
         if generated_message is not None:
             return generated_message
 
-        if decision == "APPROVE":
-            return "Perfecto, continuemos. ¿Prefieres la cita presencial o virtual?"
         if decision == "REQUEST_MORE_INFO":
             return "Para ayudarte mejor, ¿podrías contarme un poco más sobre tu motivo de consulta?"
         return (
@@ -280,7 +344,10 @@ class SchedulingInboxService:
         if self._llm_provider is None:
             return None
 
-        system_prompt = self._resolve_system_prompt(tenant_id)
+        system_prompt = self._prompt_builder.compose_base_and_runtime_system_prompt(
+            base_system_prompt=self._resolve_system_prompt(tenant_id),
+            runtime_prompt="INSTRUCCION RUNTIME: contexto=scheduling_inbox_consultation_review",
+        )
         message_prompt = self._build_consultation_review_llm_prompt(
             request=request,
             decision=decision,
@@ -321,9 +388,11 @@ class SchedulingInboxService:
             patient_name = ""
 
         lines = [
-            "Escribe UN solo mensaje corto y natural para WhatsApp en espanol.",
+            "Escribe UN solo mensaje corto y estructurado para WhatsApp en espanol.",
             "No suenes robotico.",
             "No menciones validaciones internas, aprobaciones ni profesionales.",
+            "Usa formato WhatsApp: *negrita* para enfasis, bullet points (•) para listas.",
+            "Si el mensaje tiene mas de 2 datos, usa lista con bullet points.",
             f"Paciente: {patient_name}",
             f"Decision interna: {decision}",
         ]
@@ -337,11 +406,7 @@ class SchedulingInboxService:
         if normalized_note is not None:
             lines.append(f"Guia interna: {normalized_note}")
 
-        if decision == "APPROVE":
-            lines.append(
-                "Objetivo del mensaje: continuar el flujo y preguntar si la cita es presencial o virtual."
-            )
-        elif decision == "REQUEST_MORE_INFO":
+        if decision == "REQUEST_MORE_INFO":
             lines.append(
                 "Objetivo del mensaje: pedir mas informacion del motivo de consulta de forma empatica y concreta."
             )
@@ -385,6 +450,101 @@ class SchedulingInboxService:
         duration_seconds = (end_at - start_at).total_seconds()
         if duration_seconds != 3600:
             raise service_exceptions.InvalidStateError("slots must be exactly 60 minutes")
+
+    def _build_payment_review_message(
+        self,
+        tenant_id: str,
+        request: scheduling_dto.SchedulingRequestSummaryDTO,
+        decision: str,
+        professional_note: str | None,
+    ) -> str:
+        generated_message = self._generate_payment_review_message_with_llm(
+            tenant_id=tenant_id,
+            request=request,
+            decision=decision,
+            professional_note=professional_note,
+        )
+        if generated_message is not None:
+            return generated_message
+
+        if decision == "APPROVE":
+            return (
+                "Pago recibido. Para continuar con el agendamiento, por favor envíame:\n"
+                "• Nombre completo\n"
+                "• Edad\n"
+                "• Correo electrónico\n"
+                "• Teléfono"
+            )
+        return (
+            "Te recordamos que para continuar con tu cita, debes realizar "
+            "la transferencia al Nequi: 318 732 6409."
+        )
+
+    def _generate_payment_review_message_with_llm(
+        self,
+        tenant_id: str,
+        request: scheduling_dto.SchedulingRequestSummaryDTO,
+        decision: str,
+        professional_note: str | None,
+    ) -> str | None:
+        if self._llm_provider is None:
+            return None
+
+        system_prompt = self._prompt_builder.compose_base_and_runtime_system_prompt(
+            base_system_prompt=self._resolve_system_prompt(tenant_id),
+            runtime_prompt="INSTRUCCION RUNTIME: contexto=scheduling_inbox_payment_review",
+        )
+
+        patient_name = request.patient_first_name
+        if patient_name is None:
+            patient_name = ""
+
+        lines = [
+            "Escribe UN solo mensaje corto y estructurado para WhatsApp en espanol.",
+            "No suenes robotico.",
+            "No menciones validaciones internas, aprobaciones ni profesionales.",
+            "Usa formato WhatsApp: *negrita* para enfasis, bullet points (•) para listas.",
+            "Si el mensaje tiene mas de 2 datos, usa lista con bullet points.",
+            f"Paciente: {patient_name}",
+            f"Decision interna: {decision}",
+        ]
+
+        normalized_note = None
+        if professional_note is not None:
+            stripped_note = professional_note.strip()
+            if stripped_note != "":
+                normalized_note = stripped_note
+
+        if normalized_note is not None:
+            lines.append(f"Guia interna: {normalized_note}")
+
+        if decision == "APPROVE":
+            lines.append(
+                "Objetivo del mensaje: confirmar que el pago fue recibido y pedir los datos "
+                "necesarios para completar la cita. Usa este formato exacto:\n"
+                "Pago recibido. Para continuar con el agendamiento, por favor envíame:\n"
+                "• Nombre completo\n• Edad\n• Correo electrónico\n• Teléfono"
+            )
+        else:
+            lines.append(
+                "Objetivo del mensaje: recordar amablemente al paciente que debe realizar "
+                "la transferencia al Nequi: 318 732 6409 para continuar con su cita."
+            )
+
+        message_prompt = "\n".join(lines)
+        llm_input = llm_dto.GenerateReplyInputDTO(
+            system_prompt=system_prompt,
+            messages=[llm_dto.ChatMessageDTO(role="user", content=message_prompt)],
+        )
+        try:
+            llm_reply = self._llm_provider.generate_reply(llm_input)
+        except service_exceptions.ExternalProviderError:
+            return None
+
+        normalized_content = llm_reply.content.strip()
+        if normalized_content == "":
+            return None
+        return normalized_content
 
     def _ensure_owner(self, claims: auth_dto.TokenClaimsDTO) -> None:
         if claims.role != service_constants.DEFAULT_OWNER_ROLE:

@@ -18,6 +18,7 @@ class SchedulingRequestSummaryDTO(pydantic.BaseModel):
     whatsapp_user_id: str
     request_kind: str
     status: str
+    audience_type: typing.Literal["ADULTS", "CHILDREN"] | None = None
     round_number: int
     patient_preference_note: str | None
     rejection_summary: str | None
@@ -79,22 +80,15 @@ class ProfessionalSubmitSlotsResponseDTO(pydantic.BaseModel):
     assistant_text: str
 
 
-class RequestScheduleApprovalInputDTO(pydantic.BaseModel):
-    request_id: str | None = None
-    appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"]
-    patient_location: str | None = None
-    patient_preference_note: str
-    hard_constraints: list[str] = pydantic.Field(default_factory=list)
-    rejection_summary: str | None = None
-
-
 class SubmitConsultationReasonForReviewToolInputDTO(pydantic.BaseModel):
     request_id: str | None = None
     consultation_reason: str | None = None
+    appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] | None = None
+    patient_location: str | None = None
 
 
 class ConsultationReviewDecisionDTO(pydantic.BaseModel):
-    decision: typing.Literal["APPROVE", "REQUEST_MORE_INFO", "REJECT"]
+    decision: typing.Literal["REQUEST_MORE_INFO", "REJECT"]
     professional_note: str | None = None
 
 
@@ -156,6 +150,17 @@ class RescheduleBookedSlotInputDTO(pydantic.BaseModel):
 
 class CancelBookedSlotInputDTO(pydantic.BaseModel):
     reason: str | None = None
+
+
+class PaymentReviewDecisionDTO(pydantic.BaseModel):
+    decision: typing.Literal["APPROVE", "SEND_REMINDER"]
+    professional_note: str | None = None
+
+
+class PaymentReviewDecisionResponseDTO(pydantic.BaseModel):
+    status: str
+    outbound_message_id: str
+    assistant_text: str
 
 
 class UpdateBookedSlotPaymentInputDTO(pydantic.BaseModel):

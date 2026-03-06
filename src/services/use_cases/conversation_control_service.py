@@ -85,9 +85,8 @@ class ConversationControlService:
             if request.status in (
                 "AWAITING_CONSULTATION_REVIEW",
                 "AWAITING_CONSULTATION_DETAILS",
-                "COLLECTING_PREFERENCES",
-                "AWAITING_PROFESSIONAL_SLOTS",
                 "AWAITING_PATIENT_CHOICE",
+                "AWAITING_PAYMENT_CONFIRMATION",
             ):
                 request.professional_note = "conversation reset by owner"
                 request.set_status("CANCELLED", now_value)

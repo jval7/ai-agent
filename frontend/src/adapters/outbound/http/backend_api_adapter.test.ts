@@ -182,7 +182,7 @@ vitestModule.describe("BackendApiAdapter", () => {
       }),
       mswModule.http.get("http://api.test/v1/scheduling-requests", ({ request }) => {
         const url = new URL(request.url);
-        vitestModule.expect(url.searchParams.get("status")).toBe("AWAITING_PROFESSIONAL_SLOTS");
+        vitestModule.expect(url.searchParams.get("status")).toBe("AWAITING_CONSULTATION_REVIEW");
         return mswModule.HttpResponse.json({
           items: [
             {
@@ -190,7 +190,7 @@ vitestModule.describe("BackendApiAdapter", () => {
               conversation_id: "conv-1",
               whatsapp_user_id: "wa-1",
               request_kind: "INITIAL",
-              status: "AWAITING_PROFESSIONAL_SLOTS",
+              status: "AWAITING_CONSULTATION_REVIEW",
               round_number: 1,
               patient_preference_note: "prefiere tarde",
               rejection_summary: null,
@@ -361,7 +361,7 @@ vitestModule.describe("BackendApiAdapter", () => {
       "2026-03-01T00:00:00Z",
       "2026-03-31T23:59:59Z"
     );
-    const requests = await adapter.listSchedulingRequests("AWAITING_PROFESSIONAL_SLOTS");
+    const requests = await adapter.listSchedulingRequests("AWAITING_CONSULTATION_REVIEW");
     const conversationRequests = await adapter.listConversationSchedulingRequests("conv-1");
     const patients = await adapter.listPatients();
     const patient = await adapter.getPatient("wa-1");

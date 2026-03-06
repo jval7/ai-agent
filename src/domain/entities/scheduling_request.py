@@ -13,16 +13,16 @@ class SchedulingRequest(pydantic.BaseModel):
     whatsapp_user_id: str
     request_kind: typing.Literal["INITIAL", "RETRY"]
     status: typing.Literal[
-        "COLLECTING_PREFERENCES",
         "AWAITING_CONSULTATION_REVIEW",
         "AWAITING_CONSULTATION_DETAILS",
-        "AWAITING_PROFESSIONAL_SLOTS",
         "AWAITING_PATIENT_CHOICE",
+        "AWAITING_PAYMENT_CONFIRMATION",
         "CONSULTATION_REJECTED",
         "CANCELLED",
         "BOOKED",
         "HUMAN_HANDOFF",
     ]
+    audience_type: typing.Literal["ADULTS", "CHILDREN"] | None = None
     round_number: int
     patient_preference_note: str | None
     rejection_summary: str | None
@@ -74,11 +74,10 @@ class SchedulingRequest(pydantic.BaseModel):
     def set_status(
         self,
         status: typing.Literal[
-            "COLLECTING_PREFERENCES",
             "AWAITING_CONSULTATION_REVIEW",
             "AWAITING_CONSULTATION_DETAILS",
-            "AWAITING_PROFESSIONAL_SLOTS",
             "AWAITING_PATIENT_CHOICE",
+            "AWAITING_PAYMENT_CONFIRMATION",
             "CONSULTATION_REJECTED",
             "CANCELLED",
             "BOOKED",

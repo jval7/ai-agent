@@ -85,6 +85,11 @@ export interface BackendApiPort {
     requestId: string,
     input: schedulingModel.ResolveConsultationReviewInput
   ): Promise<schedulingModel.ResolveConsultationReviewResult>;
+  resolvePaymentReview(
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.ResolvePaymentReviewInput
+  ): Promise<schedulingModel.ResolvePaymentReviewResult>;
   rescheduleBookedSlot(
     requestId: string,
     input: schedulingModel.RescheduleBookedSlotInput

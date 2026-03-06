@@ -197,13 +197,13 @@ export interface SchedulingRequestSummaryApiResponse {
   status:
     | "AWAITING_CONSULTATION_REVIEW"
     | "AWAITING_CONSULTATION_DETAILS"
-    | "COLLECTING_PREFERENCES"
-    | "AWAITING_PROFESSIONAL_SLOTS"
     | "AWAITING_PATIENT_CHOICE"
+    | "AWAITING_PAYMENT_CONFIRMATION"
     | "CONSULTATION_REJECTED"
     | "CANCELLED"
     | "BOOKED"
     | "HUMAN_HANDOFF";
+  audience_type: "ADULTS" | "CHILDREN" | null;
   round_number: number;
   patient_preference_note: string | null;
   rejection_summary: string | null;
@@ -249,7 +249,7 @@ export interface SubmitProfessionalSlotsApiResponse {
 }
 
 export interface ResolveConsultationReviewApiRequest {
-  decision: "APPROVE" | "REQUEST_MORE_INFO" | "REJECT";
+  decision: "REQUEST_MORE_INFO" | "REJECT";
   professional_note: string | null;
 }
 
@@ -257,9 +257,27 @@ export interface ResolveConsultationReviewApiResponse {
   status:
     | "AWAITING_CONSULTATION_REVIEW"
     | "AWAITING_CONSULTATION_DETAILS"
-    | "COLLECTING_PREFERENCES"
-    | "AWAITING_PROFESSIONAL_SLOTS"
     | "AWAITING_PATIENT_CHOICE"
+    | "AWAITING_PAYMENT_CONFIRMATION"
+    | "CONSULTATION_REJECTED"
+    | "CANCELLED"
+    | "BOOKED"
+    | "HUMAN_HANDOFF";
+  outbound_message_id: string;
+  assistant_text: string;
+}
+
+export interface ResolvePaymentReviewApiRequest {
+  decision: "APPROVE" | "SEND_REMINDER";
+  professional_note: string | null;
+}
+
+export interface ResolvePaymentReviewApiResponse {
+  status:
+    | "AWAITING_CONSULTATION_REVIEW"
+    | "AWAITING_CONSULTATION_DETAILS"
+    | "AWAITING_PATIENT_CHOICE"
+    | "AWAITING_PAYMENT_CONFIRMATION"
     | "CONSULTATION_REJECTED"
     | "CANCELLED"
     | "BOOKED"

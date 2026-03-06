@@ -36,6 +36,14 @@ export class SchedulingUseCase {
     return this.api.resolveConsultationReview(conversationId, requestId, input);
   }
 
+  async resolvePaymentReview(
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.ResolvePaymentReviewInput
+  ) {
+    return this.api.resolvePaymentReview(conversationId, requestId, input);
+  }
+
   async rescheduleBookedSlot(requestId: string, input: schedulingModel.RescheduleBookedSlotInput) {
     return this.api.rescheduleBookedSlot(requestId, input);
   }

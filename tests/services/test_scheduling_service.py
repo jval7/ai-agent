@@ -83,127 +83,28 @@ def build_service(
     return service, scheduling_repository, provider
 
 
-def create_collecting_preferences_request(
+def create_awaiting_review_request(
     service: scheduling_service.SchedulingService,
 ) -> scheduling_dto.SchedulingRequestSummaryDTO:
-    submitted = service.submit_consultation_reason_for_review(
+    return service.submit_consultation_reason_for_review(
         tenant_id="tenant-1",
         conversation_id="conv-1",
         whatsapp_user_id="wa-user-1",
         input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
             consultation_reason="Ansiedad",
-        ),
-    )
-    return service.resolve_consultation_review(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        request_id=submitted.request_id,
-        input_dto=scheduling_dto.ConsultationReviewDecisionDTO(
-            decision="APPROVE",
-            professional_note="Aprobado",
-        ),
-    )
-
-
-def create_waiting_professional_slots_request(
-    service: scheduling_service.SchedulingService,
-) -> scheduling_dto.SchedulingRequestSummaryDTO:
-    request = create_collecting_preferences_request(service)
-    return service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_id=request.request_id,
             appointment_modality="VIRTUAL",
             patient_location="Bogota",
-            patient_preference_note="prefiere en la tarde",
-            hard_constraints=["solo tardes"],
-            rejection_summary=None,
         ),
     )
 
 
-def test_request_schedule_approval_creates_pending_request() -> None:
+def test_submit_consultation_reason_rejects_when_slots_already_proposed() -> None:
     service, repository, _ = build_service(["req-1"])
-    collecting_request = create_collecting_preferences_request(service)
-    request = service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_id=collecting_request.request_id,
-            appointment_modality="VIRTUAL",
-            patient_location="Bogota",
-            patient_preference_note="prefiere en la tarde",
-            hard_constraints=["solo tardes"],
-            rejection_summary=None,
-        ),
-    )
-
-    assert request.request_id == "req-1"
-    assert request.status == "AWAITING_PROFESSIONAL_SLOTS"
-    stored = repository.get_request_by_id("tenant-1", "req-1")
+    request = create_awaiting_review_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
-
-
-def test_request_schedule_approval_reuses_open_request() -> None:
-    service, repository, _ = build_service(["req-1", "req-2"])
-    collecting_request = create_collecting_preferences_request(service)
-    first_request = service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_id=collecting_request.request_id,
-            appointment_modality="VIRTUAL",
-            patient_location="Bogota",
-            patient_preference_note="prefiere en la tarde",
-            hard_constraints=[],
-            rejection_summary=None,
-        ),
-    )
-
-    second_request = service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_id=collecting_request.request_id,
-            appointment_modality="VIRTUAL",
-            patient_location="Bogota",
-            patient_preference_note="prefiere virtual",
-            hard_constraints=[],
-            rejection_summary=None,
-        ),
-    )
-
-    assert first_request.request_id == "req-1"
-    assert second_request.request_id == "req-1"
-    stored_requests = repository.list_requests_by_conversation("tenant-1", "conv-1")
-    assert len(stored_requests) == 1
-
-
-def test_request_schedule_approval_reopens_when_patient_rejects_offered_slots() -> None:
-    service, repository, _ = build_service(["req-1"])
-    collecting_request = create_collecting_preferences_request(service)
-    request = service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_id=collecting_request.request_id,
-            appointment_modality="VIRTUAL",
-            patient_location="Bogota",
-            patient_preference_note="despues de las 4 pm",
-            hard_constraints=[],
-            rejection_summary=None,
-        ),
-    )
-    stored_request = repository.get_request_by_id("tenant-1", request.request_id)
-    assert stored_request is not None
-    stored_request.status = "AWAITING_PATIENT_CHOICE"
-    stored_request.slots = [
+    stored.status = "AWAITING_PATIENT_CHOICE"
+    stored.slots = [
         scheduling_slot_entity.SchedulingSlot(
             id="slot-1",
             start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
@@ -212,35 +113,7 @@ def test_request_schedule_approval_reopens_when_patient_rejects_offered_slots() 
             status="PROPOSED",
         )
     ]
-    stored_request.slot_options_map = {"1": "slot-1"}
-    repository.save_request(stored_request)
-
-    reopened = service.request_schedule_approval(
-        tenant_id="tenant-1",
-        conversation_id="conv-1",
-        whatsapp_user_id="wa-user-1",
-        input_dto=scheduling_dto.RequestScheduleApprovalInputDTO(
-            request_id=request.request_id,
-            appointment_modality="VIRTUAL",
-            patient_location=None,
-            patient_preference_note="no puedo a las 4 pm, prefiero despues de las 6 pm",
-            hard_constraints=[],
-            rejection_summary=None,
-        ),
-    )
-
-    assert reopened.request_id == request.request_id
-    assert reopened.status == "AWAITING_PROFESSIONAL_SLOTS"
-    assert reopened.patient_preference_note == "no puedo a las 4 pm, prefiero despues de las 6 pm"
-    assert reopened.patient_location == "Bogota"
-    assert reopened.selected_slot_id is None
-    assert reopened.slot_options_map == {}
-    assert reopened.slots == []
-
-
-def test_submit_consultation_reason_rejects_when_already_approved() -> None:
-    service, _, _ = build_service(["req-1"])
-    approved_request = create_collecting_preferences_request(service)
+    repository.save_request(stored)
 
     with pytest.raises(service_exceptions.InvalidStateError) as error:
         service.submit_consultation_reason_for_review(
@@ -248,12 +121,12 @@ def test_submit_consultation_reason_rejects_when_already_approved() -> None:
             conversation_id="conv-1",
             whatsapp_user_id="wa-user-1",
             input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
-                request_id=approved_request.request_id,
+                request_id=request.request_id,
                 consultation_reason="Ansiedad laboral",
             ),
         )
 
-    assert "already approved" in str(error.value)
+    assert "already available" in str(error.value)
 
 
 def test_submit_consultation_reason_allows_resubmission_after_more_info_request() -> None:
@@ -301,7 +174,7 @@ def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
             end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
         )
     ]
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -329,12 +202,12 @@ def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
     assert result.status == "SLOT_CONFLICT"
     reloaded = repository.get_request_by_id("tenant-1", request.request_id)
     assert reloaded is not None
-    assert reloaded.status == "AWAITING_PROFESSIONAL_SLOTS"
+    assert reloaded.status == "AWAITING_CONSULTATION_REVIEW"
 
 
 def test_confirm_selected_slot_creates_event_when_available() -> None:
     service, repository, provider = build_service(["req-1"])
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -391,7 +264,7 @@ def test_confirm_selected_slot_archives_active_chat_messages_into_subsession() -
             created_at=datetime.datetime(2026, 1, 1, 9, 1, tzinfo=datetime.UTC),
         )
     )
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -440,7 +313,7 @@ def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None
             "google calendar create event failed (status=409, detail=conflict)"
         )
     ]
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -470,7 +343,7 @@ def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None
 
 def test_select_slot_for_confirmation_persists_selected_slot() -> None:
     service, repository, _ = build_service(["req-1"])
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -509,7 +382,7 @@ def test_select_slot_for_confirmation_persists_selected_slot() -> None:
 
 def test_select_slot_for_confirmation_switches_selected_slot() -> None:
     service, repository, _ = build_service(["req-1"])
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -549,7 +422,7 @@ def test_select_slot_for_confirmation_switches_selected_slot() -> None:
 
 def test_confirm_selected_slot_accepts_selected_slot_status() -> None:
     service, repository, provider = build_service(["req-1"])
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
@@ -581,7 +454,7 @@ def test_confirm_selected_slot_accepts_selected_slot_status() -> None:
 
 def test_reschedule_booked_slot_updates_booked_request() -> None:
     service, repository, provider = build_service(["req-1"])
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "BOOKED"
@@ -618,7 +491,7 @@ def test_reschedule_booked_slot_updates_booked_request() -> None:
 
 def test_cancel_booked_slot_sets_cancelled_and_clears_calendar_event() -> None:
     service, repository, provider = build_service(["req-1"])
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "BOOKED"
@@ -657,7 +530,7 @@ def test_cancel_booked_slot_tolerates_google_not_found() -> None:
             "google calendar delete event failed (status=404, detail=not found)"
         )
     ]
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "BOOKED"
@@ -688,7 +561,7 @@ def test_cancel_booked_slot_tolerates_google_not_found() -> None:
 
 def test_update_booked_payment_updates_request() -> None:
     service, repository, _ = build_service(["req-1"])
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "BOOKED"
@@ -727,10 +600,10 @@ def test_update_booked_payment_updates_request() -> None:
 
 def test_update_booked_payment_rejects_non_booked_request() -> None:
     service, repository, _ = build_service(["req-1"])
-    request = create_waiting_professional_slots_request(service)
+    request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
-    stored.status = "AWAITING_PROFESSIONAL_SLOTS"
+    stored.status = "AWAITING_CONSULTATION_REVIEW"
     repository.save_request(stored)
 
     with pytest.raises(service_exceptions.InvalidStateError):

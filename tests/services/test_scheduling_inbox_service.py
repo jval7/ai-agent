@@ -123,7 +123,7 @@ def build_services() -> tuple[
             conversation_id="conv-1",
             whatsapp_user_id="wa-user-1",
             request_kind="INITIAL",
-            status="AWAITING_PROFESSIONAL_SLOTS",
+            status="AWAITING_CONSULTATION_REVIEW",
             round_number=1,
             patient_preference_note="prefiere tarde",
             rejection_summary=None,

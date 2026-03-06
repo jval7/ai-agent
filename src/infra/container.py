@@ -21,6 +21,7 @@ import src.adapters.outbound.whatsapp_meta.meta_whatsapp_provider_adapter as met
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
+import src.services.agentic.workflow_engine as workflow_engine
 import src.services.use_cases.agent_service as agent_service
 import src.services.use_cases.auth_service as auth_service
 import src.services.use_cases.blacklist_service as blacklist_service
@@ -139,6 +140,7 @@ class AppContainer:
             max_output_tokens=self.settings.gemini_max_output_tokens,
             tracer=self.langsmith_tracer,
         )
+        self.agent_workflow_engine = workflow_engine.LangGraphAgentWorkflowEngine()
 
         self.auth_service = auth_service.AuthService(
             tenant_repository=self.tenant_repository,
@@ -181,6 +183,7 @@ class AppContainer:
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
+            agent_workflow=self.agent_workflow_engine,
         )
         self.scheduling_inbox_service = scheduling_inbox_service.SchedulingInboxService(
             scheduling_repository=self.scheduling_repository,
@@ -218,6 +221,7 @@ class AppContainer:
             default_system_prompt=self.settings.default_system_prompt,
             context_message_limit=self.settings.conversation_context_messages,
             tracer=self.langsmith_tracer,
+            agent_workflow=self.agent_workflow_engine,
         )
 
         self.conversation_query_service = conversation_query_service.ConversationQueryService(

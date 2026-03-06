@@ -5,9 +5,8 @@ export type AppointmentPaymentStatus = "PENDING" | "PAID";
 export type SchedulingRequestStatus =
   | "AWAITING_CONSULTATION_REVIEW"
   | "AWAITING_CONSULTATION_DETAILS"
-  | "COLLECTING_PREFERENCES"
-  | "AWAITING_PROFESSIONAL_SLOTS"
   | "AWAITING_PATIENT_CHOICE"
+  | "AWAITING_PAYMENT_CONFIRMATION"
   | "CONSULTATION_REJECTED"
   | "CANCELLED"
   | "BOOKED"
@@ -23,12 +22,15 @@ export interface SchedulingSlot {
   status: SchedulingSlotStatus;
 }
 
+export type AudienceType = "ADULTS" | "CHILDREN";
+
 export interface SchedulingRequestSummary {
   requestId: string;
   conversationId: string;
   whatsappUserId: string;
   requestKind: SchedulingRequestKind;
   status: SchedulingRequestStatus;
+  audienceType: AudienceType | null;
   roundNumber: number;
   patientPreferenceNote: string | null;
   rejectionSummary: string | null;
@@ -72,11 +74,22 @@ export interface SubmitProfessionalSlotsResult {
 }
 
 export interface ResolveConsultationReviewInput {
-  decision: "APPROVE" | "REQUEST_MORE_INFO" | "REJECT";
+  decision: "REQUEST_MORE_INFO" | "REJECT";
   professionalNote: string | null;
 }
 
 export interface ResolveConsultationReviewResult {
+  status: SchedulingRequestStatus;
+  outboundMessageId: string;
+  assistantText: string;
+}
+
+export interface ResolvePaymentReviewInput {
+  decision: "APPROVE" | "SEND_REMINDER";
+  professionalNote: string | null;
+}
+
+export interface ResolvePaymentReviewResult {
   status: SchedulingRequestStatus;
   outboundMessageId: string;
   assistantText: string;

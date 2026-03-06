@@ -1,17 +1,68 @@
 import datetime
+import typing
 
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.infra.logs as app_logs
+import src.ports.agent_workflow_port as agent_workflow_port
 import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
+import src.services.agentic.workflow_engine as workflow_engine
+import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 
 logger = app_logs.get_logger(__name__)
+
+
+class SchedulingTransitionRuntimeAdapter(agent_workflow_port.SchedulingTransitionRuntimePort):
+    def __init__(
+        self,
+        apply_transition: typing.Callable[
+            [agent_workflow_dto.SchedulingTransitionInputDTO],
+            object,
+        ],
+    ) -> None:
+        self._apply_transition = apply_transition
+
+    def validate_transition(
+        self,
+        input_dto: agent_workflow_dto.SchedulingTransitionInputDTO,
+    ) -> None:
+        del input_dto
+
+    def apply_transition(
+        self,
+        input_dto: agent_workflow_dto.SchedulingTransitionInputDTO,
+    ) -> object:
+        return self._apply_transition(input_dto)
+
+    def execute_side_effects(
+        self,
+        input_dto: agent_workflow_dto.SchedulingTransitionInputDTO,
+        transition_result: object,
+    ) -> None:
+        del input_dto
+        del transition_result
+
+    def persist_transition(
+        self,
+        input_dto: agent_workflow_dto.SchedulingTransitionInputDTO,
+        transition_result: object,
+    ) -> None:
+        del input_dto
+        del transition_result
+
+    def build_output(
+        self,
+        input_dto: agent_workflow_dto.SchedulingTransitionInputDTO,
+        transition_result: object,
+    ) -> object:
+        del input_dto
+        return transition_result
 
 
 class SchedulingService:
@@ -24,12 +75,18 @@ class SchedulingService:
         ),
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
+        agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
         self._conversation_repository = conversation_repository
         self._google_calendar_onboarding_service = google_calendar_onboarding_service
         self._id_generator = id_generator
         self._clock = clock
+        self._agent_workflow: agent_workflow_port.AgentWorkflowPort
+        if agent_workflow is None:
+            self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
+        else:
+            self._agent_workflow = agent_workflow
 
     def list_requests_by_tenant(
         self,
@@ -53,7 +110,261 @@ class SchedulingService:
         items = [self._to_summary_dto(item) for item in sorted_requests]
         return scheduling_dto.SchedulingRequestListResponseDTO(items=items)
 
+    def _run_transition_with_graph(
+        self,
+        action: typing.Literal[
+            "SUBMIT_CONSULTATION_REASON",
+            "RESOLVE_CONSULTATION_REVIEW",
+            "SELECT_SLOT_FOR_CONFIRMATION",
+            "CONFIRM_SLOT_AND_CREATE_EVENT",
+            "CANCEL_ACTIVE_REQUEST",
+            "HANDOFF_TO_HUMAN",
+            "RESCHEDULE_BOOKED_SLOT",
+            "CANCEL_BOOKED_SLOT",
+            "UPDATE_BOOKED_PAYMENT",
+            "APPROVE_PAYMENT",
+        ],
+        payload: object | None,
+        apply_transition: typing.Callable[
+            [agent_workflow_dto.SchedulingTransitionInputDTO],
+            object,
+        ],
+    ) -> object:
+        runtime_adapter = SchedulingTransitionRuntimeAdapter(
+            apply_transition=apply_transition,
+        )
+        transition_result = self._agent_workflow.run_scheduling_transition(
+            input_dto=agent_workflow_dto.SchedulingTransitionInputDTO(
+                action=action,
+                payload=payload,
+            ),
+            runtime_port=runtime_adapter,
+        )
+        return transition_result.result
+
     def submit_consultation_reason_for_review(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        whatsapp_user_id: str,
+        input_dto: scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="SUBMIT_CONSULTATION_REASON",
+            payload={
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+                "whatsapp_user_id": whatsapp_user_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._submit_consultation_reason_for_review_impl(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                whatsapp_user_id=whatsapp_user_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
+
+    def resolve_consultation_review(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.ConsultationReviewDecisionDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="RESOLVE_CONSULTATION_REVIEW",
+            payload={
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._resolve_consultation_review_impl(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                request_id=request_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
+
+    def cancel_active_request(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        input_dto: scheduling_dto.CancelActiveSchedulingRequestInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="CANCEL_ACTIVE_REQUEST",
+            payload={
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._cancel_active_request_impl(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
+
+    def confirm_selected_slot_and_create_event(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        input_dto: scheduling_dto.ConfirmSelectedSlotInputDTO,
+    ) -> scheduling_dto.ConfirmSelectedSlotResponseDTO:
+        transition_result = self._run_transition_with_graph(
+            action="CONFIRM_SLOT_AND_CREATE_EVENT",
+            payload={
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._confirm_selected_slot_and_create_event_impl(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(scheduling_dto.ConfirmSelectedSlotResponseDTO, transition_result)
+
+    def select_slot_for_confirmation(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        request_id: str,
+        slot_id: str,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="SELECT_SLOT_FOR_CONFIRMATION",
+            payload={
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+                "slot_id": slot_id,
+            },
+            apply_transition=lambda _: self._select_slot_for_confirmation_impl(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                request_id=request_id,
+                slot_id=slot_id,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
+
+    def approve_payment(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.PaymentReviewDecisionDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="APPROVE_PAYMENT",
+            payload={
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+                "request_id": request_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._approve_payment_impl(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                request_id=request_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
+
+    def reschedule_booked_slot(
+        self,
+        tenant_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.RescheduleBookedSlotInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="RESCHEDULE_BOOKED_SLOT",
+            payload={
+                "tenant_id": tenant_id,
+                "request_id": request_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._reschedule_booked_slot_impl(
+                tenant_id=tenant_id,
+                request_id=request_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
+
+    def cancel_booked_slot(
+        self,
+        tenant_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.CancelBookedSlotInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="CANCEL_BOOKED_SLOT",
+            payload={
+                "tenant_id": tenant_id,
+                "request_id": request_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._cancel_booked_slot_impl(
+                tenant_id=tenant_id,
+                request_id=request_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
+
+    def update_booked_payment(
+        self,
+        tenant_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.UpdateBookedSlotPaymentInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="UPDATE_BOOKED_PAYMENT",
+            payload={
+                "tenant_id": tenant_id,
+                "request_id": request_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._update_booked_payment_impl(
+                tenant_id=tenant_id,
+                request_id=request_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
+
+    def handoff_to_human(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        input_dto: scheduling_dto.HandoffToHumanInputDTO,
+    ) -> dict[str, str]:
+        transition_result = self._run_transition_with_graph(
+            action="HANDOFF_TO_HUMAN",
+            payload={
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._handoff_to_human_impl(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(dict[str, str], transition_result)
+
+    def _submit_consultation_reason_for_review_impl(
         self,
         tenant_id: str,
         conversation_id: str,
@@ -80,15 +391,11 @@ class SchedulingService:
         if request is None:
             active_scheduling_request = self._find_latest_request_by_statuses(
                 requests=existing_requests,
-                statuses=(
-                    "COLLECTING_PREFERENCES",
-                    "AWAITING_PROFESSIONAL_SLOTS",
-                    "AWAITING_PATIENT_CHOICE",
-                ),
+                statuses=("AWAITING_PATIENT_CHOICE",),
             )
             if active_scheduling_request is not None:
                 raise service_exceptions.InvalidStateError(
-                    "consultation reason already approved; continue with scheduling preferences and call request_schedule_approval"
+                    "schedule options are already available; ask the patient to choose one numbered slot"
                 )
             request = scheduling_request_entity.SchedulingRequest(
                 id=self._id_generator.new_id(),
@@ -113,10 +420,6 @@ class SchedulingService:
             raise service_exceptions.InvalidStateError(
                 "cannot submit consultation reason for a closed scheduling request"
             )
-        if request.status in ("COLLECTING_PREFERENCES", "AWAITING_PROFESSIONAL_SLOTS"):
-            raise service_exceptions.InvalidStateError(
-                "consultation reason already approved; continue with scheduling preferences and call request_schedule_approval"
-            )
         if request.status == "AWAITING_PATIENT_CHOICE":
             raise service_exceptions.InvalidStateError(
                 "schedule options are already available; ask the patient to choose one numbered slot"
@@ -132,6 +435,13 @@ class SchedulingService:
             )
 
         request.consultation_reason = consultation_reason
+        if input_dto.appointment_modality is not None:
+            request.appointment_modality = input_dto.appointment_modality
+            request.patient_location = self._resolve_location(
+                appointment_modality=input_dto.appointment_modality,
+                patient_location=input_dto.patient_location,
+                fallback_patient_location=request.patient_location,
+            )
         request.professional_note = None
         request.rejection_summary = None
         request.set_status("AWAITING_CONSULTATION_REVIEW", now_value)
@@ -153,7 +463,7 @@ class SchedulingService:
         )
         return self._to_summary_dto(request)
 
-    def resolve_consultation_review(
+    def _resolve_consultation_review_impl(
         self,
         tenant_id: str,
         conversation_id: str,
@@ -175,10 +485,7 @@ class SchedulingService:
         now_value = self._clock.now()
         professional_note = self._normalize_patient_text(input_dto.professional_note)
 
-        if input_dto.decision == "APPROVE":
-            request.set_status("COLLECTING_PREFERENCES", now_value)
-            request.professional_note = professional_note
-        elif input_dto.decision == "REQUEST_MORE_INFO":
+        if input_dto.decision == "REQUEST_MORE_INFO":
             if professional_note is None:
                 raise service_exceptions.InvalidStateError(
                     "professional_note is required when requesting more information"
@@ -208,114 +515,7 @@ class SchedulingService:
         )
         return self._to_summary_dto(request)
 
-    def request_schedule_approval(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-        whatsapp_user_id: str,
-        input_dto: scheduling_dto.RequestScheduleApprovalInputDTO,
-    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
-        del whatsapp_user_id
-        conversation = self._conversation_repository.get_conversation_by_id(
-            tenant_id, conversation_id
-        )
-        if conversation is None:
-            raise service_exceptions.EntityNotFoundError("conversation not found")
-
-        request = self._resolve_target_request_for_schedule(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            request_id=input_dto.request_id,
-        )
-
-        if request.status == "AWAITING_PROFESSIONAL_SLOTS":
-            logger.info(
-                "scheduling.request_reused",
-                extra={
-                    "event_data": app_logs.build_log_event(
-                        event_name="scheduling.request_reused",
-                        message="existing open scheduling request reused",
-                        data={
-                            "tenant_id": tenant_id,
-                            "conversation_id": conversation_id,
-                            "request_id": request.id,
-                            "status": request.status,
-                        },
-                    )
-                },
-            )
-            return self._to_summary_dto(request)
-        if request.status == "AWAITING_PATIENT_CHOICE":
-            now_value = self._clock.now()
-            resolved_location = self._resolve_location(
-                appointment_modality=input_dto.appointment_modality,
-                patient_location=input_dto.patient_location,
-                fallback_patient_location=request.patient_location,
-            )
-            request.appointment_modality = input_dto.appointment_modality
-            request.patient_location = resolved_location
-            request.patient_preference_note = input_dto.patient_preference_note
-            request.rejection_summary = input_dto.rejection_summary
-            request.professional_note = "patient requested different schedule options"
-            request.slots = []
-            request.slot_options_map = {}
-            request.selected_slot_id = None
-            request.set_status("AWAITING_PROFESSIONAL_SLOTS", now_value)
-            self._scheduling_repository.save_request(request)
-            logger.info(
-                "scheduling.request_reopened_after_patient_rejection",
-                extra={
-                    "event_data": app_logs.build_log_event(
-                        event_name="scheduling.request_reopened_after_patient_rejection",
-                        message="patient rejected offered slots and scheduling request was reopened",
-                        data={
-                            "tenant_id": tenant_id,
-                            "conversation_id": conversation_id,
-                            "request_id": request.id,
-                            "status": request.status,
-                        },
-                    )
-                },
-            )
-            return self._to_summary_dto(request)
-
-        if request.status != "COLLECTING_PREFERENCES":
-            raise service_exceptions.InvalidStateError(
-                "consultation reason must be approved before requesting schedule approval"
-            )
-
-        now_value = self._clock.now()
-        resolved_location = self._resolve_location(
-            appointment_modality=input_dto.appointment_modality,
-            patient_location=input_dto.patient_location,
-            fallback_patient_location=request.patient_location,
-        )
-
-        request.appointment_modality = input_dto.appointment_modality
-        request.patient_location = resolved_location
-        request.patient_preference_note = input_dto.patient_preference_note
-        request.rejection_summary = input_dto.rejection_summary
-        request.professional_note = None
-        request.set_status("AWAITING_PROFESSIONAL_SLOTS", now_value)
-        self._scheduling_repository.save_request(request)
-        logger.info(
-            "scheduling.request_created",
-            extra={
-                "event_data": app_logs.build_log_event(
-                    event_name="scheduling.request_created",
-                    message="scheduling request created",
-                    data={
-                        "tenant_id": tenant_id,
-                        "conversation_id": conversation_id,
-                        "request_id": request.id,
-                        "status": request.status,
-                    },
-                )
-            },
-        )
-        return self._to_summary_dto(request)
-
-    def cancel_active_request(
+    def _cancel_active_request_impl(
         self,
         tenant_id: str,
         conversation_id: str,
@@ -336,9 +536,8 @@ class SchedulingService:
             statuses=(
                 "AWAITING_CONSULTATION_REVIEW",
                 "AWAITING_CONSULTATION_DETAILS",
-                "COLLECTING_PREFERENCES",
-                "AWAITING_PROFESSIONAL_SLOTS",
                 "AWAITING_PATIENT_CHOICE",
+                "AWAITING_PAYMENT_CONFIRMATION",
             ),
         )
         if open_request is None:
@@ -366,7 +565,7 @@ class SchedulingService:
         )
         return self._to_summary_dto(open_request)
 
-    def confirm_selected_slot_and_create_event(
+    def _confirm_selected_slot_and_create_event_impl(
         self,
         tenant_id: str,
         conversation_id: str,
@@ -482,7 +681,7 @@ class SchedulingService:
             },
         )
 
-    def select_slot_for_confirmation(
+    def _select_slot_for_confirmation_impl(
         self,
         tenant_id: str,
         conversation_id: str,
@@ -513,7 +712,7 @@ class SchedulingService:
                 slot.status = "PROPOSED"
 
         request.selected_slot_id = selected_slot.id
-        request.updated_at = now_value
+        request.set_status("AWAITING_PAYMENT_CONFIRMATION", now_value)
         self._scheduling_repository.save_request(request)
         logger.info(
             "scheduling.slot_selected",
@@ -532,7 +731,54 @@ class SchedulingService:
         )
         return self._to_summary_dto(request)
 
-    def reschedule_booked_slot(
+    def _approve_payment_impl(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.PaymentReviewDecisionDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+        if request.conversation_id != conversation_id:
+            raise service_exceptions.AuthorizationError(
+                "scheduling request does not belong to conversation"
+            )
+        if request.status != "AWAITING_PAYMENT_CONFIRMATION":
+            raise service_exceptions.InvalidStateError(
+                "scheduling request is not awaiting payment confirmation"
+            )
+
+        now_value = self._clock.now()
+        if input_dto.decision == "APPROVE":
+            request.payment_status = "PAID"
+            request.payment_updated_at = now_value
+            request.set_status("AWAITING_PATIENT_CHOICE", now_value)
+
+        if input_dto.professional_note is not None:
+            request.professional_note = input_dto.professional_note
+
+        request.updated_at = now_value
+        self._scheduling_repository.save_request(request)
+        logger.info(
+            "scheduling.payment_review_resolved",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.payment_review_resolved",
+                    message="professional resolved payment review",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "request_id": request.id,
+                        "decision": input_dto.decision,
+                    },
+                )
+            },
+        )
+        return self._to_summary_dto(request)
+
+    def _reschedule_booked_slot_impl(
         self,
         tenant_id: str,
         request_id: str,
@@ -589,7 +835,7 @@ class SchedulingService:
         )
         return self._to_summary_dto(request)
 
-    def cancel_booked_slot(
+    def _cancel_booked_slot_impl(
         self,
         tenant_id: str,
         request_id: str,
@@ -638,7 +884,7 @@ class SchedulingService:
         )
         return self._to_summary_dto(request)
 
-    def update_booked_payment(
+    def _update_booked_payment_impl(
         self,
         tenant_id: str,
         request_id: str,
@@ -675,7 +921,7 @@ class SchedulingService:
         )
         return self._to_summary_dto(request)
 
-    def handoff_to_human(
+    def _handoff_to_human_impl(
         self,
         tenant_id: str,
         conversation_id: str,
@@ -751,41 +997,6 @@ class SchedulingService:
             ),
         )
 
-    def _resolve_target_request_for_schedule(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-        request_id: str | None,
-    ) -> scheduling_request_entity.SchedulingRequest:
-        request_list = self._scheduling_repository.list_requests_by_conversation(
-            tenant_id,
-            conversation_id,
-        )
-
-        if request_id is not None:
-            request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
-            if request is None:
-                raise service_exceptions.EntityNotFoundError("scheduling request not found")
-            if request.conversation_id != conversation_id:
-                raise service_exceptions.AuthorizationError(
-                    "scheduling request does not belong to conversation"
-                )
-            return request
-
-        request = self._find_latest_request_by_statuses(
-            requests=request_list,
-            statuses=(
-                "COLLECTING_PREFERENCES",
-                "AWAITING_PROFESSIONAL_SLOTS",
-                "AWAITING_PATIENT_CHOICE",
-            ),
-        )
-        if request is None:
-            raise service_exceptions.InvalidStateError(
-                "consultation reason must be approved before requesting schedule approval"
-            )
-        return request
-
     def _find_latest_request_by_statuses(
         self,
         requests: list[scheduling_request_entity.SchedulingRequest],
@@ -852,7 +1063,7 @@ class SchedulingService:
         if remaining_slot_ids:
             request.set_status("AWAITING_PATIENT_CHOICE", now_value)
         else:
-            request.set_status("AWAITING_PROFESSIONAL_SLOTS", now_value)
+            request.set_status("AWAITING_CONSULTATION_REVIEW", now_value)
         self._scheduling_repository.save_request(request)
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="SLOT_CONFLICT",
@@ -966,6 +1177,7 @@ class SchedulingService:
             whatsapp_user_id=request.whatsapp_user_id,
             request_kind=request.request_kind,
             status=request.status,
+            audience_type=request.audience_type,
             round_number=request.round_number,
             patient_preference_note=request.patient_preference_note,
             rejection_summary=request.rejection_summary,

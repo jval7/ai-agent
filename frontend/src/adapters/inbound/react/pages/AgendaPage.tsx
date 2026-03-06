@@ -44,9 +44,8 @@ const agendaSections: AgendaSection[] = [
     id: "SCHEDULING",
     label: "Agendamiento en Curso",
     statuses: [
-      { status: "COLLECTING_PREFERENCES", label: "Recolectando Preferencias" },
-      { status: "AWAITING_PROFESSIONAL_SLOTS", label: "Pendiente Slots" },
-      { status: "AWAITING_PATIENT_CHOICE", label: "Esperando Paciente" }
+      { status: "AWAITING_PATIENT_CHOICE", label: "Esperando Paciente" },
+      { status: "AWAITING_PAYMENT_CONFIRMATION", label: "Pendiente Pago" }
     ]
   },
   {
@@ -598,7 +597,8 @@ export function AgendaPage() {
   const availabilityQuery = reactQueryModule.useQuery({
     queryKey: ["google-calendar-availability", monthRangeFromIso, monthRangeToIso, timezone],
     enabled:
-      selectedRequest?.status === "AWAITING_PROFESSIONAL_SLOTS" &&
+      (selectedRequest?.status === "AWAITING_CONSULTATION_REVIEW" ||
+        selectedRequest?.status === "AWAITING_PATIENT_CHOICE") &&
       monthRangeFromIso !== null &&
       monthRangeToIso !== null,
     queryFn: async () => {
@@ -1034,10 +1034,51 @@ export function AgendaPage() {
   const resolveConsultationReviewMutation = reactQueryModule.useMutation({
     mutationFn: (payload: {
       request: schedulingModel.SchedulingRequestSummary;
-      decision: "APPROVE" | "REQUEST_MORE_INFO" | "REJECT";
+      decision: "REQUEST_MORE_INFO" | "REJECT";
       professionalNote: string | null;
     }) => {
       return appContainer.schedulingUseCase.resolveConsultationReview(
+        payload.request.conversationId,
+        payload.request.requestId,
+        {
+          decision: payload.decision,
+          professionalNote: payload.professionalNote
+        }
+      );
+    },
+    onSuccess: (result, payload) => {
+      setSubmitSuccessMessage(result.assistantText);
+      setLocalSubmitErrorMessage(null);
+      queryClient.setQueryData<schedulingModel.SchedulingRequestSummary[]>(
+        schedulingRequestsQueryKey,
+        (currentValue) => {
+          if (currentValue === undefined) {
+            return currentValue;
+          }
+          return currentValue.map((request) => {
+            if (request.requestId !== payload.request.requestId) {
+              return request;
+            }
+            return {
+              ...request,
+              status: result.status,
+              updatedAt: luxonModule.DateTime.now().toISO() ?? request.updatedAt,
+              professionalNote: payload.professionalNote
+            };
+          });
+        }
+      );
+      setActiveTab(result.status);
+    }
+  });
+
+  const resolvePaymentReviewMutation = reactQueryModule.useMutation({
+    mutationFn: (payload: {
+      request: schedulingModel.SchedulingRequestSummary;
+      decision: "APPROVE" | "SEND_REMINDER";
+      professionalNote: string | null;
+    }) => {
+      return appContainer.schedulingUseCase.resolvePaymentReview(
         payload.request.conversationId,
         payload.request.requestId,
         {
@@ -1219,6 +1260,7 @@ export function AgendaPage() {
   const submitErrorMessage = uiErrorModule.resolveUiErrorMessage([
     submitSlotsMutation.error,
     resolveConsultationReviewMutation.error,
+    resolvePaymentReviewMutation.error,
     createPatientMutation.error,
     updatePatientMutation.error,
     removePatientMutation.error,
@@ -1791,7 +1833,7 @@ export function AgendaPage() {
                       Resolver motivo de consulta
                     </h4>
                     <p className="mt-2 text-xs text-slate-600">
-                      Puedes aprobar, pedir más información o rechazar este caso.
+                      Propón horarios abajo para aprobar, o pide más información / rechaza.
                     </p>
                     <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Nota para el bot
@@ -1811,26 +1853,6 @@ export function AgendaPage() {
                       />
                     </label>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={resolveConsultationReviewMutation.isPending}
-                        onClick={() => {
-                          if (selectedRequest === undefined) {
-                            return;
-                          }
-                          setLocalSubmitErrorMessage(null);
-                          setSubmitSuccessMessage(null);
-                          resolveConsultationReviewMutation.mutate({
-                            request: selectedRequest,
-                            decision: "APPROVE",
-                            professionalNote:
-                              currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
-                          });
-                        }}
-                        type="button"
-                      >
-                        Aprobar motivo
-                      </button>
                       <button
                         className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
                         disabled={resolveConsultationReviewMutation.isPending}
@@ -1880,7 +1902,79 @@ export function AgendaPage() {
                   </section>
                 ) : null}
 
-                {selectedRequest.status === "AWAITING_PROFESSIONAL_SLOTS" ? (
+                {selectedRequest.status === "AWAITING_PAYMENT_CONFIRMATION" ? (
+                  <section className="rounded-lg border border-border-subtle p-3">
+                    <h4 className="text-sm font-semibold text-brand-ink">
+                      Confirmar pago del paciente
+                    </h4>
+                    <p className="mt-2 text-xs text-slate-600">
+                      El paciente seleccionó un horario y se le enviaron los datos de pago. Verifica
+                      el comprobante y aprueba, o envía un recordatorio de pago.
+                    </p>
+                    <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Nota para el bot
+                      <textarea
+                        className="mt-1 min-h-24 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
+                        onChange={(event) => {
+                          if (selectedRequest === undefined) {
+                            return;
+                          }
+                          const nextValue = event.target.value;
+                          setReviewNotesByRequestId((currentValue) => ({
+                            ...currentValue,
+                            [selectedRequest.requestId]: nextValue
+                          }));
+                        }}
+                        value={currentReviewNote}
+                      />
+                    </label>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={resolvePaymentReviewMutation.isPending}
+                        onClick={() => {
+                          if (selectedRequest === undefined) {
+                            return;
+                          }
+                          setLocalSubmitErrorMessage(null);
+                          setSubmitSuccessMessage(null);
+                          resolvePaymentReviewMutation.mutate({
+                            request: selectedRequest,
+                            decision: "APPROVE",
+                            professionalNote:
+                              currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
+                          });
+                        }}
+                        type="button"
+                      >
+                        Aprobar pago
+                      </button>
+                      <button
+                        className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={resolvePaymentReviewMutation.isPending}
+                        onClick={() => {
+                          if (selectedRequest === undefined) {
+                            return;
+                          }
+                          setLocalSubmitErrorMessage(null);
+                          setSubmitSuccessMessage(null);
+                          resolvePaymentReviewMutation.mutate({
+                            request: selectedRequest,
+                            decision: "SEND_REMINDER",
+                            professionalNote:
+                              currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
+                          });
+                        }}
+                        type="button"
+                      >
+                        Enviar recordatorio
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+
+                {selectedRequest.status === "AWAITING_CONSULTATION_REVIEW" ||
+                selectedRequest.status === "AWAITING_PATIENT_CHOICE" ? (
                   <>
                     <section className="rounded-lg border border-border-subtle p-3">
                       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -2090,7 +2184,7 @@ export function AgendaPage() {
                     </section>
                   </>
                 ) : selectedRequest.status ===
-                  "AWAITING_CONSULTATION_REVIEW" ? null : selectedRequest.status === "BOOKED" ? (
+                  "AWAITING_PAYMENT_CONFIRMATION" ? null : selectedRequest.status === "BOOKED" ? (
                   <section className="rounded-lg border border-border-subtle p-3">
                     <h4 className="text-sm font-semibold text-brand-ink">
                       Gestionar cita del chatbot

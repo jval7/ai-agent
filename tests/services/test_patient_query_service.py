@@ -339,7 +339,7 @@ def test_delete_patient_removes_patient_for_tenant() -> None:
             conversation_id="conv-3",
             whatsapp_user_id="wa-1",
             request_kind="INITIAL",
-            status="COLLECTING_PREFERENCES",
+            status="AWAITING_CONSULTATION_REVIEW",
             round_number=1,
             patient_preference_note="prefiere virtual",
             rejection_summary=None,

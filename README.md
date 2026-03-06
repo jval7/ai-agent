@@ -4,6 +4,12 @@ Backend MVP for a multi-tenant WhatsApp customer support agent built with FastAP
 
 Meta onboarding and message lifecycle (E2E): `META_BACKEND_E2E_README.md`
 
+## Agent orchestration
+
+- Agentic orchestration now runs with `LangGraph` (`src/services/agentic/`).
+- Domain persistence remains in Firestore repositories (`src/adapters/outbound/firestore/`).
+- LangGraph checkpoints are not used as source of truth in this iteration.
+
 ## Tooling
 
 - Dependency manager: `uv`

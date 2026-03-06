@@ -215,6 +215,53 @@ def test_reset_messages_clears_active_messages_without_creating_subsession() -> 
     assert booked_request.status == "BOOKED"
 
 
+def test_reset_messages_cancels_awaiting_payment_confirmation_requests() -> None:
+    started_at = datetime.datetime(2025, 12, 31, tzinfo=datetime.UTC)
+    service_repo, repository, scheduling_repository = build_service()
+    repository.save_conversation(
+        conversation_entity.Conversation(
+            id="conv-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            started_at=started_at,
+            updated_at=started_at,
+            last_message_preview="Hola",
+            message_ids=[],
+            control_mode="AI",
+        )
+    )
+    scheduling_repository.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="req-payment-1",
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-1",
+            request_kind="INITIAL",
+            status="AWAITING_PAYMENT_CONFIRMATION",
+            round_number=1,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            slots=[],
+            slot_options_map={},
+            selected_slot_id="slot-1",
+            calendar_event_id=None,
+            created_at=started_at,
+            updated_at=started_at,
+        )
+    )
+
+    service_repo.reset_messages(
+        claims=build_claims(role="owner"),
+        conversation_id="conv-1",
+    )
+
+    payment_request = scheduling_repository.get_request_by_id("tenant-1", "req-payment-1")
+    assert payment_request is not None
+    assert payment_request.status == "CANCELLED"
+    assert payment_request.professional_note == "conversation reset by owner"
+
+
 def test_reset_messages_rejects_non_owner() -> None:
     service, repository, _ = build_service()
     now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)

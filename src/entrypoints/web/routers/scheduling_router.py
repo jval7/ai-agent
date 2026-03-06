@@ -63,6 +63,25 @@ def resolve_consultation_review(
 
 
 @router.post(
+    "/v1/conversations/{conversation_id}/scheduling/requests/{request_id}/payment-review",
+    response_model=scheduling_dto.PaymentReviewDecisionResponseDTO,
+)
+def resolve_payment_review(
+    conversation_id: str,
+    request_id: str,
+    review_dto: scheduling_dto.PaymentReviewDecisionDTO,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> scheduling_dto.PaymentReviewDecisionResponseDTO:
+    return container.scheduling_inbox_service.resolve_payment_review(
+        claims=claims,
+        conversation_id=conversation_id,
+        request_id=request_id,
+        input_dto=review_dto,
+    )
+
+
+@router.post(
     "/v1/conversations/{conversation_id}/scheduling/requests/{request_id}/professional-slots",
     response_model=scheduling_dto.ProfessionalSubmitSlotsResponseDTO,
 )

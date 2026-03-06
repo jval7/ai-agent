@@ -208,7 +208,7 @@ def test_webhook_recovers_when_reason_tool_is_called_again_after_approval() -> N
             conversation_id="conversation-1",
             whatsapp_user_id="wa-user-1",
             request_kind="INITIAL",
-            status="COLLECTING_PREFERENCES",
+            status="AWAITING_CONSULTATION_DETAILS",
             round_number=1,
             patient_preference_note=None,
             rejection_summary=None,
@@ -274,22 +274,9 @@ def test_webhook_recovers_when_reason_tool_is_called_again_after_approval() -> N
                     args={
                         "request_id": "req-1",
                         "consultation_reason": "ansiedad en el trabajo",
+                        "appointment_modality": "PRESENCIAL",
                     },
                     call_id="call-1",
-                )
-            ],
-        ),
-        llm_dto.AgentReplyDTO(
-            content="",
-            function_calls=[
-                llm_dto.FunctionCallDTO(
-                    name="request_schedule_approval",
-                    args={
-                        "request_id": "req-1",
-                        "appointment_modality": "PRESENCIAL",
-                        "patient_preference_note": "despues de las 4 pm o sabados",
-                    },
-                    call_id="call-2",
                 )
             ],
         ),
@@ -343,26 +330,14 @@ def test_webhook_recovers_when_reason_tool_is_called_again_after_approval() -> N
 
     saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
-    assert saved_request.status == "AWAITING_PROFESSIONAL_SLOTS"
-    assert saved_request.patient_preference_note == "despues de las 4 pm o sabados"
+    assert saved_request.status == "AWAITING_CONSULTATION_REVIEW"
+    assert saved_request.appointment_modality == "PRESENCIAL"
     assert (
         len(scheduling_repository.list_requests_by_conversation("tenant-1", "conversation-1")) == 1
     )
     assert len(provider.sent_messages) == 1
     assert "dame un momento" in provider.sent_messages[0]["text"].lower()
-    assert len(llm_provider.calls) == 2
-    first_call_tool_names = [tool.name for tool in llm_provider.calls[0].tools]
-    second_call_tool_names = [tool.name for tool in llm_provider.calls[1].tools]
-    assert first_call_tool_names == [
-        "request_schedule_approval",
-        "handoff_to_human",
-        "cancel_active_scheduling_request",
-    ]
-    assert second_call_tool_names == [
-        "request_schedule_approval",
-        "handoff_to_human",
-        "cancel_active_scheduling_request",
-    ]
+    assert len(llm_provider.calls) == 1
 
 
 def test_webhook_waiting_professional_slots_silently_persists_inbound_message() -> None:
@@ -408,7 +383,7 @@ def test_webhook_waiting_professional_slots_silently_persists_inbound_message() 
             conversation_id="conversation-1",
             whatsapp_user_id="wa-user-1",
             request_kind="INITIAL",
-            status="AWAITING_PROFESSIONAL_SLOTS",
+            status="AWAITING_CONSULTATION_REVIEW",
             round_number=1,
             patient_preference_note="despues de las 4 pm",
             rejection_summary=None,
@@ -507,7 +482,7 @@ def test_webhook_waiting_professional_slots_silently_persists_inbound_message() 
 
     saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
-    assert saved_request.status == "AWAITING_PROFESSIONAL_SLOTS"
+    assert saved_request.status == "AWAITING_CONSULTATION_REVIEW"
     assert len(provider.sent_messages) == 0
     assert len(llm_provider.calls) == 1
 
@@ -555,7 +530,7 @@ def test_webhook_waiting_professional_does_not_cancel_on_non_explicit_message() 
             conversation_id="conversation-1",
             whatsapp_user_id="wa-user-1",
             request_kind="INITIAL",
-            status="AWAITING_PROFESSIONAL_SLOTS",
+            status="AWAITING_CONSULTATION_REVIEW",
             round_number=1,
             patient_preference_note="despues de las 4 pm",
             rejection_summary=None,
@@ -667,7 +642,7 @@ def test_webhook_waiting_professional_does_not_cancel_on_non_explicit_message() 
 
     saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
-    assert saved_request.status == "AWAITING_PROFESSIONAL_SLOTS"
+    assert saved_request.status == "AWAITING_CONSULTATION_REVIEW"
     assert len(provider.sent_messages) == 0
     assert len(llm_provider.calls) == 2
 
@@ -726,11 +701,11 @@ def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> 
                     start_at=datetime.datetime(2026, 1, 2, 10, 0, tzinfo=datetime.UTC),
                     end_at=datetime.datetime(2026, 1, 2, 11, 0, tzinfo=datetime.UTC),
                     timezone="America/Bogota",
-                    status="PROPOSED",
+                    status="SELECTED",
                 )
             ],
             slot_options_map={"1": "slot-1"},
-            selected_slot_id=None,
+            selected_slot_id="slot-1",
             calendar_event_id=None,
             created_at=now_value,
             updated_at=now_value,
@@ -933,7 +908,7 @@ def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() 
                     start_at=datetime.datetime(2026, 1, 5, 21, 0, tzinfo=datetime.UTC),
                     end_at=datetime.datetime(2026, 1, 5, 22, 0, tzinfo=datetime.UTC),
                     timezone="America/Bogota",
-                    status="PROPOSED",
+                    status="SELECTED",
                 ),
                 scheduling_slot_entity.SchedulingSlot(
                     id="slot-4",
@@ -949,7 +924,7 @@ def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() 
                 "3": "slot-3",
                 "4": "slot-4",
             },
-            selected_slot_id=None,
+            selected_slot_id="slot-3",
             calendar_event_id=None,
             created_at=now_value,
             updated_at=now_value,
@@ -1176,11 +1151,11 @@ def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_
                     start_at=datetime.datetime(2026, 1, 2, 10, 0, tzinfo=datetime.UTC),
                     end_at=datetime.datetime(2026, 1, 2, 11, 0, tzinfo=datetime.UTC),
                     timezone="America/Bogota",
-                    status="PROPOSED",
+                    status="SELECTED",
                 )
             ],
             slot_options_map={"1": "slot-1"},
-            selected_slot_id=None,
+            selected_slot_id="slot-1",
             calendar_event_id=None,
             created_at=now_value,
             updated_at=now_value,
@@ -1352,11 +1327,11 @@ def test_webhook_confirm_slot_requires_patient_location_for_new_patient() -> Non
                     start_at=datetime.datetime(2026, 1, 2, 10, 0, tzinfo=datetime.UTC),
                     end_at=datetime.datetime(2026, 1, 2, 11, 0, tzinfo=datetime.UTC),
                     timezone="America/Bogota",
-                    status="PROPOSED",
+                    status="SELECTED",
                 )
             ],
             slot_options_map={"1": "slot-1"},
-            selected_slot_id=None,
+            selected_slot_id="slot-1",
             calendar_event_id=None,
             created_at=now_value,
             updated_at=now_value,
@@ -1648,188 +1623,7 @@ def test_webhook_requires_numeric_slot_option_before_continuing() -> None:
     assert "solo con el numero" in provider.sent_messages[0]["text"].lower()
     assert "de marzo a las" in provider.sent_messages[0]["text"].lower()
     assert "T08:00:00" not in provider.sent_messages[0]["text"]
-    assert len(llm_provider.calls) == 1
-
-
-def test_webhook_reopens_schedule_request_when_patient_rejects_offered_slots() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
-    )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
-
-    now_value = datetime.datetime(2026, 3, 1, tzinfo=datetime.UTC)
-    conversation_repository.save_conversation(
-        conversation_entity.Conversation(
-            id="conversation-1",
-            tenant_id="tenant-1",
-            whatsapp_user_id="wa-user-1",
-            started_at=now_value,
-            updated_at=now_value,
-            last_message_preview=None,
-            message_ids=[],
-            control_mode="AI",
-        )
-    )
-    scheduling_repository.save_request(
-        scheduling_request_entity.SchedulingRequest(
-            id="req-1",
-            tenant_id="tenant-1",
-            conversation_id="conversation-1",
-            whatsapp_user_id="wa-user-1",
-            request_kind="INITIAL",
-            status="AWAITING_PATIENT_CHOICE",
-            round_number=1,
-            patient_preference_note="despues de las 4 pm",
-            rejection_summary=None,
-            professional_note=None,
-            appointment_modality="PRESENCIAL",
-            patient_location="Cali",
-            slots=[
-                scheduling_slot_entity.SchedulingSlot(
-                    id="slot-1",
-                    start_at=datetime.datetime(2026, 3, 2, 21, 0, tzinfo=datetime.UTC),
-                    end_at=datetime.datetime(2026, 3, 2, 22, 0, tzinfo=datetime.UTC),
-                    timezone="America/Bogota",
-                    status="PROPOSED",
-                )
-            ],
-            slot_options_map={"1": "slot-1"},
-            selected_slot_id=None,
-            calendar_event_id=None,
-            created_at=now_value,
-            updated_at=now_value,
-        )
-    )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 3, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
-
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
-        llm_dto.AgentReplyDTO(
-            content="",
-            function_calls=[
-                llm_dto.FunctionCallDTO(
-                    name="request_schedule_approval",
-                    args={
-                        "request_id": "req-1",
-                        "appointment_modality": "PRESENCIAL",
-                        "patient_preference_note": "no puedo ese horario, prefiero despues de las 6 pm",
-                    },
-                    call_id="call-1",
-                )
-            ],
-        ),
-        llm_dto.AgentReplyDTO(content="YES"),
-    ]
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
-
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="no puedo ese horario, tienes despues de las 6 pm?",
-        )
-    ]
-
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
-    assert saved_request is not None
-    assert saved_request.status == "AWAITING_PROFESSIONAL_SLOTS"
-    assert (
-        saved_request.patient_preference_note
-        == "no puedo ese horario, prefiero despues de las 6 pm"
-    )
-    assert saved_request.slots == []
-    assert saved_request.slot_options_map == {}
-    assert len(provider.sent_messages) == 1
-    assert "dame un momento" in provider.sent_messages[0]["text"].lower()
-    assert len(llm_provider.calls) == 1
+    assert len(llm_provider.calls) == 3
 
 
 def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
@@ -1936,6 +1730,7 @@ def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
     provider = fake_adapters.FakeWhatsappProvider()
     llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
     llm_provider.queued_replies = [
+        llm_dto.AgentReplyDTO(content="NINGUNA"),
         llm_dto.AgentReplyDTO(
             content="",
             function_calls=[
@@ -2006,7 +1801,7 @@ def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
     assert conversation.control_mode == "HUMAN"
     assert len(provider.sent_messages) == 1
     assert "te comunico" in provider.sent_messages[0]["text"].lower()
-    assert len(llm_provider.calls) == 2
+    assert len(llm_provider.calls) == 3
 
 
 def test_webhook_confirm_slot_retries_network_error_and_handoffs_to_human() -> None:
@@ -2063,11 +1858,11 @@ def test_webhook_confirm_slot_retries_network_error_and_handoffs_to_human() -> N
                     start_at=datetime.datetime(2026, 1, 2, 10, 0, tzinfo=datetime.UTC),
                     end_at=datetime.datetime(2026, 1, 2, 11, 0, tzinfo=datetime.UTC),
                     timezone="America/Bogota",
-                    status="PROPOSED",
+                    status="SELECTED",
                 )
             ],
             slot_options_map={"1": "slot-1"},
-            selected_slot_id=None,
+            selected_slot_id="slot-1",
             calendar_event_id=None,
             created_at=now_value,
             updated_at=now_value,
@@ -2256,11 +2051,11 @@ def test_webhook_confirm_slot_unknown_error_handoffs_without_retry() -> None:
                     start_at=datetime.datetime(2026, 1, 2, 10, 0, tzinfo=datetime.UTC),
                     end_at=datetime.datetime(2026, 1, 2, 11, 0, tzinfo=datetime.UTC),
                     timezone="America/Bogota",
-                    status="PROPOSED",
+                    status="SELECTED",
                 )
             ],
             slot_options_map={"1": "slot-1"},
-            selected_slot_id=None,
+            selected_slot_id="slot-1",
             calendar_event_id=None,
             created_at=now_value,
             updated_at=now_value,

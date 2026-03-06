@@ -13,6 +13,7 @@ import src.domain.entities.whatsapp_user as whatsapp_user_entity
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
+import src.ports.agent_workflow_port as agent_workflow_port
 import src.ports.blacklist_repository_port as blacklist_repository_port
 import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
@@ -22,6 +23,11 @@ import src.ports.patient_repository_port as patient_repository_port
 import src.ports.processed_webhook_event_repository_port as processed_webhook_event_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
+import src.services.agentic.prompt_builder as prompt_builder
+import src.services.agentic.state_models as agentic_state_models
+import src.services.agentic.tool_registry as tool_registry
+import src.services.agentic.workflow_engine as workflow_engine
+import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.llm_dto as llm_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.dto.webhook_dto as webhook_dto
@@ -48,25 +54,88 @@ class ResolvedConfirmSelection(pydantic.BaseModel):
     whatsapp_user_id: str
 
 
-class RuntimePromptContext(pydantic.BaseModel):
-    state: typing.Literal[
-        "NO_ACTIVE_REQUEST",
-        "AWAITING_CONSULTATION_DETAILS",
-        "COLLECTING_PREFERENCES",
-        "AWAITING_PATIENT_CHOICE",
-        "COLLECTING_CONFIRMATION_DATA",
-        "AWAITING_CONSULTATION_REVIEW",
-        "AWAITING_PROFESSIONAL_SLOTS",
-    ]
-    request_id: str | None = None
-    request_status: str | None = None
-    professional_note: str | None = None
-    appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] | None = None
-    patient_location: str | None = None
-    patient_preference_note: str | None = None
-    selected_slot_id: str | None = None
-    missing_confirmation_fields: list[str] = pydantic.Field(default_factory=list)
-    enabled_tool_names: list[str] = pydantic.Field(default_factory=list)
+RuntimePromptContext = agentic_state_models.RuntimePromptContext
+
+
+class WebhookConversationWorkflowRuntimeAdapter(
+    agent_workflow_port.ConversationWorkflowRuntimePort
+):
+    def __init__(
+        self,
+        webhook_service: "WebhookService",
+        tenant_id: str,
+        conversation_id: str,
+        whatsapp_user_id: str,
+        latest_user_text: str,
+        llm_messages: list[llm_dto.ChatMessageDTO],
+        known_patient: patient_entity.Patient | None,
+    ) -> None:
+        self._webhook_service = webhook_service
+        self._tenant_id = tenant_id
+        self._conversation_id = conversation_id
+        self._whatsapp_user_id = whatsapp_user_id
+        self._latest_user_text = latest_user_text
+        self._llm_messages = llm_messages
+        self._known_patient = known_patient
+
+    def load_runtime_prompt_context(self) -> RuntimePromptContext:
+        return self._webhook_service._resolve_runtime_prompt_context(
+            tenant_id=self._tenant_id,
+            conversation_id=self._conversation_id,
+            known_patient=self._known_patient,
+        )
+
+    def handle_waiting_patient_choice_override(self) -> str | None:
+        return self._webhook_service._handle_waiting_patient_choice_state_message(
+            tenant_id=self._tenant_id,
+            conversation_id=self._conversation_id,
+            whatsapp_user_id=self._whatsapp_user_id,
+            latest_user_text=self._latest_user_text,
+        )
+
+    def enforce_required_numeric_slot_selection(self) -> str | None:
+        return self._webhook_service._enforce_required_numeric_slot_selection(
+            tenant_id=self._tenant_id,
+            conversation_id=self._conversation_id,
+            latest_user_text=self._latest_user_text,
+        )
+
+    def handle_waiting_professional_override(self) -> str | None:
+        return self._webhook_service._handle_waiting_professional_state_message(
+            tenant_id=self._tenant_id,
+            conversation_id=self._conversation_id,
+            whatsapp_user_id=self._whatsapp_user_id,
+            latest_user_text=self._latest_user_text,
+        )
+
+    def is_waiting_professional_state_active(self) -> bool:
+        return self._webhook_service._is_waiting_professional_state_active(
+            tenant_id=self._tenant_id,
+            conversation_id=self._conversation_id,
+        )
+
+    def build_runtime_prompt_preview(
+        self,
+        runtime_context: RuntimePromptContext,
+    ) -> str:
+        base_prompt = self._webhook_service._resolve_agent_system_prompt(self._tenant_id)
+        runtime_prompt = self._webhook_service._prompt_builder.build_runtime_system_prompt(
+            runtime_context=runtime_context,
+            known_patient=self._known_patient,
+        )
+        return self._webhook_service._prompt_builder.compose_base_and_runtime_system_prompt(
+            base_system_prompt=base_prompt,
+            runtime_prompt=runtime_prompt,
+        )
+
+    def generate_reply_with_tools(self) -> str:
+        return self._webhook_service._generate_reply_with_tools(
+            tenant_id=self._tenant_id,
+            conversation_id=self._conversation_id,
+            whatsapp_user_id=self._whatsapp_user_id,
+            llm_messages=self._llm_messages,
+            known_patient=self._known_patient,
+        )
 
 
 class WebhookService:
@@ -89,6 +158,9 @@ class WebhookService:
         context_message_limit: int,
         tracer: langsmith_tracer.LangsmithTracer | None = None,
         sleep_seconds: typing.Callable[[float], None] | None = None,
+        agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
+        runtime_prompt_builder: prompt_builder.RuntimePromptBuilder | None = None,
+        tool_definition_registry: tool_registry.ToolDefinitionRegistry | None = None,
     ) -> None:
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._conversation_repository = conversation_repository
@@ -103,6 +175,19 @@ class WebhookService:
         self._clock = clock
         self._default_system_prompt = default_system_prompt
         self._context_message_limit = context_message_limit
+        self._agent_workflow: agent_workflow_port.AgentWorkflowPort
+        if agent_workflow is None:
+            self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
+        else:
+            self._agent_workflow = agent_workflow
+        if runtime_prompt_builder is None:
+            self._prompt_builder = prompt_builder.RuntimePromptBuilder()
+        else:
+            self._prompt_builder = runtime_prompt_builder
+        if tool_definition_registry is None:
+            self._tool_registry = tool_registry.ToolDefinitionRegistry()
+        else:
+            self._tool_registry = tool_definition_registry
         if tracer is None:
             self._tracer = langsmith_tracer.LangsmithTracer()
         else:
@@ -336,118 +421,6 @@ class WebhookService:
             )
             return
 
-        patient_choice_override_outbound_text = self._handle_waiting_patient_choice_state_message(
-            tenant_id=tenant_id,
-            conversation_id=conversation.id,
-            whatsapp_user_id=event.whatsapp_user_id,
-            latest_user_text=inbound_message.content,
-        )
-        if patient_choice_override_outbound_text is not None:
-            self._send_assistant_message(
-                connection=connection,
-                conversation_id=conversation.id,
-                tenant_id=tenant_id,
-                whatsapp_user_id=event.whatsapp_user_id,
-                text=patient_choice_override_outbound_text,
-            )
-            self._mark_event_processed(tenant_id, event.provider_event_id)
-            logger.info(
-                "webhook.patient_choice_override_sent",
-                extra={
-                    "event_data": app_logs.build_log_event(
-                        event_name="webhook.patient_choice_override_sent",
-                        message="patient choice state override handled before numeric slot selection",
-                        data={
-                            "tenant_id": tenant_id,
-                            "conversation_id": conversation.id,
-                            "provider_event_id": event.provider_event_id,
-                        },
-                    )
-                },
-            )
-            return
-
-        slot_selection_retry_text = self._enforce_required_numeric_slot_selection(
-            tenant_id=tenant_id,
-            conversation_id=conversation.id,
-            latest_user_text=inbound_message.content,
-        )
-        if slot_selection_retry_text is not None:
-            self._send_assistant_message(
-                connection=connection,
-                conversation_id=conversation.id,
-                tenant_id=tenant_id,
-                whatsapp_user_id=event.whatsapp_user_id,
-                text=slot_selection_retry_text,
-            )
-            self._mark_event_processed(tenant_id, event.provider_event_id)
-            logger.info(
-                "webhook.slot_selection_retry_sent",
-                extra={
-                    "event_data": app_logs.build_log_event(
-                        event_name="webhook.slot_selection_retry_sent",
-                        message="customer must choose a slot option by number before continuing",
-                        data={
-                            "tenant_id": tenant_id,
-                            "conversation_id": conversation.id,
-                            "provider_event_id": event.provider_event_id,
-                        },
-                    )
-                },
-            )
-            return
-
-        waiting_state_outbound_text = self._handle_waiting_professional_state_message(
-            tenant_id=tenant_id,
-            conversation_id=conversation.id,
-            whatsapp_user_id=event.whatsapp_user_id,
-            latest_user_text=inbound_message.content,
-        )
-        if waiting_state_outbound_text is not None:
-            self._send_assistant_message(
-                connection=connection,
-                conversation_id=conversation.id,
-                tenant_id=tenant_id,
-                whatsapp_user_id=event.whatsapp_user_id,
-                text=waiting_state_outbound_text,
-            )
-            self._mark_event_processed(tenant_id, event.provider_event_id)
-            logger.info(
-                "webhook.waiting_professional_override_sent",
-                extra={
-                    "event_data": app_logs.build_log_event(
-                        event_name="webhook.waiting_professional_override_sent",
-                        message="customer requested explicit override while waiting professional response",
-                        data={
-                            "tenant_id": tenant_id,
-                            "conversation_id": conversation.id,
-                            "provider_event_id": event.provider_event_id,
-                        },
-                    )
-                },
-            )
-            return
-        if self._is_waiting_professional_state_active(
-            tenant_id=tenant_id,
-            conversation_id=conversation.id,
-        ):
-            self._mark_event_processed(tenant_id, event.provider_event_id)
-            logger.info(
-                "webhook.waiting_professional_silent_skip",
-                extra={
-                    "event_data": app_logs.build_log_event(
-                        event_name="webhook.waiting_professional_silent_skip",
-                        message="customer message persisted and skipped while waiting professional response",
-                        data={
-                            "tenant_id": tenant_id,
-                            "conversation_id": conversation.id,
-                            "provider_event_id": event.provider_event_id,
-                        },
-                    )
-                },
-            )
-            return
-
         history = self._conversation_repository.list_messages(tenant_id, conversation.id)
         history_messages = history[-self._context_message_limit :]
         llm_messages: list[llm_dto.ChatMessageDTO] = []
@@ -478,25 +451,73 @@ class WebhookService:
             tags=["webhook"],
         ) as trace_run:
             try:
-                assistant_text = self._generate_reply_with_tools(
+                runtime_adapter = WebhookConversationWorkflowRuntimeAdapter(
+                    webhook_service=self,
                     tenant_id=tenant_id,
                     conversation_id=conversation.id,
                     whatsapp_user_id=event.whatsapp_user_id,
+                    latest_user_text=inbound_message.content,
                     llm_messages=llm_messages,
                     known_patient=known_patient,
                 )
+                workflow_result = self._agent_workflow.run_conversation_flow(
+                    input_dto=agent_workflow_dto.ConversationWorkflowInputDTO(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation.id,
+                        whatsapp_user_id=event.whatsapp_user_id,
+                        latest_user_text=inbound_message.content,
+                    ),
+                    runtime_port=runtime_adapter,
+                )
+                trace_run.add_metadata(
+                    {
+                        "runtime_state": workflow_result.runtime_state,
+                        "runtime_enabled_tools": workflow_result.enabled_tool_names,
+                        "workflow_reason": workflow_result.reason,
+                    }
+                )
+                if workflow_result.mode == "SKIP_SILENT":
+                    trace_run.set_outputs(
+                        {
+                            "outcome": "skip_silent",
+                            "workflow_reason": workflow_result.reason,
+                        }
+                    )
+                    self._mark_event_processed(tenant_id, event.provider_event_id)
+                    if workflow_result.reason == "WAITING_PROFESSIONAL_SILENT":
+                        logger.info(
+                            "webhook.waiting_professional_silent_skip",
+                            extra={
+                                "event_data": app_logs.build_log_event(
+                                    event_name="webhook.waiting_professional_silent_skip",
+                                    message="customer message persisted and skipped while waiting professional response",
+                                    data={
+                                        "tenant_id": tenant_id,
+                                        "conversation_id": conversation.id,
+                                        "provider_event_id": event.provider_event_id,
+                                    },
+                                )
+                            },
+                        )
+                    return
+                if workflow_result.text is None:
+                    raise service_exceptions.InvalidStateError(
+                        "workflow returned SEND_MESSAGE without text"
+                    )
+
                 outbound_message_provider_id = self._send_assistant_message(
                     connection=connection,
                     conversation_id=conversation.id,
                     tenant_id=tenant_id,
                     whatsapp_user_id=event.whatsapp_user_id,
-                    text=assistant_text,
+                    text=workflow_result.text,
                 )
-                self._archive_new_active_messages_into_latest_subsession_if_booking_occurred(
-                    tenant_id=tenant_id,
-                    conversation_id=conversation.id,
-                    subsessions_count_before_ai_reply=subsessions_count_before_ai_reply,
-                )
+                if workflow_result.reason == "AI_REPLY":
+                    self._archive_new_active_messages_into_latest_subsession_if_booking_occurred(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation.id,
+                        subsessions_count_before_ai_reply=subsessions_count_before_ai_reply,
+                    )
             except service_exceptions.ExternalProviderError as error:
                 trace_run.set_error(str(error))
                 logger.error(
@@ -560,10 +581,60 @@ class WebhookService:
             trace_run.set_outputs(
                 {
                     "outbound_provider_message_id": outbound_message_provider_id,
+                    "workflow_reason": workflow_result.reason,
                 }
             )
 
         self._mark_event_processed(tenant_id, event.provider_event_id)
+        if workflow_result.reason == "PATIENT_CHOICE_OVERRIDE":
+            logger.info(
+                "webhook.patient_choice_override_sent",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.patient_choice_override_sent",
+                        message="patient choice state override handled before numeric slot selection",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation.id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
+            return
+        if workflow_result.reason == "NUMERIC_SLOT_RETRY":
+            logger.info(
+                "webhook.slot_selection_retry_sent",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.slot_selection_retry_sent",
+                        message="customer must choose a slot option by number before continuing",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation.id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
+            return
+        if workflow_result.reason == "WAITING_PROFESSIONAL_OVERRIDE":
+            logger.info(
+                "webhook.waiting_professional_override_sent",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.waiting_professional_override_sent",
+                        message="customer requested explicit override while waiting professional response",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation.id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
+            return
+
         logger.info(
             "webhook.ai_reply_sent",
             extra={
@@ -773,18 +844,6 @@ class WebhookService:
                             )
                         )
                         if (
-                            function_call.name == "request_schedule_approval"
-                            and function_response_payload.get("status")
-                            == "AWAITING_PROFESSIONAL_SLOTS"
-                        ):
-                            trace_run.set_outputs(
-                                {
-                                    "outcome": "request_schedule_approval_ack",
-                                    "iteration": iteration_index + 1,
-                                }
-                            )
-                            return self._build_availability_ack_message()
-                        if (
                             function_call.name == "submit_consultation_reason_for_review"
                             and function_response_payload.get("status")
                             == "AWAITING_CONSULTATION_REVIEW"
@@ -830,8 +889,9 @@ class WebhookService:
         base_system_prompt: str,
         runtime_prompt: str,
     ) -> str:
-        return (
-            f"{base_system_prompt}\n\n### Runtime Context (Generated by Backend)\n{runtime_prompt}"
+        return self._prompt_builder.compose_base_and_runtime_system_prompt(
+            base_system_prompt=base_system_prompt,
+            runtime_prompt=runtime_prompt,
         )
 
     def _build_runtime_system_prompt(
@@ -839,114 +899,16 @@ class WebhookService:
         runtime_context: RuntimePromptContext,
         known_patient: patient_entity.Patient | None,
     ) -> str:
-        prompt_lines = [
-            "INSTRUCCIONES RUNTIME (PRIORIDAD ALTA):",
-            f"- estado_conversacion: {runtime_context.state}",
-        ]
-        if runtime_context.request_id is not None:
-            prompt_lines.append(f"- request_id_activo: {runtime_context.request_id}")
-        if runtime_context.request_status is not None:
-            prompt_lines.append(f"- request_status_activo: {runtime_context.request_status}")
-        if runtime_context.appointment_modality is not None:
-            prompt_lines.append(f"- modalidad_actual: {runtime_context.appointment_modality}")
-        if runtime_context.patient_location is not None:
-            prompt_lines.append(f"- ubicacion_actual: {runtime_context.patient_location}")
-        if runtime_context.patient_preference_note is not None:
-            prompt_lines.append(
-                f"- preferencia_horaria_actual: {runtime_context.patient_preference_note}"
-            )
-        if runtime_context.selected_slot_id is not None:
-            prompt_lines.append(f"- slot_seleccionado_actual: {runtime_context.selected_slot_id}")
-        if runtime_context.professional_note is not None:
-            prompt_lines.append(
-                "Notas del profesional para este paso (si existen, siguela al pedir datos): "
-                f"{runtime_context.professional_note}"
-            )
-
-        if known_patient is None:
-            prompt_lines.append("- Known patient profile: not found")
-        else:
-            known_patient_full_name = (
-                self._build_patient_full_name(
-                    first_name=known_patient.first_name,
-                    last_name=known_patient.last_name,
-                )
-                or known_patient.first_name
-            )
-            prompt_lines.extend(
-                [
-                    "Known patient profile (reuse this context and avoid asking repeated data):",
-                    f"- patient_full_name: {known_patient_full_name}",
-                    f"- patient_email: {known_patient.email}",
-                    f"- patient_age: {known_patient.age}",
-                    f"- consultation_reason: {known_patient.consultation_reason}",
-                    f"- patient_location: {known_patient.location}",
-                    f"- patient_phone: {known_patient.phone}",
-                    "If patient data is already known and still valid, do not ask for it again.",
-                ]
-            )
-
-        prompt_lines.append(
-            "Tools habilitadas en este turno (usa solo estas y ninguna otra): "
-            + ", ".join(runtime_context.enabled_tool_names)
+        return self._prompt_builder.build_runtime_system_prompt(
+            runtime_context=runtime_context,
+            known_patient=known_patient,
         )
-        prompt_lines.extend(self._build_runtime_state_specific_instructions(runtime_context))
-        return "\n".join(prompt_lines)
 
     def _build_runtime_state_specific_instructions(
         self,
         runtime_context: RuntimePromptContext,
     ) -> list[str]:
-        if runtime_context.state == "NO_ACTIVE_REQUEST":
-            return [
-                "Flujo actual: inicio de agendamiento.",
-                "Si la persona quiere agendar, pide primero consultation_reason.",
-                "Apenas tengas consultation_reason claro, llama submit_consultation_reason_for_review.",
-                "No llames request_schedule_approval ni confirm_selected_slot_and_create_event en este estado.",
-            ]
-        if runtime_context.state == "AWAITING_CONSULTATION_DETAILS":
-            return [
-                "Flujo actual: el profesional pidio mas detalle del motivo.",
-                "No repitas la pregunta del motivo base. Pide detalles adicionales del mismo motivo.",
-                "Cuando tengas suficiente contexto adicional, llama submit_consultation_reason_for_review.",
-                "No llames request_schedule_approval ni confirm_selected_slot_and_create_event en este estado.",
-            ]
-        if runtime_context.state == "COLLECTING_PREFERENCES":
-            return [
-                "Flujo actual: motivo aprobado, recolecta preferencias de agenda.",
-                "Recolecta appointment_modality (PRESENCIAL o VIRTUAL) y patient_preference_note.",
-                "Si la modalidad es VIRTUAL y falta ubicacion, pide patient_location.",
-                "Cuando tengas esos datos, llama request_schedule_approval.",
-                "No pidas datos finales de confirmacion antes de enviar request_schedule_approval.",
-            ]
-        if runtime_context.state == "AWAITING_PATIENT_CHOICE":
-            return [
-                "Flujo actual: hay horarios propuestos y se espera una seleccion numerica.",
-                "Si el paciente aun no eligio, recuerda elegir solo con numero de opcion.",
-                "No llames confirm_selected_slot_and_create_event hasta tener slot seleccionado.",
-            ]
-        if runtime_context.state == "COLLECTING_CONFIRMATION_DATA":
-            if runtime_context.missing_confirmation_fields:
-                missing_fields = ", ".join(runtime_context.missing_confirmation_fields)
-                return [
-                    "Flujo actual: ya hay slot seleccionado, completa perfil para confirmar.",
-                    f"Campos faltantes para confirmar: {missing_fields}.",
-                    "Pide solo un campo faltante por mensaje (nunca todo junto).",
-                    "Cuando no falte ningun campo, llama confirm_selected_slot_and_create_event.",
-                ]
-            return [
-                "Flujo actual: ya hay slot seleccionado y no faltan campos de perfil.",
-                "Llama confirm_selected_slot_and_create_event para completar la reserva.",
-            ]
-        if runtime_context.state in (
-            "AWAITING_CONSULTATION_REVIEW",
-            "AWAITING_PROFESSIONAL_SLOTS",
-        ):
-            return [
-                "Flujo actual: esperando respuesta del profesional.",
-                "No avances el flujo de agendamiento mientras este estado siga activo.",
-            ]
-        return ["Mantente en flujo natural y sin mencionar procesos internos."]
+        return self._prompt_builder.build_runtime_state_specific_instructions(runtime_context)
 
     def _resolve_runtime_prompt_context(
         self,
@@ -972,16 +934,6 @@ class WebhookService:
                 request_status=request_status,
                 professional_note=latest_open_request.professional_note,
                 enabled_tool_names=self._enabled_tools_for_state("AWAITING_CONSULTATION_DETAILS"),
-            )
-        if request_status == "COLLECTING_PREFERENCES":
-            return RuntimePromptContext(
-                state="COLLECTING_PREFERENCES",
-                request_id=latest_open_request.request_id,
-                request_status=request_status,
-                appointment_modality=latest_open_request.appointment_modality,
-                patient_location=latest_open_request.patient_location,
-                patient_preference_note=latest_open_request.patient_preference_note,
-                enabled_tool_names=self._enabled_tools_for_state("COLLECTING_PREFERENCES"),
             )
         if request_status == "AWAITING_PATIENT_CHOICE":
             if latest_open_request.selected_slot_id is None:
@@ -1009,6 +961,15 @@ class WebhookService:
                 ),
                 enabled_tool_names=self._enabled_tools_for_state("COLLECTING_CONFIRMATION_DATA"),
             )
+        if request_status == "AWAITING_PAYMENT_CONFIRMATION":
+            return RuntimePromptContext(
+                state="AWAITING_PAYMENT_CONFIRMATION",
+                request_id=latest_open_request.request_id,
+                request_status=request_status,
+                appointment_modality=latest_open_request.appointment_modality,
+                selected_slot_id=latest_open_request.selected_slot_id,
+                enabled_tool_names=self._enabled_tools_for_state("AWAITING_PAYMENT_CONFIRMATION"),
+            )
         if request_status == "AWAITING_CONSULTATION_REVIEW":
             return RuntimePromptContext(
                 state="AWAITING_CONSULTATION_REVIEW",
@@ -1016,16 +977,6 @@ class WebhookService:
                 request_status=request_status,
                 professional_note=latest_open_request.professional_note,
                 enabled_tool_names=self._enabled_tools_for_state("AWAITING_CONSULTATION_REVIEW"),
-            )
-        if request_status == "AWAITING_PROFESSIONAL_SLOTS":
-            return RuntimePromptContext(
-                state="AWAITING_PROFESSIONAL_SLOTS",
-                request_id=latest_open_request.request_id,
-                request_status=request_status,
-                appointment_modality=latest_open_request.appointment_modality,
-                patient_location=latest_open_request.patient_location,
-                patient_preference_note=latest_open_request.patient_preference_note,
-                enabled_tool_names=self._enabled_tools_for_state("AWAITING_PROFESSIONAL_SLOTS"),
             )
         return RuntimePromptContext(
             state="NO_ACTIVE_REQUEST",
@@ -1048,9 +999,8 @@ class WebhookService:
             if request.status in (
                 "AWAITING_CONSULTATION_DETAILS",
                 "AWAITING_CONSULTATION_REVIEW",
-                "COLLECTING_PREFERENCES",
-                "AWAITING_PROFESSIONAL_SLOTS",
                 "AWAITING_PATIENT_CHOICE",
+                "AWAITING_PAYMENT_CONFIRMATION",
             ):
                 return request
         return None
@@ -1062,13 +1012,12 @@ class WebhookService:
                 "handoff_to_human",
                 "cancel_active_scheduling_request",
             ]
-        if state == "COLLECTING_PREFERENCES":
+        if state == "AWAITING_PATIENT_CHOICE":
             return [
-                "request_schedule_approval",
                 "handoff_to_human",
                 "cancel_active_scheduling_request",
             ]
-        if state == "AWAITING_PATIENT_CHOICE":
+        if state == "AWAITING_PAYMENT_CONFIRMATION":
             return [
                 "handoff_to_human",
                 "cancel_active_scheduling_request",
@@ -1190,30 +1139,6 @@ class WebhookService:
                         )
                     },
                 )
-                if function_call.name == "request_schedule_approval":
-                    if self._scheduling_service is None:
-                        result = {"error": "scheduling service is not configured"}
-                        trace_run.set_outputs(self._summarize_tool_result_for_trace(result))
-                        return result
-                    request_input_dto = (
-                        scheduling_dto.RequestScheduleApprovalInputDTO.model_validate(
-                            function_call.args
-                        )
-                    )
-                    request = self._scheduling_service.request_schedule_approval(
-                        tenant_id=tenant_id,
-                        conversation_id=conversation_id,
-                        whatsapp_user_id=whatsapp_user_id,
-                        input_dto=request_input_dto,
-                    )
-                    result = {
-                        "request_id": request.request_id,
-                        "status": request.status,
-                        "round_number": request.round_number,
-                    }
-                    trace_run.set_outputs(self._summarize_tool_result_for_trace(result))
-                    return result
-
                 if function_call.name == "submit_consultation_reason_for_review":
                     if self._scheduling_service is None:
                         result = {"error": "scheduling service is not configured"}
@@ -1264,6 +1189,14 @@ class WebhookService:
                             whatsapp_user_id=resolved_confirm_selection.whatsapp_user_id,
                             patient_profile=resolved_confirm_selection.patient_profile,
                             patient_exists=resolved_confirm_selection.patient_exists,
+                        )
+                        confirm_result["post_booking_instructions"] = (
+                            self._build_post_booking_instructions(
+                                appointment_modality=self._resolve_booked_modality(
+                                    tenant_id=tenant_id,
+                                    conversation_id=conversation_id,
+                                ),
+                            )
                         )
                     trace_run.set_outputs(self._summarize_tool_result_for_trace(confirm_result))
                     return confirm_result
@@ -1482,6 +1415,11 @@ class WebhookService:
             latest_user_text=latest_user_text,
         )
         if slot_id is None:
+            slot_id = self._resolve_slot_id_from_natural_language(
+                request=active_request,
+                latest_user_text=latest_user_text,
+            )
+        if slot_id is None:
             return self._build_slot_selection_retry_message(active_request)
 
         try:
@@ -1493,7 +1431,7 @@ class WebhookService:
             )
         except service_exceptions.ServiceError:
             return self._build_slot_selection_retry_message(active_request)
-        return None
+        return self._build_payment_instructions_message()
 
     def _handle_waiting_patient_choice_state_message(
         self,
@@ -1517,6 +1455,22 @@ class WebhookService:
         normalized_text = latest_user_text.strip()
         if self._numeric_pattern.fullmatch(normalized_text):
             return None
+
+        natural_language_slot_id = self._resolve_slot_id_from_natural_language(
+            request=active_request,
+            latest_user_text=latest_user_text,
+        )
+        if natural_language_slot_id is not None:
+            try:
+                self._scheduling_service.select_slot_for_confirmation(
+                    tenant_id=tenant_id,
+                    conversation_id=conversation_id,
+                    request_id=active_request.request_id,
+                    slot_id=natural_language_slot_id,
+                )
+            except service_exceptions.ServiceError:
+                return self._build_slot_selection_retry_message(active_request)
+            return self._build_payment_instructions_message()
 
         function_calls = self._resolve_patient_choice_override_function_calls(
             latest_user_text=latest_user_text,
@@ -1561,11 +1515,6 @@ class WebhookService:
                 if function_response_payload.get("status") == "CANCELLED":
                     return self._build_cancel_ack_message()
                 return None
-            if function_call.name == "request_schedule_approval":
-                if function_response_payload.get("status") == "AWAITING_PROFESSIONAL_SLOTS":
-                    return self._build_availability_ack_message()
-                return None
-
         return None
 
     def _resolve_patient_choice_override_function_calls(
@@ -1586,7 +1535,6 @@ class WebhookService:
             ],
             tools=self._build_tool_definitions(
                 enabled_tool_names=[
-                    "request_schedule_approval",
                     "handoff_to_human",
                     "cancel_active_scheduling_request",
                 ]
@@ -1673,10 +1621,7 @@ class WebhookService:
             "Los horarios ya fueron propuestos y normalmente debe responder con numero. "
             "Decide si corresponde llamar una funcion: "
             "1) handoff_to_human si pide explicitamente humano, "
-            "2) cancel_active_scheduling_request si pide cancelar, "
-            "3) request_schedule_approval si rechaza los horarios y pide nuevas opciones. "
-            "Si llamas request_schedule_approval debes incluir appointment_modality y "
-            "patient_preference_note actualizado segun el mensaje del paciente. "
+            "2) cancel_active_scheduling_request si pide cancelar. "
             "Si no aplica ninguna, no llames funciones."
         )
 
@@ -1700,8 +1645,8 @@ class WebhookService:
             f"ubicacion_actual: {location_value}\n"
             f"preferencia_actual: {current_preference}\n"
             f"mensaje_paciente: {latest_user_text}\n"
-            "Si el paciente rechaza los horarios, llama request_schedule_approval con request_id_activo "
-            "y una patient_preference_note actualizada."
+            "Si el paciente rechaza los horarios, NO llames ninguna funcion; "
+            "el profesional propondra nuevos horarios desde el panel."
         )
 
     def _resolve_slot_id_from_option_number(
@@ -1713,6 +1658,69 @@ class WebhookService:
         if not self._numeric_pattern.fullmatch(normalized_text):
             return None
         option_number = str(int(normalized_text))
+        selected_slot_id = request.slot_options_map.get(option_number)
+        if selected_slot_id is None:
+            return None
+        if not self._request_contains_proposed_slot(request=request, slot_id=selected_slot_id):
+            return None
+        return selected_slot_id
+
+    def _resolve_slot_id_from_natural_language(
+        self,
+        request: scheduling_dto.SchedulingRequestSummaryDTO,
+        latest_user_text: str,
+    ) -> str | None:
+        slot_by_id: dict[str, scheduling_dto.SchedulingSlotDTO] = {}
+        for slot in request.slots:
+            slot_by_id[slot.slot_id] = slot
+
+        option_lines: list[str] = []
+        for option_number in sorted(request.slot_options_map.keys(), key=int):
+            slot_id = request.slot_options_map[option_number]
+            slot_candidate = slot_by_id.get(slot_id)
+            if slot_candidate is None:
+                continue
+            if slot_candidate.status not in ("PROPOSED", "SELECTED"):
+                continue
+            option_lines.append(
+                scheduling_slot_formatter.format_slot_option_line(
+                    option_number=option_number,
+                    start_at=slot_candidate.start_at,
+                    timezone_name=slot_candidate.timezone,
+                )
+            )
+        if not option_lines:
+            return None
+
+        options_block = "\n".join(option_lines)
+        llm_input = llm_dto.GenerateReplyInputDTO(
+            system_prompt=(
+                "Eres un asistente que mapea la respuesta del paciente a una opcion de horario. "
+                "Responde UNICAMENTE con el numero de opcion que corresponde al mensaje del paciente. "
+                "Si el paciente menciona una fecha, dia u hora que coincida con una de las opciones, "
+                "responde con el numero de esa opcion. "
+                "Si el mensaje no coincide con ninguna opcion o es ambiguo, responde NINGUNA."
+            ),
+            messages=[
+                llm_dto.ChatMessageDTO(
+                    role="user",
+                    content=(
+                        f"Opciones disponibles:\n{options_block}\n\n"
+                        f"Mensaje del paciente: {latest_user_text}\n\n"
+                        "Numero de opcion elegida (o NINGUNA):"
+                    ),
+                )
+            ],
+        )
+        try:
+            llm_reply = self._llm_provider.generate_reply(llm_input)
+        except service_exceptions.ExternalProviderError:
+            return None
+
+        resolved_text = llm_reply.content.strip()
+        if not self._numeric_pattern.fullmatch(resolved_text):
+            return None
+        option_number = str(int(resolved_text))
         selected_slot_id = request.slot_options_map.get(option_number)
         if selected_slot_id is None:
             return None
@@ -1888,6 +1896,49 @@ class WebhookService:
     def _build_availability_ack_message(self) -> str:
         return "Perfecto. Dame un momento y te comparto opciones de horario."
 
+    def _build_payment_instructions_message(self) -> str:
+        return (
+            "Para continuar con el proceso de agendamiento, realiza la transferencia:\n"
+            "• Nequi: 318 732 6409\n"
+            "• A nombre de: Alejandra Escobar\n\n"
+            "Una vez realizado el pago, envíame el comprobante."
+        )
+
+    def _build_post_booking_instructions(
+        self,
+        appointment_modality: str | None,
+    ) -> str:
+        if appointment_modality == "PRESENCIAL":
+            return (
+                "Informacion y recomendaciones:\n"
+                "• Direccion: Calle 13 #78 54, edificio centro ejecutivo, "
+                "oficina 409 (al lado de San Andresito del sur).\n"
+                "• Presentar documento de identidad para el ingreso.\n"
+                "• Llegar con 20 minutos de antelacion y encontrar parqueadero.\n"
+                "• Reprogramaciones con 24 horas de antelacion."
+            )
+        return (
+            "Informacion y recomendaciones:\n"
+            "• Te enviaremos el link de la sesion antes de la cita.\n"
+            "• Reprogramaciones con 24 horas de antelacion."
+        )
+
+    def _resolve_booked_modality(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> str | None:
+        if self._scheduling_service is None:
+            return None
+        request_list = self._scheduling_service.list_requests_by_conversation(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        for request in request_list.items:
+            if request.status == "BOOKED":
+                return request.appointment_modality
+        return None
+
     def _find_latest_waiting_professional_request(
         self,
         tenant_id: str,
@@ -1901,7 +1952,10 @@ class WebhookService:
             conversation_id=conversation_id,
         )
         for request in request_list.items:
-            if request.status in ("AWAITING_CONSULTATION_REVIEW", "AWAITING_PROFESSIONAL_SLOTS"):
+            if request.status in (
+                "AWAITING_CONSULTATION_REVIEW",
+                "AWAITING_PAYMENT_CONFIRMATION",
+            ):
                 return request
         return None
 
@@ -2370,162 +2424,13 @@ class WebhookService:
         return "empty content" in normalized_message
 
     def _build_waiting_state_tool_definitions(self) -> list[llm_dto.FunctionDeclarationDTO]:
-        return [
-            llm_dto.FunctionDeclarationDTO(
-                name="handoff_to_human",
-                description=(
-                    "Pasa la conversacion a modo humano solo cuando el paciente solicita "
-                    "explicitamente la intervencion de una persona humana."
-                ),
-                parameters_json_schema={
-                    "type": "object",
-                    "properties": {
-                        "reason": {"type": "string"},
-                        "summary_for_professional": {"type": "string"},
-                    },
-                    "required": ["reason", "summary_for_professional"],
-                    "additionalProperties": False,
-                },
-            ),
-            llm_dto.FunctionDeclarationDTO(
-                name="cancel_active_scheduling_request",
-                description=(
-                    "Cancela la solicitud de agendamiento activa solo cuando el paciente lo pide "
-                    "explicitamente."
-                ),
-                parameters_json_schema={
-                    "type": "object",
-                    "properties": {
-                        "reason": {"type": "string"},
-                    },
-                    "required": [],
-                    "additionalProperties": False,
-                },
-            ),
-        ]
+        return self._tool_registry.build_waiting_state_tool_definitions()
 
     def _build_tool_definitions(
         self,
         enabled_tool_names: list[str] | None = None,
     ) -> list[llm_dto.FunctionDeclarationDTO]:
-        all_tool_definitions = [
-            llm_dto.FunctionDeclarationDTO(
-                name="submit_consultation_reason_for_review",
-                description=(
-                    "Envia el motivo de consulta para revision del profesional. "
-                    "Llama esta tool apenas tengas consultation_reason; "
-                    "no necesitas nombre, apellido, edad ni otros datos en este paso."
-                ),
-                parameters_json_schema={
-                    "type": "object",
-                    "properties": {
-                        "request_id": {"type": "string"},
-                        "consultation_reason": {"type": "string"},
-                    },
-                    "required": ["consultation_reason"],
-                    "additionalProperties": False,
-                },
-            ),
-            llm_dto.FunctionDeclarationDTO(
-                name="request_schedule_approval",
-                description=(
-                    "Solicita disponibilidad de agenda despues de que el motivo de consulta ya fue aprobado. "
-                    "Recolecta la modalidad (PRESENCIAL o VIRTUAL) y la preferencia de horario del paciente. "
-                    "Si la modalidad es VIRTUAL debes incluir patient_location. "
-                    "Si la modalidad es PRESENCIAL, patient_location se puede omitir porque sera Cali."
-                ),
-                parameters_json_schema={
-                    "type": "object",
-                    "properties": {
-                        "request_id": {"type": "string"},
-                        "appointment_modality": {
-                            "type": "string",
-                            "enum": ["PRESENCIAL", "VIRTUAL"],
-                        },
-                        "patient_location": {"type": "string"},
-                        "patient_preference_note": {"type": "string"},
-                        "hard_constraints": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                        "rejection_summary": {"type": ["string", "null"]},
-                    },
-                    "required": ["appointment_modality", "patient_preference_note"],
-                    "additionalProperties": False,
-                },
-            ),
-            llm_dto.FunctionDeclarationDTO(
-                name="confirm_selected_slot_and_create_event",
-                description=(
-                    "Confirma un horario elegido por el paciente y crea el evento en Google Calendar. "
-                    "Si el perfil del paciente ya existe en contexto, reutilizalo y no repitas preguntas innecesarias. "
-                    "Si el perfil no existe, antes de llamar esta tool recolecta en mensajes separados "
-                    "solo los datos faltantes para confirmar la cita, especialmente patient_full_name, "
-                    "patient_email y patient_phone. "
-                    "patient_phone puede tomarse del numero de WhatsApp si ya esta disponible. "
-                    "consultation_reason debe reutilizarse del motivo ya aprobado; no repreguntes el motivo salvo "
-                    "que el profesional haya pedido mas informacion. "
-                    "No pidas todos los datos en un solo mensaje. "
-                    "La eleccion del horario se hace por numero de opcion y el backend persiste esa seleccion. "
-                    "Si slot_id no se incluye, el backend usara el slot ya seleccionado por el paciente."
-                ),
-                parameters_json_schema={
-                    "type": "object",
-                    "properties": {
-                        "request_id": {"type": "string"},
-                        "slot_id": {"type": "string"},
-                        "patient_full_name": {"type": "string"},
-                        "patient_email": {"type": "string"},
-                        "patient_phone": {"type": "string"},
-                        "patient_age": {"type": ["integer", "string"]},
-                        "consultation_reason": {"type": "string"},
-                        "patient_location": {"type": "string"},
-                    },
-                    "required": [],
-                    "additionalProperties": False,
-                },
-            ),
-            llm_dto.FunctionDeclarationDTO(
-                name="handoff_to_human",
-                description=(
-                    "Pasa la conversacion a modo humano solo cuando el paciente solicita "
-                    "explicitamente la intervencion de una persona humana."
-                ),
-                parameters_json_schema={
-                    "type": "object",
-                    "properties": {
-                        "reason": {"type": "string"},
-                        "summary_for_professional": {"type": "string"},
-                    },
-                    "required": ["reason", "summary_for_professional"],
-                    "additionalProperties": False,
-                },
-            ),
-            llm_dto.FunctionDeclarationDTO(
-                name="cancel_active_scheduling_request",
-                description=(
-                    "Cancela la solicitud de agendamiento activa solo cuando el paciente lo pide "
-                    "explicitamente."
-                ),
-                parameters_json_schema={
-                    "type": "object",
-                    "properties": {
-                        "reason": {"type": "string"},
-                    },
-                    "required": [],
-                    "additionalProperties": False,
-                },
-            ),
-        ]
-        if enabled_tool_names is None:
-            return all_tool_definitions
-
-        enabled_tool_name_set = set(enabled_tool_names)
-        filtered_tool_definitions: list[llm_dto.FunctionDeclarationDTO] = []
-        for tool_definition in all_tool_definitions:
-            if tool_definition.name in enabled_tool_name_set:
-                filtered_tool_definitions.append(tool_definition)
-        return filtered_tool_definitions
+        return self._tool_registry.build_tool_definitions(enabled_tool_names=enabled_tool_names)
 
     def _conversation_has_provider_message_id(
         self,

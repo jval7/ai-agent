@@ -75,7 +75,7 @@ vitestModule.describe("AgendaPage", () => {
         conversationId: "conv-1",
         whatsappUserId: "wa-1",
         requestKind: "INITIAL",
-        status: "AWAITING_PROFESSIONAL_SLOTS",
+        status: "AWAITING_CONSULTATION_REVIEW",
         roundNumber: 1,
         patientPreferenceNote: "prefiere tarde",
         rejectionSummary: null,
@@ -136,18 +136,6 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agendamiento en Curso/
-      })
-    );
-
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Pendiente Slots/
-      })
-    );
-
     await testingLibraryReactModule.waitFor(() => {
       expect(testingLibraryReactModule.screen.getByText("req-1")).toBeInTheDocument();
     });
@@ -169,12 +157,21 @@ vitestModule.describe("AgendaPage", () => {
 
     await testingLibraryReactModule.waitFor(() => {
       expect(
+        testingLibraryReactModule.screen.getByText("Listo, enviado al paciente.")
+      ).toBeInTheDocument();
+    });
+
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", {
+        name: /Agendamiento en Curso/
+      })
+    );
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(
         testingLibraryReactModule.screen.getByRole("button", {
           name: /Esperando Paciente \(1\)/
         })
-      ).toBeInTheDocument();
-      expect(
-        testingLibraryReactModule.screen.getByText("Listo, enviado al paciente.")
       ).toBeInTheDocument();
     });
   });

@@ -3,6 +3,7 @@
 ## Estado actual
 - Backend MVP multi-tenant para atención por WhatsApp.
 - Stack: FastAPI + arquitectura hexagonal + persistencia en Firestore.
+- Orquestación agéntica: LangGraph en `src/services/agentic`.
 - Providers activos:
   - WhatsApp: Meta Cloud API.
   - LLM: Gemini en Vertex AI (`GEMINI_*`).
@@ -21,6 +22,7 @@
 ## Estructura de capas
 - `src/entrypoints/web`: capa HTTP (routers, handlers, dependencias auth).
 - `src/services`: casos de uso y DTOs principales.
+- `src/services/agentic`: grafos y engine de orquestación (`ConversationGraph`, `SchedulingTransitionGraph`).
 - `src/ports`: contratos/interfaces para adapters.
 - `src/adapters/outbound`: implementaciones concretas (Meta, Gemini, seguridad, Firestore, in-memory para tests).
 - `src/domain`: entidades/agregados Pydantic.
@@ -78,8 +80,53 @@
 
 ## Persistencia actual
 - Firestore como almacenamiento principal de estado de dominio.
+- El estado del grafo se ejecuta en memoria por invocación; no reemplaza entidades de dominio.
 - Refresh tokens persistidos y revocados en Firestore (rotación estricta).
 - Endpoints dev (`/v1/dev/memory/reset` y `/v1/dev/memory/chat/reset`) limpian estado en Firestore.
+
+## Flujo LangGraph (detallado)
+- Cada mensaje inbound dispara una ejecución nueva del grafo desde `START`.
+- En esta iteración no hay `checkpointer` ni `thread_id`; no se reanuda en nodo intermedio.
+- La continuidad del proceso depende de estado persistido en Firestore (por ejemplo, `SchedulingRequest.status`, `Conversation.control_mode`).
+
+### ConversationGraph (webhook AI path)
+```mermaid
+flowchart TD
+    A["START"] --> B["load_runtime_context"]
+    B --> C["guard_waiting_patient_choice_override"]
+
+    C -->|continue| D["guard_required_numeric_slot_selection"]
+    C -->|stop| Z1["END: SEND_MESSAGE (PATIENT_CHOICE_OVERRIDE)"]
+
+    D -->|continue| E["guard_waiting_professional_override"]
+    D -->|stop| Z2["END: SEND_MESSAGE (NUMERIC_SLOT_RETRY)"]
+
+    E -->|continue| F["guard_waiting_professional_silent"]
+    E -->|stop| Z3["END: SEND_MESSAGE (WAITING_PROFESSIONAL_OVERRIDE)"]
+
+    F -->|continue| G["build_prompt_context"]
+    F -->|stop| Z4["END: SKIP_SILENT (WAITING_PROFESSIONAL_SILENT)"]
+
+    G --> H["call_llm"]
+    H --> I["execute_tools"]
+    I --> J["decide_terminal_output"]
+    J --> K["END"]
+```
+
+Nodos: 9 (`load_runtime_context`, `guard_waiting_patient_choice_override`, `guard_required_numeric_slot_selection`, `guard_waiting_professional_override`, `guard_waiting_professional_silent`, `build_prompt_context`, `call_llm`, `execute_tools`, `decide_terminal_output`).
+
+### SchedulingTransitionGraph (transiciones de agenda)
+```mermaid
+flowchart TD
+    A["START"] --> B["validate_transition"]
+    B --> C["apply_transition"]
+    C --> D["execute_side_effects"]
+    D --> E["persist_transition"]
+    E --> F["build_output"]
+    F --> G["END"]
+```
+
+Nodos: 5 (`validate_transition`, `apply_transition`, `execute_side_effects`, `persist_transition`, `build_output`).
 
 ## Logging y errores
 - Logging estructurado JSON en `stdout`.

@@ -543,6 +543,30 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     };
   }
 
+  async resolvePaymentReview(
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.ResolvePaymentReviewInput
+  ): Promise<schedulingModel.ResolvePaymentReviewResult> {
+    const payload = await this.request<httpTypes.ResolvePaymentReviewApiResponse>(
+      `/v1/conversations/${conversationId}/scheduling/requests/${requestId}/payment-review`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          decision: input.decision,
+          professional_note: input.professionalNote
+        } satisfies httpTypes.ResolvePaymentReviewApiRequest)
+      }
+    );
+
+    return {
+      status: payload.status,
+      outboundMessageId: payload.outbound_message_id,
+      assistantText: payload.assistant_text
+    };
+  }
+
   async rescheduleBookedSlot(
     requestId: string,
     input: schedulingModel.RescheduleBookedSlotInput
@@ -806,6 +830,7 @@ function mapSchedulingRequestSummary(
     whatsappUserId: payload.whatsapp_user_id,
     requestKind: payload.request_kind,
     status: payload.status,
+    audienceType: payload.audience_type ?? null,
     roundNumber: payload.round_number,
     patientPreferenceNote: payload.patient_preference_note,
     rejectionSummary: payload.rejection_summary,

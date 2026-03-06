@@ -12,7 +12,8 @@ vitestModule.describe("SchedulingUseCase", () => {
       conversationId: "conv-1",
       whatsappUserId: "wa-1",
       requestKind: "INITIAL",
-      status: "AWAITING_PROFESSIONAL_SLOTS",
+      status: "AWAITING_CONSULTATION_REVIEW",
+      audienceType: null,
       roundNumber: 1,
       patientPreferenceNote: "prefiere tarde",
       rejectionSummary: null,
@@ -51,7 +52,7 @@ vitestModule.describe("SchedulingUseCase", () => {
         assistantText: "Listo"
       })),
       resolveConsultationReview: vitestModule.vi.fn(async () => ({
-        status: "COLLECTING_PREFERENCES",
+        status: "AWAITING_CONSULTATION_DETAILS",
         outboundMessageId: "wamid-2",
         assistantText: "Perfecto, continuemos."
       })),
@@ -71,7 +72,7 @@ vitestModule.describe("SchedulingUseCase", () => {
     } as Partial<backendApiPort.BackendApiPort> as backendApiPort.BackendApiPort;
 
     const useCase = new schedulingUseCaseModule.SchedulingUseCase(apiMock);
-    const requests = await useCase.listRequests("AWAITING_PROFESSIONAL_SLOTS");
+    const requests = await useCase.listRequests("AWAITING_CONSULTATION_REVIEW");
     const conversationRequests = await useCase.listRequestsByConversation("conv-1");
     const availability = await useCase.getAvailability(
       "2026-03-01T00:00:00Z",
