@@ -79,8 +79,8 @@ class RuntimePromptBuilder:
         if runtime_context.state == "NO_ACTIVE_REQUEST":
             return [
                 "Flujo actual: inicio de agendamiento.",
-                "Si la persona quiere agendar, pide en formato lista con bullet points:",
-                "• Nombre",
+                "Si aun no conoces el nombre del paciente, pidelo antes de avanzar. No pidas mas datos en ese mensaje.",
+                "Si ya tienes el nombre pero falta motivo o modalidad, pide en formato lista con bullet points:",
                 "• Motivo de consulta",
                 "• Modalidad: presencial o virtual",
                 "Si la modalidad es VIRTUAL, pide tambien patient_location.",

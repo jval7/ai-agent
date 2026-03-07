@@ -315,12 +315,6 @@ vitestModule.describe("AgendaPage", () => {
         })
       );
 
-      testingLibraryReactModule.fireEvent.click(
-        testingLibraryReactModule.screen.getByRole("button", {
-          name: /Agendadas/
-        })
-      );
-
       await testingLibraryReactModule.waitFor(() => {
         expect(
           testingLibraryReactModule.screen.getByText("Calendario de citas agendadas")
@@ -452,11 +446,6 @@ vitestModule.describe("AgendaPage", () => {
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", {
         name: /Agenda e Historial/
-      })
-    );
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agendadas/
       })
     );
 
@@ -834,14 +823,14 @@ vitestModule.describe("AgendaPage", () => {
         name: /Agenda e Historial/
       })
     );
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agendadas/
-      })
-    );
+
+    const expandCancelButton = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Cancelar"
+    });
+    testingLibraryReactModule.fireEvent.click(expandCancelButton);
 
     const cancelButton = await testingLibraryReactModule.screen.findByRole("button", {
-      name: "Cancelar cita bot"
+      name: "Cancelar cita"
     });
     testingLibraryReactModule.fireEvent.click(cancelButton);
 
@@ -941,9 +930,6 @@ vitestModule.describe("AgendaPage", () => {
 
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", { name: /Agenda e Historial/ })
-    );
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", { name: /Agendadas/ })
     );
 
     await testingLibraryReactModule.waitFor(() => {
@@ -1095,13 +1081,15 @@ vitestModule.describe("AgendaPage", () => {
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", { name: /Agenda e Historial/ })
     );
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", { name: /Agendadas/ })
-    );
+
+    const expandPaymentButton = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Agregar pago"
+    });
+    testingLibraryReactModule.fireEvent.click(expandPaymentButton);
 
     await testingLibraryReactModule.waitFor(() => {
       expect(
-        testingLibraryReactModule.screen.getByRole("button", { name: "Guardar pago chatbot" })
+        testingLibraryReactModule.screen.getByRole("button", { name: "Guardar pago" })
       ).toBeInTheDocument();
     });
 
@@ -1114,7 +1102,7 @@ vitestModule.describe("AgendaPage", () => {
       }
     );
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", { name: "Guardar pago chatbot" })
+      testingLibraryReactModule.screen.getByRole("button", { name: "Guardar pago" })
     );
 
     await testingLibraryReactModule.waitFor(() => {

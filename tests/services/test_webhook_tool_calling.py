@@ -1565,7 +1565,11 @@ def test_webhook_requires_numeric_slot_option_before_continuing() -> None:
 
     provider = fake_adapters.FakeWhatsappProvider()
     llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = []
+    llm_provider.queued_replies = [
+        llm_dto.AgentReplyDTO(content="unused"),  # NL slot resolution
+        llm_dto.AgentReplyDTO(content="unused"),  # override function detection
+        llm_dto.AgentReplyDTO(content="NINGUNA"),  # slot rejection detection
+    ]
     id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
     clock = fake_adapters.FixedClock(now_value)
     google_provider = fake_adapters.FakeGoogleCalendarProvider()
@@ -1623,7 +1627,7 @@ def test_webhook_requires_numeric_slot_option_before_continuing() -> None:
     assert "solo con el numero" in provider.sent_messages[0]["text"].lower()
     assert "de marzo a las" in provider.sent_messages[0]["text"].lower()
     assert "T08:00:00" not in provider.sent_messages[0]["text"]
-    assert len(llm_provider.calls) == 3
+    assert len(llm_provider.calls) == 4
 
 
 def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:

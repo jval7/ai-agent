@@ -11,6 +11,7 @@ import * as dateUtilsModule from "@shared/utils/date";
 
 const conversationsQueryKey = ["conversations"] as const;
 const blacklistQueryKey = ["blacklist"] as const;
+const patientsQueryKey = ["patients"] as const;
 
 export function InboxPage() {
   const appContainer = appContainerContextModule.useAppContainer();
@@ -25,6 +26,25 @@ export function InboxPage() {
     queryKey: blacklistQueryKey,
     queryFn: () => appContainer.blacklistUseCase.list()
   });
+
+  const patientsQuery = reactQueryModule.useQuery({
+    queryKey: patientsQueryKey,
+    queryFn: () => appContainer.patientUseCase.listPatients()
+  });
+
+  const patientNameByWhatsappId = reactModule.useMemo(() => {
+    const map = new Map<string, string>();
+    if (patientsQuery.data === undefined) {
+      return map;
+    }
+    for (const patient of patientsQuery.data) {
+      const fullName = `${patient.firstName} ${patient.lastName}`.trim();
+      if (fullName !== "") {
+        map.set(patient.whatsappUserId, fullName);
+      }
+    }
+    return map;
+  }, [patientsQuery.data]);
 
   const [selectedConversationId, setSelectedConversationId] = reactModule.useState<string | null>(
     null
@@ -125,6 +145,7 @@ export function InboxPage() {
               const isResettingConversation =
                 resetMessagesMutation.isPending &&
                 resetMessagesMutation.variables === conversation.conversationId;
+              const patientName = patientNameByWhatsappId.get(conversation.whatsappUserId);
               return (
                 <article
                   className={[
@@ -143,9 +164,16 @@ export function InboxPage() {
                     type="button"
                   >
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-semibold text-brand-ink">
-                        {conversation.whatsappUserId}
-                      </p>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-brand-ink">
+                          {patientName ?? conversation.whatsappUserId}
+                        </p>
+                        {patientName !== undefined ? (
+                          <p className="truncate text-[11px] text-slate-400">
+                            {conversation.whatsappUserId}
+                          </p>
+                        ) : null}
+                      </div>
                       <statusBadgeModule.StatusBadge
                         label={conversation.controlMode}
                         tone={conversation.controlMode === "AI" ? "success" : "warning"}
@@ -182,7 +210,10 @@ export function InboxPage() {
           <header className="border-b border-border-subtle px-5 py-4">
             <h2 className="text-base font-semibold">Mensajes</h2>
             {selectedConversation !== undefined ? (
-              <p className="text-xs text-slate-500">{selectedConversation.whatsappUserId}</p>
+              <p className="text-xs text-slate-500">
+                {patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
+                  selectedConversation.whatsappUserId}
+              </p>
             ) : (
               <p className="text-xs text-slate-500">Selecciona una conversación.</p>
             )}

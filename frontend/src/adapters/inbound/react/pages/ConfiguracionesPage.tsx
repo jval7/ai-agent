@@ -6,6 +6,7 @@ import * as appContainerContextModule from "@adapters/inbound/react/app/AppConta
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
+import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
 import * as uiErrorModule from "@shared/http/ui_error";
 import * as dateUtilsModule from "@shared/utils/date";
 
@@ -29,6 +30,14 @@ function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   return <statusBadgeModule.StatusBadge label="DISCONNECTED" tone="danger" />;
 }
 
+type ConfigTab = "conexiones" | "prompt" | "ajustes";
+
+const CONFIG_TABS: { id: ConfigTab; label: string }[] = [
+  { id: "conexiones", label: "Conexiones" },
+  { id: "prompt", label: "System Prompt" },
+  { id: "ajustes", label: "Ajustes del agente" }
+];
+
 export function ConfiguracionesPage() {
   const appContainer = appContainerContextModule.useAppContainer();
   const navigate = reactRouterDomModule.useNavigate();
@@ -37,6 +46,8 @@ export function ConfiguracionesPage() {
     () => new URLSearchParams(location.search),
     [location.search]
   );
+
+  const [activeTab, setActiveTab] = reactModule.useState<ConfigTab>("conexiones");
 
   // --- Onboarding queries ---
   const whatsappConnectionQuery = reactQueryModule.useQuery({
@@ -162,215 +173,251 @@ export function ConfiguracionesPage() {
         ) : null}
       </section>
 
-      {/* Conexiones */}
-      <h2 className="mt-4 text-lg font-semibold text-brand-ink">Conexiones</h2>
-      <section className="mt-2 grid max-w-5xl gap-6 md:grid-cols-2">
-        <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <h3 className="text-xl font-semibold text-brand-ink">WhatsApp</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Conecta la linea de negocio para recibir y responder chats.
-          </p>
-          <div className="mt-4 flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-700">Estado actual:</span>
-            {buildConnectionStatusBadge(whatsappConnectionQuery.data?.status)}
-          </div>
-          {whatsappConnectionQuery.data !== undefined ? (
-            <div className="mt-4 space-y-2 text-sm text-slate-700">
-              <p>
-                <strong>Tenant:</strong> {whatsappConnectionQuery.data.tenantId}
+      {/* Tabs */}
+      <nav className="mt-4 flex gap-1 border-b border-border-subtle">
+        {CONFIG_TABS.map((tab) => (
+          <button
+            className={[
+              "px-4 py-2.5 text-sm font-medium transition-colors",
+              activeTab === tab.id
+                ? "border-b-2 border-brand-teal text-brand-teal"
+                : "text-slate-500 hover:text-slate-700"
+            ].join(" ")}
+            key={tab.id}
+            onClick={() => {
+              setActiveTab(tab.id);
+            }}
+            type="button"
+          >
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* --- Conexiones --- */}
+      {activeTab === "conexiones" ? (
+        <>
+          <section className="mt-6 grid max-w-5xl gap-6 md:grid-cols-2">
+            <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+              <h3 className="text-xl font-semibold text-brand-ink">WhatsApp</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Conecta la linea de negocio para recibir y responder chats.
               </p>
-              <p>
-                <strong>Phone Number ID:</strong>{" "}
-                {whatsappConnectionQuery.data.phoneNumberId ?? "-"}
+              <div className="mt-4 flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-700">Estado actual:</span>
+                {buildConnectionStatusBadge(whatsappConnectionQuery.data?.status)}
+              </div>
+              {whatsappConnectionQuery.data !== undefined ? (
+                <div className="mt-4 space-y-2 text-sm text-slate-700">
+                  <p>
+                    <strong>Tenant:</strong> {whatsappConnectionQuery.data.tenantId}
+                  </p>
+                  <p>
+                    <strong>Phone Number ID:</strong>{" "}
+                    {whatsappConnectionQuery.data.phoneNumberId ?? "-"}
+                  </p>
+                  <p>
+                    <strong>Business Account ID:</strong>{" "}
+                    {whatsappConnectionQuery.data.businessAccountId ?? "-"}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="mt-6">
+                <button
+                  className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={whatsappSessionMutation.isPending}
+                  onClick={() => {
+                    whatsappSessionMutation.mutate();
+                  }}
+                  type="button"
+                >
+                  {whatsappSessionMutation.isPending ? "Abriendo Meta..." : "Conectar con Meta"}
+                </button>
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+              <h3 className="text-xl font-semibold text-brand-ink">Google Calendar</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Conecta el calendario principal del profesional para disponibilidad y agenda.
               </p>
-              <p>
-                <strong>Business Account ID:</strong>{" "}
-                {whatsappConnectionQuery.data.businessAccountId ?? "-"}
-              </p>
-            </div>
+              <div className="mt-4 flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-700">Estado actual:</span>
+                {buildConnectionStatusBadge(googleCalendarConnectionQuery.data?.status)}
+              </div>
+              {googleCalendarConnectionQuery.data !== undefined ? (
+                <div className="mt-4 space-y-2 text-sm text-slate-700">
+                  <p>
+                    <strong>Tenant:</strong> {googleCalendarConnectionQuery.data.tenantId}
+                  </p>
+                  <p>
+                    <strong>Calendar ID:</strong>{" "}
+                    {googleCalendarConnectionQuery.data.calendarId ?? "-"}
+                  </p>
+                  <p>
+                    <strong>Timezone:</strong>{" "}
+                    {googleCalendarConnectionQuery.data.professionalTimezone ?? "-"}
+                  </p>
+                  <p>
+                    <strong>Connected At:</strong>{" "}
+                    {googleCalendarConnectionQuery.data.connectedAt !== null
+                      ? dateUtilsModule.formatDateTime(
+                          googleCalendarConnectionQuery.data.connectedAt
+                        )
+                      : "-"}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="mt-6">
+                <button
+                  className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={googleSessionMutation.isPending}
+                  onClick={() => {
+                    googleSessionMutation.mutate();
+                  }}
+                  type="button"
+                >
+                  {googleSessionMutation.isPending
+                    ? "Abriendo Google..."
+                    : "Conectar Google Calendar"}
+                </button>
+              </div>
+            </article>
+          </section>
+
+          <section className="mt-4 grid max-w-5xl gap-6 md:grid-cols-2">
+            <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+              <h3 className="text-lg font-semibold text-brand-ink">Estado general</h3>
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-700">Estado:</span>
+                {statusBadgeElement}
+              </div>
+              <div className="mt-4 space-y-2 text-sm text-slate-700">
+                <p>
+                  WhatsApp conectado:{" "}
+                  {onboardingStatusQuery.data?.whatsappConnected === true ? "si" : "no"}
+                </p>
+                <p>
+                  Google Calendar conectado:{" "}
+                  {onboardingStatusQuery.data?.googleCalendarConnected === true ? "si" : "no"}
+                </p>
+              </div>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                  onClick={() => {
+                    void queryClient.invalidateQueries({
+                      queryKey: whatsappConnectionQueryKey
+                    });
+                    void queryClient.invalidateQueries({
+                      queryKey: googleCalendarConnectionQueryKey
+                    });
+                    void queryClient.invalidateQueries({ queryKey: onboardingStatusQueryKey });
+                  }}
+                  type="button"
+                >
+                  Refrescar estado
+                </button>
+                <button
+                  className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={onboardingStatusQuery.data?.ready !== true}
+                  onClick={() => {
+                    void navigate("/inbox");
+                  }}
+                  type="button"
+                >
+                  Ir a Inbox
+                </button>
+              </div>
+            </article>
+          </section>
+
+          {onboardingErrorMessage !== null ? (
+            <errorBannerModule.ErrorBanner className="mt-4" message={onboardingErrorMessage} />
           ) : null}
-
-          <div className="mt-6">
-            <button
-              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={whatsappSessionMutation.isPending}
-              onClick={() => {
-                whatsappSessionMutation.mutate();
-              }}
-              type="button"
-            >
-              {whatsappSessionMutation.isPending ? "Abriendo Meta..." : "Conectar con Meta"}
-            </button>
-          </div>
-        </article>
-
-        <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <h3 className="text-xl font-semibold text-brand-ink">Google Calendar</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Conecta el calendario principal del profesional para disponibilidad y agenda.
-          </p>
-          <div className="mt-4 flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-700">Estado actual:</span>
-            {buildConnectionStatusBadge(googleCalendarConnectionQuery.data?.status)}
-          </div>
-          {googleCalendarConnectionQuery.data !== undefined ? (
-            <div className="mt-4 space-y-2 text-sm text-slate-700">
-              <p>
-                <strong>Tenant:</strong> {googleCalendarConnectionQuery.data.tenantId}
-              </p>
-              <p>
-                <strong>Calendar ID:</strong> {googleCalendarConnectionQuery.data.calendarId ?? "-"}
-              </p>
-              <p>
-                <strong>Timezone:</strong>{" "}
-                {googleCalendarConnectionQuery.data.professionalTimezone ?? "-"}
-              </p>
-              <p>
-                <strong>Connected At:</strong>{" "}
-                {googleCalendarConnectionQuery.data.connectedAt !== null
-                  ? dateUtilsModule.formatDateTime(googleCalendarConnectionQuery.data.connectedAt)
-                  : "-"}
-              </p>
-            </div>
-          ) : null}
-
-          <div className="mt-6">
-            <button
-              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={googleSessionMutation.isPending}
-              onClick={() => {
-                googleSessionMutation.mutate();
-              }}
-              type="button"
-            >
-              {googleSessionMutation.isPending ? "Abriendo Google..." : "Conectar Google Calendar"}
-            </button>
-          </div>
-        </article>
-      </section>
-
-      <section className="mt-4 grid max-w-5xl gap-6 md:grid-cols-2">
-        <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <h3 className="text-lg font-semibold text-brand-ink">Estado general</h3>
-          <div className="mt-3 flex items-center gap-2">
-            <span className="text-sm font-medium text-slate-700">Estado:</span>
-            {statusBadgeElement}
-          </div>
-          <div className="mt-4 space-y-2 text-sm text-slate-700">
-            <p>
-              WhatsApp conectado:{" "}
-              {onboardingStatusQuery.data?.whatsappConnected === true ? "si" : "no"}
-            </p>
-            <p>
-              Google Calendar conectado:{" "}
-              {onboardingStatusQuery.data?.googleCalendarConnected === true ? "si" : "no"}
-            </p>
-          </div>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-              onClick={() => {
-                void queryClient.invalidateQueries({ queryKey: whatsappConnectionQueryKey });
-                void queryClient.invalidateQueries({ queryKey: googleCalendarConnectionQueryKey });
-                void queryClient.invalidateQueries({ queryKey: onboardingStatusQueryKey });
-              }}
-              type="button"
-            >
-              Refrescar estado
-            </button>
-            <button
-              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={onboardingStatusQuery.data?.ready !== true}
-              onClick={() => {
-                void navigate("/inbox");
-              }}
-              type="button"
-            >
-              Ir a Inbox
-            </button>
-          </div>
-        </article>
-      </section>
-
-      {onboardingErrorMessage !== null ? (
-        <errorBannerModule.ErrorBanner className="mt-4" message={onboardingErrorMessage} />
+        </>
       ) : null}
 
-      {/* System Prompt */}
-      <h2 className="mt-8 text-lg font-semibold text-brand-ink">System Prompt</h2>
-      <section className="mt-2 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-        <p className="text-sm text-slate-600">
-          Define el comportamiento base del agente por tenant.
-        </p>
-
-        <textarea
-          className="mt-4 min-h-[350px] w-full rounded-lg border border-border-subtle px-3 py-2 text-sm leading-6 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-          onChange={(event) => {
-            setSystemPrompt(event.target.value);
-          }}
-          value={systemPrompt}
-        />
-
-        {promptErrorMessage !== null ? (
-          <errorBannerModule.ErrorBanner className="mt-3" message={promptErrorMessage} />
-        ) : null}
-
-        <div className="mt-4 flex gap-3">
-          <button
-            className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={updateMutation.isPending || promptQuery.isLoading}
-            onClick={() => {
-              updateMutation.mutate();
-            }}
-            type="button"
-          >
-            {updateMutation.isPending ? "Guardando..." : "Guardar prompt"}
-          </button>
-        </div>
-      </section>
-
-      {/* Ajustes del agente */}
-      <h2 className="mt-8 text-lg font-semibold text-brand-ink">Ajustes del agente</h2>
-      <section className="mt-2 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-        <div>
-          <label className="block text-sm font-medium text-slate-700" htmlFor="debounce-delay">
-            Delay de respuesta (segundos)
-          </label>
-          <p className="mt-0.5 text-xs text-slate-500">
-            Tiempo de espera despues de procesar un mensaje antes de responder. Permite capturar
-            mensajes adicionales enviados en rafaga. 0 = sin espera.
+      {/* --- System Prompt --- */}
+      {activeTab === "prompt" ? (
+        <section className="mt-6 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+          <p className="mb-4 text-sm text-slate-600">
+            Define el comportamiento base del agente. Usa etiquetas XML para organizar secciones
+            colapsables.
           </p>
-          <input
-            className="mt-2 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-            id="debounce-delay"
-            max={30}
-            min={0}
-            onChange={(event) => {
-              setDebounceDelay(Number(event.target.value));
+
+          <xmlTagEditorModule.XmlTagEditor
+            disabled={updateMutation.isPending || promptQuery.isLoading}
+            onChange={(nextValue) => {
+              setSystemPrompt(nextValue);
             }}
-            step={1}
-            type="number"
-            value={debounceDelay}
+            value={systemPrompt}
           />
-        </div>
 
-        {settingsErrorMessage !== null ? (
-          <errorBannerModule.ErrorBanner className="mt-3" message={settingsErrorMessage} />
-        ) : null}
+          {promptErrorMessage !== null ? (
+            <errorBannerModule.ErrorBanner className="mt-3" message={promptErrorMessage} />
+          ) : null}
 
-        <div className="mt-4 flex gap-3">
-          <button
-            className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={settingsMutation.isPending || settingsQuery.isLoading}
-            onClick={() => {
-              settingsMutation.mutate();
-            }}
-            type="button"
-          >
-            {settingsMutation.isPending ? "Guardando..." : "Guardar configuracion"}
-          </button>
-        </div>
-      </section>
+          <div className="mt-4 flex gap-3">
+            <button
+              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={updateMutation.isPending || promptQuery.isLoading}
+              onClick={() => {
+                updateMutation.mutate();
+              }}
+              type="button"
+            >
+              {updateMutation.isPending ? "Guardando..." : "Guardar prompt"}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {/* --- Ajustes del agente --- */}
+      {activeTab === "ajustes" ? (
+        <section className="mt-6 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+          <div>
+            <label className="block text-sm font-medium text-slate-700" htmlFor="debounce-delay">
+              Delay de respuesta (segundos)
+            </label>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Tiempo de espera despues de procesar un mensaje antes de responder. Permite capturar
+              mensajes adicionales enviados en rafaga. 0 = sin espera.
+            </p>
+            <input
+              className="mt-2 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+              id="debounce-delay"
+              max={30}
+              min={0}
+              onChange={(event) => {
+                setDebounceDelay(Number(event.target.value));
+              }}
+              step={1}
+              type="number"
+              value={debounceDelay}
+            />
+          </div>
+
+          {settingsErrorMessage !== null ? (
+            <errorBannerModule.ErrorBanner className="mt-3" message={settingsErrorMessage} />
+          ) : null}
+
+          <div className="mt-4 flex gap-3">
+            <button
+              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={settingsMutation.isPending || settingsQuery.isLoading}
+              onClick={() => {
+                settingsMutation.mutate();
+              }}
+              type="button"
+            >
+              {settingsMutation.isPending ? "Guardando..." : "Guardar configuracion"}
+            </button>
+          </div>
+        </section>
+      ) : null}
     </appShellModule.AppShell>
   );
 }

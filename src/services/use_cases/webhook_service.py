@@ -1623,6 +1623,18 @@ class WebhookService:
                 if function_response_payload.get("status") == "CANCELLED":
                     return self._build_cancel_ack_message()
                 return None
+
+        patient_preference = self._detect_slot_rejection_preference(
+            latest_user_text=latest_user_text,
+            active_request=active_request,
+        )
+        if patient_preference is not None:
+            return self._escalate_slot_rejection(
+                tenant_id=tenant_id,
+                active_request=active_request,
+                patient_preference=patient_preference,
+            )
+
         return None
 
     def _resolve_patient_choice_override_function_calls(
@@ -1835,6 +1847,105 @@ class WebhookService:
         if not self._request_contains_proposed_slot(request=request, slot_id=selected_slot_id):
             return None
         return selected_slot_id
+
+    def _detect_slot_rejection_preference(
+        self,
+        latest_user_text: str,
+        active_request: scheduling_dto.SchedulingRequestSummaryDTO,
+    ) -> str | None:
+        slot_by_id: dict[str, scheduling_dto.SchedulingSlotDTO] = {}
+        for slot in active_request.slots:
+            slot_by_id[slot.slot_id] = slot
+
+        option_lines: list[str] = []
+        for option_number in sorted(active_request.slot_options_map.keys(), key=int):
+            slot_id = active_request.slot_options_map[option_number]
+            slot_candidate = slot_by_id.get(slot_id)
+            if slot_candidate is None:
+                continue
+            if slot_candidate.status not in ("PROPOSED", "SELECTED"):
+                continue
+            option_lines.append(
+                scheduling_slot_formatter.format_slot_option_line(
+                    option_number=option_number,
+                    start_at=slot_candidate.start_at,
+                    timezone_name=slot_candidate.timezone,
+                )
+            )
+        if not option_lines:
+            return None
+
+        options_block = "\n".join(option_lines)
+        llm_input = llm_dto.GenerateReplyInputDTO(
+            system_prompt=(
+                "Eres un asistente que analiza si el paciente esta rechazando los horarios propuestos "
+                "y expresando una preferencia de horario diferente. "
+                "Si el paciente indica que ninguno de los horarios le sirve, o dice que no puede en esos dias/horas "
+                "y sugiere otros dias u horas, responde con un resumen breve de la preferencia del paciente "
+                "(por ejemplo: 'Prefiere miercoles en la tarde' o 'No puede martes, prefiere otro dia'). "
+                "Si el paciente esta intentando elegir uno de los horarios propuestos, preguntando algo, "
+                "o su mensaje no es un rechazo claro de los horarios, responde NINGUNA."
+            ),
+            messages=[
+                llm_dto.ChatMessageDTO(
+                    role="user",
+                    content=(
+                        f"Horarios propuestos:\n{options_block}\n\n"
+                        f"Mensaje del paciente: {latest_user_text}\n\n"
+                        "Preferencia del paciente (o NINGUNA):"
+                    ),
+                )
+            ],
+        )
+        try:
+            llm_reply = self._llm_provider.generate_reply(llm_input)
+        except service_exceptions.ExternalProviderError:
+            return None
+
+        resolved_text = llm_reply.content.strip()
+        if not resolved_text:
+            return None
+        normalized_upper = resolved_text.upper()
+        if normalized_upper == "NINGUNA" or normalized_upper.startswith("NINGUNA"):
+            return None
+        return resolved_text
+
+    def _escalate_slot_rejection(
+        self,
+        tenant_id: str,
+        active_request: scheduling_dto.SchedulingRequestSummaryDTO,
+        patient_preference: str,
+    ) -> str:
+        if self._scheduling_service is None:
+            return self._build_slot_rejection_ack_message()
+
+        try:
+            self._scheduling_service.escalate_patient_slot_rejection(
+                tenant_id=tenant_id,
+                request_id=active_request.request_id,
+                patient_preference_note=patient_preference,
+            )
+        except service_exceptions.ServiceError:
+            logger.warning(
+                "webhook.slot_rejection_escalation_failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.slot_rejection_escalation_failed",
+                        message="failed to escalate patient slot rejection",
+                        data={
+                            "tenant_id": tenant_id,
+                            "request_id": active_request.request_id,
+                        },
+                    )
+                },
+            )
+        return self._build_slot_rejection_ack_message()
+
+    def _build_slot_rejection_ack_message(self) -> str:
+        return (
+            "Entendido, voy a consultar otros horarios disponibles. "
+            "Te aviso apenas tenga nuevas opciones."
+        )
 
     def _build_slot_selection_retry_message(
         self,

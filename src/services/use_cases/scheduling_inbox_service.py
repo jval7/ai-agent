@@ -426,7 +426,7 @@ class SchedulingInboxService:
         for slot in slots:
             slot_by_id[slot.id] = slot
 
-        lines = ["Tengo estos horarios disponibles:"]
+        lines = ["¿Alguno de estos horarios te funciona?"]
         for option_number in sorted(slot_options_map.keys(), key=int):
             slot_id = slot_options_map[option_number]
             slot_candidate = slot_by_id.get(slot_id)
@@ -439,7 +439,7 @@ class SchedulingInboxService:
                     timezone_name=slot_candidate.timezone,
                 )
             )
-        lines.append("Responde solo con el numero de la opcion que prefieres (por ejemplo: 2).")
+        lines.append("Responde con el numero de la opcion que prefieres (por ejemplo: 2).")
         return "\n".join(lines)
 
     def _validate_slot_duration(

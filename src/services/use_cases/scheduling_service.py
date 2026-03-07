@@ -123,6 +123,7 @@ class SchedulingService:
             "CANCEL_BOOKED_SLOT",
             "UPDATE_BOOKED_PAYMENT",
             "APPROVE_PAYMENT",
+            "ESCALATE_PATIENT_SLOT_REJECTION",
         ],
         payload: object | None,
         apply_transition: typing.Callable[
@@ -363,6 +364,27 @@ class SchedulingService:
             ),
         )
         return typing.cast(dict[str, str], transition_result)
+
+    def escalate_patient_slot_rejection(
+        self,
+        tenant_id: str,
+        request_id: str,
+        patient_preference_note: str,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="ESCALATE_PATIENT_SLOT_REJECTION",
+            payload={
+                "tenant_id": tenant_id,
+                "request_id": request_id,
+                "patient_preference_note": patient_preference_note,
+            },
+            apply_transition=lambda _: self._escalate_patient_slot_rejection_impl(
+                tenant_id=tenant_id,
+                request_id=request_id,
+                patient_preference_note=patient_preference_note,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
 
     def _submit_consultation_reason_for_review_impl(
         self,
@@ -971,6 +993,43 @@ class SchedulingService:
             "status": "HUMAN_HANDOFF",
             "control_mode": "HUMAN",
         }
+
+    def _escalate_patient_slot_rejection_impl(
+        self,
+        tenant_id: str,
+        request_id: str,
+        patient_preference_note: str,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+        if request.status != "AWAITING_PATIENT_CHOICE":
+            raise service_exceptions.InvalidStateError(
+                "scheduling request is not waiting for patient choice"
+            )
+
+        now_value = self._clock.now()
+        normalized_note = self._normalize_patient_text(patient_preference_note)
+        request.patient_preference_note = normalized_note
+        request.selected_slot_id = None
+        request.set_status("AWAITING_CONSULTATION_REVIEW", now_value)
+        self._scheduling_repository.save_request(request)
+
+        logger.info(
+            "scheduling.patient_slot_rejection_escalated",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.patient_slot_rejection_escalated",
+                    message="patient rejected proposed slots; escalated back for professional review",
+                    data={
+                        "tenant_id": tenant_id,
+                        "request_id": request.id,
+                        "patient_preference_note": normalized_note,
+                    },
+                )
+            },
+        )
+        return self._to_summary_dto(request)
 
     def _resolve_request_for_consultation_submission(
         self,
