@@ -81,6 +81,14 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async getAgentSettings(): Promise<agentModel.AgentSettings> {
+    throw new Error("not used");
+  }
+
+  async updateAgentSettings(_debounceDelay: number): Promise<agentModel.AgentSettings> {
+    throw new Error("not used");
+  }
+
   async createEmbeddedSignupSession(): Promise<whatsappModel.EmbeddedSignupSession> {
     throw new Error("not used");
   }

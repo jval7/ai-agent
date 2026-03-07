@@ -92,6 +92,31 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     };
   }
 
+  async getAgentSettings(): Promise<agentModel.AgentSettings> {
+    const payload = await this.request<httpTypes.AgentSettingsApiResponse>("/v1/agent/settings", {
+      method: "GET",
+      authRequired: true
+    });
+    return {
+      tenantId: payload.tenant_id,
+      messageDebounceDelaySeconds: payload.message_debounce_delay_seconds
+    };
+  }
+
+  async updateAgentSettings(debounceDelay: number): Promise<agentModel.AgentSettings> {
+    const payload = await this.request<httpTypes.AgentSettingsApiResponse>("/v1/agent/settings", {
+      method: "PUT",
+      authRequired: true,
+      body: JSON.stringify({
+        message_debounce_delay_seconds: debounceDelay
+      })
+    });
+    return {
+      tenantId: payload.tenant_id,
+      messageDebounceDelaySeconds: payload.message_debounce_delay_seconds
+    };
+  }
+
   async createEmbeddedSignupSession(): Promise<whatsappModel.EmbeddedSignupSession> {
     const payload = await this.request<httpTypes.EmbeddedSignupSessionApiResponse>(
       "/v1/whatsapp/embedded-signup/session",

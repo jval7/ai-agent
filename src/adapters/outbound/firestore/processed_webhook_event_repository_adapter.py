@@ -41,7 +41,7 @@ class FirestoreProcessedWebhookEventRepositoryAdapter(
         claim_expiration_time = claimed_at - datetime.timedelta(seconds=self._claim_timeout_seconds)
         transaction = self._client.transaction()
 
-        @google_cloud_firestore.transactional  # type: ignore[misc]
+        @google_cloud_firestore.transactional  # type: ignore
         def _claim(
             current_transaction: google_cloud_firestore.Transaction,
         ) -> bool:

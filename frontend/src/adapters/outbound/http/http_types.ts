@@ -10,6 +10,11 @@ export interface SystemPromptApiResponse {
   system_prompt: string;
 }
 
+export interface AgentSettingsApiResponse {
+  tenant_id: string;
+  message_debounce_delay_seconds: number;
+}
+
 export interface EmbeddedSignupSessionApiResponse {
   state: string;
   connect_url: string;

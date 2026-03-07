@@ -69,7 +69,7 @@ class FirestoreRefreshTokenRepositoryAdapter(
         record_document = firestore_paths.refresh_token_document(self._client, jti)
         transaction = self._client.transaction()
 
-        @google_cloud_firestore.transactional  # type: ignore[misc]
+        @google_cloud_firestore.transactional  # type: ignore
         def _consume(
             current_transaction: google_cloud_firestore.Transaction,
         ) -> refresh_token_entity.RefreshTokenRecord | None:

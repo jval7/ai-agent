@@ -204,7 +204,7 @@ class FirestoreConversationRepositoryAdapter(
         )
         transaction = self._client.transaction()
 
-        @google_cloud_firestore.transactional  # type: ignore[misc]
+        @google_cloud_firestore.transactional  # type: ignore
         def _append_message(
             current_transaction: google_cloud_firestore.Transaction,
         ) -> None:

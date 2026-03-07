@@ -16,6 +16,8 @@ export interface BackendApiPort {
 
   getSystemPrompt(): Promise<agentModel.SystemPrompt>;
   updateSystemPrompt(systemPrompt: string): Promise<agentModel.SystemPrompt>;
+  getAgentSettings(): Promise<agentModel.AgentSettings>;
+  updateAgentSettings(debounceDelay: number): Promise<agentModel.AgentSettings>;
 
   createEmbeddedSignupSession(): Promise<whatsappModel.EmbeddedSignupSession>;
   getWhatsappConnection(): Promise<whatsappModel.WhatsappConnection>;

@@ -1,6 +1,7 @@
 import src.adapters.outbound.firestore.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.firestore.blacklist_repository_adapter as blacklist_repository_adapter
 import src.adapters.outbound.firestore.client_factory as firestore_client_factory
+import src.adapters.outbound.firestore.conversation_processing_lock_adapter as conversation_processing_lock_adapter
 import src.adapters.outbound.firestore.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.firestore.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.firestore.manual_appointment_repository_adapter as manual_appointment_repository_adapter
@@ -89,6 +90,11 @@ class AppContainer:
         )
         self.processed_webhook_event_repository = processed_webhook_event_repository_adapter.FirestoreProcessedWebhookEventRepositoryAdapter(
             self.firestore_client
+        )
+        self.conversation_processing_lock = (
+            conversation_processing_lock_adapter.FirestoreConversationProcessingLockAdapter(
+                self.firestore_client
+            )
         )
         self.blacklist_repository = (
             blacklist_repository_adapter.FirestoreBlacklistRepositoryAdapter(self.firestore_client)
@@ -213,6 +219,7 @@ class AppContainer:
             processed_webhook_event_repository=self.processed_webhook_event_repository,
             blacklist_repository=self.blacklist_repository,
             agent_profile_repository=self.agent_profile_repository,
+            conversation_processing_lock=self.conversation_processing_lock,
             scheduling_service=self.scheduling_service,
             llm_provider=self.llm_provider_adapter,
             whatsapp_provider=self.whatsapp_provider_adapter,

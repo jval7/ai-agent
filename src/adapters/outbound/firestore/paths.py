@@ -16,6 +16,7 @@ CONVERSATION_LOOKUP_COLLECTION = "conversation_lookup"
 SCHEDULING_REQUESTS_COLLECTION = "scheduling_requests"
 PROCESSED_WEBHOOK_EVENTS_COLLECTION = "processed_webhook_events"
 BLACKLIST_ENTRIES_COLLECTION = "blacklist_entries"
+CONVERSATION_PROCESSING_LOCKS_COLLECTION = "conversation_processing_locks"
 
 INDEXES_COLLECTION = "indexes"
 USER_EMAIL_INDEX_COLLECTION = "user_email"
@@ -292,6 +293,18 @@ def google_oauth_state_index_document(
         .document(GOOGLE_OAUTH_STATE_INDEX_COLLECTION)
         .collection(GOOGLE_OAUTH_STATE_INDEX_COLLECTION)
         .document(state_key)
+    )
+
+
+def tenant_conversation_processing_lock_document(
+    client: google_cloud_firestore.Client,
+    tenant_id: str,
+    conversation_id: str,
+) -> google_cloud_firestore.DocumentReference:
+    return (
+        tenant_document(client, tenant_id)
+        .collection(CONVERSATION_PROCESSING_LOCKS_COLLECTION)
+        .document(conversation_id)
     )
 
 

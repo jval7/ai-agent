@@ -35,13 +35,50 @@ class AgentService:
         self, tenant_id: str, update_dto: agent_dto.UpdateSystemPromptDTO
     ) -> agent_dto.SystemPromptResponseDTO:
         now_value = self._clock.now()
+        existing_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+        debounce_delay = (
+            existing_profile.message_debounce_delay_seconds if existing_profile is not None else 0
+        )
         agent_profile = agent_profile_entity.AgentProfile(
             tenant_id=tenant_id,
             system_prompt=update_dto.system_prompt,
+            message_debounce_delay_seconds=debounce_delay,
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
         return agent_dto.SystemPromptResponseDTO(
             tenant_id=tenant_id,
             system_prompt=agent_profile.system_prompt,
+        )
+
+    def get_agent_settings(self, tenant_id: str) -> agent_dto.AgentSettingsResponseDTO:
+        agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+        debounce_delay = (
+            agent_profile.message_debounce_delay_seconds if agent_profile is not None else 0
+        )
+        return agent_dto.AgentSettingsResponseDTO(
+            tenant_id=tenant_id,
+            message_debounce_delay_seconds=debounce_delay,
+        )
+
+    def update_agent_settings(
+        self, tenant_id: str, update_dto: agent_dto.UpdateAgentSettingsDTO
+    ) -> agent_dto.AgentSettingsResponseDTO:
+        now_value = self._clock.now()
+        existing_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+        system_prompt = (
+            existing_profile.system_prompt
+            if existing_profile is not None
+            else self._default_system_prompt
+        )
+        agent_profile = agent_profile_entity.AgentProfile(
+            tenant_id=tenant_id,
+            system_prompt=system_prompt,
+            message_debounce_delay_seconds=update_dto.message_debounce_delay_seconds,
+            updated_at=now_value,
+        )
+        self._agent_profile_repository.save(agent_profile)
+        return agent_dto.AgentSettingsResponseDTO(
+            tenant_id=tenant_id,
+            message_debounce_delay_seconds=agent_profile.message_debounce_delay_seconds,
         )

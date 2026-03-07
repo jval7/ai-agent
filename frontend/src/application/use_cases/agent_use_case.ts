@@ -14,4 +14,12 @@ export class AgentUseCase {
   async updateSystemPrompt(systemPrompt: string) {
     return this.api.updateSystemPrompt(systemPrompt);
   }
+
+  async getAgentSettings() {
+    return this.api.getAgentSettings();
+  }
+
+  async updateAgentSettings(debounceDelay: number) {
+    return this.api.updateAgentSettings(debounceDelay);
+  }
 }

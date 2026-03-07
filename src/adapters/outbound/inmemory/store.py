@@ -54,6 +54,7 @@ class InMemoryStore:
         self.manual_appointment_ids_by_tenant: dict[str, list[str]] = {}
         self.manual_appointment_ids_by_patient: dict[tuple[str, str], list[str]] = {}
         self.processed_events: set[tuple[str, str]] = set()
+        self.conversation_processing_locks: dict[tuple[str, str], dict[str, object]] = {}
         self.blacklist_by_tenant_and_wa_user: dict[
             tuple[str, str], blacklist_entry_entity.BlacklistEntry
         ] = {}
@@ -316,6 +317,7 @@ class InMemoryStore:
         self.scheduling_request_ids_by_conversation = {}
         self.messages_by_conversation_id = {}
         self.processed_events = set()
+        self.conversation_processing_locks = {}
         self.whatsapp_user_by_tenant_and_id = {}
         self.patient_by_tenant_and_wa_user = {}
         self.manual_appointment_by_id = {}

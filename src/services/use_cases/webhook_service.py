@@ -16,6 +16,7 @@ import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.agent_workflow_port as agent_workflow_port
 import src.ports.blacklist_repository_port as blacklist_repository_port
 import src.ports.clock_port as clock_port
+import src.ports.conversation_processing_lock_port as conversation_processing_lock_port
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.llm_provider_port as llm_provider_port
@@ -161,6 +162,8 @@ class WebhookService:
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
         runtime_prompt_builder: prompt_builder.RuntimePromptBuilder | None = None,
         tool_definition_registry: tool_registry.ToolDefinitionRegistry | None = None,
+        conversation_processing_lock: conversation_processing_lock_port.ConversationProcessingLockPort
+        | None = None,
     ) -> None:
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._conversation_repository = conversation_repository
@@ -168,6 +171,7 @@ class WebhookService:
         self._processed_webhook_event_repository = processed_webhook_event_repository
         self._blacklist_repository = blacklist_repository
         self._agent_profile_repository = agent_profile_repository
+        self._conversation_processing_lock = conversation_processing_lock
         self._scheduling_service = scheduling_service
         self._llm_provider = llm_provider
         self._whatsapp_provider = whatsapp_provider
@@ -193,6 +197,7 @@ class WebhookService:
         else:
             self._tracer = tracer
         self._max_function_call_iterations = 4
+        self._max_debounce_reprocess_iterations = 3
         self._google_network_retry_backoff_seconds = [1.0, 2.0, 4.0]
         self._llm_empty_content_retry_backoff_seconds = [0.5, 1.0]
         self._professional_signature = "Psi. Alejandra Escobar"
@@ -421,76 +426,232 @@ class WebhookService:
             )
             return
 
-        history = self._conversation_repository.list_messages(tenant_id, conversation.id)
-        history_messages = history[-self._context_message_limit :]
-        llm_messages: list[llm_dto.ChatMessageDTO] = []
-        for message in history_messages:
-            message_role = message.role
-            if message_role == "human_agent":
-                message_role = "assistant"
-            llm_messages.append(llm_dto.ChatMessageDTO(role=message_role, content=message.content))
-        known_patient = self._patient_repository.get_by_whatsapp_user(
-            tenant_id=tenant_id,
-            whatsapp_user_id=event.whatsapp_user_id,
-        )
-        subsessions_count_before_ai_reply = len(conversation.subsessions)
+        lock_holder_id: str | None = None
+        if self._conversation_processing_lock is not None:
+            lock_holder_id = self._id_generator.new_id()
+            lock_acquired = self._conversation_processing_lock.try_acquire(
+                tenant_id=tenant_id,
+                conversation_id=conversation.id,
+                holder_id=lock_holder_id,
+                acquired_at=self._clock.now(),
+            )
+            if not lock_acquired:
+                self._mark_event_processed(tenant_id, event.provider_event_id)
+                logger.info(
+                    "webhook.debounce_deferred",
+                    extra={
+                        "event_data": app_logs.build_log_event(
+                            event_name="webhook.debounce_deferred",
+                            message="message persisted, another handler holds conversation lock",
+                            data={
+                                "tenant_id": tenant_id,
+                                "conversation_id": conversation.id,
+                                "provider_event_id": event.provider_event_id,
+                            },
+                        )
+                    },
+                )
+                return
 
-        trace_inputs: dict[str, object] = {
-            "tenant_id": tenant_id,
-            "conversation_id": conversation.id,
-            "provider_event_id": event.provider_event_id,
-            "message_type": event.message_type,
-            "message_source": event.source,
-            "message_preview": self._sanitize_trace_text(event.message_text),
-            "history_messages_count": len(history_messages),
-        }
-        with self._tracer.trace(
-            name="webhook.process_event.ai_path",
-            run_type="chain",
-            inputs=trace_inputs,
-            tags=["webhook"],
-        ) as trace_run:
-            try:
-                runtime_adapter = WebhookConversationWorkflowRuntimeAdapter(
-                    webhook_service=self,
+        try:
+            self._process_ai_reply_with_debounce(
+                connection=connection,
+                conversation=conversation,
+                tenant_id=tenant_id,
+                event=event,
+                inbound_message=inbound_message,
+            )
+        finally:
+            if self._conversation_processing_lock is not None and lock_holder_id is not None:
+                self._conversation_processing_lock.release(
                     tenant_id=tenant_id,
                     conversation_id=conversation.id,
-                    whatsapp_user_id=event.whatsapp_user_id,
-                    latest_user_text=inbound_message.content,
-                    llm_messages=llm_messages,
-                    known_patient=known_patient,
+                    holder_id=lock_holder_id,
                 )
-                workflow_result = self._agent_workflow.run_conversation_flow(
-                    input_dto=agent_workflow_dto.ConversationWorkflowInputDTO(
+
+    def _process_ai_reply_with_debounce(
+        self,
+        connection: whatsapp_connection_entity.WhatsappConnection,
+        conversation: conversation_entity.Conversation,
+        tenant_id: str,
+        event: webhook_dto.IncomingMessageEventDTO,
+        inbound_message: message_entity.Message,
+    ) -> None:
+        messages_count_snapshot = len(
+            self._conversation_repository.list_messages(tenant_id, conversation.id)
+        )
+        debounce_delay = self._resolve_debounce_delay_seconds(tenant_id)
+
+        for debounce_iteration in range(self._max_debounce_reprocess_iterations):
+            history = self._conversation_repository.list_messages(tenant_id, conversation.id)
+            history_messages = history[-self._context_message_limit :]
+            llm_messages: list[llm_dto.ChatMessageDTO] = []
+            for message in history_messages:
+                message_role = message.role
+                if message_role == "human_agent":
+                    message_role = "assistant"
+                llm_messages.append(
+                    llm_dto.ChatMessageDTO(role=message_role, content=message.content)
+                )
+            latest_user_text = (
+                history_messages[-1].content if history_messages else inbound_message.content
+            )
+            known_patient = self._patient_repository.get_by_whatsapp_user(
+                tenant_id=tenant_id,
+                whatsapp_user_id=event.whatsapp_user_id,
+            )
+            subsessions_count_before_ai_reply = len(conversation.subsessions)
+
+            trace_inputs: dict[str, object] = {
+                "tenant_id": tenant_id,
+                "conversation_id": conversation.id,
+                "provider_event_id": event.provider_event_id,
+                "message_type": event.message_type,
+                "message_source": event.source,
+                "message_preview": self._sanitize_trace_text(event.message_text),
+                "history_messages_count": len(history_messages),
+                "debounce_iteration": debounce_iteration,
+            }
+            with self._tracer.trace(
+                name="webhook.process_event.ai_path",
+                run_type="chain",
+                inputs=trace_inputs,
+                tags=["webhook"],
+            ) as trace_run:
+                try:
+                    runtime_adapter = WebhookConversationWorkflowRuntimeAdapter(
+                        webhook_service=self,
                         tenant_id=tenant_id,
                         conversation_id=conversation.id,
                         whatsapp_user_id=event.whatsapp_user_id,
-                        latest_user_text=inbound_message.content,
-                    ),
-                    runtime_port=runtime_adapter,
-                )
-                trace_run.add_metadata(
-                    {
-                        "runtime_state": workflow_result.runtime_state,
-                        "runtime_enabled_tools": workflow_result.enabled_tool_names,
-                        "workflow_reason": workflow_result.reason,
-                    }
-                )
-                if workflow_result.mode == "SKIP_SILENT":
-                    trace_run.set_outputs(
+                        latest_user_text=latest_user_text,
+                        llm_messages=llm_messages,
+                        known_patient=known_patient,
+                    )
+                    workflow_result = self._agent_workflow.run_conversation_flow(
+                        input_dto=agent_workflow_dto.ConversationWorkflowInputDTO(
+                            tenant_id=tenant_id,
+                            conversation_id=conversation.id,
+                            whatsapp_user_id=event.whatsapp_user_id,
+                            latest_user_text=latest_user_text,
+                        ),
+                        runtime_port=runtime_adapter,
+                    )
+                    trace_run.add_metadata(
                         {
-                            "outcome": "skip_silent",
+                            "runtime_state": workflow_result.runtime_state,
+                            "runtime_enabled_tools": workflow_result.enabled_tool_names,
                             "workflow_reason": workflow_result.reason,
                         }
                     )
-                    self._mark_event_processed(tenant_id, event.provider_event_id)
-                    if workflow_result.reason == "WAITING_PROFESSIONAL_SILENT":
+                    if workflow_result.mode == "SKIP_SILENT":
+                        trace_run.set_outputs(
+                            {
+                                "outcome": "skip_silent",
+                                "workflow_reason": workflow_result.reason,
+                            }
+                        )
+                        self._mark_event_processed(tenant_id, event.provider_event_id)
+                        if workflow_result.reason == "WAITING_PROFESSIONAL_SILENT":
+                            logger.info(
+                                "webhook.waiting_professional_silent_skip",
+                                extra={
+                                    "event_data": app_logs.build_log_event(
+                                        event_name="webhook.waiting_professional_silent_skip",
+                                        message="customer message persisted and skipped while waiting professional response",
+                                        data={
+                                            "tenant_id": tenant_id,
+                                            "conversation_id": conversation.id,
+                                            "provider_event_id": event.provider_event_id,
+                                        },
+                                    )
+                                },
+                            )
+                        return
+                    if workflow_result.text is None:
+                        raise service_exceptions.InvalidStateError(
+                            "workflow returned SEND_MESSAGE without text"
+                        )
+
+                    if debounce_delay > 0:
+                        self._sleep_seconds(debounce_delay)
+
+                    fresh_messages = self._conversation_repository.list_messages(
+                        tenant_id, conversation.id
+                    )
+                    if len(fresh_messages) > messages_count_snapshot:
+                        messages_count_snapshot = len(fresh_messages)
+                        trace_run.set_outputs(
+                            {
+                                "outcome": "debounce_reprocessing",
+                                "debounce_iteration": debounce_iteration,
+                            }
+                        )
                         logger.info(
-                            "webhook.waiting_professional_silent_skip",
+                            "webhook.debounce_reprocessing",
                             extra={
                                 "event_data": app_logs.build_log_event(
-                                    event_name="webhook.waiting_professional_silent_skip",
-                                    message="customer message persisted and skipped while waiting professional response",
+                                    event_name="webhook.debounce_reprocessing",
+                                    message="new messages arrived during processing, re-running with fresh history",
+                                    data={
+                                        "tenant_id": tenant_id,
+                                        "conversation_id": conversation.id,
+                                        "provider_event_id": event.provider_event_id,
+                                        "debounce_iteration": debounce_iteration,
+                                        "previous_count": messages_count_snapshot,
+                                        "current_count": len(fresh_messages),
+                                    },
+                                )
+                            },
+                        )
+                        continue
+
+                    outbound_message_provider_id = self._send_assistant_message(
+                        connection=connection,
+                        conversation_id=conversation.id,
+                        tenant_id=tenant_id,
+                        whatsapp_user_id=event.whatsapp_user_id,
+                        text=workflow_result.text,
+                    )
+                    if workflow_result.reason == "AI_REPLY":
+                        self._archive_new_active_messages_into_latest_subsession_if_booking_occurred(
+                            tenant_id=tenant_id,
+                            conversation_id=conversation.id,
+                            subsessions_count_before_ai_reply=subsessions_count_before_ai_reply,
+                        )
+                except service_exceptions.ExternalProviderError as error:
+                    trace_run.set_error(str(error))
+                    logger.error(
+                        "webhook.ai_reply_failed",
+                        extra={
+                            "event_data": app_logs.build_log_event(
+                                event_name="webhook.ai_reply_failed",
+                                message="ai reply generation or outbound send failed",
+                                data={
+                                    "tenant_id": tenant_id,
+                                    "conversation_id": conversation.id,
+                                    "provider_event_id": event.provider_event_id,
+                                    "error_type": type(error).__name__,
+                                    "error_message": str(error),
+                                },
+                            )
+                        },
+                    )
+                    fallback_text = self._build_llm_failure_fallback_message(str(error))
+                    try:
+                        self._send_assistant_message(
+                            connection=connection,
+                            conversation_id=conversation.id,
+                            tenant_id=tenant_id,
+                            whatsapp_user_id=event.whatsapp_user_id,
+                            text=fallback_text,
+                        )
+                        logger.warning(
+                            "webhook.ai_reply_fallback_sent",
+                            extra={
+                                "event_data": app_logs.build_log_event(
+                                    event_name="webhook.ai_reply_fallback_sent",
+                                    message="fallback reply sent after ai generation failure",
                                     data={
                                         "tenant_id": tenant_id,
                                         "conversation_id": conversation.id,
@@ -499,136 +660,77 @@ class WebhookService:
                                 )
                             },
                         )
-                    return
-                if workflow_result.text is None:
-                    raise service_exceptions.InvalidStateError(
-                        "workflow returned SEND_MESSAGE without text"
-                    )
-
-                outbound_message_provider_id = self._send_assistant_message(
-                    connection=connection,
-                    conversation_id=conversation.id,
-                    tenant_id=tenant_id,
-                    whatsapp_user_id=event.whatsapp_user_id,
-                    text=workflow_result.text,
-                )
-                if workflow_result.reason == "AI_REPLY":
-                    self._archive_new_active_messages_into_latest_subsession_if_booking_occurred(
-                        tenant_id=tenant_id,
-                        conversation_id=conversation.id,
-                        subsessions_count_before_ai_reply=subsessions_count_before_ai_reply,
-                    )
-            except service_exceptions.ExternalProviderError as error:
-                trace_run.set_error(str(error))
-                logger.error(
-                    "webhook.ai_reply_failed",
-                    extra={
-                        "event_data": app_logs.build_log_event(
-                            event_name="webhook.ai_reply_failed",
-                            message="ai reply generation or outbound send failed",
-                            data={
-                                "tenant_id": tenant_id,
-                                "conversation_id": conversation.id,
-                                "provider_event_id": event.provider_event_id,
-                                "error_type": type(error).__name__,
-                                "error_message": str(error),
+                    except service_exceptions.ExternalProviderError as fallback_error:
+                        logger.error(
+                            "webhook.ai_reply_fallback_failed",
+                            extra={
+                                "event_data": app_logs.build_log_event(
+                                    event_name="webhook.ai_reply_fallback_failed",
+                                    message="fallback reply failed after ai generation failure",
+                                    data={
+                                        "tenant_id": tenant_id,
+                                        "conversation_id": conversation.id,
+                                        "provider_event_id": event.provider_event_id,
+                                        "error_type": type(fallback_error).__name__,
+                                        "error_message": str(fallback_error),
+                                    },
+                                )
                             },
                         )
-                    },
+                    self._mark_event_processed(tenant_id, event.provider_event_id)
+                    return
+                trace_run.set_outputs(
+                    {
+                        "outbound_provider_message_id": outbound_message_provider_id,
+                        "workflow_reason": workflow_result.reason,
+                    }
                 )
-                fallback_text = self._build_llm_failure_fallback_message(str(error))
-                try:
-                    self._send_assistant_message(
-                        connection=connection,
-                        conversation_id=conversation.id,
-                        tenant_id=tenant_id,
-                        whatsapp_user_id=event.whatsapp_user_id,
-                        text=fallback_text,
-                    )
-                    logger.warning(
-                        "webhook.ai_reply_fallback_sent",
-                        extra={
-                            "event_data": app_logs.build_log_event(
-                                event_name="webhook.ai_reply_fallback_sent",
-                                message="fallback reply sent after ai generation failure",
-                                data={
-                                    "tenant_id": tenant_id,
-                                    "conversation_id": conversation.id,
-                                    "provider_event_id": event.provider_event_id,
-                                },
-                            )
-                        },
-                    )
-                except service_exceptions.ExternalProviderError as fallback_error:
-                    logger.error(
-                        "webhook.ai_reply_fallback_failed",
-                        extra={
-                            "event_data": app_logs.build_log_event(
-                                event_name="webhook.ai_reply_fallback_failed",
-                                message="fallback reply failed after ai generation failure",
-                                data={
-                                    "tenant_id": tenant_id,
-                                    "conversation_id": conversation.id,
-                                    "provider_event_id": event.provider_event_id,
-                                    "error_type": type(fallback_error).__name__,
-                                    "error_message": str(fallback_error),
-                                },
-                            )
-                        },
-                    )
-                self._mark_event_processed(tenant_id, event.provider_event_id)
-                return
-            trace_run.set_outputs(
-                {
-                    "outbound_provider_message_id": outbound_message_provider_id,
-                    "workflow_reason": workflow_result.reason,
-                }
-            )
 
-        self._mark_event_processed(tenant_id, event.provider_event_id)
-        if workflow_result.reason == "PATIENT_CHOICE_OVERRIDE":
-            logger.info(
+            self._mark_event_processed(tenant_id, event.provider_event_id)
+            self._log_workflow_outcome(
+                tenant_id=tenant_id,
+                conversation_id=conversation.id,
+                provider_event_id=event.provider_event_id,
+                outbound_message_provider_id=outbound_message_provider_id,
+                workflow_reason=workflow_result.reason,
+            )
+            return
+
+    def _log_workflow_outcome(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        provider_event_id: str,
+        outbound_message_provider_id: str,
+        workflow_reason: str,
+    ) -> None:
+        reason_log_map: dict[str, tuple[str, str]] = {
+            "PATIENT_CHOICE_OVERRIDE": (
                 "webhook.patient_choice_override_sent",
-                extra={
-                    "event_data": app_logs.build_log_event(
-                        event_name="webhook.patient_choice_override_sent",
-                        message="patient choice state override handled before numeric slot selection",
-                        data={
-                            "tenant_id": tenant_id,
-                            "conversation_id": conversation.id,
-                            "provider_event_id": event.provider_event_id,
-                        },
-                    )
-                },
-            )
-            return
-        if workflow_result.reason == "NUMERIC_SLOT_RETRY":
-            logger.info(
+                "patient choice state override handled before numeric slot selection",
+            ),
+            "NUMERIC_SLOT_RETRY": (
                 "webhook.slot_selection_retry_sent",
-                extra={
-                    "event_data": app_logs.build_log_event(
-                        event_name="webhook.slot_selection_retry_sent",
-                        message="customer must choose a slot option by number before continuing",
-                        data={
-                            "tenant_id": tenant_id,
-                            "conversation_id": conversation.id,
-                            "provider_event_id": event.provider_event_id,
-                        },
-                    )
-                },
-            )
-            return
-        if workflow_result.reason == "WAITING_PROFESSIONAL_OVERRIDE":
-            logger.info(
+                "customer must choose a slot option by number before continuing",
+            ),
+            "WAITING_PROFESSIONAL_OVERRIDE": (
                 "webhook.waiting_professional_override_sent",
+                "customer requested explicit override while waiting professional response",
+            ),
+        }
+        log_entry = reason_log_map.get(workflow_reason)
+        if log_entry is not None:
+            event_name, log_message = log_entry
+            logger.info(
+                event_name,
                 extra={
                     "event_data": app_logs.build_log_event(
-                        event_name="webhook.waiting_professional_override_sent",
-                        message="customer requested explicit override while waiting professional response",
+                        event_name=event_name,
+                        message=log_message,
                         data={
                             "tenant_id": tenant_id,
-                            "conversation_id": conversation.id,
-                            "provider_event_id": event.provider_event_id,
+                            "conversation_id": conversation_id,
+                            "provider_event_id": provider_event_id,
                         },
                     )
                 },
@@ -643,8 +745,8 @@ class WebhookService:
                     message="ai reply sent and persisted",
                     data={
                         "tenant_id": tenant_id,
-                        "conversation_id": conversation.id,
-                        "provider_event_id": event.provider_event_id,
+                        "conversation_id": conversation_id,
+                        "provider_event_id": provider_event_id,
                         "outbound_provider_message_id": outbound_message_provider_id,
                     },
                 )
@@ -875,6 +977,12 @@ class WebhookService:
 
             trace_run.set_error("llm returned empty content")
             raise service_exceptions.ExternalProviderError("llm returned empty content")
+
+    def _resolve_debounce_delay_seconds(self, tenant_id: str) -> int:
+        agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+        if agent_profile is None:
+            return 0
+        return agent_profile.message_debounce_delay_seconds
 
     def _resolve_agent_system_prompt(self, tenant_id: str) -> str:
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)

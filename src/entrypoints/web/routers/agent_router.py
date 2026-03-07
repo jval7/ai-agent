@@ -23,3 +23,20 @@ def update_system_prompt(
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> agent_dto.SystemPromptResponseDTO:
     return container.agent_service.update_system_prompt(claims.tenant_id, update_dto)
+
+
+@router.get("/settings", response_model=agent_dto.AgentSettingsResponseDTO)
+def get_agent_settings(
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> agent_dto.AgentSettingsResponseDTO:
+    return container.agent_service.get_agent_settings(claims.tenant_id)
+
+
+@router.put("/settings", response_model=agent_dto.AgentSettingsResponseDTO)
+def update_agent_settings(
+    update_dto: agent_dto.UpdateAgentSettingsDTO,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> agent_dto.AgentSettingsResponseDTO:
+    return container.agent_service.update_agent_settings(claims.tenant_id, update_dto)
