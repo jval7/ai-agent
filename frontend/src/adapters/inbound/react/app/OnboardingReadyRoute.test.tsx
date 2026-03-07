@@ -34,7 +34,7 @@ function renderWithContainer(container: unknown, initialPath: string) {
             />
             <reactRouterDomModule.Route
               element={<div>Onboarding requerido</div>}
-              path="/onboarding"
+              path="/configuraciones"
             />
           </reactRouterDomModule.Routes>
         </reactRouterDomModule.MemoryRouter>

@@ -33,7 +33,7 @@ export function OnboardingReadyRoute(props: { children: JSX.Element }) {
   }
 
   if (onboardingStatusQuery.data?.ready !== true) {
-    return <reactRouterDomModule.Navigate replace to="/onboarding" />;
+    return <reactRouterDomModule.Navigate replace to="/configuraciones" />;
   }
 
   return props.children;

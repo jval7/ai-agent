@@ -28,7 +28,7 @@ export function LoginPage() {
         email: email.trim(),
         password
       });
-      navigate("/onboarding", { replace: true });
+      navigate("/configuraciones", { replace: true });
     } catch (error: unknown) {
       const resolvedErrorMessage = uiErrorModule.resolveUiErrorMessage([error]);
       if (resolvedErrorMessage === null) {

@@ -32,20 +32,14 @@ interface AgendaSection {
 
 const agendaSections: AgendaSection[] = [
   {
-    id: "CONSULTATION",
-    label: "Motivos de Consulta",
+    id: "APPROVALS",
+    label: "Aprobaciones",
     statuses: [
-      { status: "AWAITING_CONSULTATION_REVIEW", label: "Pendiente Validar" },
-      { status: "AWAITING_CONSULTATION_DETAILS", label: "Esperando Detalle" },
+      { status: "AWAITING_CONSULTATION_REVIEW", label: "Pendiente revisión" },
+      { status: "AWAITING_CONSULTATION_DETAILS", label: "Esperando detalles" },
+      { status: "AWAITING_PATIENT_CHOICE", label: "Esperando paciente" },
+      { status: "AWAITING_PAYMENT_CONFIRMATION", label: "Pendiente pago" },
       { status: "CONSULTATION_REJECTED", label: "Rechazado" }
-    ]
-  },
-  {
-    id: "SCHEDULING",
-    label: "Agendamiento en Curso",
-    statuses: [
-      { status: "AWAITING_PATIENT_CHOICE", label: "Esperando Paciente" },
-      { status: "AWAITING_PAYMENT_CONFIRMATION", label: "Pendiente Pago" }
     ]
   },
   {
@@ -67,6 +61,25 @@ const agendaSections: AgendaSection[] = [
     label: "Finanzas",
     statuses: []
   }
+];
+
+const approvalStatusLabels: Record<
+  string,
+  { label: string; tone: "neutral" | "success" | "warning" | "danger" }
+> = {
+  AWAITING_CONSULTATION_REVIEW: { label: "Pendiente revisión", tone: "warning" },
+  AWAITING_CONSULTATION_DETAILS: { label: "Esperando detalles", tone: "neutral" },
+  AWAITING_PATIENT_CHOICE: { label: "Esperando paciente", tone: "neutral" },
+  AWAITING_PAYMENT_CONFIRMATION: { label: "Pendiente pago", tone: "warning" },
+  CONSULTATION_REJECTED: { label: "Rechazado", tone: "danger" }
+};
+
+const APPROVAL_STATUSES: schedulingModel.SchedulingRequestStatus[] = [
+  "AWAITING_CONSULTATION_REVIEW",
+  "AWAITING_CONSULTATION_DETAILS",
+  "AWAITING_PATIENT_CHOICE",
+  "AWAITING_PAYMENT_CONFIRMATION",
+  "CONSULTATION_REJECTED"
 ];
 
 const weekDayLabels = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -414,7 +427,7 @@ export function AgendaPage() {
     queryFn: () => appContainer.manualAppointmentUseCase.listAppointments()
   });
 
-  const [activeSectionId, setActiveSectionId] = reactModule.useState<string>("CONSULTATION");
+  const [activeSectionId, setActiveSectionId] = reactModule.useState<string>("APPROVALS");
   const [activeTab, setActiveTab] = reactModule.useState<schedulingModel.SchedulingRequestStatus>(
     "AWAITING_CONSULTATION_REVIEW"
   );
@@ -513,9 +526,14 @@ export function AgendaPage() {
     return counts;
   }, [allManualAppointments, requestCountByStatus]);
 
+  const isApprovalSection = activeSectionId === "APPROVALS";
   const filteredRequests = reactModule.useMemo(() => {
+    if (isApprovalSection) {
+      const approvalStatusSet = new Set<string>(APPROVAL_STATUSES);
+      return allRequests.filter((request) => approvalStatusSet.has(request.status));
+    }
     return allRequests.filter((request) => request.status === activeTab);
-  }, [allRequests, activeTab]);
+  }, [allRequests, activeTab, isApprovalSection]);
   const isManualSchedulingSection = activeSectionId === "MANUAL_SCHEDULING";
   const isFinanceSection = activeSectionId === "FINANCE";
   const isBookedTab = activeTab === "BOOKED";
@@ -1352,7 +1370,8 @@ export function AgendaPage() {
             })}
           </div>
 
-          {(agendaSections.find((s) => s.id === activeSectionId)?.statuses.length ?? 0) > 0 ? (
+          {!isApprovalSection &&
+          (agendaSections.find((s) => s.id === activeSectionId)?.statuses.length ?? 0) > 0 ? (
             <div className="flex flex-wrap gap-2">
               {agendaSections
                 .find((s) => s.id === activeSectionId)
@@ -1588,7 +1607,11 @@ export function AgendaPage() {
             <article className="rounded-xl border border-border-subtle bg-white shadow-card">
               <header className="border-b border-border-subtle p-4">
                 <h3 className="text-base font-semibold">Solicitudes</h3>
-                <p className="text-xs text-slate-500">Estado actual: {activeTab}</p>
+                <p className="text-xs text-slate-500">
+                  {isApprovalSection
+                    ? `${filteredRequests.length} solicitudes pendientes`
+                    : `Estado actual: ${activeTab}`}
+                </p>
               </header>
               <div className="max-h-[calc(100vh-12rem)] space-y-2 overflow-auto p-3">
                 {requestsQuery.isLoading ? (
@@ -1599,6 +1622,7 @@ export function AgendaPage() {
                 ) : null}
                 {filteredRequests.map((request) => {
                   const isSelected = request.requestId === selectedRequestId;
+                  const statusConfig = approvalStatusLabels[request.status];
                   return (
                     <button
                       className={[
@@ -1615,16 +1639,20 @@ export function AgendaPage() {
                       }}
                       type="button"
                     >
-                      <div className="mb-2 flex items-center justify-between gap-2">
+                      <div className="mb-1 flex items-center justify-between gap-2">
                         <p className="truncate text-sm font-semibold text-brand-ink">
-                          {request.requestId}
+                          {resolvePatientDisplayName(request)}
                         </p>
-                        <statusBadgeModule.StatusBadge label={request.status} tone="neutral" />
+                        <statusBadgeModule.StatusBadge
+                          label={statusConfig?.label ?? request.status}
+                          tone={statusConfig?.tone ?? "neutral"}
+                        />
                       </div>
-                      <p className="text-xs text-slate-600">Conv: {request.conversationId}</p>
-                      <p className="text-xs text-slate-600">
-                        Paciente: {resolvePatientDisplayName(request)}
-                      </p>
+                      {request.consultationReason !== null ? (
+                        <p className="truncate text-xs text-slate-600">
+                          {request.consultationReason}
+                        </p>
+                      ) : null}
                       <p className="mt-1 text-xs text-slate-500">
                         {dateUtilsModule.formatDateTime(request.updatedAt)}
                       </p>
@@ -1755,223 +1783,89 @@ export function AgendaPage() {
               </p>
             ) : (
               <>
-                <section className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-lg border border-border-subtle p-3">
-                    <h4 className="text-sm font-semibold text-brand-ink">Detalle</h4>
-                    <div className="mt-2 space-y-1 text-xs text-slate-700">
+                <section className="rounded-lg border border-border-subtle p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-brand-ink">
+                      Información del paciente
+                    </h4>
+                    <statusBadgeModule.StatusBadge
+                      label={
+                        approvalStatusLabels[selectedRequest.status]?.label ??
+                        selectedRequest.status
+                      }
+                      tone={approvalStatusLabels[selectedRequest.status]?.tone ?? "neutral"}
+                    />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2 text-sm text-slate-700">
                       <p>
-                        <strong>Request:</strong> {selectedRequest.requestId}
+                        <span className="font-semibold text-slate-500">Nombre</span>
+                        <br />
+                        {resolvePatientDisplayName(selectedRequest)}
                       </p>
                       <p>
-                        <strong>Conversación:</strong> {selectedRequest.conversationId}
+                        <span className="font-semibold text-slate-500">Motivo</span>
+                        <br />
+                        {selectedRequest.consultationReason ?? "-"}
                       </p>
-                      <p>
-                        <strong>Paciente:</strong> {resolvePatientDisplayName(selectedRequest)}
-                      </p>
-                      <p>
-                        <strong>Contacto:</strong> {selectedRequest.whatsappUserId}
-                      </p>
-                      <p>
-                        <strong>Tipo:</strong> {selectedRequest.requestKind}
-                      </p>
-                      <p>
-                        <strong>Ronda:</strong> {selectedRequest.roundNumber}
-                      </p>
-                      <p>
-                        <strong>Estado:</strong> {selectedRequest.status}
-                      </p>
-                      {isBookedTab ? (
+                      {selectedRequest.consultationDetails !== null ? (
                         <p>
-                          <strong>Cita:</strong>{" "}
-                          {selectedBookedAppointment === null
-                            ? "-"
-                            : `${selectedBookedAppointment.startAt.toFormat(
-                                "dd LLL yyyy HH:mm"
-                              )} - ${selectedBookedAppointment.endAt.toFormat("HH:mm")}`}
+                          <span className="font-semibold text-slate-500">Detalles</span>
+                          <br />
+                          {selectedRequest.consultationDetails}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="space-y-2 text-sm text-slate-700">
+                      <p>
+                        <span className="font-semibold text-slate-500">Teléfono</span>
+                        <br />
+                        {selectedRequest.whatsappUserId}
+                      </p>
+                      {selectedRequest.patientLocation !== null ? (
+                        <p>
+                          <span className="font-semibold text-slate-500">Ubicación</span>
+                          <br />
+                          {selectedRequest.patientLocation}
+                        </p>
+                      ) : null}
+                      {selectedRequest.appointmentModality !== null ? (
+                        <p>
+                          <span className="font-semibold text-slate-500">Modalidad</span>
+                          <br />
+                          {selectedRequest.appointmentModality}
                         </p>
                       ) : null}
                     </div>
                   </div>
-                  <div className="rounded-lg border border-border-subtle p-3">
-                    <h4 className="text-sm font-semibold text-brand-ink">
-                      Preferencias del paciente
-                    </h4>
-                    <p className="mt-2 text-sm text-slate-700">
-                      {selectedRequest.patientPreferenceNote ?? "-"}
-                    </p>
-                    {selectedRequest.rejectionSummary !== null ? (
-                      <p className="mt-2 text-xs text-slate-600">
-                        <strong>Resumen rechazo:</strong> {selectedRequest.rejectionSummary}
+                  {selectedRequest.patientPreferenceNote !== null ? (
+                    <div className="mt-3 rounded-md bg-slate-50 p-3">
+                      <p className="text-xs font-semibold text-slate-500">
+                        Preferencias del paciente
                       </p>
-                    ) : null}
-                    {selectedRequest.consultationReason !== null ? (
-                      <p className="mt-2 text-xs text-slate-600">
-                        <strong>Motivo:</strong> {selectedRequest.consultationReason}
+                      <p className="mt-1 text-sm text-slate-700">
+                        {selectedRequest.patientPreferenceNote}
                       </p>
-                    ) : null}
-                    {selectedRequest.consultationDetails !== null ? (
-                      <p className="mt-2 text-xs text-slate-600">
-                        <strong>Detalles:</strong> {selectedRequest.consultationDetails}
+                    </div>
+                  ) : null}
+                  {selectedRequest.rejectionSummary !== null ? (
+                    <div className="mt-2 rounded-md bg-red-50 p-3">
+                      <p className="text-xs font-semibold text-red-600">Resumen rechazo</p>
+                      <p className="mt-1 text-sm text-red-700">
+                        {selectedRequest.rejectionSummary}
                       </p>
-                    ) : null}
-                    {selectedRequest.appointmentModality !== null ? (
-                      <p className="mt-2 text-xs text-slate-600">
-                        <strong>Modalidad:</strong> {selectedRequest.appointmentModality}
+                    </div>
+                  ) : null}
+                  {isBookedTab && selectedBookedAppointment !== null ? (
+                    <div className="mt-3 rounded-md bg-brand-accent-light p-3">
+                      <p className="text-xs font-semibold text-brand-teal">Cita agendada</p>
+                      <p className="mt-1 text-sm text-brand-ink">
+                        {selectedBookedAppointment.startAt.toFormat("dd LLL yyyy HH:mm")} -{" "}
+                        {selectedBookedAppointment.endAt.toFormat("HH:mm")}
                       </p>
-                    ) : null}
-                    {selectedRequest.patientLocation !== null ? (
-                      <p className="mt-2 text-xs text-slate-600">
-                        <strong>Ubicación:</strong> {selectedRequest.patientLocation}
-                      </p>
-                    ) : null}
-                  </div>
+                    </div>
+                  ) : null}
                 </section>
-
-                {selectedRequest.status === "AWAITING_CONSULTATION_REVIEW" ? (
-                  <section className="rounded-lg border border-border-subtle p-3">
-                    <h4 className="text-sm font-semibold text-brand-ink">
-                      Resolver motivo de consulta
-                    </h4>
-                    <p className="mt-2 text-xs text-slate-600">
-                      Propón horarios abajo para aprobar, o pide más información / rechaza.
-                    </p>
-                    <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Nota para el bot
-                      <textarea
-                        className="mt-1 min-h-24 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                        onChange={(event) => {
-                          if (selectedRequest === undefined) {
-                            return;
-                          }
-                          const nextValue = event.target.value;
-                          setReviewNotesByRequestId((currentValue) => ({
-                            ...currentValue,
-                            [selectedRequest.requestId]: nextValue
-                          }));
-                        }}
-                        value={currentReviewNote}
-                      />
-                    </label>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={resolveConsultationReviewMutation.isPending}
-                        onClick={() => {
-                          if (selectedRequest === undefined) {
-                            return;
-                          }
-                          if (currentReviewNote.trim() === "") {
-                            setLocalSubmitErrorMessage(
-                              "Debes agregar una nota para pedir más información."
-                            );
-                            return;
-                          }
-                          setLocalSubmitErrorMessage(null);
-                          setSubmitSuccessMessage(null);
-                          resolveConsultationReviewMutation.mutate({
-                            request: selectedRequest,
-                            decision: "REQUEST_MORE_INFO",
-                            professionalNote: currentReviewNote.trim()
-                          });
-                        }}
-                        type="button"
-                      >
-                        Pedir más info
-                      </button>
-                      <button
-                        className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={resolveConsultationReviewMutation.isPending}
-                        onClick={() => {
-                          if (selectedRequest === undefined) {
-                            return;
-                          }
-                          setLocalSubmitErrorMessage(null);
-                          setSubmitSuccessMessage(null);
-                          resolveConsultationReviewMutation.mutate({
-                            request: selectedRequest,
-                            decision: "REJECT",
-                            professionalNote:
-                              currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
-                          });
-                        }}
-                        type="button"
-                      >
-                        Rechazar
-                      </button>
-                    </div>
-                  </section>
-                ) : null}
-
-                {selectedRequest.status === "AWAITING_PAYMENT_CONFIRMATION" ? (
-                  <section className="rounded-lg border border-border-subtle p-3">
-                    <h4 className="text-sm font-semibold text-brand-ink">
-                      Confirmar pago del paciente
-                    </h4>
-                    <p className="mt-2 text-xs text-slate-600">
-                      El paciente seleccionó un horario y se le enviaron los datos de pago. Verifica
-                      el comprobante y aprueba, o envía un recordatorio de pago.
-                    </p>
-                    <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Nota para el bot
-                      <textarea
-                        className="mt-1 min-h-24 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
-                        onChange={(event) => {
-                          if (selectedRequest === undefined) {
-                            return;
-                          }
-                          const nextValue = event.target.value;
-                          setReviewNotesByRequestId((currentValue) => ({
-                            ...currentValue,
-                            [selectedRequest.requestId]: nextValue
-                          }));
-                        }}
-                        value={currentReviewNote}
-                      />
-                    </label>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <button
-                        className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={resolvePaymentReviewMutation.isPending}
-                        onClick={() => {
-                          if (selectedRequest === undefined) {
-                            return;
-                          }
-                          setLocalSubmitErrorMessage(null);
-                          setSubmitSuccessMessage(null);
-                          resolvePaymentReviewMutation.mutate({
-                            request: selectedRequest,
-                            decision: "APPROVE",
-                            professionalNote:
-                              currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
-                          });
-                        }}
-                        type="button"
-                      >
-                        Aprobar pago
-                      </button>
-                      <button
-                        className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={resolvePaymentReviewMutation.isPending}
-                        onClick={() => {
-                          if (selectedRequest === undefined) {
-                            return;
-                          }
-                          setLocalSubmitErrorMessage(null);
-                          setSubmitSuccessMessage(null);
-                          resolvePaymentReviewMutation.mutate({
-                            request: selectedRequest,
-                            decision: "SEND_REMINDER",
-                            professionalNote:
-                              currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
-                          });
-                        }}
-                        type="button"
-                      >
-                        Enviar recordatorio
-                      </button>
-                    </div>
-                  </section>
-                ) : null}
 
                 {selectedRequest.status === "AWAITING_CONSULTATION_REVIEW" ||
                 selectedRequest.status === "AWAITING_PATIENT_CHOICE" ? (
@@ -2176,15 +2070,160 @@ export function AgendaPage() {
                           }}
                           type="button"
                         >
-                          {submitSlotsMutation.isPending
-                            ? "Enviando..."
-                            : "Enviar slots al chatbot"}
+                          {submitSlotsMutation.isPending ? "Enviando..." : "Enviar espacios"}
                         </button>
                       </div>
                     </section>
                   </>
-                ) : selectedRequest.status ===
-                  "AWAITING_PAYMENT_CONFIRMATION" ? null : selectedRequest.status === "BOOKED" ? (
+                ) : null}
+
+                {selectedRequest.status === "AWAITING_CONSULTATION_REVIEW" ? (
+                  <section className="rounded-lg border border-border-subtle p-3">
+                    <h4 className="text-sm font-semibold text-brand-ink">
+                      Resolver motivo de consulta
+                    </h4>
+                    <p className="mt-2 text-xs text-slate-600">
+                      Propón horarios arriba para aprobar, o pide más información / rechaza.
+                    </p>
+                    <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Nota para el bot
+                      <textarea
+                        className="mt-1 min-h-24 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
+                        onChange={(event) => {
+                          if (selectedRequest === undefined) {
+                            return;
+                          }
+                          const nextValue = event.target.value;
+                          setReviewNotesByRequestId((currentValue) => ({
+                            ...currentValue,
+                            [selectedRequest.requestId]: nextValue
+                          }));
+                        }}
+                        value={currentReviewNote}
+                      />
+                    </label>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={resolveConsultationReviewMutation.isPending}
+                        onClick={() => {
+                          if (selectedRequest === undefined) {
+                            return;
+                          }
+                          if (currentReviewNote.trim() === "") {
+                            setLocalSubmitErrorMessage(
+                              "Debes agregar una nota para pedir más información."
+                            );
+                            return;
+                          }
+                          setLocalSubmitErrorMessage(null);
+                          setSubmitSuccessMessage(null);
+                          resolveConsultationReviewMutation.mutate({
+                            request: selectedRequest,
+                            decision: "REQUEST_MORE_INFO",
+                            professionalNote: currentReviewNote.trim()
+                          });
+                        }}
+                        type="button"
+                      >
+                        Pedir más info
+                      </button>
+                      <button
+                        className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={resolveConsultationReviewMutation.isPending}
+                        onClick={() => {
+                          if (selectedRequest === undefined) {
+                            return;
+                          }
+                          setLocalSubmitErrorMessage(null);
+                          setSubmitSuccessMessage(null);
+                          resolveConsultationReviewMutation.mutate({
+                            request: selectedRequest,
+                            decision: "REJECT",
+                            professionalNote:
+                              currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
+                          });
+                        }}
+                        type="button"
+                      >
+                        Rechazar
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+
+                {selectedRequest.status === "AWAITING_PAYMENT_CONFIRMATION" ? (
+                  <section className="rounded-lg border border-border-subtle p-3">
+                    <h4 className="text-sm font-semibold text-brand-ink">
+                      Confirmar pago del paciente
+                    </h4>
+                    <p className="mt-2 text-xs text-slate-600">
+                      El paciente seleccionó un horario y se le enviaron los datos de pago. Verifica
+                      el comprobante y aprueba, o envía un recordatorio de pago.
+                    </p>
+                    <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Nota para el bot
+                      <textarea
+                        className="mt-1 min-h-24 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
+                        onChange={(event) => {
+                          if (selectedRequest === undefined) {
+                            return;
+                          }
+                          const nextValue = event.target.value;
+                          setReviewNotesByRequestId((currentValue) => ({
+                            ...currentValue,
+                            [selectedRequest.requestId]: nextValue
+                          }));
+                        }}
+                        value={currentReviewNote}
+                      />
+                    </label>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={resolvePaymentReviewMutation.isPending}
+                        onClick={() => {
+                          if (selectedRequest === undefined) {
+                            return;
+                          }
+                          setLocalSubmitErrorMessage(null);
+                          setSubmitSuccessMessage(null);
+                          resolvePaymentReviewMutation.mutate({
+                            request: selectedRequest,
+                            decision: "APPROVE",
+                            professionalNote:
+                              currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
+                          });
+                        }}
+                        type="button"
+                      >
+                        Aprobar pago
+                      </button>
+                      <button
+                        className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={resolvePaymentReviewMutation.isPending}
+                        onClick={() => {
+                          if (selectedRequest === undefined) {
+                            return;
+                          }
+                          setLocalSubmitErrorMessage(null);
+                          setSubmitSuccessMessage(null);
+                          resolvePaymentReviewMutation.mutate({
+                            request: selectedRequest,
+                            decision: "SEND_REMINDER",
+                            professionalNote:
+                              currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
+                          });
+                        }}
+                        type="button"
+                      >
+                        Enviar recordatorio
+                      </button>
+                    </div>
+                  </section>
+                ) : null}
+
+                {selectedRequest.status === "BOOKED" ? (
                   <section className="rounded-lg border border-border-subtle p-3">
                     <h4 className="text-sm font-semibold text-brand-ink">
                       Gestionar cita del chatbot
@@ -2448,13 +2487,7 @@ export function AgendaPage() {
                       </div>
                     </div>
                   </section>
-                ) : (
-                  <section className="rounded-lg border border-border-subtle p-3">
-                    <p className="text-sm text-slate-600">
-                      Esta solicitud está en modo lectura para este estado.
-                    </p>
-                  </section>
-                )}
+                ) : null}
               </>
             )}
 

@@ -12,6 +12,8 @@ import * as dateUtilsModule from "@shared/utils/date";
 const whatsappConnectionQueryKey = ["whatsapp-connection"] as const;
 const googleCalendarConnectionQueryKey = ["google-calendar-connection"] as const;
 const onboardingStatusQueryKey = ["onboarding-status"] as const;
+const promptQueryKey = ["system-prompt"] as const;
+const settingsQueryKey = ["agent-settings"] as const;
 
 function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   if (status === undefined) {
@@ -27,7 +29,7 @@ function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   return <statusBadgeModule.StatusBadge label="DISCONNECTED" tone="danger" />;
 }
 
-export function OnboardingPage() {
+export function ConfiguracionesPage() {
   const appContainer = appContainerContextModule.useAppContainer();
   const navigate = reactRouterDomModule.useNavigate();
   const location = reactRouterDomModule.useLocation();
@@ -36,6 +38,7 @@ export function OnboardingPage() {
     [location.search]
   );
 
+  // --- Onboarding queries ---
   const whatsappConnectionQuery = reactQueryModule.useQuery({
     queryKey: whatsappConnectionQueryKey,
     queryFn: () => appContainer.onboardingUseCase.getWhatsappConnectionStatus()
@@ -72,7 +75,7 @@ export function OnboardingPage() {
       <statusBadgeModule.StatusBadge label="PENDIENTE" tone="warning" />
     );
 
-  const errorMessage = uiErrorModule.resolveUiErrorMessage([
+  const onboardingErrorMessage = uiErrorModule.resolveUiErrorMessage([
     whatsappSessionMutation.error,
     googleSessionMutation.error,
     whatsappConnectionQuery.error,
@@ -85,8 +88,60 @@ export function OnboardingPage() {
   const callbackReason = searchParams.get("reason");
   const callbackCode = searchParams.get("status");
 
+  // --- Prompt / settings queries ---
+  const promptQuery = reactQueryModule.useQuery({
+    queryKey: promptQueryKey,
+    queryFn: () => appContainer.agentUseCase.getSystemPrompt()
+  });
+
+  const [systemPrompt, setSystemPrompt] = reactModule.useState("");
+
+  reactModule.useEffect(() => {
+    if (promptQuery.data !== undefined) {
+      setSystemPrompt(promptQuery.data.systemPrompt);
+    }
+  }, [promptQuery.data]);
+
+  const updateMutation = reactQueryModule.useMutation({
+    mutationFn: () => appContainer.agentUseCase.updateSystemPrompt(systemPrompt),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: promptQueryKey });
+    }
+  });
+
+  const settingsQuery = reactQueryModule.useQuery({
+    queryKey: settingsQueryKey,
+    queryFn: () => appContainer.agentUseCase.getAgentSettings()
+  });
+
+  const [debounceDelay, setDebounceDelay] = reactModule.useState(0);
+
+  reactModule.useEffect(() => {
+    if (settingsQuery.data !== undefined) {
+      setDebounceDelay(settingsQuery.data.messageDebounceDelaySeconds);
+    }
+  }, [settingsQuery.data]);
+
+  const settingsMutation = reactQueryModule.useMutation({
+    mutationFn: () => appContainer.agentUseCase.updateAgentSettings(debounceDelay),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+    }
+  });
+
+  const promptErrorMessage = uiErrorModule.resolveUiErrorMessage([
+    updateMutation.error,
+    promptQuery.error
+  ]);
+
+  const settingsErrorMessage = uiErrorModule.resolveUiErrorMessage([
+    settingsMutation.error,
+    settingsQuery.error
+  ]);
+
   return (
     <appShellModule.AppShell>
+      {/* OAuth callback banners */}
       <section className="space-y-4">
         {metaOAuthStatus === "connected" ? (
           <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
@@ -107,11 +162,13 @@ export function OnboardingPage() {
         ) : null}
       </section>
 
-      <section className="mt-4 grid max-w-5xl gap-6 md:grid-cols-2">
+      {/* Conexiones */}
+      <h2 className="mt-4 text-lg font-semibold text-brand-ink">Conexiones</h2>
+      <section className="mt-2 grid max-w-5xl gap-6 md:grid-cols-2">
         <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <h2 className="text-xl font-semibold text-brand-ink">Estado de WhatsApp</h2>
+          <h3 className="text-xl font-semibold text-brand-ink">WhatsApp</h3>
           <p className="mt-1 text-sm text-slate-600">
-            Conecta la línea de negocio para recibir y responder chats.
+            Conecta la linea de negocio para recibir y responder chats.
           </p>
           <div className="mt-4 flex items-center gap-2">
             <span className="text-sm font-medium text-slate-700">Estado actual:</span>
@@ -148,7 +205,7 @@ export function OnboardingPage() {
         </article>
 
         <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <h2 className="text-xl font-semibold text-brand-ink">Estado de Google Calendar</h2>
+          <h3 className="text-xl font-semibold text-brand-ink">Google Calendar</h3>
           <p className="mt-1 text-sm text-slate-600">
             Conecta el calendario principal del profesional para disponibilidad y agenda.
           </p>
@@ -192,9 +249,9 @@ export function OnboardingPage() {
         </article>
       </section>
 
-      <section className="mt-6 grid max-w-5xl gap-6 md:grid-cols-2">
+      <section className="mt-4 grid max-w-5xl gap-6 md:grid-cols-2">
         <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <h3 className="text-lg font-semibold text-brand-ink">Estado general de onboarding</h3>
+          <h3 className="text-lg font-semibold text-brand-ink">Estado general</h3>
           <div className="mt-3 flex items-center gap-2">
             <span className="text-sm font-medium text-slate-700">Estado:</span>
             {statusBadgeElement}
@@ -202,11 +259,11 @@ export function OnboardingPage() {
           <div className="mt-4 space-y-2 text-sm text-slate-700">
             <p>
               WhatsApp conectado:{" "}
-              {onboardingStatusQuery.data?.whatsappConnected === true ? "sí" : "no"}
+              {onboardingStatusQuery.data?.whatsappConnected === true ? "si" : "no"}
             </p>
             <p>
               Google Calendar conectado:{" "}
-              {onboardingStatusQuery.data?.googleCalendarConnected === true ? "sí" : "no"}
+              {onboardingStatusQuery.data?.googleCalendarConnected === true ? "si" : "no"}
             </p>
           </div>
           <div className="mt-6 flex flex-wrap gap-3">
@@ -233,20 +290,87 @@ export function OnboardingPage() {
             </button>
           </div>
         </article>
-
-        <article className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <h3 className="text-lg font-semibold text-brand-ink">Flujo recomendado</h3>
-          <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-700">
-            <li>Conecta WhatsApp y Google Calendar.</li>
-            <li>Refresca el estado general.</li>
-            <li>Cuando quede READY, entra a Inbox y Agenda.</li>
-          </ol>
-        </article>
       </section>
 
-      {errorMessage !== null ? (
-        <errorBannerModule.ErrorBanner className="mt-4" message={errorMessage} />
+      {onboardingErrorMessage !== null ? (
+        <errorBannerModule.ErrorBanner className="mt-4" message={onboardingErrorMessage} />
       ) : null}
+
+      {/* System Prompt */}
+      <h2 className="mt-8 text-lg font-semibold text-brand-ink">System Prompt</h2>
+      <section className="mt-2 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+        <p className="text-sm text-slate-600">
+          Define el comportamiento base del agente por tenant.
+        </p>
+
+        <textarea
+          className="mt-4 min-h-[350px] w-full rounded-lg border border-border-subtle px-3 py-2 text-sm leading-6 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+          onChange={(event) => {
+            setSystemPrompt(event.target.value);
+          }}
+          value={systemPrompt}
+        />
+
+        {promptErrorMessage !== null ? (
+          <errorBannerModule.ErrorBanner className="mt-3" message={promptErrorMessage} />
+        ) : null}
+
+        <div className="mt-4 flex gap-3">
+          <button
+            className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={updateMutation.isPending || promptQuery.isLoading}
+            onClick={() => {
+              updateMutation.mutate();
+            }}
+            type="button"
+          >
+            {updateMutation.isPending ? "Guardando..." : "Guardar prompt"}
+          </button>
+        </div>
+      </section>
+
+      {/* Ajustes del agente */}
+      <h2 className="mt-8 text-lg font-semibold text-brand-ink">Ajustes del agente</h2>
+      <section className="mt-2 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+        <div>
+          <label className="block text-sm font-medium text-slate-700" htmlFor="debounce-delay">
+            Delay de respuesta (segundos)
+          </label>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Tiempo de espera despues de procesar un mensaje antes de responder. Permite capturar
+            mensajes adicionales enviados en rafaga. 0 = sin espera.
+          </p>
+          <input
+            className="mt-2 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+            id="debounce-delay"
+            max={30}
+            min={0}
+            onChange={(event) => {
+              setDebounceDelay(Number(event.target.value));
+            }}
+            step={1}
+            type="number"
+            value={debounceDelay}
+          />
+        </div>
+
+        {settingsErrorMessage !== null ? (
+          <errorBannerModule.ErrorBanner className="mt-3" message={settingsErrorMessage} />
+        ) : null}
+
+        <div className="mt-4 flex gap-3">
+          <button
+            className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={settingsMutation.isPending || settingsQuery.isLoading}
+            onClick={() => {
+              settingsMutation.mutate();
+            }}
+            type="button"
+          >
+            {settingsMutation.isPending ? "Guardando..." : "Guardar configuracion"}
+          </button>
+        </div>
+      </section>
     </appShellModule.AppShell>
   );
 }

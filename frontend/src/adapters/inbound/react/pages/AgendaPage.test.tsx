@@ -137,7 +137,7 @@ vitestModule.describe("AgendaPage", () => {
     renderAgendaPage(container);
 
     await testingLibraryReactModule.waitFor(() => {
-      expect(testingLibraryReactModule.screen.getByText("req-1")).toBeInTheDocument();
+      expect(testingLibraryReactModule.screen.getByText("wa-1")).toBeInTheDocument();
     });
 
     const nextMonthButton = testingLibraryReactModule.screen.getByRole("button", {
@@ -151,7 +151,7 @@ vitestModule.describe("AgendaPage", () => {
     testingLibraryReactModule.fireEvent.click(firstSlotButton);
 
     const submitButton = testingLibraryReactModule.screen.getByRole("button", {
-      name: "Enviar slots al chatbot"
+      name: "Enviar espacios"
     });
     testingLibraryReactModule.fireEvent.click(submitButton);
 
@@ -161,18 +161,10 @@ vitestModule.describe("AgendaPage", () => {
       ).toBeInTheDocument();
     });
 
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agendamiento en Curso/
-      })
-    );
-
     await testingLibraryReactModule.waitFor(() => {
       expect(
-        testingLibraryReactModule.screen.getByRole("button", {
-          name: /Esperando Paciente \(1\)/
-        })
-      ).toBeInTheDocument();
+        testingLibraryReactModule.screen.getAllByText("Esperando paciente").length
+      ).toBeGreaterThan(0);
     });
   });
 
@@ -334,7 +326,9 @@ vitestModule.describe("AgendaPage", () => {
           testingLibraryReactModule.screen.getByText("Calendario de citas agendadas")
         ).toBeInTheDocument();
         expect(testingLibraryReactModule.screen.getByText("+1 más")).toBeInTheDocument();
-        expect(testingLibraryReactModule.screen.getByText("req-booked-1")).toBeInTheDocument();
+        expect(testingLibraryReactModule.screen.getAllByText("Ana Lopez").length).toBeGreaterThan(
+          0
+        );
       });
 
       const [secondAppointmentButton] = testingLibraryReactModule.screen.getAllByRole("button", {
@@ -346,7 +340,9 @@ vitestModule.describe("AgendaPage", () => {
       testingLibraryReactModule.fireEvent.click(secondAppointmentButton);
 
       await testingLibraryReactModule.waitFor(() => {
-        expect(testingLibraryReactModule.screen.getByText("req-booked-2")).toBeInTheDocument();
+        expect(testingLibraryReactModule.screen.getAllByText("Juan Perez").length).toBeGreaterThan(
+          0
+        );
         expect(
           testingLibraryReactModule.screen.getByText(/12 Mar 2026 11:00 - 12:00/)
         ).toBeInTheDocument();

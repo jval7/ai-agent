@@ -14,7 +14,7 @@ export function PublicOnlyRoute(props: { children: JSX.Element }) {
   }
 
   if (auth.status === "authenticated") {
-    return <reactRouterDomModule.Navigate to="/onboarding" replace />;
+    return <reactRouterDomModule.Navigate to="/configuraciones" replace />;
   }
 
   return props.children;
