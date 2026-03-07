@@ -28,18 +28,6 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
         return f"https://www.facebook.com/{self._settings.meta_api_version}/dialog/oauth?{encoded_query}"
 
     def exchange_code_for_credentials(self, code: str) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
-        if code.startswith("mock::"):
-            segments = code.split("::")
-            if len(segments) != 4:
-                raise service_exceptions.ExternalProviderError(
-                    "mock embedded code must be: mock::phone_number_id::business_account_id::access_token"
-                )
-            return whatsapp_dto.EmbeddedSignupCredentialsDTO(
-                phone_number_id=segments[1],
-                business_account_id=segments[2],
-                access_token=segments[3],
-            )
-
         self._validate_embedded_signup_settings()
         access_token = self._exchange_code_for_access_token(code)
 

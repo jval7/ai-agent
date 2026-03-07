@@ -35,26 +35,6 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         return f"https://accounts.google.com/o/oauth2/v2/auth?{encoded_query}"
 
     def exchange_code_for_tokens(self, code: str) -> google_calendar_dto.GoogleOauthTokensDTO:
-        if code.startswith("mock::"):
-            segments = code.split("::")
-            if len(segments) != 4:
-                raise service_exceptions.ExternalProviderError(
-                    "mock code must be mock::access_token::refresh_token::expires_in_seconds"
-                )
-            try:
-                expires_in_seconds = int(segments[3])
-            except ValueError as error:
-                raise service_exceptions.ExternalProviderError(
-                    "mock code expires_in_seconds is invalid"
-                ) from error
-            return google_calendar_dto.GoogleOauthTokensDTO(
-                access_token=segments[1],
-                refresh_token=segments[2],
-                expires_in_seconds=expires_in_seconds,
-                scope=None,
-                token_type="Bearer",
-            )
-
         self._validate_oauth_settings()
         payload = self._post_form(
             url="https://oauth2.googleapis.com/token",

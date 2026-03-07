@@ -53,7 +53,7 @@ class Settings(pydantic.BaseModel):
         normalized_firestore_database_id = firestore_database_id or "(default)"
 
         return cls(
-            jwt_secret=app_config_overrides.get("JWT_SECRET", "dev-secret-change-me"),
+            jwt_secret=cls._resolve_required_secret(app_config_overrides, "JWT_SECRET"),
             jwt_access_ttl_seconds=int(app_config_overrides.get("JWT_ACCESS_TTL_SECONDS", "1800")),
             jwt_refresh_ttl_seconds=int(
                 app_config_overrides.get("JWT_REFRESH_TTL_SECONDS", "2592000")
@@ -134,6 +134,24 @@ class Settings(pydantic.BaseModel):
             ).lower()
             == "true",
         )
+
+    _INSECURE_DEV_DEFAULT = "dev-secret-change-me"
+
+    @staticmethod
+    def _resolve_required_secret(
+        app_config_overrides: dict[str, str],
+        key: str,
+    ) -> str:
+        dev_default = Settings._INSECURE_DEV_DEFAULT
+        if not app_config_overrides:
+            return dev_default
+        value = app_config_overrides.get(key, "").strip()
+        if value == "" or value == dev_default:
+            raise ValueError(
+                f"{key} is missing or still set to the insecure default. "
+                f"Set it in the app config secret."
+            )
+        return value
 
     @staticmethod
     def _resolve_google_cloud_project_id(

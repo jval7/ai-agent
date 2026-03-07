@@ -151,7 +151,7 @@ resource "google_compute_url_map" "frontend_spa_http_redirect" {
   count = local.https_enabled && var.enable_http_redirect ? 1 : 0
 
   project = var.project_id
-  name    = "${local.resource_name_prefix_normalized}-http-map"
+  name    = "${local.resource_name_prefix_normalized}-http-redir-map"
 
   default_url_redirect {
     https_redirect         = true
@@ -164,7 +164,7 @@ resource "google_compute_target_http_proxy" "frontend_spa_http_redirect" {
   count = local.https_enabled && var.enable_http_redirect ? 1 : 0
 
   project = var.project_id
-  name    = "${local.resource_name_prefix_normalized}-http-proxy"
+  name    = "${local.resource_name_prefix_normalized}-http-redir-proxy"
   url_map = google_compute_url_map.frontend_spa_http_redirect[0].id
 }
 
@@ -172,7 +172,7 @@ resource "google_compute_global_forwarding_rule" "frontend_spa_http_redirect" {
   count = local.https_enabled && var.enable_http_redirect ? 1 : 0
 
   project    = var.project_id
-  name       = "${local.resource_name_prefix_normalized}-http-fr"
+  name       = "${local.resource_name_prefix_normalized}-http-redir-fr"
   ip_address = google_compute_global_address.frontend_spa.address
   port_range = "80"
   target     = google_compute_target_http_proxy.frontend_spa_http_redirect[0].id
