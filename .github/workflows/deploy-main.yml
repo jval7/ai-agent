@@ -1,0 +1,315 @@
+name: Deploy to GCP
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  GCP_REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
+
+jobs:
+  # ── 1. Detect which areas changed ──────────────────────────────────
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      infra-backend: ${{ steps.filter.outputs.infra-backend }}
+      infra-frontend: ${{ steps.filter.outputs.infra-frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'src/**'
+              - 'pyproject.toml'
+              - 'uv.lock'
+              - 'Dockerfile.backend'
+            frontend:
+              - 'frontend/**'
+            infra-backend:
+              - 'infra/terraform/runtime_deploy/**'
+            infra-frontend:
+              - 'infra/terraform/frontend_spa_cdn/**'
+
+  # ── 2. Deploy backend (infra + Docker + Cloud Run) ─────────────────
+  deploy-backend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.infra-backend == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      backend_url: ${{ steps.deploy.outputs.backend_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Deploy backend
+        id: deploy
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          REGION: ${{ env.GCP_REGION }}
+          ARTIFACT_REPOSITORY: ${{ secrets.GCP_ARTIFACT_REPOSITORY || 'ai-agent-backend' }}
+          CLOUD_RUN_SERVICE_NAME: ${{ secrets.CLOUD_RUN_SERVICE_NAME || 'ai-agent-backend' }}
+          RUNTIME_SA_EMAIL: ${{ secrets.RUNTIME_SERVICE_ACCOUNT_EMAIL }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_STATE_PREFIX: ${{ secrets.TF_STATE_PREFIX || 'runtime-deploy' }}
+          APP_CONFIG_SECRET_ID: AI_AGENT_APP_CONFIG_JSON
+        run: |
+          set -euo pipefail
+
+          # Resolve runtime service account
+          runtime_sa="$RUNTIME_SA_EMAIL"
+          if [[ -z "$runtime_sa" ]]; then
+            project_number=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+            runtime_sa="${project_number}-compute@developer.gserviceaccount.com"
+          fi
+
+          # Generate image tag
+          image_tag="$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::8}"
+          image_uri="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}/backend:${image_tag}"
+
+          # Write terraform.tfvars
+          cd infra/terraform/runtime_deploy
+          cat > terraform.tfvars <<TFVARS
+          project_id                    = "${PROJECT_ID}"
+          region                        = "${REGION}"
+          artifact_registry_location    = "${REGION}"
+          artifact_repository_id        = "${ARTIFACT_REPOSITORY}"
+          cloud_run_service_name        = "${CLOUD_RUN_SERVICE_NAME}"
+          runtime_service_account_email = "${runtime_sa}"
+          container_image               = "${image_uri}"
+
+          allow_unauthenticated = true
+          min_instances         = 0
+          max_instances         = 10
+          container_concurrency = 40
+          timeout_seconds       = 300
+          cpu                   = "1"
+          memory                = "512Mi"
+          container_port        = 8000
+
+          manage_app_config_secret         = true
+          app_config_secret_bootstrap_json = "{}"
+          TFVARS
+
+          # Init with GCS backend
+          terraform init \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="prefix=${TF_STATE_PREFIX}"
+
+          # Import existing resources if not in state
+          terraform import -var-file=terraform.tfvars \
+            'google_artifact_registry_repository.backend' \
+            "projects/${PROJECT_ID}/locations/${REGION}/repositories/${ARTIFACT_REPOSITORY}" 2>/dev/null || true
+
+          terraform import -var-file=terraform.tfvars \
+            'google_secret_manager_secret.app_config_json[0]' \
+            "projects/${PROJECT_ID}/secrets/${APP_CONFIG_SECRET_ID}" 2>/dev/null || true
+
+          terraform import -var-file=terraform.tfvars \
+            'google_cloud_run_v2_service.backend' \
+            "projects/${PROJECT_ID}/locations/${REGION}/services/${CLOUD_RUN_SERVICE_NAME}" 2>/dev/null || true
+
+          terraform import -var-file=terraform.tfvars \
+            "google_secret_manager_secret_iam_member.runtime_secret_accessor[\"${APP_CONFIG_SECRET_ID}\"]" \
+            "projects/${PROJECT_ID}/secrets/${APP_CONFIG_SECRET_ID}/roles/secretmanager.secretAccessor/serviceAccount:${runtime_sa}" 2>/dev/null || true
+
+          # First apply: APIs + Artifact Registry (needed before docker push)
+          terraform apply -auto-approve -var-file=terraform.tfvars \
+            -target=google_project_service.serviceusage \
+            -target=google_project_service.apis \
+            -target=google_artifact_registry_repository.backend
+
+          # Build and push Docker image
+          cd "$GITHUB_WORKSPACE"
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker buildx build --platform linux/amd64 -f Dockerfile.backend -t "$image_uri" --push .
+
+          # Full terraform apply (deploys Cloud Run with new image)
+          cd infra/terraform/runtime_deploy
+          terraform apply -auto-approve -var-file=terraform.tfvars
+
+          # Capture output
+          backend_url=$(terraform output -raw cloud_run_service_url)
+          echo "backend_url=${backend_url}" >> "$GITHUB_OUTPUT"
+          echo "Backend deployed: ${backend_url}"
+
+  # ── 3. Deploy frontend infra (Storage + LB + CDN) ──────────────────
+  deploy-frontend-infra:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.infra-frontend == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      bucket_name: ${{ steps.deploy.outputs.bucket_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Deploy frontend infra
+        id: deploy
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_STATE_PREFIX: ${{ secrets.TF_STATE_PREFIX_FRONTEND || 'frontend-spa-cdn' }}
+          FRONTEND_DOMAINS_JSON: ${{ vars.TF_VAR_FRONTEND_DOMAINS_JSON }}
+          BUCKET_NAME: ${{ vars.TF_VAR_FRONTEND_BUCKET_NAME }}
+          BUCKET_LOCATION: ${{ vars.TF_VAR_FRONTEND_BUCKET_LOCATION || 'US' }}
+          RESOURCE_NAME_PREFIX: ${{ vars.TF_VAR_FRONTEND_RESOURCE_NAME_PREFIX || 'ai-agent-frontend' }}
+        run: |
+          set -euo pipefail
+
+          cd infra/terraform/frontend_spa_cdn
+
+          # Build terraform.tfvars
+          cat > terraform.tfvars <<TFVARS
+          project_id           = "${PROJECT_ID}"
+          enable_https         = true
+          enable_http_redirect = true
+          frontend_domains     = ${FRONTEND_DOMAINS_JSON}
+          bucket_location      = "${BUCKET_LOCATION}"
+          resource_name_prefix = "${RESOURCE_NAME_PREFIX}"
+          enable_cdn           = true
+          force_destroy_bucket = false
+          index_document       = "index.html"
+          error_document       = "index.html"
+          TFVARS
+
+          # Add optional bucket_name
+          if [[ -n "${BUCKET_NAME:-}" ]]; then
+            echo "bucket_name = \"${BUCKET_NAME}\"" >> terraform.tfvars
+          fi
+
+          # Init with GCS backend
+          terraform init \
+            -backend-config="bucket=${TF_STATE_BUCKET}" \
+            -backend-config="prefix=${TF_STATE_PREFIX}"
+
+          terraform apply -auto-approve -var-file=terraform.tfvars
+
+          bucket_name=$(terraform output -raw frontend_bucket_name)
+          echo "bucket_name=${bucket_name}" >> "$GITHUB_OUTPUT"
+          echo "Frontend infra ready (bucket=${bucket_name})"
+
+  # ── 4. Deploy frontend code (build + upload to GCS) ────────────────
+  deploy-frontend:
+    needs: [detect-changes, deploy-backend, deploy-frontend-infra]
+    if: |
+      always() &&
+      !cancelled() &&
+      !failure() &&
+      (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.infra-frontend == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Resolve backend URL
+        id: backend-url
+        env:
+          DEPLOYED_URL: ${{ needs.deploy-backend.outputs.backend_url }}
+          FALLBACK_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: |
+          url="${DEPLOYED_URL:-$FALLBACK_URL}"
+          if [[ -z "$url" ]]; then
+            echo "::error::No backend URL available. Set vars.VITE_API_BASE_URL or ensure deploy-backend ran."
+            exit 1
+          fi
+          echo "url=${url}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve frontend bucket
+        id: bucket
+        env:
+          DEPLOYED_BUCKET: ${{ needs.deploy-frontend-infra.outputs.bucket_name }}
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+          TF_STATE_PREFIX: ${{ secrets.TF_STATE_PREFIX_FRONTEND || 'frontend-spa-cdn' }}
+        run: |
+          bucket="$DEPLOYED_BUCKET"
+          if [[ -z "$bucket" ]]; then
+            # Fetch from existing terraform state
+            cd infra/terraform/frontend_spa_cdn
+            terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="prefix=${TF_STATE_PREFIX}"
+            bucket=$(terraform output -raw frontend_bucket_name)
+            cd "$GITHUB_WORKSPACE"
+          fi
+          if [[ -z "$bucket" ]]; then
+            echo "::error::Could not resolve frontend bucket name."
+            exit 1
+          fi
+          echo "name=${bucket}" >> "$GITHUB_OUTPUT"
+
+      - name: Build frontend
+        env:
+          VITE_API_BASE_URL: ${{ steps.backend-url.outputs.url }}
+        run: |
+          npm --prefix frontend ci
+          npm --prefix frontend run build
+
+      - name: Upload to GCS and set cache headers
+        env:
+          BUCKET: ${{ steps.bucket.outputs.name }}
+        run: |
+          gcloud storage rsync --recursive --delete-unmatched-destination-objects \
+            frontend/dist "gs://${BUCKET}"
+
+          gcloud storage objects update "gs://${BUCKET}/index.html" \
+            --cache-control="no-cache,max-age=0,must-revalidate"
+
+          asset_objects=$(gcloud storage ls "gs://${BUCKET}/assets/**" 2>/dev/null || true)
+          if [[ -n "$asset_objects" ]]; then
+            while IFS= read -r object_uri; do
+              [[ "$object_uri" == */ ]] && continue
+              gcloud storage objects update "$object_uri" \
+                --cache-control="public,max-age=31536000,immutable"
+            done <<< "$asset_objects"
+          fi
+
+          echo "Frontend uploaded to gs://${BUCKET}"
