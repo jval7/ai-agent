@@ -225,7 +225,7 @@ export function AppShell(props: { children: reactModule.ReactNode }) {
           <p className="ml-3 text-sm font-semibold text-brand-ink">AI-Agents</p>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-6">{props.children}</main>
+        <main className="flex-1 overflow-y-auto p-3 sm:p-6">{props.children}</main>
       </div>
     </div>
   );
