@@ -155,6 +155,15 @@ class CancelBookedSlotInputDTO(pydantic.BaseModel):
 class PaymentReviewDecisionDTO(pydantic.BaseModel):
     decision: typing.Literal["APPROVE", "SEND_REMINDER"]
     professional_note: str | None = None
+    payment_amount_cop: int | None = None
+
+    @pydantic.model_validator(mode="after")
+    def validate_payment_amount_required_on_approve(self) -> "PaymentReviewDecisionDTO":
+        if self.decision == "APPROVE" and self.payment_amount_cop is None:
+            raise ValueError("payment_amount_cop is required when approving payment")
+        if self.payment_amount_cop is not None and self.payment_amount_cop <= 0:
+            raise ValueError("payment_amount_cop must be greater than zero")
+        return self
 
 
 class PaymentReviewDecisionResponseDTO(pydantic.BaseModel):

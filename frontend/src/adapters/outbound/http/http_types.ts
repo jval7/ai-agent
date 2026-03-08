@@ -275,6 +275,7 @@ export interface ResolveConsultationReviewApiResponse {
 export interface ResolvePaymentReviewApiRequest {
   decision: "APPROVE" | "SEND_REMINDER";
   professional_note: string | null;
+  payment_amount_cop: number | null;
 }
 
 export interface ResolvePaymentReviewApiResponse {

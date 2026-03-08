@@ -87,6 +87,7 @@ export interface ResolveConsultationReviewResult {
 export interface ResolvePaymentReviewInput {
   decision: "APPROVE" | "SEND_REMINDER";
   professionalNote: string | null;
+  paymentAmountCop: number | null;
 }
 
 export interface ResolvePaymentReviewResult {
