@@ -1879,12 +1879,20 @@ class WebhookService:
         llm_input = llm_dto.GenerateReplyInputDTO(
             system_prompt=(
                 "Eres un asistente que analiza si el paciente esta rechazando los horarios propuestos "
-                "y expresando una preferencia de horario diferente. "
-                "Si el paciente indica que ninguno de los horarios le sirve, o dice que no puede en esos dias/horas "
-                "y sugiere otros dias u horas, responde con un resumen breve de la preferencia del paciente "
-                "(por ejemplo: 'Prefiere miercoles en la tarde' o 'No puede martes, prefiere otro dia'). "
-                "Si el paciente esta intentando elegir uno de los horarios propuestos, preguntando algo, "
-                "o su mensaje no es un rechazo claro de los horarios, responde NINGUNA."
+                "o expresando restricciones/preferencias de disponibilidad en vez de elegir una opcion concreta.\n"
+                "Responde con un resumen breve de la preferencia del paciente en estos casos:\n"
+                "- El paciente indica que ninguno de los horarios le sirve.\n"
+                "- El paciente dice que no puede en esos dias/horas y sugiere otros.\n"
+                "- El paciente expresa restricciones de disponibilidad o preferencias generales de dias/horas "
+                "(por ejemplo: 'no puedo los martes', 'prefiero lunes o jueves', 'en la manana me queda dificil') "
+                "SIN seleccionar una opcion especifica, incluso si los dias preferidos coinciden parcialmente "
+                "con los horarios propuestos. Lo importante es que NO esta eligiendo un horario concreto "
+                "de la lista, sino comunicando su disponibilidad general.\n"
+                "Ejemplos de respuesta: 'Prefiere miercoles en la tarde', 'No puede martes, prefiere lunes o jueves', "
+                "'Prefiere horarios en la manana'.\n"
+                "Responde NINGUNA unicamente si el paciente esta intentando elegir uno de los horarios "
+                "propuestos (por numero o descripcion), o si esta haciendo una pregunta que no tiene que ver "
+                "con preferencias de horario."
             ),
             messages=[
                 llm_dto.ChatMessageDTO(
