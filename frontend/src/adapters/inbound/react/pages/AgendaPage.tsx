@@ -476,6 +476,12 @@ export function AgendaPage() {
     reactModule.useState<PatientUpdateFormState>(emptyPatientUpdateForm());
   const [manualAppointmentFormState, setManualAppointmentFormState] =
     reactModule.useState<ManualAppointmentFormState>(emptyManualAppointmentForm());
+  const [manualMobileStep, setManualMobileStep] = reactModule.useState<
+    "SELECT_PATIENT" | "CREATE_PATIENT" | "APPOINTMENT_FORM"
+  >("SELECT_PATIENT");
+  const [manualMobileSelectedPatientId, setManualMobileSelectedPatientId] = reactModule.useState<
+    string | null
+  >(null);
   const [manualAppointmentListFilter, setManualAppointmentListFilter] =
     reactModule.useState<ManualAppointmentListFilter>("SCHEDULED");
   const [editingManualAppointmentId, setEditingManualAppointmentId] = reactModule.useState<
@@ -2922,11 +2928,467 @@ export function AgendaPage() {
       ) : null}
 
       {isManualSchedulingSection ? (
-        <section className="mt-4 grid gap-4 sm:mt-6 xl:grid-cols-2">
-          <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4">
+        <section className="mt-4 sm:mt-6">
+          {/* ===== MOBILE STEP-BY-STEP FLOW ===== */}
+          <div className="sm:hidden">
+            {manualMobileStep === "SELECT_PATIENT" ? (
+              <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
+                <header className="mb-3">
+                  <h3 className="text-sm font-semibold text-brand-ink">Seleccionar paciente</h3>
+                  <p className="text-[11px] text-slate-500">
+                    Elige un paciente existente o crea uno nuevo.
+                  </p>
+                </header>
+                <div className="mb-3">
+                  <button
+                    className="w-full rounded-lg border-2 border-dashed border-brand-teal/40 px-4 py-3 text-sm font-semibold text-brand-teal transition-colors hover:border-brand-teal hover:bg-brand-accent-light"
+                    onClick={() => setManualMobileStep("CREATE_PATIENT")}
+                    type="button"
+                  >
+                    + Crear nuevo paciente
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {patientsQuery.isLoading ? (
+                    <p className="text-sm text-slate-500">Cargando pacientes...</p>
+                  ) : null}
+                  {allPatients.length === 0 && !patientsQuery.isLoading ? (
+                    <p className="text-sm text-slate-500">Aún no hay pacientes registrados.</p>
+                  ) : null}
+                  {allPatients.map((patient) => (
+                    <button
+                      className="w-full rounded-lg border border-border-subtle bg-white p-3 text-left transition-colors hover:border-brand-teal hover:bg-brand-accent-light"
+                      key={patient.whatsappUserId}
+                      onClick={() => {
+                        setManualMobileSelectedPatientId(patient.whatsappUserId);
+                        setManualAppointmentFormState((currentValue) => ({
+                          ...currentValue,
+                          patientWhatsappUserId: patient.whatsappUserId
+                        }));
+                        setManualMobileStep("APPOINTMENT_FORM");
+                      }}
+                      type="button"
+                    >
+                      <p className="text-sm font-semibold text-brand-ink">
+                        {patient.firstName} {patient.lastName}
+                      </p>
+                      <p className="text-xs text-slate-600">WhatsApp: {patient.whatsappUserId}</p>
+                      <p className="text-xs text-slate-600">Tel: {patient.phone}</p>
+                    </button>
+                  ))}
+                </div>
+              </article>
+            ) : null}
+
+            {manualMobileStep === "CREATE_PATIENT" ? (
+              <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
+                <header className="mb-3 flex items-center gap-2">
+                  <button
+                    className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                    onClick={() => setManualMobileStep("SELECT_PATIENT")}
+                    type="button"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                    </svg>
+                  </button>
+                  <div>
+                    <h3 className="text-sm font-semibold text-brand-ink">Crear paciente</h3>
+                    <p className="text-[11px] text-slate-500">Completa los datos del nuevo paciente.</p>
+                  </div>
+                </header>
+                <div className="grid gap-3">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    WhatsApp ID
+                    <input
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setPatientFormState((currentValue) => ({
+                          ...currentValue,
+                          whatsappUserId: nextValue
+                        }));
+                      }}
+                      type="text"
+                      value={patientFormState.whatsappUserId}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Nombre
+                    <input
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setPatientFormState((currentValue) => ({
+                          ...currentValue,
+                          firstName: nextValue
+                        }));
+                      }}
+                      type="text"
+                      value={patientFormState.firstName}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Apellido
+                    <input
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setPatientFormState((currentValue) => ({
+                          ...currentValue,
+                          lastName: nextValue
+                        }));
+                      }}
+                      type="text"
+                      value={patientFormState.lastName}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Email
+                    <input
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setPatientFormState((currentValue) => ({
+                          ...currentValue,
+                          email: nextValue
+                        }));
+                      }}
+                      type="email"
+                      value={patientFormState.email}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Edad
+                    <input
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      min={1}
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setPatientFormState((currentValue) => ({
+                          ...currentValue,
+                          age: nextValue
+                        }));
+                      }}
+                      type="number"
+                      value={patientFormState.age}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Teléfono
+                    <input
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setPatientFormState((currentValue) => ({
+                          ...currentValue,
+                          phone: nextValue
+                        }));
+                      }}
+                      type="text"
+                      value={patientFormState.phone}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Motivo de consulta
+                    <input
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setPatientFormState((currentValue) => ({
+                          ...currentValue,
+                          consultationReason: nextValue
+                        }));
+                      }}
+                      type="text"
+                      value={patientFormState.consultationReason}
+                    />
+                  </label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Ubicación
+                    <input
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setPatientFormState((currentValue) => ({
+                          ...currentValue,
+                          location: nextValue
+                        }));
+                      }}
+                      type="text"
+                      value={patientFormState.location}
+                    />
+                  </label>
+                </div>
+                <div className="mt-3">
+                  <button
+                    className="w-full rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={createPatientMutation.isPending}
+                    onClick={() => {
+                      const trimmedWhatsappUserId = patientFormState.whatsappUserId.trim();
+                      const trimmedFirstName = patientFormState.firstName.trim();
+                      const trimmedLastName = patientFormState.lastName.trim();
+                      const trimmedEmail = patientFormState.email.trim();
+                      const trimmedConsultationReason = patientFormState.consultationReason.trim();
+                      const trimmedLocation = patientFormState.location.trim();
+                      const trimmedPhone = patientFormState.phone.trim();
+                      const ageValue = Number.parseInt(patientFormState.age, 10);
+                      if (
+                        trimmedWhatsappUserId === "" ||
+                        trimmedFirstName === "" ||
+                        trimmedLastName === "" ||
+                        trimmedEmail === "" ||
+                        trimmedConsultationReason === "" ||
+                        trimmedLocation === "" ||
+                        trimmedPhone === "" ||
+                        Number.isNaN(ageValue) ||
+                        ageValue <= 0
+                      ) {
+                        setLocalSubmitErrorMessage(
+                          "Completa todos los campos del paciente antes de guardar."
+                        );
+                        return;
+                      }
+                      setLocalSubmitErrorMessage(null);
+                      setSubmitSuccessMessage(null);
+                      createPatientMutation.mutate({
+                        whatsappUserId: trimmedWhatsappUserId,
+                        firstName: trimmedFirstName,
+                        lastName: trimmedLastName,
+                        email: trimmedEmail,
+                        age: ageValue,
+                        consultationReason: trimmedConsultationReason,
+                        location: trimmedLocation,
+                        phone: trimmedPhone
+                      }, {
+                        onSuccess: () => {
+                          setManualMobileStep("SELECT_PATIENT");
+                        }
+                      });
+                    }}
+                    type="button"
+                  >
+                    {createPatientMutation.isPending ? "Creando..." : "Crear paciente"}
+                  </button>
+                </div>
+              </article>
+            ) : null}
+
+            {manualMobileStep === "APPOINTMENT_FORM" ? (
+              <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
+                <header className="mb-3 flex items-center gap-2">
+                  <button
+                    className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                    onClick={() => {
+                      setManualMobileStep("SELECT_PATIENT");
+                      setManualMobileSelectedPatientId(null);
+                    }}
+                    type="button"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                    </svg>
+                  </button>
+                  <div>
+                    <h3 className="text-sm font-semibold text-brand-ink">Nueva cita manual</h3>
+                    {(() => {
+                      const selectedPatient = allPatients.find(
+                        (p) => p.whatsappUserId === manualMobileSelectedPatientId
+                      );
+                      return selectedPatient !== undefined ? (
+                        <p className="text-[11px] text-slate-500">
+                          Paciente: {selectedPatient.firstName} {selectedPatient.lastName}
+                        </p>
+                      ) : null;
+                    })()}
+                  </div>
+                </header>
+                <div className="grid gap-3">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <p className="block">Inicio</p>
+                    <div className="mt-1 grid grid-cols-3 gap-2">
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Fecha
+                        <input
+                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                          onChange={(event) => {
+                            const nextDate = event.target.value;
+                            setManualAppointmentFormState((currentValue) => ({
+                              ...currentValue,
+                              startAt: mergeLocalDateTimeInput(currentValue.startAt, {
+                                date: nextDate
+                              })
+                            }));
+                          }}
+                          type="date"
+                          value={manualCreateStartParts.date}
+                        />
+                      </label>
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Hora
+                        <select
+                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                          onChange={(event) => {
+                            const nextHour = event.target.value;
+                            setManualAppointmentFormState((currentValue) => ({
+                              ...currentValue,
+                              startAt: mergeLocalDateTimeInput(currentValue.startAt, {
+                                hour: nextHour
+                              })
+                            }));
+                          }}
+                          value={manualCreateStartParts.hour}
+                        >
+                          {hourOptions.map((hourOption) => (
+                            <option key={hourOption} value={hourOption}>
+                              {hourOption}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Minuto
+                        <select
+                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                          onChange={(event) => {
+                            const nextMinute = event.target.value as LocalDateTimeParts["minute"];
+                            setManualAppointmentFormState((currentValue) => ({
+                              ...currentValue,
+                              startAt: mergeLocalDateTimeInput(currentValue.startAt, {
+                                minute: nextMinute
+                              })
+                            }));
+                          }}
+                          value={manualCreateStartParts.minute}
+                        >
+                          {halfHourMinuteOptions.map((minuteOption) => (
+                            <option key={minuteOption} value={minuteOption}>
+                              {minuteOption}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Duración
+                    <select
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setManualAppointmentFormState((currentValue) => ({
+                          ...currentValue,
+                          durationMinutes: nextValue
+                        }));
+                      }}
+                      value={manualAppointmentFormState.durationMinutes}
+                    >
+                      {manualAppointmentDurationOptionsMinutes.map((minutesOption) => (
+                        <option key={minutesOption} value={String(minutesOption)}>
+                          {minutesOption} minutos
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Resumen
+                    <input
+                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => {
+                        const nextValue = event.target.value;
+                        setManualAppointmentFormState((currentValue) => ({
+                          ...currentValue,
+                          summary: nextValue
+                        }));
+                      }}
+                      type="text"
+                      value={manualAppointmentFormState.summary}
+                    />
+                  </label>
+                </div>
+                <div className="mt-3">
+                  <button
+                    className="w-full rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={createManualAppointmentMutation.isPending}
+                    onClick={() => {
+                      if (manualAppointmentFormState.patientWhatsappUserId.trim() === "") {
+                        setLocalSubmitErrorMessage("Debes seleccionar un paciente.");
+                        return;
+                      }
+                      const startAtIso = toApiDateTime(
+                        manualAppointmentFormState.startAt,
+                        colombiaTimezone
+                      );
+                      const durationMinutes = Number.parseInt(
+                        manualAppointmentFormState.durationMinutes,
+                        10
+                      );
+                      if (Number.isNaN(durationMinutes) || durationMinutes <= 0) {
+                        setLocalSubmitErrorMessage("Debes seleccionar una duración válida.");
+                        return;
+                      }
+                      if (startAtIso === null) {
+                        setLocalSubmitErrorMessage("Debes ingresar fecha y hora de inicio válidas.");
+                        return;
+                      }
+                      if (!isThirtyMinuteAligned(startAtIso, colombiaTimezone)) {
+                        setLocalSubmitErrorMessage(
+                          "El inicio de la cita debe estar en bloques de 30 minutos."
+                        );
+                        return;
+                      }
+                      const endAtIso = calculateEndAtFromStart(
+                        startAtIso,
+                        durationMinutes,
+                        colombiaTimezone
+                      );
+                      if (startAtIso === null || endAtIso === null) {
+                        setLocalSubmitErrorMessage("No se pudo calcular la hora final de la cita.");
+                        return;
+                      }
+                      const startAtValue = luxonModule.DateTime.fromISO(startAtIso);
+                      const endAtValue = luxonModule.DateTime.fromISO(endAtIso);
+                      if (
+                        !startAtValue.isValid ||
+                        !endAtValue.isValid ||
+                        endAtValue <= startAtValue
+                      ) {
+                        setLocalSubmitErrorMessage("El fin debe ser posterior al inicio.");
+                        return;
+                      }
+                      setLocalSubmitErrorMessage(null);
+                      setSubmitSuccessMessage(null);
+                      createManualAppointmentMutation.mutate({
+                        patientWhatsappUserId: manualAppointmentFormState.patientWhatsappUserId,
+                        startAt: startAtIso,
+                        endAt: endAtIso,
+                        timezone: colombiaTimezone,
+                        summary:
+                          manualAppointmentFormState.summary.trim() === ""
+                            ? null
+                            : manualAppointmentFormState.summary.trim()
+                      }, {
+                        onSuccess: () => {
+                          setManualMobileStep("SELECT_PATIENT");
+                          setManualMobileSelectedPatientId(null);
+                        }
+                      });
+                    }}
+                    type="button"
+                  >
+                    {createManualAppointmentMutation.isPending ? "Creando..." : "Crear cita manual"}
+                  </button>
+                </div>
+              </article>
+            ) : null}
+          </div>
+
+          {/* ===== DESKTOP SIDE-BY-SIDE LAYOUT ===== */}
+          <div className="hidden gap-4 sm:grid xl:grid-cols-2">
+          <article className="rounded-xl border border-border-subtle bg-white p-4 shadow-card">
             <header className="mb-3">
-              <h3 className="text-sm font-semibold text-brand-ink sm:text-base">Pacientes</h3>
-              <p className="text-[11px] text-slate-500 sm:text-xs">
+              <h3 className="text-base font-semibold text-brand-ink">Pacientes</h3>
+              <p className="text-xs text-slate-500">
                 Crea, actualiza y elimina pacientes sin salir de Agenda.
               </p>
             </header>
@@ -3894,6 +4356,7 @@ export function AgendaPage() {
               </div>
             </section>
           </article>
+          </div>
         </section>
       ) : null}
 
