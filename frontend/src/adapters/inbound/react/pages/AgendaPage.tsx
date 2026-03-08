@@ -116,6 +116,7 @@ interface BookedAppointment {
   requestId: string | null;
   manualAppointmentId: string | null;
   patientDisplayName: string;
+  patientPhone: string;
   summary: string;
   dayIso: string;
   startAt: luxonModule.DateTime;
@@ -725,6 +726,7 @@ export function AgendaPage() {
           requestId: request.requestId,
           manualAppointmentId: null,
           patientDisplayName,
+          patientPhone: request.whatsappUserId,
           summary:
             patientDisplayName.trim() === "" ? "Cita bot" : `Cita bot - ${patientDisplayName}`,
           dayIso,
@@ -761,6 +763,7 @@ export function AgendaPage() {
           requestId: null,
           manualAppointmentId: manualAppointment.appointmentId,
           patientDisplayName,
+          patientPhone: manualAppointment.patientWhatsappUserId,
           summary: manualAppointment.summary,
           dayIso,
           startAt,
@@ -1615,7 +1618,10 @@ export function AgendaPage() {
                               {appointment.startAt.toFormat("HH:mm")} -{" "}
                               {appointment.endAt.toFormat("HH:mm")}
                             </p>
-                            <p className="text-xs">{appointment.patientDisplayName}</p>
+                            {appointment.patientDisplayName !== appointment.patientPhone ? (
+                              <p className="text-xs">{appointment.patientDisplayName}</p>
+                            ) : null}
+                            <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
                             <p className="text-[11px] uppercase text-slate-500">
                               {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
                             </p>
@@ -1766,7 +1772,10 @@ export function AgendaPage() {
                               {appointment.startAt.toFormat("HH:mm")} -{" "}
                               {appointment.endAt.toFormat("HH:mm")}
                             </p>
-                            <p className="text-xs">{appointment.patientDisplayName}</p>
+                            {appointment.patientDisplayName !== appointment.patientPhone ? (
+                              <p className="text-xs">{appointment.patientDisplayName}</p>
+                            ) : null}
+                            <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
                             <p className="text-[11px] uppercase text-slate-500">
                               {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
                             </p>
