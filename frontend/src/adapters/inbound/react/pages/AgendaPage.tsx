@@ -447,6 +447,9 @@ export function AgendaPage() {
     const isoDay = nowDate.toISODate();
     return isoDay ?? "";
   });
+  const [mobileBookedStep, setMobileBookedStep] = reactModule.useState<
+    "calendar" | "dayList" | "detail"
+  >("calendar");
   const [selectedSlotsByRequestId, setSelectedSlotsByRequestId] = reactModule.useState<
     Record<string, schedulingModel.ProfessionalSlotInput[]>
   >({});
@@ -584,6 +587,7 @@ export function AgendaPage() {
     setSelectedRequestId(null);
     setSubmitSuccessMessage(null);
     setLocalSubmitErrorMessage(null);
+    setMobileBookedStep("calendar");
     const section = agendaSections.find((s) => s.id === sectionId);
     if (section && section.statuses.length > 0) {
       const firstStatus = section.statuses[0];
@@ -1430,6 +1434,7 @@ export function AgendaPage() {
                       setSelectedBookedItemKey(null);
                       setSubmitSuccessMessage(null);
                       setLocalSubmitErrorMessage(null);
+                      setMobileBookedStep("calendar");
                     }}
                     type="button"
                   >
@@ -1451,15 +1456,24 @@ export function AgendaPage() {
           ].join(" ")}
         >
           {isBookedTab ? (
-            <article className="rounded-xl border border-border-subtle bg-white shadow-card">
-              <header className="border-b border-border-subtle px-3 py-3 sm:p-4">
+            <article className={[
+              "rounded-xl border border-border-subtle bg-white shadow-card",
+              mobileBookedStep === "detail" ? "hidden sm:block" : ""
+            ].join(" ")}>
+              <header className={[
+                "border-b border-border-subtle px-3 py-3 sm:p-4",
+                mobileBookedStep !== "calendar" ? "hidden sm:block" : ""
+              ].join(" ")}>
                 <h3 className="text-sm font-semibold sm:text-base">Calendario de citas agendadas</h3>
                 <p className="text-[11px] text-slate-500 sm:text-xs">
                   Integra citas del chatbot y manuales. Toca un día para ver detalle.
                 </p>
               </header>
               <div className="space-y-3 p-2 sm:p-3">
-                <div className="flex items-center justify-between gap-2">
+                <div className={[
+                  "flex items-center justify-between gap-2",
+                  mobileBookedStep !== "calendar" ? "hidden sm:flex" : ""
+                ].join(" ")}>
                   <p className="text-sm font-semibold capitalize text-brand-ink">
                     {visibleMonthStart.toFormat("LLLL yyyy")}
                   </p>
@@ -1493,8 +1507,8 @@ export function AgendaPage() {
                   </div>
                 </div>
 
-                {/* Mobile compact calendar */}
-                <div className="sm:hidden">
+                {/* Mobile compact calendar - only visible in calendar step */}
+                <div className={mobileBookedStep === "calendar" ? "sm:hidden" : "hidden"}>
                   <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] font-semibold text-slate-500">
                     {weekDayLabels.map((label) => (
                       <span key={`mobile-${label}`}>{label}</span>
@@ -1535,6 +1549,7 @@ export function AgendaPage() {
                             if (firstAppointment !== undefined) {
                               setSelectedBookedItemKey(firstAppointment.itemKey);
                               setSelectedRequestId(firstAppointment.requestId);
+                              setMobileBookedStep("dayList");
                             }
                           }}
                           type="button"
@@ -1550,6 +1565,65 @@ export function AgendaPage() {
                       );
                     })}
                   </div>
+                </div>
+
+                {/* Mobile day list - visible when a day with appointments is selected */}
+                <div className={mobileBookedStep === "dayList" ? "sm:hidden" : "hidden"}>
+                  <button
+                    className="mb-2 flex items-center gap-1 text-xs font-semibold text-brand-teal"
+                    onClick={() => setMobileBookedStep("calendar")}
+                    type="button"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+                    </svg>
+                    Volver al calendario
+                  </button>
+                  <h4 className="text-sm font-semibold text-brand-ink">
+                    {selectedDayIso !== ""
+                      ? `Citas del ${luxonModule.DateTime.fromISO(selectedDayIso, {
+                          zone: timezone
+                        }).toFormat("dd LLL yyyy")}`
+                      : "Citas del día"}
+                  </h4>
+                  {selectedDayAppointments.length === 0 ? (
+                    <p className="mt-2 text-xs text-slate-500">No hay citas para este día.</p>
+                  ) : (
+                    <div className="mt-2 space-y-1.5">
+                      {selectedDayAppointments.map((appointment) => {
+                        const isSelectedAppointment = appointment.itemKey === selectedBookedItemKey;
+                        return (
+                          <button
+                            className={[
+                              "w-full rounded-md border px-2.5 py-2 text-left",
+                              isSelectedAppointment
+                                ? "border-brand-teal bg-brand-accent-light text-brand-teal"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                            ].join(" ")}
+                            key={`mobile-day-${appointment.itemKey}`}
+                            onClick={() => {
+                              setSelectedDayIso(appointment.dayIso);
+                              setSelectedBookedItemKey(appointment.itemKey);
+                              setSelectedRequestId(appointment.requestId);
+                              setSubmitSuccessMessage(null);
+                              setLocalSubmitErrorMessage(null);
+                              setMobileBookedStep("detail");
+                            }}
+                            type="button"
+                          >
+                            <p className="text-xs font-semibold">
+                              {appointment.startAt.toFormat("HH:mm")} -{" "}
+                              {appointment.endAt.toFormat("HH:mm")}
+                            </p>
+                            <p className="text-xs">{appointment.patientDisplayName}</p>
+                            <p className="text-[11px] uppercase text-slate-500">
+                              {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Desktop full calendar */}
@@ -1656,7 +1730,7 @@ export function AgendaPage() {
                   </div>
                 </div>
 
-                <section className="rounded-lg border border-border-subtle p-2.5 sm:p-3">
+                <section className="hidden rounded-lg border border-border-subtle p-2.5 sm:block sm:p-3">
                   <h4 className="text-xs font-semibold text-brand-ink sm:text-sm">
                     {selectedDayIso !== ""
                       ? `Citas del ${luxonModule.DateTime.fromISO(selectedDayIso, {
@@ -1766,7 +1840,22 @@ export function AgendaPage() {
             </article>
           )}
 
-          <article className="space-y-4 rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4">
+          <article className={[
+            "space-y-4 rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4",
+            isBookedTab && mobileBookedStep !== "detail" ? "hidden sm:block" : ""
+          ].join(" ")}>
+            {isBookedTab && mobileBookedStep === "detail" ? (
+              <button
+                className="flex items-center gap-1 text-xs font-semibold text-brand-teal sm:hidden"
+                onClick={() => setMobileBookedStep("dayList")}
+                type="button"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M15 19l-7-7 7-7" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+                </svg>
+                Volver a citas del día
+              </button>
+            ) : null}
             {isBookedTab &&
             selectedBookedAppointment !== null &&
             selectedBookedAppointment.source === "MANUAL" ? (
