@@ -1351,15 +1351,15 @@ export function AgendaPage() {
   return (
     <appShellModule.AppShell>
       <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3">
           <div>
-            <h2 className="text-xl font-semibold text-brand-ink">Agenda profesional</h2>
-            <p className="text-sm text-slate-600">
+            <h2 className="text-lg font-semibold text-brand-ink sm:text-xl">Agenda profesional</h2>
+            <p className="text-xs text-slate-600 sm:text-sm">
               Gestiona solicitudes y envía múltiples slots de 60 minutos.
             </p>
           </div>
           <button
-            className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+            className="rounded-lg border border-border-subtle px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 sm:px-4 sm:py-2.5 sm:text-sm"
             onClick={() => {
               void queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey });
               void queryClient.invalidateQueries({ queryKey: googleCalendarConnectionQueryKey });
@@ -1376,14 +1376,14 @@ export function AgendaPage() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <div className="flex gap-1 overflow-x-auto border-b border-border-subtle pb-1">
+          <div className="-mx-3 flex gap-0.5 overflow-x-auto border-b border-border-subtle px-3 pb-0 sm:-mx-0 sm:gap-1 sm:px-0 sm:pb-1">
             {agendaSections.map((section) => {
               const isActive = activeSectionId === section.id;
               const count = sectionCounts[section.id] ?? 0;
               return (
                 <button
                   className={[
-                    "relative -mb-px shrink-0 whitespace-nowrap px-3 py-3 text-sm font-semibold transition-colors sm:px-6",
+                    "relative -mb-px shrink-0 whitespace-nowrap px-2.5 py-2 text-xs font-semibold transition-colors sm:px-6 sm:py-3 sm:text-sm",
                     isActive
                       ? "border-b-2 border-brand-teal text-brand-teal"
                       : "text-slate-500 hover:border-b-2 hover:border-slate-300 hover:text-slate-700"
@@ -1396,7 +1396,7 @@ export function AgendaPage() {
                   {count > 0 ? (
                     <span
                       className={[
-                        "ml-2 rounded-full px-2 py-0.5 text-xs",
+                        "ml-1 rounded-full px-1.5 py-0.5 text-[10px] sm:ml-2 sm:px-2 sm:text-xs",
                         isActive
                           ? "bg-brand-accent-light text-brand-teal"
                           : "bg-slate-100 text-slate-600"
@@ -1452,20 +1452,20 @@ export function AgendaPage() {
         >
           {isBookedTab ? (
             <article className="rounded-xl border border-border-subtle bg-white shadow-card">
-              <header className="border-b border-border-subtle p-4">
-                <h3 className="text-base font-semibold">Calendario de citas agendadas</h3>
-                <p className="text-xs text-slate-500">
-                  Integra citas del chatbot y manuales. Haz click para ver el detalle completo.
+              <header className="border-b border-border-subtle px-3 py-3 sm:p-4">
+                <h3 className="text-sm font-semibold sm:text-base">Calendario de citas agendadas</h3>
+                <p className="text-[11px] text-slate-500 sm:text-xs">
+                  Integra citas del chatbot y manuales. Toca un día para ver detalle.
                 </p>
               </header>
-              <div className="space-y-3 p-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm font-semibold text-brand-ink">
+              <div className="space-y-3 p-2 sm:p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-semibold capitalize text-brand-ink">
                     {visibleMonthStart.toFormat("LLLL yyyy")}
                   </p>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex gap-1.5 sm:gap-2">
                     <button
-                      className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                      className="rounded-lg border border-border-subtle px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 sm:px-3 sm:text-sm"
                       onClick={() => {
                         const previous = visibleMonthStart.minus({ months: 1 });
                         setVisibleMonth({
@@ -1478,7 +1478,7 @@ export function AgendaPage() {
                       Anterior
                     </button>
                     <button
-                      className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                      className="rounded-lg border border-border-subtle px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 sm:px-3 sm:text-sm"
                       onClick={() => {
                         const next = visibleMonthStart.plus({ months: 1 });
                         setVisibleMonth({
@@ -1493,109 +1493,171 @@ export function AgendaPage() {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto pb-1">
-                  <div className="min-w-[42rem]">
-                    <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
-                      {weekDayLabels.map((label) => (
-                        <span key={label}>{label}</span>
-                      ))}
-                    </div>
-                    <div className="grid grid-cols-7 gap-1">
-                      {dayGrid.map((dateCell, index) => {
-                        if (dateCell === null) {
-                          return (
-                            <div
-                              className="min-h-32 rounded-md bg-slate-50"
-                              key={`empty-${index}`}
-                            />
-                          );
-                        }
-                        const isoDate = dateCell.toISODate();
-                        const dayAppointments =
-                          isoDate === null ? [] : (bookedAppointmentsByDay.get(isoDate) ?? []);
-                        const isSelectedDay = isoDate === selectedDayIso;
+                {/* Mobile compact calendar */}
+                <div className="sm:hidden">
+                  <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] font-semibold text-slate-500">
+                    {weekDayLabels.map((label) => (
+                      <span key={`mobile-${label}`}>{label}</span>
+                    ))}
+                  </div>
+                  <div className="mt-1 grid grid-cols-7 gap-0.5">
+                    {dayGrid.map((dateCell, index) => {
+                      if (dateCell === null) {
                         return (
                           <div
-                            className={[
-                              "min-h-32 rounded-md border p-1.5",
-                              isSelectedDay
-                                ? "border-brand-teal bg-brand-accent-light/40"
-                                : "border-slate-200 bg-white"
-                            ].join(" ")}
-                            key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
-                          >
-                            <button
-                              className={[
-                                "w-full rounded px-1 text-left text-xs font-semibold",
-                                isSelectedDay
-                                  ? "bg-brand-accent-light text-brand-teal"
-                                  : "text-slate-700 hover:bg-slate-100"
-                              ].join(" ")}
-                              onClick={() => {
-                                if (isoDate === null) {
-                                  return;
-                                }
-                                setSelectedDayIso(isoDate);
-                                const firstAppointment = dayAppointments[0];
-                                if (firstAppointment !== undefined) {
-                                  setSelectedBookedItemKey(firstAppointment.itemKey);
-                                  setSelectedRequestId(firstAppointment.requestId);
-                                }
-                              }}
-                              type="button"
-                            >
-                              {dateCell.day}
-                            </button>
-
-                            <div className="mt-1 space-y-1">
-                              {dayAppointments.slice(0, 2).map((appointment) => {
-                                const isSelectedAppointment =
-                                  appointment.itemKey === selectedBookedItemKey;
-                                return (
-                                  <button
-                                    className={[
-                                      "w-full rounded border px-1.5 py-1.5 text-left text-[11px]",
-                                      isSelectedAppointment
-                                        ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                                        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                                    ].join(" ")}
-                                    key={appointment.itemKey}
-                                    onClick={() => {
-                                      setSelectedDayIso(appointment.dayIso);
-                                      setSelectedBookedItemKey(appointment.itemKey);
-                                      setSelectedRequestId(appointment.requestId);
-                                      setSubmitSuccessMessage(null);
-                                      setLocalSubmitErrorMessage(null);
-                                    }}
-                                    title={`${appointment.startAt.toFormat(
-                                      "HH:mm"
-                                    )} - ${appointment.endAt.toFormat("HH:mm")} | ${
-                                      appointment.patientDisplayName
-                                    } | ${appointment.source === "MANUAL" ? "Manual" : "Chatbot"}`}
-                                    type="button"
-                                  >
-                                    <span className="block font-semibold leading-tight">
-                                      {appointment.startAt.toFormat("HH:mm")} -{" "}
-                                      {appointment.endAt.toFormat("HH:mm")}
-                                    </span>
-                                  </button>
-                                );
-                              })}
-                              {dayAppointments.length > 2 ? (
-                                <p className="px-1 text-[11px] font-semibold text-slate-500">
-                                  +{dayAppointments.length - 2} más
-                                </p>
-                              ) : null}
-                            </div>
-                          </div>
+                            className="aspect-square rounded-md"
+                            key={`mobile-empty-${index}`}
+                          />
                         );
-                      })}
+                      }
+                      const isoDate = dateCell.toISODate();
+                      const dayAppointments =
+                        isoDate === null ? [] : (bookedAppointmentsByDay.get(isoDate) ?? []);
+                      const isSelectedDay = isoDate === selectedDayIso;
+                      const hasAppointments = dayAppointments.length > 0;
+                      return (
+                        <button
+                          className={[
+                            "relative flex aspect-square flex-col items-center justify-center rounded-md text-xs font-medium transition-colors",
+                            isSelectedDay
+                              ? "bg-brand-teal font-bold text-white"
+                              : hasAppointments
+                                ? "bg-brand-accent-light font-semibold text-brand-teal"
+                                : "text-slate-700 hover:bg-slate-100"
+                          ].join(" ")}
+                          key={dateCell.toISODate() ?? `mobile-day-${dateCell.day}-${index}`}
+                          onClick={() => {
+                            if (isoDate === null) {
+                              return;
+                            }
+                            setSelectedDayIso(isoDate);
+                            const firstAppointment = dayAppointments[0];
+                            if (firstAppointment !== undefined) {
+                              setSelectedBookedItemKey(firstAppointment.itemKey);
+                              setSelectedRequestId(firstAppointment.requestId);
+                            }
+                          }}
+                          type="button"
+                        >
+                          {dateCell.day}
+                          {hasAppointments ? (
+                            <span className={[
+                              "absolute bottom-0.5 h-1 w-1 rounded-full",
+                              isSelectedDay ? "bg-white" : "bg-brand-teal"
+                            ].join(" ")} />
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Desktop full calendar */}
+                <div className="hidden sm:block">
+                  <div className="overflow-x-auto pb-1">
+                    <div className="min-w-[42rem]">
+                      <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
+                        {weekDayLabels.map((label) => (
+                          <span key={label}>{label}</span>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {dayGrid.map((dateCell, index) => {
+                          if (dateCell === null) {
+                            return (
+                              <div
+                                className="min-h-32 rounded-md bg-slate-50"
+                                key={`empty-${index}`}
+                              />
+                            );
+                          }
+                          const isoDate = dateCell.toISODate();
+                          const dayAppointments =
+                            isoDate === null ? [] : (bookedAppointmentsByDay.get(isoDate) ?? []);
+                          const isSelectedDay = isoDate === selectedDayIso;
+                          return (
+                            <div
+                              className={[
+                                "min-h-32 rounded-md border p-1.5",
+                                isSelectedDay
+                                  ? "border-brand-teal bg-brand-accent-light/40"
+                                  : "border-slate-200 bg-white"
+                              ].join(" ")}
+                              key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
+                            >
+                              <button
+                                className={[
+                                  "w-full rounded px-1 text-left text-xs font-semibold",
+                                  isSelectedDay
+                                    ? "bg-brand-accent-light text-brand-teal"
+                                    : "text-slate-700 hover:bg-slate-100"
+                                ].join(" ")}
+                                onClick={() => {
+                                  if (isoDate === null) {
+                                    return;
+                                  }
+                                  setSelectedDayIso(isoDate);
+                                  const firstAppointment = dayAppointments[0];
+                                  if (firstAppointment !== undefined) {
+                                    setSelectedBookedItemKey(firstAppointment.itemKey);
+                                    setSelectedRequestId(firstAppointment.requestId);
+                                  }
+                                }}
+                                type="button"
+                              >
+                                {dateCell.day}
+                              </button>
+
+                              <div className="mt-1 space-y-1">
+                                {dayAppointments.slice(0, 2).map((appointment) => {
+                                  const isSelectedAppointment =
+                                    appointment.itemKey === selectedBookedItemKey;
+                                  return (
+                                    <button
+                                      className={[
+                                        "w-full rounded border px-1.5 py-1.5 text-left text-[11px]",
+                                        isSelectedAppointment
+                                          ? "border-brand-teal bg-brand-accent-light text-brand-teal"
+                                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                                      ].join(" ")}
+                                      key={appointment.itemKey}
+                                      onClick={() => {
+                                        setSelectedDayIso(appointment.dayIso);
+                                        setSelectedBookedItemKey(appointment.itemKey);
+                                        setSelectedRequestId(appointment.requestId);
+                                        setSubmitSuccessMessage(null);
+                                        setLocalSubmitErrorMessage(null);
+                                      }}
+                                      title={`${appointment.startAt.toFormat(
+                                        "HH:mm"
+                                      )} - ${appointment.endAt.toFormat("HH:mm")} | ${
+                                        appointment.patientDisplayName
+                                      } | ${appointment.source === "MANUAL" ? "Manual" : "Chatbot"}`}
+                                      type="button"
+                                    >
+                                      <span className="block font-semibold leading-tight">
+                                        {appointment.startAt.toFormat("HH:mm")} -{" "}
+                                        {appointment.endAt.toFormat("HH:mm")}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                                {dayAppointments.length > 2 ? (
+                                  <p className="px-1 text-[11px] font-semibold text-slate-500">
+                                    +{dayAppointments.length - 2} más
+                                  </p>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <section className="rounded-lg border border-border-subtle p-3">
-                  <h4 className="text-sm font-semibold text-brand-ink">
+                <section className="rounded-lg border border-border-subtle p-2.5 sm:p-3">
+                  <h4 className="text-xs font-semibold text-brand-ink sm:text-sm">
                     {selectedDayIso !== ""
                       ? `Citas del ${luxonModule.DateTime.fromISO(selectedDayIso, {
                           zone: timezone
@@ -1605,13 +1667,13 @@ export function AgendaPage() {
                   {selectedDayAppointments.length === 0 ? (
                     <p className="mt-2 text-xs text-slate-500">No hay citas para este día.</p>
                   ) : (
-                    <div className="mt-2 space-y-2">
+                    <div className="mt-2 space-y-1.5 sm:space-y-2">
                       {selectedDayAppointments.map((appointment) => {
                         const isSelectedAppointment = appointment.itemKey === selectedBookedItemKey;
                         return (
                           <button
                             className={[
-                              "w-full rounded-md border px-3 py-2 text-left",
+                              "w-full rounded-md border px-2.5 py-2 text-left sm:px-3",
                               isSelectedAppointment
                                 ? "border-brand-teal bg-brand-accent-light text-brand-teal"
                                 : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
@@ -1626,7 +1688,7 @@ export function AgendaPage() {
                             }}
                             type="button"
                           >
-                            <p className="text-sm font-semibold">
+                            <p className="text-xs font-semibold sm:text-sm">
                               {appointment.startAt.toFormat("HH:mm")} -{" "}
                               {appointment.endAt.toFormat("HH:mm")}
                             </p>
@@ -1641,20 +1703,20 @@ export function AgendaPage() {
                   )}
                 </section>
 
-                <p className="text-xs text-slate-500">Zona horaria de visualización: {timezone}</p>
+                <p className="text-[11px] text-slate-500 sm:text-xs">Zona horaria de visualización: {timezone}</p>
               </div>
             </article>
           ) : (
             <article className="rounded-xl border border-border-subtle bg-white shadow-card">
-              <header className="border-b border-border-subtle p-4">
-                <h3 className="text-base font-semibold">Solicitudes</h3>
-                <p className="text-xs text-slate-500">
+              <header className="border-b border-border-subtle px-3 py-3 sm:p-4">
+                <h3 className="text-sm font-semibold sm:text-base">Solicitudes</h3>
+                <p className="text-[11px] text-slate-500 sm:text-xs">
                   {isApprovalSection
                     ? `${filteredRequests.length} solicitudes pendientes`
                     : `Estado actual: ${activeTab}`}
                 </p>
               </header>
-              <div className="max-h-[calc(100vh-12rem)] space-y-2 overflow-auto p-3">
+              <div className="max-h-[calc(100vh-12rem)] space-y-2 overflow-auto p-2 sm:p-3">
                 {requestsQuery.isLoading ? (
                   <p className="text-sm text-slate-500">Cargando...</p>
                 ) : null}
@@ -1704,7 +1766,7 @@ export function AgendaPage() {
             </article>
           )}
 
-          <article className="space-y-4 rounded-xl border border-border-subtle bg-white shadow-card p-4">
+          <article className="space-y-4 rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4">
             {isBookedTab &&
             selectedBookedAppointment !== null &&
             selectedBookedAppointment.source === "MANUAL" ? (
@@ -2700,11 +2762,11 @@ export function AgendaPage() {
       ) : null}
 
       {isManualSchedulingSection ? (
-        <section className="mt-6 grid gap-4 xl:grid-cols-2">
-          <article className="rounded-xl border border-border-subtle bg-white shadow-card p-4">
+        <section className="mt-4 grid gap-4 sm:mt-6 xl:grid-cols-2">
+          <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4">
             <header className="mb-3">
-              <h3 className="text-base font-semibold text-brand-ink">Pacientes</h3>
-              <p className="text-xs text-slate-500">
+              <h3 className="text-sm font-semibold text-brand-ink sm:text-base">Pacientes</h3>
+              <p className="text-[11px] text-slate-500 sm:text-xs">
                 Crea, actualiza y elimina pacientes sin salir de Agenda.
               </p>
             </header>
@@ -3125,10 +3187,10 @@ export function AgendaPage() {
             ) : null}
           </article>
 
-          <article className="rounded-xl border border-border-subtle bg-white shadow-card p-4">
+          <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4">
             <header className="mb-3">
-              <h3 className="text-base font-semibold text-brand-ink">Citas manuales</h3>
-              <p className="text-xs text-slate-500">
+              <h3 className="text-sm font-semibold text-brand-ink sm:text-base">Citas manuales</h3>
+              <p className="text-[11px] text-slate-500 sm:text-xs">
                 Crea, reprograma y elimina citas manuales sincronizadas con Calendar.
               </p>
             </header>
@@ -3676,11 +3738,11 @@ export function AgendaPage() {
       ) : null}
 
       {isFinanceSection ? (
-        <section className="mt-6 space-y-4">
-          <article className="rounded-xl border border-border-subtle bg-white shadow-card p-4">
+        <section className="mt-4 space-y-4 sm:mt-6">
+          <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4">
             <header className="mb-4">
-              <h3 className="text-base font-semibold text-brand-ink">Finanzas</h3>
-              <p className="text-xs text-slate-500">
+              <h3 className="text-sm font-semibold text-brand-ink sm:text-base">Finanzas</h3>
+              <p className="text-[11px] text-slate-500 sm:text-xs">
                 Seguimiento de pagos para citas agendadas (chatbot y manuales).
               </p>
             </header>
