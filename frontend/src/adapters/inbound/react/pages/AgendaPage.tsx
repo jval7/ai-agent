@@ -116,6 +116,7 @@ interface BookedAppointment {
   requestId: string | null;
   manualAppointmentId: string | null;
   patientDisplayName: string;
+  patientPhone: string;
   summary: string;
   dayIso: string;
   startAt: luxonModule.DateTime;
@@ -725,6 +726,7 @@ export function AgendaPage() {
           requestId: request.requestId,
           manualAppointmentId: null,
           patientDisplayName,
+          patientPhone: request.whatsappUserId,
           summary:
             patientDisplayName.trim() === "" ? "Cita bot" : `Cita bot - ${patientDisplayName}`,
           dayIso,
@@ -761,6 +763,7 @@ export function AgendaPage() {
           requestId: null,
           manualAppointmentId: manualAppointment.appointmentId,
           patientDisplayName,
+          patientPhone: manualAppointment.patientWhatsappUserId,
           summary: manualAppointment.summary,
           dayIso,
           startAt,
@@ -1380,14 +1383,76 @@ export function AgendaPage() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <div className="-mx-3 flex gap-0.5 overflow-x-auto border-b border-border-subtle px-3 pb-0 sm:-mx-0 sm:gap-1 sm:px-0 sm:pb-1">
+          {/* Mobile: bottom-tab-bar style grid */}
+          <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1 sm:hidden">
+            {agendaSections.map((section) => {
+              const isActive = activeSectionId === section.id;
+              const count = sectionCounts[section.id] ?? 0;
+              const iconBySection: Record<string, React.ReactNode> = {
+                APPROVALS: (
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ),
+                FINALIZED: (
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                  </svg>
+                ),
+                MANUAL_SCHEDULING: (
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+                  </svg>
+                ),
+                FINANCE: (
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                  </svg>
+                )
+              };
+              const shortLabels: Record<string, string> = {
+                APPROVALS: "Aprob.",
+                FINALIZED: "Agenda",
+                MANUAL_SCHEDULING: "Manual",
+                FINANCE: "Finanzas"
+              };
+              return (
+                <button
+                  className={[
+                    "relative flex flex-col items-center gap-0.5 rounded-lg px-1 py-2 text-[10px] font-semibold transition-colors",
+                    isActive
+                      ? "bg-white text-brand-teal shadow-sm"
+                      : "text-slate-500"
+                  ].join(" ")}
+                  key={section.id}
+                  onClick={() => handleSectionChange(section.id)}
+                  type="button"
+                >
+                  {iconBySection[section.id]}
+                  <span>{shortLabels[section.id]}</span>
+                  {count > 0 ? (
+                    <span className={[
+                      "absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold",
+                      isActive
+                        ? "bg-brand-teal text-white"
+                        : "bg-slate-300 text-slate-700"
+                    ].join(" ")}>
+                      {count}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+          {/* Desktop: horizontal tab bar */}
+          <div className="hidden border-b border-border-subtle sm:flex sm:gap-1 sm:pb-1">
             {agendaSections.map((section) => {
               const isActive = activeSectionId === section.id;
               const count = sectionCounts[section.id] ?? 0;
               return (
                 <button
                   className={[
-                    "relative -mb-px shrink-0 whitespace-nowrap px-2.5 py-2 text-xs font-semibold transition-colors sm:px-6 sm:py-3 sm:text-sm",
+                    "relative -mb-px shrink-0 whitespace-nowrap px-6 py-3 text-sm font-semibold transition-colors",
                     isActive
                       ? "border-b-2 border-brand-teal text-brand-teal"
                       : "text-slate-500 hover:border-b-2 hover:border-slate-300 hover:text-slate-700"
@@ -1400,7 +1465,7 @@ export function AgendaPage() {
                   {count > 0 ? (
                     <span
                       className={[
-                        "ml-1 rounded-full px-1.5 py-0.5 text-[10px] sm:ml-2 sm:px-2 sm:text-xs",
+                        "ml-2 rounded-full px-2 text-xs",
                         isActive
                           ? "bg-brand-accent-light text-brand-teal"
                           : "bg-slate-100 text-slate-600"
@@ -1615,7 +1680,10 @@ export function AgendaPage() {
                               {appointment.startAt.toFormat("HH:mm")} -{" "}
                               {appointment.endAt.toFormat("HH:mm")}
                             </p>
-                            <p className="text-xs">{appointment.patientDisplayName}</p>
+                            {appointment.patientDisplayName !== appointment.patientPhone ? (
+                              <p className="text-xs">{appointment.patientDisplayName}</p>
+                            ) : null}
+                            <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
                             <p className="text-[11px] uppercase text-slate-500">
                               {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
                             </p>
@@ -1766,7 +1834,10 @@ export function AgendaPage() {
                               {appointment.startAt.toFormat("HH:mm")} -{" "}
                               {appointment.endAt.toFormat("HH:mm")}
                             </p>
-                            <p className="text-xs">{appointment.patientDisplayName}</p>
+                            {appointment.patientDisplayName !== appointment.patientPhone ? (
+                              <p className="text-xs">{appointment.patientDisplayName}</p>
+                            ) : null}
+                            <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
                             <p className="text-[11px] uppercase text-slate-500">
                               {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
                             </p>
