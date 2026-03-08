@@ -775,6 +775,7 @@ class SchedulingService:
         now_value = self._clock.now()
         if input_dto.decision == "APPROVE":
             request.payment_status = "PAID"
+            request.payment_amount_cop = input_dto.payment_amount_cop
             request.payment_updated_at = now_value
             request.set_status("AWAITING_PATIENT_CHOICE", now_value)
 

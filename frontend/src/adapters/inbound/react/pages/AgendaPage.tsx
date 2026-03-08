@@ -456,6 +456,9 @@ export function AgendaPage() {
   const [reviewNotesByRequestId, setReviewNotesByRequestId] = reactModule.useState<
     Record<string, string>
   >({});
+  const [paymentAmountByRequestId, setPaymentAmountByRequestId] = reactModule.useState<
+    Record<string, string>
+  >({});
   const [localSubmitErrorMessage, setLocalSubmitErrorMessage] = reactModule.useState<string | null>(
     null
   );
@@ -1024,6 +1027,10 @@ export function AgendaPage() {
       : "";
   const currentReviewNote =
     selectedRequest !== undefined ? (reviewNotesByRequestId[selectedRequest.requestId] ?? "") : "";
+  const currentPaymentAmount =
+    selectedRequest !== undefined
+      ? (paymentAmountByRequestId[selectedRequest.requestId] ?? "")
+      : "";
   const manualCreateStartParts = splitLocalDateTimeInput(manualAppointmentFormState.startAt);
   const manualRescheduleStartParts = splitLocalDateTimeInput(manualRescheduleFormState.startAt);
 
@@ -1125,13 +1132,15 @@ export function AgendaPage() {
       request: schedulingModel.SchedulingRequestSummary;
       decision: "APPROVE" | "SEND_REMINDER";
       professionalNote: string | null;
+      paymentAmountCop: number | null;
     }) => {
       return appContainer.schedulingUseCase.resolvePaymentReview(
         payload.request.conversationId,
         payload.request.requestId,
         {
           decision: payload.decision,
-          professionalNote: payload.professionalNote
+          professionalNote: payload.professionalNote,
+          paymentAmountCop: payload.paymentAmountCop
         }
       );
     },
@@ -1151,6 +1160,7 @@ export function AgendaPage() {
             return {
               ...request,
               status: result.status,
+              paymentAmountCop: payload.paymentAmountCop ?? request.paymentAmountCop,
               updatedAt: luxonModule.DateTime.now().toISO() ?? request.updatedAt,
               professionalNote: payload.professionalNote
             };
@@ -2224,6 +2234,26 @@ export function AgendaPage() {
                         Verifica el comprobante y aprueba, o envía un recordatorio de pago.
                       </p>
                       <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Valor del pago (COP) *
+                        <input
+                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
+                          inputMode="numeric"
+                          onChange={(event) => {
+                            if (selectedRequest === undefined) {
+                              return;
+                            }
+                            const nextValue = event.target.value.replace(/[^0-9]/g, "");
+                            setPaymentAmountByRequestId((currentValue) => ({
+                              ...currentValue,
+                              [selectedRequest.requestId]: nextValue
+                            }));
+                          }}
+                          placeholder="Ej: 150000"
+                          type="text"
+                          value={currentPaymentAmount}
+                        />
+                      </label>
+                      <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                         Nota para el bot
                         <textarea
                           className="mt-1 min-h-24 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
@@ -2243,9 +2273,20 @@ export function AgendaPage() {
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={resolvePaymentReviewMutation.isPending}
+                          disabled={
+                            resolvePaymentReviewMutation.isPending ||
+                            currentPaymentAmount.trim() === "" ||
+                            Number(currentPaymentAmount) <= 0
+                          }
                           onClick={() => {
                             if (selectedRequest === undefined) {
+                              return;
+                            }
+                            const parsedAmount = Number(currentPaymentAmount);
+                            if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+                              setLocalSubmitErrorMessage(
+                                "Debes ingresar un valor de pago válido para aprobar."
+                              );
                               return;
                             }
                             setLocalSubmitErrorMessage(null);
@@ -2254,7 +2295,8 @@ export function AgendaPage() {
                               request: selectedRequest,
                               decision: "APPROVE",
                               professionalNote:
-                                currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
+                                currentReviewNote.trim() === "" ? null : currentReviewNote.trim(),
+                              paymentAmountCop: parsedAmount
                             });
                           }}
                           type="button"
@@ -2274,7 +2316,8 @@ export function AgendaPage() {
                               request: selectedRequest,
                               decision: "SEND_REMINDER",
                               professionalNote:
-                                currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
+                                currentReviewNote.trim() === "" ? null : currentReviewNote.trim(),
+                              paymentAmountCop: null
                             });
                           }}
                           type="button"
@@ -2355,7 +2398,8 @@ export function AgendaPage() {
                             resolvePaymentReviewMutation.mutate({
                               request: selectedRequest,
                               decision: "SEND_REMINDER",
-                              professionalNote: null
+                              professionalNote: null,
+                              paymentAmountCop: null
                             });
                           }}
                           type="button"

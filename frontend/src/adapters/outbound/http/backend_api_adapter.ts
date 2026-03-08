@@ -580,7 +580,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         authRequired: true,
         body: JSON.stringify({
           decision: input.decision,
-          professional_note: input.professionalNote
+          professional_note: input.professionalNote,
+          payment_amount_cop: input.paymentAmountCop
         } satisfies httpTypes.ResolvePaymentReviewApiRequest)
       }
     );
