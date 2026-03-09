@@ -298,29 +298,41 @@ export function InboxPage() {
         {inboxMobileStep === "DETAIL" && selectedConversation !== undefined ? (
           <div className="relative flex h-[calc(100vh-7rem)] flex-col">
             {/* Header */}
-            <header className="flex items-center gap-2 border-b border-border-subtle pb-3">
-              <button
-                className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
-                onClick={() => {
-                  setInboxMobileStep("LIST");
-                  setFabOpen(false);
-                }}
-                type="button"
-              >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-                </svg>
-              </button>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-brand-ink">
-                  {patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
-                    selectedConversation.whatsappUserId}
-                </p>
+            <header className="border-b border-border-subtle pb-3">
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                  onClick={() => {
+                    setInboxMobileStep("LIST");
+                    setFabOpen(false);
+                  }}
+                  type="button"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                  </svg>
+                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-brand-ink">
+                    {patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
+                      selectedConversation.whatsappUserId}
+                  </p>
+                </div>
+                <statusBadgeModule.StatusBadge
+                  label={selectedAppointmentConfig.label}
+                  tone={selectedAppointmentConfig.tone}
+                />
               </div>
-              <statusBadgeModule.StatusBadge
-                label={selectedAppointmentConfig.label}
-                tone={selectedAppointmentConfig.tone}
-              />
+              {selectedConversation.controlMode === "HUMAN" || isBlocked ? (
+                <div className="mt-2 flex flex-wrap gap-1.5 pl-8">
+                  {selectedConversation.controlMode === "HUMAN" ? (
+                    <statusBadgeModule.StatusBadge label="HUMAN" tone="warning" />
+                  ) : null}
+                  {isBlocked ? (
+                    <statusBadgeModule.StatusBadge label="Bloqueado" tone="danger" />
+                  ) : null}
+                </div>
+              ) : null}
             </header>
 
             {/* Messages */}
