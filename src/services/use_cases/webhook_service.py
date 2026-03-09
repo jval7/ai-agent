@@ -2210,13 +2210,8 @@ class WebhookService:
         if self._scheduling_service is None:
             return None
 
-        request_list = self._scheduling_service.list_requests_by_conversation(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-        )
-        for request in request_list.items:
-            if request.status == "AWAITING_CONSULTATION_REVIEW":
-                return request
+        del tenant_id
+        del conversation_id
         return None
 
     def _is_waiting_professional_state_active(
