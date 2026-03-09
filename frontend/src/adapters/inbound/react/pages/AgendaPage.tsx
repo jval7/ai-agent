@@ -489,6 +489,9 @@ export function AgendaPage() {
   >(null);
   const [manualRescheduleFormState, setManualRescheduleFormState] =
     reactModule.useState<ManualAppointmentFormState>(emptyManualAppointmentForm());
+  const [approvalMobileStep, setApprovalMobileStep] = reactModule.useState<
+    "REQUEST_LIST" | "REQUEST_DETAIL" | "CALENDAR" | "SLOTS"
+  >("REQUEST_LIST");
   const [bookedAppointmentFormState, setBookedAppointmentFormState] =
     reactModule.useState<BookedAppointmentFormState>(emptyBookedAppointmentForm());
   const [manualPaymentFormState, setManualPaymentFormState] =
@@ -595,6 +598,7 @@ export function AgendaPage() {
     setSubmitSuccessMessage(null);
     setLocalSubmitErrorMessage(null);
     setMobileBookedStep("calendar");
+    setApprovalMobileStep("REQUEST_LIST");
     const section = agendaSections.find((s) => s.id === sectionId);
     if (section && section.statuses.length > 0) {
       const firstStatus = section.statuses[0];
@@ -1518,14 +1522,636 @@ export function AgendaPage() {
       </section>
 
       {!isManualSchedulingSection && !isFinanceSection ? (
-        <section
-          className={[
-            "mt-4 grid gap-4",
-            isBookedTab
-              ? "lg:grid-cols-[520px_minmax(0,1fr)]"
-              : "lg:grid-cols-[320px_minmax(0,1fr)]"
-          ].join(" ")}
-        >
+        <section className="mt-4">
+          {/* ===== MOBILE APPROVAL WIZARD (only for approval section) ===== */}
+          {isApprovalSection ? (
+            <div className="sm:hidden">
+              {approvalMobileStep === "REQUEST_LIST" ? (
+                <article className="rounded-xl border border-border-subtle bg-white shadow-card">
+                  <header className="border-b border-border-subtle px-3 py-3">
+                    <h3 className="text-sm font-semibold">Solicitudes</h3>
+                    <p className="text-[11px] text-slate-500">
+                      {filteredRequests.length} solicitudes pendientes
+                    </p>
+                  </header>
+                  <div className="space-y-2 p-2">
+                    {requestsQuery.isLoading ? (
+                      <p className="text-sm text-slate-500">Cargando...</p>
+                    ) : null}
+                    {filteredRequests.length === 0 ? (
+                      <p className="text-sm text-slate-500">No hay solicitudes en este estado.</p>
+                    ) : null}
+                    {filteredRequests.map((request) => {
+                      const statusConfig = approvalStatusLabels[request.status];
+                      return (
+                        <button
+                          className="w-full rounded-lg border border-slate-200 bg-white p-3 text-left transition-colors hover:border-slate-300"
+                          key={request.requestId}
+                          onClick={() => {
+                            setSelectedRequestId(request.requestId);
+                            setSubmitSuccessMessage(null);
+                            setLocalSubmitErrorMessage(null);
+                            setApprovalMobileStep("REQUEST_DETAIL");
+                          }}
+                          type="button"
+                        >
+                          <div className="mb-1 flex items-center justify-between gap-2">
+                            <p className="truncate text-sm font-semibold text-brand-ink">
+                              {resolvePatientDisplayName(request)}
+                            </p>
+                            <statusBadgeModule.StatusBadge
+                              label={statusConfig?.label ?? request.status}
+                              tone={statusConfig?.tone ?? "neutral"}
+                            />
+                          </div>
+                          {request.consultationReason !== null ? (
+                            <p className="truncate text-xs text-slate-600">
+                              {request.consultationReason}
+                            </p>
+                          ) : null}
+                          <p className="mt-1 text-xs text-slate-500">
+                            {dateUtilsModule.formatDateTime(request.updatedAt)}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </article>
+              ) : null}
+
+              {approvalMobileStep === "REQUEST_DETAIL" && selectedRequest !== undefined ? (
+                <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
+                  <header className="mb-3 flex items-center gap-2">
+                    <button
+                      className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                      onClick={() => {
+                        setApprovalMobileStep("REQUEST_LIST");
+                        setSelectedRequestId(null);
+                      }}
+                      type="button"
+                    >
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                      </svg>
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-sm font-semibold text-brand-ink">
+                        {resolvePatientDisplayName(selectedRequest)}
+                      </h3>
+                    </div>
+                    <statusBadgeModule.StatusBadge
+                      label={
+                        approvalStatusLabels[selectedRequest.status]?.label ??
+                        selectedRequest.status
+                      }
+                      tone={approvalStatusLabels[selectedRequest.status]?.tone ?? "neutral"}
+                    />
+                  </header>
+
+                  <section className="space-y-2 rounded-lg border border-border-subtle p-3 text-sm text-slate-700">
+                    <p>
+                      <span className="font-semibold text-slate-500">Nombre</span>
+                      <br />
+                      {resolvePatientDisplayName(selectedRequest)}
+                    </p>
+                    <p>
+                      <span className="font-semibold text-slate-500">Motivo</span>
+                      <br />
+                      {selectedRequest.consultationReason ?? "-"}
+                    </p>
+                    {selectedRequest.consultationDetails !== null ? (
+                      <p>
+                        <span className="font-semibold text-slate-500">Detalles</span>
+                        <br />
+                        {selectedRequest.consultationDetails}
+                      </p>
+                    ) : null}
+                    <p>
+                      <span className="font-semibold text-slate-500">Teléfono</span>
+                      <br />
+                      {selectedRequest.whatsappUserId}
+                    </p>
+                    {selectedRequest.patientLocation !== null ? (
+                      <p>
+                        <span className="font-semibold text-slate-500">Ubicación</span>
+                        <br />
+                        {selectedRequest.patientLocation}
+                      </p>
+                    ) : null}
+                    {selectedRequest.appointmentModality !== null ? (
+                      <p>
+                        <span className="font-semibold text-slate-500">Modalidad</span>
+                        <br />
+                        {selectedRequest.appointmentModality}
+                      </p>
+                    ) : null}
+                  </section>
+
+                  {selectedRequest.patientPreferenceNote !== null ? (
+                    <div className="mt-3 rounded-md bg-slate-50 p-3">
+                      <p className="text-xs font-semibold text-slate-500">
+                        Preferencias del paciente
+                      </p>
+                      <p className="mt-1 text-sm text-slate-700">
+                        {selectedRequest.patientPreferenceNote}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {selectedRequest.rejectionSummary !== null ? (
+                    <div className="mt-2 rounded-md bg-red-50 p-3">
+                      <p className="text-xs font-semibold text-red-600">Resumen rechazo</p>
+                      <p className="mt-1 text-sm text-red-700">
+                        {selectedRequest.rejectionSummary}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {ACTIONABLE_APPROVAL_STATUSES.has(selectedRequest.status) ? (
+                    <button
+                      className="mt-4 w-full rounded-lg bg-brand-teal px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover"
+                      onClick={() => setApprovalMobileStep("CALENDAR")}
+                      type="button"
+                    >
+                      Elegir horario
+                    </button>
+                  ) : null}
+
+                  {ACTIONABLE_APPROVAL_STATUSES.has(selectedRequest.status) ? (
+                    <section className="mt-4 rounded-lg border border-border-subtle p-3">
+                      <h4 className="text-sm font-semibold text-brand-ink">Acciones</h4>
+                      <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Nota para el bot
+                        <textarea
+                          className="mt-1 min-h-16 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                          onChange={(event) => {
+                            if (selectedRequest === undefined) {
+                              return;
+                            }
+                            const nextValue = event.target.value;
+                            setReviewNotesByRequestId((currentValue) => ({
+                              ...currentValue,
+                              [selectedRequest.requestId]: nextValue
+                            }));
+                          }}
+                          value={currentReviewNote}
+                        />
+                      </label>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={resolveConsultationReviewMutation.isPending}
+                          onClick={() => {
+                            if (selectedRequest === undefined) {
+                              return;
+                            }
+                            if (currentReviewNote.trim() === "") {
+                              setLocalSubmitErrorMessage(
+                                "Debes agregar una nota para pedir más información."
+                              );
+                              return;
+                            }
+                            setLocalSubmitErrorMessage(null);
+                            setSubmitSuccessMessage(null);
+                            resolveConsultationReviewMutation.mutate({
+                              request: selectedRequest,
+                              decision: "REQUEST_MORE_INFO",
+                              professionalNote: currentReviewNote.trim()
+                            });
+                          }}
+                          type="button"
+                        >
+                          Pedir más info
+                        </button>
+                        <button
+                          className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={resolveConsultationReviewMutation.isPending}
+                          onClick={() => {
+                            if (selectedRequest === undefined) {
+                              return;
+                            }
+                            setLocalSubmitErrorMessage(null);
+                            setSubmitSuccessMessage(null);
+                            resolveConsultationReviewMutation.mutate({
+                              request: selectedRequest,
+                              decision: "REJECT",
+                              professionalNote:
+                                currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
+                            });
+                          }}
+                          type="button"
+                        >
+                          Rechazar
+                        </button>
+                      </div>
+                    </section>
+                  ) : null}
+
+                  {selectedRequest.status === "AWAITING_PAYMENT_CONFIRMATION" ? (
+                    <>
+                      {(() => {
+                        const patientSlot = resolveBookedSlot(selectedRequest);
+                        if (patientSlot === null) {
+                          return null;
+                        }
+                        return (
+                          <section className="mt-3 rounded-lg border border-border-subtle p-3">
+                            <h4 className="text-sm font-semibold text-brand-ink">
+                              Horario seleccionado por el paciente
+                            </h4>
+                            <div className="mt-2 flex items-center gap-3 rounded-md bg-emerald-50 px-3 py-2">
+                              <span className="text-emerald-600">
+                                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} />
+                                </svg>
+                              </span>
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">
+                                  {dateUtilsModule.formatDateTime(patientSlot.startAt)}
+                                </p>
+                                <p className="text-xs text-slate-500">{patientSlot.timezone}</p>
+                              </div>
+                            </div>
+                          </section>
+                        );
+                      })()}
+                      <section className="mt-3 rounded-lg border border-border-subtle p-3">
+                        <h4 className="text-sm font-semibold text-brand-ink">
+                          Confirmar pago del paciente
+                        </h4>
+                        <p className="mt-2 text-xs text-slate-600">
+                          El paciente seleccionó un horario y se le enviaron los datos de pago.
+                          Verifica el comprobante y aprueba, o envía un recordatorio de pago.
+                        </p>
+                        <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Valor del pago (COP) *
+                          <input
+                            className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                            inputMode="numeric"
+                            onChange={(event) => {
+                              if (selectedRequest === undefined) {
+                                return;
+                              }
+                              const nextValue = event.target.value.replace(/[^0-9]/g, "");
+                              setPaymentAmountByRequestId((currentValue) => ({
+                                ...currentValue,
+                                [selectedRequest.requestId]: nextValue
+                              }));
+                            }}
+                            placeholder="Ej: 150000"
+                            type="text"
+                            value={currentPaymentAmount}
+                          />
+                        </label>
+                        <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Nota para el bot
+                          <textarea
+                            className="mt-1 min-h-16 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                            onChange={(event) => {
+                              if (selectedRequest === undefined) {
+                                return;
+                              }
+                              const nextValue = event.target.value;
+                              setReviewNotesByRequestId((currentValue) => ({
+                                ...currentValue,
+                                [selectedRequest.requestId]: nextValue
+                              }));
+                            }}
+                            value={currentReviewNote}
+                          />
+                        </label>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={
+                              resolvePaymentReviewMutation.isPending ||
+                              currentPaymentAmount.trim() === "" ||
+                              Number(currentPaymentAmount) <= 0
+                            }
+                            onClick={() => {
+                              if (selectedRequest === undefined) {
+                                return;
+                              }
+                              const parsedAmount = Number(currentPaymentAmount);
+                              if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
+                                setLocalSubmitErrorMessage(
+                                  "Debes ingresar un valor de pago válido para aprobar."
+                                );
+                                return;
+                              }
+                              setLocalSubmitErrorMessage(null);
+                              setSubmitSuccessMessage(null);
+                              resolvePaymentReviewMutation.mutate({
+                                request: selectedRequest,
+                                decision: "APPROVE",
+                                professionalNote:
+                                  currentReviewNote.trim() === "" ? null : currentReviewNote.trim(),
+                                paymentAmountCop: parsedAmount
+                              });
+                            }}
+                            type="button"
+                          >
+                            Aprobar pago
+                          </button>
+                          <button
+                            className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={resolvePaymentReviewMutation.isPending}
+                            onClick={() => {
+                              if (selectedRequest === undefined) {
+                                return;
+                              }
+                              setLocalSubmitErrorMessage(null);
+                              setSubmitSuccessMessage(null);
+                              resolvePaymentReviewMutation.mutate({
+                                request: selectedRequest,
+                                decision: "SEND_REMINDER",
+                                professionalNote:
+                                  currentReviewNote.trim() === "" ? null : currentReviewNote.trim(),
+                                paymentAmountCop: null
+                              });
+                            }}
+                            type="button"
+                          >
+                            Enviar recordatorio
+                          </button>
+                        </div>
+                      </section>
+                    </>
+                  ) : null}
+
+                  {loadingErrorMessage !== null ? (
+                    <errorBannerModule.ErrorBanner message={loadingErrorMessage} />
+                  ) : null}
+                  {localSubmitErrorMessage !== null ? (
+                    <errorBannerModule.ErrorBanner message={localSubmitErrorMessage} />
+                  ) : null}
+                  {submitSuccessMessage !== null ? (
+                    <div className="mt-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                      {submitSuccessMessage}
+                    </div>
+                  ) : null}
+                </article>
+              ) : null}
+
+              {approvalMobileStep === "CALENDAR" && selectedRequest !== undefined ? (
+                <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
+                  <header className="mb-3 flex items-center gap-2">
+                    <button
+                      className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                      onClick={() => setApprovalMobileStep("REQUEST_DETAIL")}
+                      type="button"
+                    >
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                      </svg>
+                    </button>
+                    <h3 className="text-sm font-semibold text-brand-ink">
+                      Calendario ({timezone})
+                    </h3>
+                  </header>
+
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm font-semibold capitalize text-brand-ink">
+                      {visibleMonthStart.toFormat("LLLL yyyy")}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                        onClick={() => {
+                          const previous = visibleMonthStart.minus({ months: 1 });
+                          setVisibleMonth({
+                            year: previous.year,
+                            month: previous.month as luxonModule.MonthNumbers
+                          });
+                        }}
+                        type="button"
+                      >
+                        Anterior
+                      </button>
+                      <button
+                        className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                        onClick={() => {
+                          const next = visibleMonthStart.plus({ months: 1 });
+                          setVisibleMonth({
+                            year: next.year,
+                            month: next.month as luxonModule.MonthNumbers
+                          });
+                        }}
+                        type="button"
+                      >
+                        Siguiente
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
+                    {weekDayLabels.map((label) => (
+                      <span key={label}>{label}</span>
+                    ))}
+                  </div>
+                  <div className="mt-2 grid grid-cols-7 gap-1">
+                    {dayGrid.map((dateCell, index) => {
+                      if (dateCell === null) {
+                        return (
+                          <div
+                            className="h-10 rounded-md bg-slate-50"
+                            key={`empty-${index}`}
+                          />
+                        );
+                      }
+                      const isoDate = dateCell.toISODate();
+                      const isSelected = isoDate === selectedDayIso;
+                      return (
+                        <button
+                          className={[
+                            "h-10 rounded-md border text-sm",
+                            isSelected
+                              ? "border-brand-teal bg-brand-accent-light text-brand-teal"
+                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                          ].join(" ")}
+                          key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
+                          onClick={() => {
+                            if (isoDate !== null) {
+                              setSelectedDayIso(isoDate);
+                              setApprovalMobileStep("SLOTS");
+                            }
+                          }}
+                          type="button"
+                        >
+                          {dateCell.day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {availabilityQuery.isLoading ? (
+                    <p className="mt-3 text-xs text-slate-500">
+                      Cargando disponibilidad del mes...
+                    </p>
+                  ) : null}
+                </article>
+              ) : null}
+
+              {approvalMobileStep === "SLOTS" && selectedRequest !== undefined ? (
+                <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
+                  <header className="mb-3 flex items-center gap-2">
+                    <button
+                      className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                      onClick={() => setApprovalMobileStep("CALENDAR")}
+                      type="button"
+                    >
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                      </svg>
+                    </button>
+                    <div>
+                      <h3 className="text-sm font-semibold text-brand-ink">
+                        Slots de 60 min
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Día: {selectedDayIso !== "" ? selectedDayIso : "-"}
+                      </p>
+                    </div>
+                  </header>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {calendarSlots.map((slot) => {
+                      const isSelected = selectedSlotIdSet.has(slot.slotId);
+                      const isDisabled = slot.isBusy || slot.isPast;
+                      const slotStartText = luxonModule.DateTime.fromISO(slot.startAt, {
+                        zone: timezone
+                      }).toFormat("HH:mm");
+                      const slotEndText = luxonModule.DateTime.fromISO(slot.endAt, {
+                        zone: timezone
+                      }).toFormat("HH:mm");
+                      return (
+                        <button
+                          className={[
+                            "rounded-md border px-2 py-2 text-left text-sm",
+                            isDisabled
+                              ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                              : isSelected
+                                ? "border-brand-teal bg-brand-accent-light text-brand-teal"
+                                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                          ].join(" ")}
+                          disabled={isDisabled}
+                          key={slot.slotId}
+                          onClick={() => {
+                            if (selectedRequest === undefined) {
+                              return;
+                            }
+                            setSelectedSlotsByRequestId((currentValue) => {
+                              const currentRequestSlots =
+                                currentValue[selectedRequest.requestId] ?? [];
+                              const slotExists = currentRequestSlots.some(
+                                (currentSlot) => currentSlot.slotId === slot.slotId
+                              );
+                              const nextRequestSlots = slotExists
+                                ? currentRequestSlots.filter(
+                                    (currentSlot) => currentSlot.slotId !== slot.slotId
+                                  )
+                                : [
+                                    ...currentRequestSlots,
+                                    {
+                                      slotId: slot.slotId,
+                                      startAt: slot.startAt,
+                                      endAt: slot.endAt,
+                                      timezone: slot.timezone
+                                    }
+                                  ].sort((left, right) =>
+                                    left.startAt.localeCompare(right.startAt)
+                                  );
+                              return {
+                                ...currentValue,
+                                [selectedRequest.requestId]: nextRequestSlots
+                              };
+                            });
+                          }}
+                          type="button"
+                        >
+                          <p className="font-semibold">
+                            {slotStartText} - {slotEndText}
+                          </p>
+                          {slot.isBusy ? <p className="text-xs">No disponible</p> : null}
+                          {slot.isPast ? <p className="text-xs">Horario pasado</p> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-3 text-xs text-slate-600">
+                    Slots seleccionados: {selectedSlots.length}
+                  </p>
+                  <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Nota para paciente (opcional)
+                    <textarea
+                      className="mt-1 min-h-16 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => {
+                        if (selectedRequest === undefined) {
+                          return;
+                        }
+                        const nextValue = event.target.value;
+                        setProfessionalNotesByRequestId((currentValue) => ({
+                          ...currentValue,
+                          [selectedRequest.requestId]: nextValue
+                        }));
+                      }}
+                      value={currentProfessionalNote}
+                    />
+                  </label>
+                  <div className="mt-3">
+                    <button
+                      className="w-full rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={submitSlotsMutation.isPending}
+                      onClick={() => {
+                        if (selectedRequest === undefined) {
+                          return;
+                        }
+                        if (selectedSlots.length === 0) {
+                          setLocalSubmitErrorMessage("Debes seleccionar al menos un slot.");
+                          return;
+                        }
+                        setLocalSubmitErrorMessage(null);
+                        setSubmitSuccessMessage(null);
+                        submitSlotsMutation.mutate({
+                          request: selectedRequest,
+                          slots: selectedSlots,
+                          professionalNote:
+                            currentProfessionalNote.trim() === ""
+                              ? null
+                              : currentProfessionalNote.trim()
+                        });
+                      }}
+                      type="button"
+                    >
+                      {submitSlotsMutation.isPending ? "Enviando..." : "Enviar espacios"}
+                    </button>
+                  </div>
+
+                  {loadingErrorMessage !== null ? (
+                    <errorBannerModule.ErrorBanner message={loadingErrorMessage} />
+                  ) : null}
+                  {localSubmitErrorMessage !== null ? (
+                    <errorBannerModule.ErrorBanner message={localSubmitErrorMessage} />
+                  ) : null}
+                  {submitSuccessMessage !== null ? (
+                    <div className="mt-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                      {submitSuccessMessage}
+                    </div>
+                  ) : null}
+                </article>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* ===== DESKTOP LAYOUT (and non-approval mobile) ===== */}
+          <div
+            className={[
+              "grid gap-4",
+              isApprovalSection ? "hidden sm:grid" : "",
+              isBookedTab
+                ? "lg:grid-cols-[520px_minmax(0,1fr)]"
+                : "lg:grid-cols-[320px_minmax(0,1fr)]"
+            ].join(" ")}
+          >
           {isBookedTab ? (
             <article className={[
               "rounded-xl border border-border-subtle bg-white shadow-card",
@@ -2924,6 +3550,7 @@ export function AgendaPage() {
               </div>
             ) : null}
           </article>
+          </div>
         </section>
       ) : null}
 
