@@ -457,6 +457,8 @@ class SchedulingService:
             )
 
         request.consultation_reason = consultation_reason
+        if input_dto.audience_type is not None:
+            request.audience_type = input_dto.audience_type
         if input_dto.appointment_modality is not None:
             request.appointment_modality = input_dto.appointment_modality
             request.patient_location = self._resolve_location(

@@ -234,6 +234,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return payload.items.map((item) => ({
       conversationId: item.conversation_id,
       whatsappUserId: item.whatsapp_user_id,
+      contactName: item.contact_name ?? null,
       lastMessagePreview: item.last_message_preview,
       updatedAt: item.updated_at,
       controlMode: item.control_mode

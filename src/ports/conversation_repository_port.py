@@ -17,6 +17,10 @@ class ConversationRepositoryPort(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def list_whatsapp_users(self, tenant_id: str) -> list[whatsapp_user_entity.WhatsappUser]:
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def save_conversation(self, conversation: conversation_entity.Conversation) -> None:
         raise NotImplementedError
 

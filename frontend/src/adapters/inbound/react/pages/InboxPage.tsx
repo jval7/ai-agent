@@ -215,12 +215,13 @@ export function InboxPage() {
 
   const selectedConversationRequest =
     selectedConversationId !== null
-      ? latestRequestByConversationId.get(selectedConversationId) ?? null
+      ? (latestRequestByConversationId.get(selectedConversationId) ?? null)
       : null;
   const selectedAppointmentStatus: AppointmentDisplayStatus =
     selectedConversationRequest !== null
       ? resolveAppointmentDisplayStatus(selectedConversationRequest)
       : "SIN_CITA";
+  // eslint-disable-next-line security/detect-object-injection
   const selectedAppointmentConfig = appointmentDisplayConfig[selectedAppointmentStatus];
 
   const renderConversationItem = (
@@ -228,9 +229,11 @@ export function InboxPage() {
     options: { onClick: () => void }
   ) => {
     const patientName = patientNameByWhatsappId.get(conversation.whatsappUserId);
+    const displayName = conversation.contactName ?? patientName ?? conversation.whatsappUserId;
     const request = latestRequestByConversationId.get(conversation.conversationId);
     const displayStatus: AppointmentDisplayStatus =
       request !== undefined ? resolveAppointmentDisplayStatus(request) : "SIN_CITA";
+    // eslint-disable-next-line security/detect-object-injection
     const config = appointmentDisplayConfig[displayStatus];
     return (
       <button
@@ -241,13 +244,9 @@ export function InboxPage() {
       >
         <div className="mb-1 flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-brand-ink">
-              {patientName ?? conversation.whatsappUserId}
-            </p>
-            {patientName !== undefined ? (
-              <p className="truncate text-[11px] text-slate-400">
-                {conversation.whatsappUserId}
-              </p>
+            <p className="truncate text-sm font-semibold text-brand-ink">{displayName}</p>
+            {conversation.contactName !== null ? (
+              <p className="truncate text-[11px] text-slate-400">{conversation.whatsappUserId}</p>
             ) : null}
           </div>
           <statusBadgeModule.StatusBadge
@@ -308,13 +307,24 @@ export function InboxPage() {
                   }}
                   type="button"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M15.75 19.5L8.25 12l7.5-7.5"
+                    />
                   </svg>
                 </button>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-brand-ink">
-                    {patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
+                    {selectedConversation.contactName ??
+                      patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
                       selectedConversation.whatsappUserId}
                   </p>
                 </div>
@@ -393,16 +403,13 @@ export function InboxPage() {
                   <button
                     className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
                     onClick={() => {
-                      const nextMode =
-                        selectedConversation.controlMode === "AI" ? "HUMAN" : "AI";
+                      const nextMode = selectedConversation.controlMode === "AI" ? "HUMAN" : "AI";
                       controlModeMutation.mutate(nextMode);
                       setFabOpen(false);
                     }}
                     type="button"
                   >
-                    {selectedConversation.controlMode === "AI"
-                      ? "Cambiar a HUMAN"
-                      : "Cambiar a AI"}
+                    {selectedConversation.controlMode === "AI" ? "Cambiar a HUMAN" : "Cambiar a AI"}
                   </button>
                   <button
                     className={[
@@ -434,12 +441,28 @@ export function InboxPage() {
                 type="button"
               >
                 {fabOpen ? (
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 ) : (
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z"
+                    />
                   </svg>
                 )}
               </button>
@@ -468,9 +491,12 @@ export function InboxPage() {
                 resetMessagesMutation.isPending &&
                 resetMessagesMutation.variables === conversation.conversationId;
               const patientName = patientNameByWhatsappId.get(conversation.whatsappUserId);
+              const desktopDisplayName =
+                conversation.contactName ?? patientName ?? conversation.whatsappUserId;
               const request = latestRequestByConversationId.get(conversation.conversationId);
               const displayStatus: AppointmentDisplayStatus =
                 request !== undefined ? resolveAppointmentDisplayStatus(request) : "SIN_CITA";
+              // eslint-disable-next-line security/detect-object-injection
               const config = appointmentDisplayConfig[displayStatus];
               return (
                 <article
@@ -492,9 +518,9 @@ export function InboxPage() {
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-brand-ink">
-                          {patientName ?? conversation.whatsappUserId}
+                          {desktopDisplayName}
                         </p>
-                        {patientName !== undefined ? (
+                        {conversation.contactName !== null ? (
                           <p className="truncate text-[11px] text-slate-400">
                             {conversation.whatsappUserId}
                           </p>
@@ -540,7 +566,8 @@ export function InboxPage() {
             <h2 className="text-base font-semibold">Mensajes</h2>
             {selectedConversation !== undefined ? (
               <p className="text-xs text-slate-500">
-                {patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
+                {selectedConversation.contactName ??
+                  patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
                   selectedConversation.whatsappUserId}
               </p>
             ) : (

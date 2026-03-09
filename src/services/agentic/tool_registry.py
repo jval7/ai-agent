@@ -2,8 +2,27 @@ import src.services.dto.llm_dto as llm_dto
 
 
 class ToolDefinitionRegistry:
+    def _build_set_contact_name_definition(self) -> llm_dto.FunctionDeclarationDTO:
+        return llm_dto.FunctionDeclarationDTO(
+            name="set_contact_name",
+            description=(
+                "Registra el nombre de la persona que esta hablando (quien escribe por WhatsApp). "
+                "Llama esta tool en cuanto sepas su nombre; puede ser diferente al del paciente "
+                "si es un padre, madre o tutor agendando para otra persona."
+            ),
+            parameters_json_schema={
+                "type": "object",
+                "properties": {
+                    "contact_name": {"type": "string"},
+                },
+                "required": ["contact_name"],
+                "additionalProperties": False,
+            },
+        )
+
     def build_waiting_state_tool_definitions(self) -> list[llm_dto.FunctionDeclarationDTO]:
         return [
+            self._build_set_contact_name_definition(),
             llm_dto.FunctionDeclarationDTO(
                 name="handoff_to_human",
                 description=(
@@ -42,6 +61,7 @@ class ToolDefinitionRegistry:
         enabled_tool_names: list[str] | None = None,
     ) -> list[llm_dto.FunctionDeclarationDTO]:
         all_tool_definitions = [
+            self._build_set_contact_name_definition(),
             llm_dto.FunctionDeclarationDTO(
                 name="submit_consultation_reason_for_review",
                 description=(
@@ -61,6 +81,10 @@ class ToolDefinitionRegistry:
                             "enum": ["PRESENCIAL", "VIRTUAL"],
                         },
                         "patient_location": {"type": "string"},
+                        "audience_type": {
+                            "type": "string",
+                            "enum": ["ADULTS", "CHILDREN"],
+                        },
                     },
                     "required": ["consultation_reason", "appointment_modality"],
                     "additionalProperties": False,

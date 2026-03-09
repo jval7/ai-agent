@@ -7,9 +7,14 @@ import pydantic
 class ConversationSummaryDTO(pydantic.BaseModel):
     conversation_id: str
     whatsapp_user_id: str
+    contact_name: str | None
     last_message_preview: str | None
     updated_at: datetime.datetime
     control_mode: typing.Literal["AI", "HUMAN"]
+
+
+class SetContactNameToolInputDTO(pydantic.BaseModel):
+    contact_name: str
 
 
 class MessageDTO(pydantic.BaseModel):

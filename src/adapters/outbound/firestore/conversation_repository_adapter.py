@@ -65,6 +65,37 @@ class FirestoreConversationRepositoryAdapter(
             "whatsapp user",
         )
 
+    def list_whatsapp_users(
+        self,
+        tenant_id: str,
+    ) -> list[whatsapp_user_entity.WhatsappUser]:
+        whatsapp_users_collection = firestore_paths.tenant_document(
+            self._client, tenant_id
+        ).collection(firestore_paths.WHATSAPP_USERS_COLLECTION)
+        try:
+            snapshots = list(whatsapp_users_collection.stream())
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to list whatsapp users from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to list whatsapp users from firestore"
+            ) from error
+
+        users: list[whatsapp_user_entity.WhatsappUser] = []
+        for snapshot in snapshots:
+            raw_data = snapshot.to_dict()
+            if raw_data is None:
+                continue
+            user = firestore_model_mapper.parse_document(
+                raw_data,
+                whatsapp_user_entity.WhatsappUser,
+                "whatsapp user",
+            )
+            users.append(user)
+        return users
+
     def save_conversation(self, conversation: conversation_entity.Conversation) -> None:
         conversation_document = firestore_paths.tenant_conversation_document(
             self._client,

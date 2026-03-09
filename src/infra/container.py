@@ -15,6 +15,7 @@ import src.adapters.outbound.firestore.user_repository_adapter as user_repositor
 import src.adapters.outbound.firestore.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.adapters.outbound.google_calendar.google_calendar_provider_adapter as google_calendar_provider_adapter
 import src.adapters.outbound.llm_gemini.gemini_llm_provider_adapter as gemini_llm_provider_adapter
+import src.adapters.outbound.noop_whatsapp_send_adapter as noop_whatsapp_send_adapter
 import src.adapters.outbound.secret_manager.app_config_secret_loader_adapter as app_config_secret_loader_adapter
 import src.adapters.outbound.security.jwt_provider_adapter as jwt_provider_adapter
 import src.adapters.outbound.security.password_hasher_adapter as password_hasher_adapter
@@ -22,6 +23,7 @@ import src.adapters.outbound.whatsapp_meta.meta_whatsapp_provider_adapter as met
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
+import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.workflow_engine as workflow_engine
 import src.services.use_cases.agent_service as agent_service
 import src.services.use_cases.auth_service as auth_service
@@ -122,9 +124,16 @@ class AppContainer:
             clock=self.clock_adapter,
         )
 
-        self.whatsapp_provider_adapter = meta_whatsapp_provider_adapter.MetaWhatsappProviderAdapter(
+        meta_whatsapp_adapter = meta_whatsapp_provider_adapter.MetaWhatsappProviderAdapter(
             settings=self.settings,
         )
+        self.whatsapp_provider_adapter: whatsapp_provider_port.WhatsappProviderPort
+        if self.settings.whatsapp_outbound_noop:
+            self.whatsapp_provider_adapter = noop_whatsapp_send_adapter.NoopWhatsappSendAdapter(
+                delegate=meta_whatsapp_adapter,
+            )
+        else:
+            self.whatsapp_provider_adapter = meta_whatsapp_adapter
         self.google_calendar_provider_adapter = (
             google_calendar_provider_adapter.GoogleCalendarProviderAdapter(
                 settings=self.settings,

@@ -61,6 +61,7 @@ export interface GoogleCalendarAvailabilityApiResponse {
 export interface ConversationSummaryApiResponse {
   conversation_id: string;
   whatsapp_user_id: string;
+  contact_name?: string | null;
   last_message_preview: string | null;
   updated_at: string;
   control_mode: "AI" | "HUMAN";

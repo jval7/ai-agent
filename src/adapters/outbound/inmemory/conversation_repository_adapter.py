@@ -27,6 +27,14 @@ class InMemoryConversationRepositoryAdapter(
                 return None
             return whatsapp_user.model_copy(deep=True)
 
+    def list_whatsapp_users(self, tenant_id: str) -> list[whatsapp_user_entity.WhatsappUser]:
+        with self._store.lock:
+            users: list[whatsapp_user_entity.WhatsappUser] = []
+            for (stored_tenant_id, _), user in self._store.whatsapp_user_by_tenant_and_id.items():
+                if stored_tenant_id == tenant_id:
+                    users.append(user.model_copy(deep=True))
+            return users
+
     def save_conversation(self, conversation: conversation_entity.Conversation) -> None:
         with self._store.lock:
             key = (conversation.tenant_id, conversation.whatsapp_user_id)

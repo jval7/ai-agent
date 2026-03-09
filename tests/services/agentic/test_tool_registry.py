@@ -18,13 +18,14 @@ def test_build_tool_definitions_filters_enabled_tool_names() -> None:
     ]
 
 
-def test_build_waiting_state_tool_definitions_returns_two_tools() -> None:
+def test_build_waiting_state_tool_definitions_returns_three_tools() -> None:
     registry = tool_registry.ToolDefinitionRegistry()
 
     tool_definitions = registry.build_waiting_state_tool_definitions()
 
     tool_names = [tool_definition.name for tool_definition in tool_definitions]
     assert tool_names == [
+        "set_contact_name",
         "handoff_to_human",
         "cancel_active_scheduling_request",
     ]

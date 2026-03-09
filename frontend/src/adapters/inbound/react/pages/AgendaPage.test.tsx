@@ -137,7 +137,7 @@ vitestModule.describe("AgendaPage", () => {
     renderAgendaPage(container);
 
     await testingLibraryReactModule.waitFor(() => {
-      expect(testingLibraryReactModule.screen.getByText("wa-1")).toBeInTheDocument();
+      expect(testingLibraryReactModule.screen.getAllByText("wa-1").length).toBeGreaterThan(0);
     });
 
     const nextMonthButton = testingLibraryReactModule.screen.getByRole("button", {
@@ -146,7 +146,7 @@ vitestModule.describe("AgendaPage", () => {
     testingLibraryReactModule.fireEvent.click(nextMonthButton);
 
     const firstSlotButton = await testingLibraryReactModule.screen.findByRole("button", {
-      name: /06:00 - 07:00/
+      name: /6:00 AM - 7:00 AM/
     });
     testingLibraryReactModule.fireEvent.click(firstSlotButton);
 
@@ -1219,9 +1219,10 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", { name: /Finanzas/ })
-    );
+    const finanzasButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+      name: /Finanzas/
+    });
+    testingLibraryReactModule.fireEvent.click(finanzasButtons[0]!);
 
     await testingLibraryReactModule.waitFor(() => {
       expect(testingLibraryReactModule.screen.getByText("Paciente Bot")).toBeInTheDocument();

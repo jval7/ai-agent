@@ -3,6 +3,7 @@ export type ControlMode = "AI" | "HUMAN";
 export interface ConversationSummary {
   conversationId: string;
   whatsappUserId: string;
+  contactName: string | null;
   lastMessagePreview: string | null;
   updatedAt: string;
   controlMode: ControlMode;

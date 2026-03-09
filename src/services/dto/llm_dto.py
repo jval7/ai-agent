@@ -34,7 +34,7 @@ class GenerateReplyInputDTO(pydantic.BaseModel):
     system_prompt: str
     messages: list[ChatMessageDTO]
     tools: list[FunctionDeclarationDTO] = pydantic.Field(default_factory=list)
-    function_call_results: list[FunctionCallResultDTO] = pydantic.Field(default_factory=list)
+    function_call_results: list[list[FunctionCallResultDTO]] = pydantic.Field(default_factory=list)
 
 
 class AgentReplyDTO(pydantic.BaseModel):

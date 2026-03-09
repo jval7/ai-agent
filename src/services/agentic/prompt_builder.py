@@ -114,13 +114,23 @@ class RuntimePromptBuilder:
                 "Flujo actual: ya hay slot seleccionado y no faltan campos de perfil.",
                 "Llama confirm_selected_slot_and_create_event para completar la reserva.",
             ]
-        if runtime_context.state in (
-            "AWAITING_CONSULTATION_REVIEW",
-            "AWAITING_PAYMENT_CONFIRMATION",
-        ):
+        if runtime_context.state == "AWAITING_CONSULTATION_REVIEW":
             return [
-                "Flujo actual: esperando respuesta del profesional.",
-                "No avances el flujo de agendamiento mientras este estado siga activo.",
+                "Flujo actual: motivo de consulta enviado, esperando revision del profesional.",
+                "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
+                "horarios, modalidades, direccion del consultorio o informacion general del profesional.",
+                "No avances el flujo de agendamiento ni solicites datos adicionales.",
+                "Si el paciente hace una pregunta que va mas alla de lo que puedes responder "
+                "con la informacion disponible, usa handoff_to_human.",
+            ]
+        if runtime_context.state == "AWAITING_PAYMENT_CONFIRMATION":
+            return [
+                "Flujo actual: pago pendiente de aprobacion por el profesional.",
+                "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
+                "precios, datos de pago, horarios o informacion general del consultorio.",
+                "No solicites el comprobante de nuevo ni avances el flujo de agendamiento.",
+                "Si el paciente hace una pregunta que va mas alla de lo que puedes responder "
+                "con la informacion disponible, usa handoff_to_human.",
             ]
         return ["Mantente en flujo natural y sin mencionar procesos internos."]
 

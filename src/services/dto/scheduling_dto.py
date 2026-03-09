@@ -85,6 +85,7 @@ class SubmitConsultationReasonForReviewToolInputDTO(pydantic.BaseModel):
     consultation_reason: str | None = None
     appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] | None = None
     patient_location: str | None = None
+    audience_type: typing.Literal["ADULTS", "CHILDREN"] | None = None
 
 
 class ConsultationReviewDecisionDTO(pydantic.BaseModel):

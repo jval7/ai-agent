@@ -36,7 +36,9 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
         trace_inputs: dict[str, object] = {
             "messages_count": len(prompt_input.messages),
             "tools_count": len(prompt_input.tools),
-            "function_call_results_count": len(prompt_input.function_call_results),
+            "function_call_results_count": sum(
+                len(group) for group in prompt_input.function_call_results
+            ),
             "system_prompt_chars": len(prompt_input.system_prompt),
         }
         trace_metadata: dict[str, object] = {
@@ -158,9 +160,9 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
                 }
             )
 
-        if prompt_input.function_call_results:
+        for result_group in prompt_input.function_call_results:
             model_function_call_parts: list[dict[str, typing.Any]] = []
-            for function_result in prompt_input.function_call_results:
+            for function_result in result_group:
                 function_call_payload: dict[str, typing.Any] = {
                     "name": function_result.function_call.name,
                     "args": function_result.function_call.args,
@@ -180,23 +182,21 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
                     "parts": model_function_call_parts,
                 }
             )
-            for function_result in prompt_input.function_call_results:
+            user_function_response_parts: list[dict[str, typing.Any]] = []
+            for function_result in result_group:
                 function_response_payload: dict[str, typing.Any] = {
                     "name": function_result.function_response.name,
                     "response": function_result.function_response.response,
                 }
                 if function_result.function_response.call_id is not None:
                     function_response_payload["id"] = function_result.function_response.call_id
-                request_contents.append(
-                    {
-                        "role": "user",
-                        "parts": [
-                            {
-                                "functionResponse": function_response_payload,
-                            }
-                        ],
-                    }
-                )
+                user_function_response_parts.append({"functionResponse": function_response_payload})
+            request_contents.append(
+                {
+                    "role": "user",
+                    "parts": user_function_response_parts,
+                }
+            )
         return request_contents
 
     def _build_tools(

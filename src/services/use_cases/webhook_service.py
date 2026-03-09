@@ -29,6 +29,7 @@ import src.services.agentic.state_models as agentic_state_models
 import src.services.agentic.tool_registry as tool_registry
 import src.services.agentic.workflow_engine as workflow_engine
 import src.services.dto.agent_workflow_dto as agent_workflow_dto
+import src.services.dto.conversation_dto as conversation_dto
 import src.services.dto.llm_dto as llm_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.dto.webhook_dto as webhook_dto
@@ -886,7 +887,7 @@ class WebhookService:
         ) as trace_run:
             base_system_prompt = self._resolve_agent_system_prompt(tenant_id)
             current_known_patient = known_patient
-            function_call_results: list[llm_dto.FunctionCallResultDTO] = []
+            function_call_results: list[list[llm_dto.FunctionCallResultDTO]] = []
             for iteration_index in range(self._max_function_call_iterations):
                 runtime_prompt_context = self._resolve_runtime_prompt_context(
                     tenant_id=tenant_id,
@@ -928,6 +929,7 @@ class WebhookService:
                             "last_function_calls_count": len(llm_reply.function_calls),
                         }
                     )
+                    iteration_results: list[llm_dto.FunctionCallResultDTO] = []
                     for function_call in llm_reply.function_calls:
                         function_response_payload = self._execute_function_call(
                             tenant_id=tenant_id,
@@ -935,7 +937,7 @@ class WebhookService:
                             whatsapp_user_id=whatsapp_user_id,
                             function_call=function_call,
                         )
-                        function_call_results.append(
+                        iteration_results.append(
                             llm_dto.FunctionCallResultDTO(
                                 function_call=function_call,
                                 function_response=llm_dto.FunctionResponseDTO(
@@ -962,6 +964,7 @@ class WebhookService:
                                 tenant_id=tenant_id,
                                 whatsapp_user_id=whatsapp_user_id,
                             )
+                    function_call_results.append(iteration_results)
                     continue
 
                 if llm_reply.content.strip():
@@ -1351,6 +1354,21 @@ class WebhookService:
                     trace_run.set_outputs(self._summarize_tool_result_for_trace(result))
                     return result
 
+                if function_call.name == "set_contact_name":
+                    set_contact_name_input = (
+                        conversation_dto.SetContactNameToolInputDTO.model_validate(
+                            function_call.args
+                        )
+                    )
+                    self._update_whatsapp_user_contact_name(
+                        tenant_id=tenant_id,
+                        whatsapp_user_id=whatsapp_user_id,
+                        contact_name=set_contact_name_input.contact_name,
+                    )
+                    result = {"status": "ok"}
+                    trace_run.set_outputs(self._summarize_tool_result_for_trace(result))
+                    return result
+
                 result = {"error": f"unknown function: {function_call.name}"}
                 trace_run.set_outputs(self._summarize_tool_result_for_trace(result))
                 return result
@@ -1539,7 +1557,7 @@ class WebhookService:
             )
         except service_exceptions.ServiceError:
             return self._build_slot_selection_retry_message(active_request)
-        return self._build_payment_instructions_message()
+        return self._build_payment_instructions_message(active_request.audience_type)
 
     def _handle_waiting_patient_choice_state_message(
         self,
@@ -1578,7 +1596,7 @@ class WebhookService:
                 )
             except service_exceptions.ServiceError:
                 return self._build_slot_selection_retry_message(active_request)
-            return self._build_payment_instructions_message()
+            return self._build_payment_instructions_message(active_request.audience_type)
 
         function_calls = self._resolve_patient_choice_override_function_calls(
             latest_user_text=latest_user_text,
@@ -2123,12 +2141,30 @@ class WebhookService:
     def _build_availability_ack_message(self) -> str:
         return "Perfecto. Dame un momento y te comparto opciones de horario."
 
-    def _build_payment_instructions_message(self) -> str:
+    def _build_payment_instructions_message(
+        self,
+        audience_type: typing.Literal["ADULTS", "CHILDREN"] | None,
+    ) -> str:
+        if audience_type == "CHILDREN":
+            session_price = "*$150.000 COP* por sesión"
+            packages = (
+                "• Paquete 3 sesiones: $427.500 (5% off, c/u $142.500)\n"
+                "• Paquete 4 sesiones: $552.000 (8% off, c/u $138.000)"
+            )
+        else:
+            session_price = "*$130.000 COP* por sesión"
+            packages = (
+                "• Paquete 3 sesiones: $370.500 (5% off, c/u $123.500)\n"
+                "• Paquete 4 sesiones: $478.400 (8% off, c/u $119.600)"
+            )
         return (
-            "Para continuar con el proceso de agendamiento, realiza la transferencia:\n"
+            f"¡Listo! El valor de la sesión es {session_price}\n\n"
+            f"Si quieres aprovechar un paquete con descuento:\n"
+            f"{packages}\n\n"
+            "Para  continuar con el proceso de agendamiento de tu cita, realiza el pago por transferencia:\n"
             "• Nequi: 318 732 6409\n"
             "• A nombre de: Alejandra Escobar\n\n"
-            "Una vez realizado el pago, envíame el comprobante."
+            "Cuando tengas el comprobante, me lo puedes enviar por aquí, por favor"
         )
 
     def _build_post_booking_instructions(
@@ -2179,10 +2215,7 @@ class WebhookService:
             conversation_id=conversation_id,
         )
         for request in request_list.items:
-            if request.status in (
-                "AWAITING_CONSULTATION_REVIEW",
-                "AWAITING_PAYMENT_CONFIRMATION",
-            ):
+            if request.status == "AWAITING_CONSULTATION_REVIEW":
                 return request
         return None
 
@@ -2409,6 +2442,21 @@ class WebhookService:
                 )
             },
         )
+
+    def _update_whatsapp_user_contact_name(
+        self,
+        tenant_id: str,
+        whatsapp_user_id: str,
+        contact_name: str,
+    ) -> None:
+        whatsapp_user = self._conversation_repository.get_whatsapp_user(
+            tenant_id,
+            whatsapp_user_id,
+        )
+        if whatsapp_user is None:
+            return
+        updated_user = whatsapp_user.model_copy(update={"display_name": contact_name})
+        self._conversation_repository.save_whatsapp_user(updated_user)
 
     def _create_patient_after_successful_booking(
         self,

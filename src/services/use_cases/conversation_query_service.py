@@ -14,11 +14,15 @@ class ConversationQueryService:
         conversations = self._conversation_repository.list_conversations(tenant_id)
         sorted_conversations = sorted(conversations, key=lambda item: item.updated_at, reverse=True)
 
+        whatsapp_users = self._conversation_repository.list_whatsapp_users(tenant_id)
+        display_name_by_user_id = {user.id: user.display_name for user in whatsapp_users}
+
         items: list[conversation_dto.ConversationSummaryDTO] = []
         for conversation in sorted_conversations:
             item = conversation_dto.ConversationSummaryDTO(
                 conversation_id=conversation.id,
                 whatsapp_user_id=conversation.whatsapp_user_id,
+                contact_name=display_name_by_user_id.get(conversation.whatsapp_user_id),
                 last_message_preview=conversation.last_message_preview,
                 updated_at=conversation.updated_at,
                 control_mode=conversation.control_mode,
