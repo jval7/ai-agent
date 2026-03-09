@@ -7,11 +7,78 @@ import * as appContainerContextModule from "@adapters/inbound/react/app/AppConta
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import type * as conversationModel from "@domain/models/conversation";
+import type * as schedulingModel from "@domain/models/scheduling";
 import * as dateUtilsModule from "@shared/utils/date";
 
 const conversationsQueryKey = ["conversations"] as const;
 const blacklistQueryKey = ["blacklist"] as const;
 const patientsQueryKey = ["patients"] as const;
+const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
+
+type AppointmentDisplayStatus =
+  | "PENDIENTE_REVISION"
+  | "ESPERANDO_INFO"
+  | "ELIGIENDO_HORARIO"
+  | "PAGO_PENDIENTE"
+  | "AGENDADA"
+  | "TOMADA"
+  | "RECHAZADA"
+  | "CANCELADA"
+  | "DERIVADA"
+  | "SIN_CITA";
+
+const appointmentDisplayConfig: Record<
+  AppointmentDisplayStatus,
+  { label: string; tone: statusBadgeModule.StatusBadgeTone }
+> = {
+  PENDIENTE_REVISION: { label: "Pendiente revisión", tone: "warning" },
+  ESPERANDO_INFO: { label: "Esperando info", tone: "warning" },
+  ELIGIENDO_HORARIO: { label: "Eligiendo horario", tone: "info" },
+  PAGO_PENDIENTE: { label: "Pago pendiente", tone: "warning" },
+  AGENDADA: { label: "Agendada", tone: "success" },
+  TOMADA: { label: "Tomada", tone: "neutral" },
+  RECHAZADA: { label: "Rechazada", tone: "danger" },
+  CANCELADA: { label: "Cancelada", tone: "danger" },
+  DERIVADA: { label: "Derivada", tone: "info" },
+  SIN_CITA: { label: "Sin cita", tone: "neutral" }
+};
+
+function resolveAppointmentDisplayStatus(
+  request: schedulingModel.SchedulingRequestSummary
+): AppointmentDisplayStatus {
+  if (request.status === "AWAITING_CONSULTATION_REVIEW") {
+    return "PENDIENTE_REVISION";
+  }
+  if (request.status === "AWAITING_CONSULTATION_DETAILS") {
+    return "ESPERANDO_INFO";
+  }
+  if (request.status === "AWAITING_PATIENT_CHOICE") {
+    return "ELIGIENDO_HORARIO";
+  }
+  if (request.status === "AWAITING_PAYMENT_CONFIRMATION") {
+    return "PAGO_PENDIENTE";
+  }
+  if (request.status === "BOOKED") {
+    const bookedSlot = request.slots.find((slot) => slot.status === "BOOKED");
+    if (bookedSlot !== undefined) {
+      const slotEnd = new Date(bookedSlot.endAt);
+      if (slotEnd < new Date()) {
+        return "TOMADA";
+      }
+    }
+    return "AGENDADA";
+  }
+  if (request.status === "CONSULTATION_REJECTED") {
+    return "RECHAZADA";
+  }
+  if (request.status === "CANCELLED") {
+    return "CANCELADA";
+  }
+  if (request.status === "HUMAN_HANDOFF") {
+    return "DERIVADA";
+  }
+  return "SIN_CITA";
+}
 
 export function InboxPage() {
   const appContainer = appContainerContextModule.useAppContainer();
@@ -32,6 +99,25 @@ export function InboxPage() {
     queryFn: () => appContainer.patientUseCase.listPatients()
   });
 
+  const schedulingRequestsQuery = reactQueryModule.useQuery({
+    queryKey: schedulingRequestsQueryKey,
+    queryFn: () => appContainer.schedulingUseCase.listRequests()
+  });
+
+  const latestRequestByConversationId = reactModule.useMemo(() => {
+    const map = new Map<string, schedulingModel.SchedulingRequestSummary>();
+    if (schedulingRequestsQuery.data === undefined) {
+      return map;
+    }
+    for (const request of schedulingRequestsQuery.data) {
+      const existing = map.get(request.conversationId);
+      if (existing === undefined || request.updatedAt > existing.updatedAt) {
+        map.set(request.conversationId, request);
+      }
+    }
+    return map;
+  }, [schedulingRequestsQuery.data]);
+
   const patientNameByWhatsappId = reactModule.useMemo(() => {
     const map = new Map<string, string>();
     if (patientsQuery.data === undefined) {
@@ -49,6 +135,8 @@ export function InboxPage() {
   const [selectedConversationId, setSelectedConversationId] = reactModule.useState<string | null>(
     null
   );
+  const [inboxMobileStep, setInboxMobileStep] = reactModule.useState<"LIST" | "DETAIL">("LIST");
+  const [fabOpen, setFabOpen] = reactModule.useState(false);
 
   reactModule.useEffect(() => {
     if (conversationsQuery.data === undefined || conversationsQuery.data.length === 0) {
@@ -125,9 +213,231 @@ export function InboxPage() {
         false)
       : false;
 
+  const selectedConversationRequest =
+    selectedConversationId !== null
+      ? latestRequestByConversationId.get(selectedConversationId) ?? null
+      : null;
+  const selectedAppointmentStatus: AppointmentDisplayStatus =
+    selectedConversationRequest !== null
+      ? resolveAppointmentDisplayStatus(selectedConversationRequest)
+      : "SIN_CITA";
+  const selectedAppointmentConfig = appointmentDisplayConfig[selectedAppointmentStatus];
+
+  const renderConversationItem = (
+    conversation: conversationModel.ConversationSummary,
+    options: { onClick: () => void }
+  ) => {
+    const patientName = patientNameByWhatsappId.get(conversation.whatsappUserId);
+    const request = latestRequestByConversationId.get(conversation.conversationId);
+    const displayStatus: AppointmentDisplayStatus =
+      request !== undefined ? resolveAppointmentDisplayStatus(request) : "SIN_CITA";
+    const config = appointmentDisplayConfig[displayStatus];
+    return (
+      <button
+        className="w-full rounded-lg border border-slate-200 bg-white p-3 text-left transition-colors hover:border-slate-300"
+        key={conversation.conversationId}
+        onClick={options.onClick}
+        type="button"
+      >
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-brand-ink">
+              {patientName ?? conversation.whatsappUserId}
+            </p>
+            {patientName !== undefined ? (
+              <p className="truncate text-[11px] text-slate-400">
+                {conversation.whatsappUserId}
+              </p>
+            ) : null}
+          </div>
+          <statusBadgeModule.StatusBadge
+            label={conversation.controlMode}
+            tone={conversation.controlMode === "AI" ? "success" : "warning"}
+          />
+        </div>
+        <p className="truncate text-xs text-slate-500">
+          {conversation.lastMessagePreview ?? "Sin preview"}
+        </p>
+        <div className="mt-1.5">
+          <statusBadgeModule.StatusBadge label={config.label} tone={config.tone} />
+        </div>
+      </button>
+    );
+  };
+
   return (
     <appShellModule.AppShell>
-      <section className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
+      {/* ===== MOBILE: WhatsApp-style flow ===== */}
+      <div className="lg:hidden">
+        {inboxMobileStep === "LIST" ? (
+          <div className="space-y-2">
+            <header className="mb-3">
+              <h2 className="text-base font-semibold text-brand-ink">Conversaciones</h2>
+              <p className="text-[11px] text-slate-500">
+                {conversationsQuery.data?.length ?? 0} conversaciones
+              </p>
+            </header>
+            {conversationsQuery.isLoading ? (
+              <p className="text-sm text-slate-500">Cargando...</p>
+            ) : null}
+            {conversationsQuery.data?.length === 0 ? (
+              <p className="text-sm text-slate-500">No hay conversaciones aún.</p>
+            ) : null}
+            {conversationsQuery.data?.map((conversation) =>
+              renderConversationItem(conversation, {
+                onClick: () => {
+                  setSelectedConversationId(conversation.conversationId);
+                  setInboxMobileStep("DETAIL");
+                  setFabOpen(false);
+                }
+              })
+            )}
+          </div>
+        ) : null}
+
+        {inboxMobileStep === "DETAIL" && selectedConversation !== undefined ? (
+          <div className="relative flex h-[calc(100vh-7rem)] flex-col">
+            {/* Header */}
+            <header className="flex items-center gap-2 border-b border-border-subtle pb-3">
+              <button
+                className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                onClick={() => {
+                  setInboxMobileStep("LIST");
+                  setFabOpen(false);
+                }}
+                type="button"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                </svg>
+              </button>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-brand-ink">
+                  {patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
+                    selectedConversation.whatsappUserId}
+                </p>
+              </div>
+              <statusBadgeModule.StatusBadge
+                label={selectedAppointmentConfig.label}
+                tone={selectedAppointmentConfig.tone}
+              />
+            </header>
+
+            {/* Messages */}
+            <div className="flex-1 space-y-3 overflow-auto py-3">
+              {messagesQuery.isLoading ? (
+                <p className="text-sm text-slate-500">Cargando historial...</p>
+              ) : null}
+
+              {messagesQuery.data?.map((message) => {
+                const isInbound = message.direction === "INBOUND";
+                return (
+                  <div
+                    className={[
+                      "max-w-[85%] rounded-xl px-3 py-2 text-sm",
+                      isInbound
+                        ? "mr-auto bg-slate-100 text-slate-800"
+                        : "ml-auto bg-brand-teal text-white"
+                    ].join(" ")}
+                    key={message.messageId}
+                  >
+                    <p className="mb-1 text-xs font-semibold opacity-80">{message.role}</p>
+                    <p>{message.content}</p>
+                    <p className="mt-1 text-[11px] opacity-80">
+                      {dateUtilsModule.formatDateTime(message.createdAt)}
+                    </p>
+                  </div>
+                );
+              })}
+
+              {messagesQuery.data?.length === 0 ? (
+                <p className="text-sm text-slate-500">No hay mensajes en esta conversación.</p>
+              ) : null}
+            </div>
+
+            {/* FAB + action menu */}
+            <div className="pointer-events-none absolute bottom-4 right-2 flex flex-col items-end gap-2">
+              {fabOpen ? (
+                <div className="pointer-events-auto flex flex-col gap-2">
+                  <button
+                    className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+                    onClick={() => {
+                      if (selectedConversationId === null) {
+                        return;
+                      }
+                      const isConfirmed = window.confirm(
+                        "¿Seguro que quieres resetear este chat? Se borrarán los mensajes activos."
+                      );
+                      if (!isConfirmed) {
+                        return;
+                      }
+                      resetMessagesMutation.mutate(selectedConversationId);
+                      setFabOpen(false);
+                    }}
+                    type="button"
+                  >
+                    Resetear
+                  </button>
+                  <button
+                    className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+                    onClick={() => {
+                      const nextMode =
+                        selectedConversation.controlMode === "AI" ? "HUMAN" : "AI";
+                      controlModeMutation.mutate(nextMode);
+                      setFabOpen(false);
+                    }}
+                    type="button"
+                  >
+                    {selectedConversation.controlMode === "AI"
+                      ? "Cambiar a HUMAN"
+                      : "Cambiar a AI"}
+                  </button>
+                  <button
+                    className={[
+                      "rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg ring-1 transition-colors",
+                      isBlocked
+                        ? "bg-red-50 text-red-700 ring-red-200 hover:bg-red-100"
+                        : "bg-white text-slate-700 ring-slate-200 hover:bg-slate-50"
+                    ].join(" ")}
+                    onClick={() => {
+                      if (selectedWhatsappUserId === null) {
+                        return;
+                      }
+                      if (isBlocked) {
+                        removeBlacklistMutation.mutate(selectedWhatsappUserId);
+                      } else {
+                        addBlacklistMutation.mutate(selectedWhatsappUserId);
+                      }
+                      setFabOpen(false);
+                    }}
+                    type="button"
+                  >
+                    {isBlocked ? "Quitar blacklist" : "Blacklist"}
+                  </button>
+                </div>
+              ) : null}
+              <button
+                className="pointer-events-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-teal text-white shadow-lg transition-transform hover:scale-105"
+                onClick={() => setFabOpen((current) => !current)}
+                type="button"
+              >
+                {fabOpen ? (
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+
+      {/* ===== DESKTOP: 3-column layout (unchanged) ===== */}
+      <section className="hidden gap-4 lg:grid lg:grid-cols-[280px_minmax(0,1fr)_320px]">
         <article className="rounded-xl border border-border-subtle bg-white shadow-card">
           <header className="border-b border-border-subtle px-5 py-4">
             <h2 className="text-base font-semibold">Conversaciones</h2>
@@ -146,6 +456,10 @@ export function InboxPage() {
                 resetMessagesMutation.isPending &&
                 resetMessagesMutation.variables === conversation.conversationId;
               const patientName = patientNameByWhatsappId.get(conversation.whatsappUserId);
+              const request = latestRequestByConversationId.get(conversation.conversationId);
+              const displayStatus: AppointmentDisplayStatus =
+                request !== undefined ? resolveAppointmentDisplayStatus(request) : "SIN_CITA";
+              const config = appointmentDisplayConfig[displayStatus];
               return (
                 <article
                   className={[
@@ -182,6 +496,9 @@ export function InboxPage() {
                     <p className="truncate text-xs text-slate-500">
                       {conversation.lastMessagePreview ?? "Sin preview"}
                     </p>
+                    <div className="mt-1.5">
+                      <statusBadgeModule.StatusBadge label={config.label} tone={config.tone} />
+                    </div>
                   </button>
 
                   <button
