@@ -2005,30 +2005,37 @@ export function AgendaPage() {
                     </button>
                     <div>
                       <h3 className="text-sm font-semibold text-brand-ink">
-                        Slots de 60 min
+                        Seleccionar horarios
                       </h3>
                       <p className="text-[11px] text-slate-500">
-                        Día: {selectedDayIso !== "" ? selectedDayIso : "-"}
+                        {selectedDayIso !== "" ? selectedDayIso : "-"} &middot; Slots de 60 min
                       </p>
                     </div>
                   </header>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    {calendarSlots.map((slot) => {
+                  {(() => {
+                    const morningSlots = calendarSlots.filter((slot) => {
+                      const hour = luxonModule.DateTime.fromISO(slot.startAt, { zone: timezone }).hour;
+                      return hour < 12;
+                    });
+                    const afternoonSlots = calendarSlots.filter((slot) => {
+                      const hour = luxonModule.DateTime.fromISO(slot.startAt, { zone: timezone }).hour;
+                      return hour >= 12;
+                    });
+
+                    const renderSlotButton = (slot: CalendarSlotCandidate) => {
                       const isSelected = selectedSlotIdSet.has(slot.slotId);
                       const isDisabled = slot.isBusy || slot.isPast;
-                      const slotStartText = luxonModule.DateTime.fromISO(slot.startAt, {
-                        zone: timezone
-                      }).toFormat("HH:mm");
-                      const slotEndText = luxonModule.DateTime.fromISO(slot.endAt, {
-                        zone: timezone
-                      }).toFormat("HH:mm");
+                      const startDt = luxonModule.DateTime.fromISO(slot.startAt, { zone: timezone });
+                      const endDt = luxonModule.DateTime.fromISO(slot.endAt, { zone: timezone });
+                      const slotStartText = startDt.toFormat("h:mm a");
+                      const slotEndText = endDt.toFormat("h:mm a");
                       return (
                         <button
                           className={[
-                            "rounded-md border px-2 py-2 text-left text-sm",
+                            "rounded-lg border px-2 py-2.5 text-center text-xs font-semibold",
                             isDisabled
-                              ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
+                              ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
                               : isSelected
                                 ? "border-brand-teal bg-brand-accent-light text-brand-teal"
                                 : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
@@ -2068,15 +2075,38 @@ export function AgendaPage() {
                           }}
                           type="button"
                         >
-                          <p className="font-semibold">
-                            {slotStartText} - {slotEndText}
-                          </p>
-                          {slot.isBusy ? <p className="text-xs">No disponible</p> : null}
-                          {slot.isPast ? <p className="text-xs">Horario pasado</p> : null}
+                          {slotStartText} - {slotEndText}
+                          {slot.isBusy ? <span className="block text-[10px] font-normal">No disponible</span> : null}
+                          {slot.isPast ? <span className="block text-[10px] font-normal">Pasado</span> : null}
                         </button>
                       );
-                    })}
-                  </div>
+                    };
+
+                    return (
+                      <>
+                        {morningSlots.length > 0 ? (
+                          <div className="mb-3">
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Mañana
+                            </p>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {morningSlots.map(renderSlotButton)}
+                            </div>
+                          </div>
+                        ) : null}
+                        {afternoonSlots.length > 0 ? (
+                          <div>
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                              Tarde
+                            </p>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {afternoonSlots.map(renderSlotButton)}
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    );
+                  })()}
                   <p className="mt-3 text-xs text-slate-600">
                     Slots seleccionados: {selectedSlots.length}
                   </p>
@@ -2850,7 +2880,7 @@ export function AgendaPage() {
 
                     <section className="rounded-lg border border-border-subtle p-3">
                       <h4 className="text-sm font-semibold text-brand-ink">
-                        Slots de 60 min (06:00 a 22:00)
+                        Slots de 60 min (6:00 AM a 10:00 PM)
                       </h4>
                       <p className="mt-1 text-xs text-slate-500">
                         Día seleccionado: {selectedDayIso !== "" ? selectedDayIso : "-"}
@@ -2861,10 +2891,10 @@ export function AgendaPage() {
                           const isDisabled = slot.isBusy || slot.isPast;
                           const slotStartText = luxonModule.DateTime.fromISO(slot.startAt, {
                             zone: timezone
-                          }).toFormat("HH:mm");
+                          }).toFormat("h:mm a");
                           const slotEndText = luxonModule.DateTime.fromISO(slot.endAt, {
                             zone: timezone
-                          }).toFormat("HH:mm");
+                          }).toFormat("h:mm a");
                           return (
                             <button
                               className={[
