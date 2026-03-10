@@ -38,6 +38,7 @@ Los detalles específicos de backend/frontend viven en archivos de contexto dedi
 - Para librerías terceras: inspeccionar implementación primero; si no alcanza, ir a documentación oficial.
 - Para entradas de usuario en lenguaje libre (por ejemplo, elección de horarios), priorizar interpretación semántica con LLM en lugar de parseo rígido con strings o números quemados; usar lógica determinística solo para validar la salida estructural.
 - Nunca usar `git commit --no-verify`. Si fallan hooks/pre-commit, corregir errores y luego hacer commit o `--amend`.
+- Siempre correr los tests (`uv run pytest tests/services -q`) después de cualquier cambio de código. Si hay tests rotos, corregirlos antes de hacer commit.
 - Mantener este archivo corto y estable; poner detalles cambiantes en los archivos de contexto dedicados.
 
 ## Reglas de Ingeniería Backend
