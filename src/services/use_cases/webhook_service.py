@@ -1301,14 +1301,6 @@ class WebhookService:
                             patient_profile=resolved_confirm_selection.patient_profile,
                             patient_exists=resolved_confirm_selection.patient_exists,
                         )
-                        confirm_result["post_booking_instructions"] = (
-                            self._build_post_booking_instructions(
-                                appointment_modality=self._resolve_booked_modality(
-                                    tenant_id=tenant_id,
-                                    conversation_id=conversation_id,
-                                ),
-                            )
-                        )
                     trace_run.set_outputs(self._summarize_tool_result_for_trace(confirm_result))
                     return confirm_result
 
@@ -2166,41 +2158,6 @@ class WebhookService:
             "• A nombre de: Alejandra Escobar\n\n"
             "Cuando tengas el comprobante, me lo puedes enviar por aquí, por favor"
         )
-
-    def _build_post_booking_instructions(
-        self,
-        appointment_modality: str | None,
-    ) -> str:
-        if appointment_modality == "PRESENCIAL":
-            return (
-                "Informacion y recomendaciones:\n"
-                "• Direccion: Calle 13 #78 54, edificio centro ejecutivo, "
-                "oficina 409 (al lado de San Andresito del sur).\n"
-                "• Presentar documento de identidad para el ingreso.\n"
-                "• Llegar con 20 minutos de antelacion y encontrar parqueadero.\n"
-                "• Reprogramaciones con 24 horas de antelacion."
-            )
-        return (
-            "Informacion y recomendaciones:\n"
-            "• Te enviaremos el link de la sesion antes de la cita.\n"
-            "• Reprogramaciones con 24 horas de antelacion."
-        )
-
-    def _resolve_booked_modality(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-    ) -> str | None:
-        if self._scheduling_service is None:
-            return None
-        request_list = self._scheduling_service.list_requests_by_conversation(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-        )
-        for request in request_list.items:
-            if request.status == "BOOKED":
-                return request.appointment_modality
-        return None
 
     def _find_latest_waiting_professional_request(
         self,

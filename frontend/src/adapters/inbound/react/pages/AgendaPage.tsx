@@ -84,8 +84,7 @@ const APPROVAL_STATUSES: schedulingModel.SchedulingRequestStatus[] = [
 
 const ACTIONABLE_APPROVAL_STATUSES = new Set<schedulingModel.SchedulingRequestStatus>([
   "AWAITING_CONSULTATION_REVIEW",
-  "AWAITING_CONSULTATION_DETAILS",
-  "AWAITING_PATIENT_CHOICE"
+  "AWAITING_CONSULTATION_DETAILS"
 ]);
 
 const weekDayLabels = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
