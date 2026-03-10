@@ -1639,7 +1639,7 @@ def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
 
     saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
-    assert saved_request.status == "HUMAN_HANDOFF"
+    assert saved_request.status == "AWAITING_PATIENT_CHOICE"
     conversation = conversation_repository.get_conversation_by_id("tenant-1", "conversation-1")
     assert conversation is not None
     assert conversation.control_mode == "HUMAN"
@@ -1831,7 +1831,7 @@ def test_webhook_confirm_slot_retries_network_error_and_handoffs_to_human() -> N
 
     saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
-    assert saved_request.status == "HUMAN_HANDOFF"
+    assert saved_request.status == "AWAITING_PATIENT_CHOICE"
     saved_conversation = conversation_repository.get_conversation_by_id(
         "tenant-1",
         "conversation-1",
@@ -2021,7 +2021,7 @@ def test_webhook_confirm_slot_unknown_error_handoffs_without_retry() -> None:
 
     saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
-    assert saved_request.status == "HUMAN_HANDOFF"
+    assert saved_request.status == "AWAITING_PATIENT_CHOICE"
     saved_conversation = conversation_repository.get_conversation_by_id(
         "tenant-1",
         "conversation-1",

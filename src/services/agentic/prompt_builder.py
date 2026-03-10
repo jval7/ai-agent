@@ -129,6 +129,12 @@ class RuntimePromptBuilder:
                 "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
                 "precios, datos de pago, horarios o informacion general del consultorio.",
                 "No solicites el comprobante de nuevo ni avances el flujo de agendamiento.",
+                "IMPORTANTE sobre medio de pago: el unico medio de pago disponible es transferencia a Nequi. "
+                "No preguntes si el paciente puede pagar por ese medio. Solo indica las instrucciones de pago "
+                "de forma directiva. Si el paciente pregunta por otros medios de pago (efectivo, tarjeta, etc.), "
+                "responde que por el momento solo se acepta Nequi y repite las instrucciones de pago. "
+                "Solo usa handoff_to_human si el paciente dice explicitamente que NO puede pagar por Nequi "
+                "y necesita hablar con alguien para buscar una alternativa.",
                 "Si el paciente hace una pregunta que va mas alla de lo que puedes responder "
                 "con la informacion disponible, usa handoff_to_human.",
             ]

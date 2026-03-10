@@ -974,7 +974,6 @@ class SchedulingService:
                 "CANCELLED",
             ):
                 continue
-            request.set_status("HUMAN_HANDOFF", now_value)
             request.professional_note = input_dto.summary_for_professional
             self._scheduling_repository.save_request(request)
 
