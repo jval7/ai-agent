@@ -246,6 +246,9 @@ class AppContainer:
         self.conversation_control_service = conversation_control_service.ConversationControlService(
             conversation_repository=self.conversation_repository,
             scheduling_repository=self.scheduling_repository,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
+            whatsapp_provider=self.whatsapp_provider_adapter,
+            id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
         )
         self.blacklist_service = blacklist_service.BlacklistService(

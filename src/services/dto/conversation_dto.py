@@ -43,3 +43,15 @@ class ConversationControlModeResponseDTO(pydantic.BaseModel):
     tenant_id: str
     control_mode: typing.Literal["AI", "HUMAN"]
     updated_at: datetime.datetime
+
+
+class SendProfessionalMessageDTO(pydantic.BaseModel):
+    message_text: str
+
+
+class MessageSentResponseDTO(pydantic.BaseModel):
+    message_id: str
+    conversation_id: str
+    role: str
+    content: str
+    created_at: datetime.datetime

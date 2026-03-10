@@ -38,6 +38,10 @@ export interface BackendApiPort {
     controlMode: conversationModel.ControlMode
   ): Promise<conversationModel.ControlMode>;
   resetConversationMessages(conversationId: string): Promise<void>;
+  sendConversationMessage(
+    conversationId: string,
+    messageText: string
+  ): Promise<conversationModel.MessageSent>;
 
   listBlacklist(): Promise<blacklistModel.BlacklistEntry[]>;
   addBlacklist(whatsappUserId: string): Promise<blacklistModel.BlacklistEntry>;

@@ -206,6 +206,21 @@ export function InboxPage() {
     }
   });
 
+  const [messageText, setMessageText] = reactModule.useState("");
+  const sendMessageMutation = reactQueryModule.useMutation({
+    mutationFn: (payload: { conversationId: string; messageText: string }) =>
+      appContainer.conversationUseCase.sendMessage(payload.conversationId, payload.messageText),
+    onSuccess: async () => {
+      setMessageText("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation-messages", selectedConversationId]
+        })
+      ]);
+    }
+  });
+
   const selectedWhatsappUserId = selectedConversation?.whatsappUserId ?? null;
   const isBlocked =
     selectedWhatsappUserId !== null
@@ -376,6 +391,40 @@ export function InboxPage() {
                 <p className="text-sm text-slate-500">No hay mensajes en esta conversación.</p>
               ) : null}
             </div>
+
+            {/* Send message input (HUMAN mode only) */}
+            {selectedConversation.controlMode === "HUMAN" ? (
+              <form
+                className="flex gap-2 border-t border-slate-200 bg-white px-2 py-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const trimmed = messageText.trim();
+                  if (trimmed === "" || selectedConversationId === null) {
+                    return;
+                  }
+                  sendMessageMutation.mutate({
+                    conversationId: selectedConversationId,
+                    messageText: trimmed
+                  });
+                }}
+              >
+                <input
+                  className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-teal focus:outline-none"
+                  disabled={sendMessageMutation.isPending}
+                  onChange={(event) => setMessageText(event.target.value)}
+                  placeholder="Escribe un mensaje..."
+                  type="text"
+                  value={messageText}
+                />
+                <button
+                  className="rounded-lg bg-brand-teal px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal/90 disabled:opacity-60"
+                  disabled={sendMessageMutation.isPending || messageText.trim() === ""}
+                  type="submit"
+                >
+                  {sendMessageMutation.isPending ? "Enviando..." : "Enviar"}
+                </button>
+              </form>
+            ) : null}
 
             {/* FAB + action menu */}
             <div className="pointer-events-none absolute bottom-4 right-2 flex flex-col items-end gap-2">
@@ -604,6 +653,40 @@ export function InboxPage() {
               <p className="text-sm text-slate-500">No hay mensajes en esta conversación.</p>
             ) : null}
           </div>
+
+          {/* Send message input (HUMAN mode only) */}
+          {selectedConversation?.controlMode === "HUMAN" ? (
+            <form
+              className="flex gap-2 border-t border-border-subtle px-4 py-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const trimmed = messageText.trim();
+                if (trimmed === "" || selectedConversationId === null) {
+                  return;
+                }
+                sendMessageMutation.mutate({
+                  conversationId: selectedConversationId,
+                  messageText: trimmed
+                });
+              }}
+            >
+              <input
+                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-teal focus:outline-none"
+                disabled={sendMessageMutation.isPending}
+                onChange={(event) => setMessageText(event.target.value)}
+                placeholder="Escribe un mensaje..."
+                type="text"
+                value={messageText}
+              />
+              <button
+                className="rounded-lg bg-brand-teal px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal/90 disabled:opacity-60"
+                disabled={sendMessageMutation.isPending || messageText.trim() === ""}
+                type="submit"
+              >
+                {sendMessageMutation.isPending ? "Enviando..." : "Enviar"}
+              </button>
+            </form>
+          ) : null}
         </article>
 
         <article className="space-y-4 rounded-xl border border-border-subtle bg-white shadow-card p-4">

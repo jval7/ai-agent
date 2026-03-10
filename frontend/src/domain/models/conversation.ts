@@ -17,3 +17,11 @@ export interface ConversationMessage {
   content: string;
   createdAt: string;
 }
+
+export interface MessageSent {
+  messageId: string;
+  conversationId: string;
+  role: string;
+  content: string;
+  createdAt: string;
+}

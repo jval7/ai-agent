@@ -23,4 +23,8 @@ export class ConversationUseCase {
   async resetMessages(conversationId: string) {
     return this.api.resetConversationMessages(conversationId);
   }
+
+  async sendMessage(conversationId: string, messageText: string) {
+    return this.api.sendConversationMessage(conversationId, messageText);
+  }
 }

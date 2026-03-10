@@ -287,6 +287,30 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     });
   }
 
+  async sendConversationMessage(
+    conversationId: string,
+    messageText: string
+  ): Promise<conversationModel.MessageSent> {
+    const payload = await this.request<httpTypes.MessageSentApiResponse>(
+      `/v1/conversations/${conversationId}/messages`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          message_text: messageText
+        } satisfies httpTypes.SendMessageApiRequest)
+      }
+    );
+
+    return {
+      messageId: payload.message_id,
+      conversationId: payload.conversation_id,
+      role: payload.role,
+      content: payload.content,
+      createdAt: payload.created_at
+    };
+  }
+
   async listBlacklist(): Promise<blacklistModel.BlacklistEntry[]> {
     const payload = await this.request<httpTypes.BlacklistListApiResponse>("/v1/blacklist", {
       method: "GET",

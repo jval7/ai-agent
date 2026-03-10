@@ -310,6 +310,18 @@ export interface UpdateBookedSlotPaymentApiRequest {
   payment_status: "PENDING" | "PAID";
 }
 
+export interface SendMessageApiRequest {
+  message_text: string;
+}
+
+export interface MessageSentApiResponse {
+  message_id: string;
+  conversation_id: string;
+  role: string;
+  content: string;
+  created_at: string;
+}
+
 export interface ApiErrorResponse {
   detail: string;
   request_id?: string;

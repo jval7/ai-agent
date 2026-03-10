@@ -6,6 +6,7 @@ import pytest
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
+import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
@@ -26,10 +27,18 @@ def build_service() -> tuple[
     store = in_memory_store.InMemoryStore()
     repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(store)
     scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
+    whatsapp_connection_repository = (
+        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
+    )
+    whatsapp_provider = fake_adapters.FakeWhatsappProvider()
+    id_generator = fake_adapters.SequenceIdGenerator(["msg-1", "msg-2", "msg-3"])
     clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
     service = conversation_control_service.ConversationControlService(
         conversation_repository=repository,
         scheduling_repository=scheduling_repository,
+        whatsapp_connection_repository=whatsapp_connection_repository,
+        whatsapp_provider=whatsapp_provider,
+        id_generator=id_generator,
         clock=clock,
     )
     return service, repository, scheduling_repository
