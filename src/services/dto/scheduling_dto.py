@@ -136,6 +136,10 @@ class CancelActiveSchedulingRequestInputDTO(pydantic.BaseModel):
     reason: str | None = None
 
 
+class CloseSessionInputDTO(pydantic.BaseModel):
+    farewell_message: str | None = None
+
+
 class RescheduleBookedSlotInputDTO(pydantic.BaseModel):
     start_at: datetime.datetime
     end_at: datetime.datetime

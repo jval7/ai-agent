@@ -150,6 +150,22 @@ class ToolDefinitionRegistry:
                     "additionalProperties": False,
                 },
             ),
+            llm_dto.FunctionDeclarationDTO(
+                name="close_session",
+                description=(
+                    "Cierra la sesion actual y archiva la conversacion. "
+                    "Llama esta tool UNICAMENTE cuando el paciente confirme que no necesita nada mas "
+                    "despues de una reserva exitosa."
+                ),
+                parameters_json_schema={
+                    "type": "object",
+                    "properties": {
+                        "farewell_message": {"type": "string"},
+                    },
+                    "required": [],
+                    "additionalProperties": False,
+                },
+            ),
         ]
 
         if enabled_tool_names is None:

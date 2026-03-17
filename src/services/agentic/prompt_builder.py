@@ -138,6 +138,20 @@ class RuntimePromptBuilder:
                 "Si el paciente hace una pregunta que va mas alla de lo que puedes responder "
                 "con la informacion disponible, usa handoff_to_human.",
             ]
+        if runtime_context.state == "POST_BOOKING_FOLLOWUP":
+            return [
+                "Flujo actual: la cita fue reservada exitosamente.",
+                "Pregunta al paciente si necesita algo mas: '¿Hay algo mas en lo que pueda ayudarte?'",
+                "Puedes responder preguntas generales del paciente: informacion del consultorio, "
+                "horarios, direccion, preparacion para la cita u otros datos generales.",
+                "NO inicies un nuevo proceso de agendamiento. Si el paciente quiere agendar otra cita, "
+                "indicale que debe iniciar una nueva conversacion o usa handoff_to_human.",
+                "Cuando el paciente confirme que no necesita nada mas (ej: 'no gracias', 'eso es todo', "
+                "'ya estoy bien', 'listo'), despidete amablemente y llama close_session.",
+                "IMPORTANTE: tu UNICO objetivo en este estado es responder preguntas generales y "
+                "cerrar la sesion cuando el paciente termine. No debes salir de este estado por "
+                "ningun otro motivo.",
+            ]
         return ["Mantente en flujo natural y sin mencionar procesos internos."]
 
     def _build_patient_full_name(

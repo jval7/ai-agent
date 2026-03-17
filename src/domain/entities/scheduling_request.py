@@ -20,6 +20,7 @@ class SchedulingRequest(pydantic.BaseModel):
         "CONSULTATION_REJECTED",
         "CANCELLED",
         "BOOKED",
+        "SESSION_CLOSED",
         "HUMAN_HANDOFF",
     ]
     audience_type: typing.Literal["ADULTS", "CHILDREN"] | None = None
@@ -81,6 +82,7 @@ class SchedulingRequest(pydantic.BaseModel):
             "CONSULTATION_REJECTED",
             "CANCELLED",
             "BOOKED",
+            "SESSION_CLOSED",
             "HUMAN_HANDOFF",
         ],
         now: datetime.datetime,

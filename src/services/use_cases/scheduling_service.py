@@ -124,6 +124,7 @@ class SchedulingService:
             "UPDATE_BOOKED_PAYMENT",
             "APPROVE_PAYMENT",
             "ESCALATE_PATIENT_SLOT_REJECTION",
+            "CLOSE_SESSION",
         ],
         payload: object | None,
         apply_transition: typing.Callable[
@@ -361,6 +362,24 @@ class SchedulingService:
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
                 input_dto=input_dto,
+            ),
+        )
+        return typing.cast(dict[str, str], transition_result)
+
+    def close_session(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> dict[str, str]:
+        transition_result = self._run_transition_with_graph(
+            action="CLOSE_SESSION",
+            payload={
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+            },
+            apply_transition=lambda _: self._close_session_impl(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
             ),
         )
         return typing.cast(dict[str, str], transition_result)
@@ -644,13 +663,6 @@ class SchedulingService:
         request.calendar_event_id = event.event_id
         request.set_status("BOOKED", now_value)
         self._scheduling_repository.save_request(request)
-        self._archive_conversation_subsession_after_booking(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            scheduling_request_id=request.id,
-            calendar_event_id=event.event_id,
-            now_value=now_value,
-        )
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="BOOKED",
             request_id=request.id,
@@ -994,6 +1006,56 @@ class SchedulingService:
         return {
             "status": "HUMAN_HANDOFF",
             "control_mode": "HUMAN",
+        }
+
+    def _close_session_impl(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> dict[str, str]:
+        request_list = self._scheduling_repository.list_requests_by_conversation(
+            tenant_id,
+            conversation_id,
+        )
+        booked_request = None
+        for request in request_list:
+            if request.status == "BOOKED":
+                booked_request = request
+                break
+
+        if booked_request is None:
+            raise service_exceptions.InvalidStateError(
+                "no booked scheduling request found for session close"
+            )
+
+        now_value = self._clock.now()
+        self._archive_conversation_subsession_after_booking(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            scheduling_request_id=booked_request.id,
+            calendar_event_id=booked_request.calendar_event_id or "",
+            now_value=now_value,
+        )
+
+        booked_request.set_status("SESSION_CLOSED", now_value)
+        self._scheduling_repository.save_request(booked_request)
+
+        logger.info(
+            "scheduling.session_closed",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.session_closed",
+                    message="conversation session closed and archived after post-booking followup",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "request_id": booked_request.id,
+                    },
+                )
+            },
+        )
+        return {
+            "status": "SESSION_CLOSED",
         }
 
     def _escalate_patient_slot_rejection_impl(

@@ -290,6 +290,15 @@ def test_confirm_selected_slot_archives_active_chat_messages_into_subsession() -
     )
 
     assert result.status == "BOOKED"
+    active_messages_before_close = conversation_repository.list_messages("tenant-1", "conv-1")
+    assert len(active_messages_before_close) == 2
+
+    close_result = service.close_session(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+    )
+    assert close_result["status"] == "SESSION_CLOSED"
+
     active_messages = conversation_repository.list_messages("tenant-1", "conv-1")
     assert active_messages == []
     conversation = conversation_repository.get_conversation_by_id("tenant-1", "conv-1")

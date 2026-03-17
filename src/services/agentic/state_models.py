@@ -11,6 +11,7 @@ class RuntimePromptContext(pydantic.BaseModel):
         "AWAITING_PAYMENT_CONFIRMATION",
         "COLLECTING_CONFIRMATION_DATA",
         "AWAITING_CONSULTATION_REVIEW",
+        "POST_BOOKING_FOLLOWUP",
     ]
     request_id: str | None = None
     request_status: str | None = None

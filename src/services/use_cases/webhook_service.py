@@ -1089,6 +1089,22 @@ class WebhookService:
                 professional_note=latest_open_request.professional_note,
                 enabled_tool_names=self._enabled_tools_for_state("AWAITING_CONSULTATION_REVIEW"),
             )
+        if request_status == "BOOKED":
+            if self._is_session_already_archived(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                scheduling_request_id=latest_open_request.request_id,
+            ):
+                return RuntimePromptContext(
+                    state="NO_ACTIVE_REQUEST",
+                    enabled_tool_names=self._enabled_tools_for_state("NO_ACTIVE_REQUEST"),
+                )
+            return RuntimePromptContext(
+                state="POST_BOOKING_FOLLOWUP",
+                request_id=latest_open_request.request_id,
+                request_status=request_status,
+                enabled_tool_names=self._enabled_tools_for_state("POST_BOOKING_FOLLOWUP"),
+            )
         return RuntimePromptContext(
             state="NO_ACTIVE_REQUEST",
             enabled_tool_names=self._enabled_tools_for_state("NO_ACTIVE_REQUEST"),
@@ -1112,9 +1128,27 @@ class WebhookService:
                 "AWAITING_CONSULTATION_REVIEW",
                 "AWAITING_PATIENT_CHOICE",
                 "AWAITING_PAYMENT_CONFIRMATION",
+                "BOOKED",
             ):
                 return request
         return None
+
+    def _is_session_already_archived(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        scheduling_request_id: str,
+    ) -> bool:
+        conversation = self._conversation_repository.get_conversation_by_id(
+            tenant_id,
+            conversation_id,
+        )
+        if conversation is None:
+            return False
+        for subsession in conversation.subsessions:
+            if subsession.scheduling_request_id == scheduling_request_id:
+                return True
+        return False
 
     def _enabled_tools_for_state(self, state: str) -> list[str]:
         if state in ("NO_ACTIVE_REQUEST", "AWAITING_CONSULTATION_DETAILS"):
@@ -1138,6 +1172,11 @@ class WebhookService:
                 "confirm_selected_slot_and_create_event",
                 "handoff_to_human",
                 "cancel_active_scheduling_request",
+            ]
+        if state == "POST_BOOKING_FOLLOWUP":
+            return [
+                "close_session",
+                "handoff_to_human",
             ]
         return ["handoff_to_human", "cancel_active_scheduling_request"]
 
@@ -1342,6 +1381,21 @@ class WebhookService:
                     result = {
                         "request_id": cancelled_request.request_id,
                         "status": cancelled_request.status,
+                    }
+                    trace_run.set_outputs(self._summarize_tool_result_for_trace(result))
+                    return result
+
+                if function_call.name == "close_session":
+                    if self._scheduling_service is None:
+                        result = {"error": "scheduling service is not configured"}
+                        trace_run.set_outputs(self._summarize_tool_result_for_trace(result))
+                        return result
+                    close_result = self._scheduling_service.close_session(
+                        tenant_id=tenant_id,
+                        conversation_id=conversation_id,
+                    )
+                    result = {
+                        "status": close_result["status"],
                     }
                     trace_run.set_outputs(self._summarize_tool_result_for_trace(result))
                     return result
@@ -1632,6 +1686,10 @@ class WebhookService:
             if function_call.name == "cancel_active_scheduling_request":
                 if function_response_payload.get("status") == "CANCELLED":
                     return self._build_cancel_ack_message()
+                return None
+            if function_call.name == "close_session":
+                if function_response_payload.get("status") == "SESSION_CLOSED":
+                    return None
                 return None
 
         patient_preference = self._detect_slot_rejection_preference(
