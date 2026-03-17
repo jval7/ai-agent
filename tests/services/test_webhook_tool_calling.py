@@ -18,6 +18,22 @@ import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
+import src.infra.langsmith_tracer as langsmith_tracer
+import src.services.agentic.guards.numeric_slot_selection_guard as numeric_slot_guard_mod
+import src.services.agentic.guards.waiting_patient_choice_guard as patient_choice_guard_mod
+import src.services.agentic.guards.waiting_professional_override_guard as professional_override_guard_mod
+import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard_mod
+import src.services.agentic.prompt_builder as prompt_builder_mod
+import src.services.agentic.tool_calling_orchestrator as tool_calling_orchestrator_mod
+import src.services.agentic.tool_handlers.cancel_request_handler as cancel_request_handler
+import src.services.agentic.tool_handlers.close_session_handler as close_session_handler
+import src.services.agentic.tool_handlers.confirm_slot_handler as confirm_slot_handler
+import src.services.agentic.tool_handlers.handoff_handler as handoff_handler
+import src.services.agentic.tool_handlers.patient_profile_resolver as patient_profile_resolver
+import src.services.agentic.tool_handlers.registry as tool_handler_registry
+import src.services.agentic.tool_handlers.set_contact_name_handler as set_contact_name_handler
+import src.services.agentic.tool_handlers.submit_consultation_reason_handler as submit_consultation_reason_handler
+import src.services.agentic.tool_registry as tool_definition_registry_mod
 import src.services.dto.llm_dto as llm_dto
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
@@ -25,6 +41,84 @@ import src.services.use_cases.google_calendar_onboarding_service as google_calen
 import src.services.use_cases.scheduling_service as scheduling_service
 import src.services.use_cases.webhook_service as webhook_service
 import tests.fakes.fake_adapters as fake_adapters
+
+
+def _build_new_components(
+    scheduling_svc: scheduling_service.SchedulingService,
+    conversation_repository: typing.Any,
+    patient_repository: typing.Any,
+    llm_provider: typing.Any,
+    clock: typing.Any,
+    sleep_fn: typing.Callable[[float], None] | None = None,
+) -> dict[str, typing.Any]:
+    """Builds the new refactored components for WebhookService."""
+    tracer = langsmith_tracer.LangsmithTracer(enabled=False)
+    tool_def_registry = tool_definition_registry_mod.ToolDefinitionRegistry()
+
+    effective_sleep: typing.Callable[[float], None] = (
+        sleep_fn if sleep_fn is not None else (lambda _: None)
+    )
+    resolver = patient_profile_resolver.PatientProfileResolver(
+        scheduling_svc=scheduling_svc,
+        patient_repository=patient_repository,
+        clock=clock,
+        professional_signature="Psi. Alejandra Escobar",
+        sleep_seconds=effective_sleep,
+    )
+    handler_registry = tool_handler_registry.ToolHandlerRegistry(
+        handlers=[
+            set_contact_name_handler.SetContactNameHandler(
+                conversation_repository=conversation_repository
+            ),
+            close_session_handler.CloseSessionHandler(scheduling_svc=scheduling_svc),
+            cancel_request_handler.CancelActiveRequestHandler(scheduling_svc=scheduling_svc),
+            handoff_handler.HandoffToHumanHandler(scheduling_svc=scheduling_svc),
+            submit_consultation_reason_handler.SubmitConsultationReasonHandler(
+                scheduling_svc=scheduling_svc
+            ),
+            confirm_slot_handler.ConfirmSlotHandler(resolver=resolver),
+        ],
+        tracer=tracer,
+    )
+    prompt_builder = prompt_builder_mod.RuntimePromptBuilder()
+    orchestrator = tool_calling_orchestrator_mod.ToolCallingOrchestrator(
+        llm_provider=llm_provider,
+        tool_handler_registry=handler_registry,
+        prompt_builder_instance=prompt_builder,
+        tool_definition_registry=tool_def_registry,
+        patient_repository=patient_repository,
+        tracer=tracer,
+        sleep_fn=effective_sleep,
+    )
+    numeric_guard = numeric_slot_guard_mod.NumericSlotSelectionGuard(
+        scheduling_svc=scheduling_svc,
+        llm_provider=llm_provider,
+    )
+    patient_choice_guard = patient_choice_guard_mod.WaitingPatientChoiceGuard(
+        scheduling_svc=scheduling_svc,
+        llm_provider=llm_provider,
+        conversation_repository=conversation_repository,
+        tool_handler_registry=handler_registry,
+        tool_definition_registry=tool_def_registry,
+    )
+    professional_override_guard = professional_override_guard_mod.WaitingProfessionalOverrideGuard(
+        scheduling_svc=scheduling_svc,
+        llm_provider=llm_provider,
+        conversation_repository=conversation_repository,
+        tool_handler_registry=handler_registry,
+        tool_definition_registry=tool_def_registry,
+    )
+    professional_silent_guard = professional_silent_guard_mod.WaitingProfessionalSilentGuard(
+        scheduling_svc=scheduling_svc,
+    )
+    return {
+        "tool_handler_registry": handler_registry,
+        "patient_choice_guard": patient_choice_guard,
+        "numeric_slot_guard": numeric_guard,
+        "professional_override_guard": professional_override_guard,
+        "professional_silent_guard": professional_silent_guard,
+        "tool_calling_orchestrator": orchestrator,
+    }
 
 
 def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
@@ -129,12 +223,13 @@ def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
+        **_build_new_components(
+            scheduling_use_case, conversation_repository, patient_repository, llm_provider, clock
+        ),
     )
     provider.events = [
         webhook_dto.IncomingMessageEventDTO(
@@ -306,12 +401,13 @@ def test_webhook_recovers_when_reason_tool_is_called_again_after_approval() -> N
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
+        **_build_new_components(
+            scheduling_use_case, conversation_repository, patient_repository, llm_provider, clock
+        ),
     )
     provider.events = [
         webhook_dto.IncomingMessageEventDTO(
@@ -458,12 +554,13 @@ def test_webhook_responds_when_awaiting_consultation_review() -> None:
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
+        **_build_new_components(
+            scheduling_use_case, conversation_repository, patient_repository, llm_provider, clock
+        ),
     )
     provider.events = [
         webhook_dto.IncomingMessageEventDTO(
@@ -632,12 +729,13 @@ def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> 
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
+        **_build_new_components(
+            scheduling_use_case, conversation_repository, patient_repository, llm_provider, clock
+        ),
     )
     provider.events = [
         webhook_dto.IncomingMessageEventDTO(
@@ -886,12 +984,13 @@ def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() 
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
+        **_build_new_components(
+            scheduling_use_case, conversation_repository, patient_repository, llm_provider, clock
+        ),
     )
     provider.events = [
         webhook_dto.IncomingMessageEventDTO(
@@ -1076,12 +1175,13 @@ def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
+        **_build_new_components(
+            scheduling_use_case, conversation_repository, patient_repository, llm_provider, clock
+        ),
     )
     provider.events = [
         webhook_dto.IncomingMessageEventDTO(
@@ -1255,12 +1355,13 @@ def test_webhook_confirm_slot_requires_patient_location_for_new_patient() -> Non
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
+        **_build_new_components(
+            scheduling_use_case, conversation_repository, patient_repository, llm_provider, clock
+        ),
     )
     provider.events = [
         webhook_dto.IncomingMessageEventDTO(
@@ -1430,12 +1531,13 @@ def test_webhook_requires_numeric_slot_option_before_continuing() -> None:
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
+        **_build_new_components(
+            scheduling_use_case, conversation_repository, patient_repository, llm_provider, clock
+        ),
     )
     provider.events = [
         webhook_dto.IncomingMessageEventDTO(
@@ -1610,12 +1712,13 @@ def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
+        **_build_new_components(
+            scheduling_use_case, conversation_repository, patient_repository, llm_provider, clock
+        ),
     )
     provider.events = [
         webhook_dto.IncomingMessageEventDTO(
@@ -1801,13 +1904,19 @@ def test_webhook_confirm_slot_retries_network_error_and_handoffs_to_human() -> N
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
         sleep_seconds=capture_sleep,
+        **_build_new_components(
+            scheduling_use_case,
+            conversation_repository,
+            patient_repository,
+            llm_provider,
+            clock,
+            sleep_fn=capture_sleep,
+        ),
     )
     provider.events = [
         webhook_dto.IncomingMessageEventDTO(
@@ -1991,13 +2100,19 @@ def test_webhook_confirm_slot_unknown_error_handoffs_without_retry() -> None:
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
         sleep_seconds=capture_sleep,
+        **_build_new_components(
+            scheduling_use_case,
+            conversation_repository,
+            patient_repository,
+            llm_provider,
+            clock,
+            sleep_fn=capture_sleep,
+        ),
     )
     provider.events = [
         webhook_dto.IncomingMessageEventDTO(

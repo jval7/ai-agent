@@ -1,8 +1,33 @@
 import src.domain.entities.patient as patient_entity
+import src.services.agentic.prompts.enabled_tools_section as enabled_tools_section
+import src.services.agentic.prompts.patient_profile_section as patient_profile_section
+import src.services.agentic.prompts.prompt_assembler as prompt_assembler
+import src.services.agentic.prompts.runtime_context_section as runtime_context_section
+import src.services.agentic.prompts.state_instructions as state_instructions
 import src.services.agentic.state_models as agentic_state_models
 
 
+def _build_default_assembler() -> prompt_assembler.PromptAssembler:
+    return prompt_assembler.PromptAssembler(
+        sections=[
+            runtime_context_section.RuntimeContextSection(),
+            patient_profile_section.PatientProfileSection(),
+            enabled_tools_section.EnabledToolsSection(),
+            state_instructions.StateInstructionsSection(),
+        ]
+    )
+
+
 class RuntimePromptBuilder:
+    def __init__(
+        self,
+        assembler: prompt_assembler.PromptAssembler | None = None,
+    ) -> None:
+        if assembler is None:
+            self._assembler = _build_default_assembler()
+        else:
+            self._assembler = assembler
+
     def compose_base_and_runtime_system_prompt(
         self,
         base_system_prompt: str,
@@ -17,162 +42,10 @@ class RuntimePromptBuilder:
         runtime_context: agentic_state_models.RuntimePromptContext,
         known_patient: patient_entity.Patient | None,
     ) -> str:
-        prompt_lines = [
-            "INSTRUCCIONES RUNTIME (PRIORIDAD ALTA):",
-            "FORMATO: Usa formato WhatsApp. *negrita* para enfasis. Si hay mas de 2 items o datos, usa bullet points (•) en lista. Mensajes cortos y estructurados.",
-            f"- estado_conversacion: {runtime_context.state}",
-        ]
-        if runtime_context.request_id is not None:
-            prompt_lines.append(f"- request_id_activo: {runtime_context.request_id}")
-        if runtime_context.request_status is not None:
-            prompt_lines.append(f"- request_status_activo: {runtime_context.request_status}")
-        if runtime_context.appointment_modality is not None:
-            prompt_lines.append(f"- modalidad_actual: {runtime_context.appointment_modality}")
-        if runtime_context.patient_location is not None:
-            prompt_lines.append(f"- ubicacion_actual: {runtime_context.patient_location}")
-        if runtime_context.patient_preference_note is not None:
-            prompt_lines.append(
-                f"- preferencia_horaria_actual: {runtime_context.patient_preference_note}"
-            )
-        if runtime_context.selected_slot_id is not None:
-            prompt_lines.append(f"- slot_seleccionado_actual: {runtime_context.selected_slot_id}")
-        if runtime_context.professional_note is not None:
-            prompt_lines.append(
-                "Notas del profesional para este paso (si existen, siguela al pedir datos): "
-                f"{runtime_context.professional_note}"
-            )
-
-        if known_patient is None:
-            prompt_lines.append("- Known patient profile: not found")
-        else:
-            known_patient_full_name = (
-                self._build_patient_full_name(
-                    first_name=known_patient.first_name,
-                    last_name=known_patient.last_name,
-                )
-                or known_patient.first_name
-            )
-            prompt_lines.extend(
-                [
-                    "Known patient profile (reuse this context and avoid asking repeated data):",
-                    f"- patient_full_name: {known_patient_full_name}",
-                    f"- patient_email: {known_patient.email}",
-                    f"- patient_age: {known_patient.age}",
-                    f"- consultation_reason: {known_patient.consultation_reason}",
-                    f"- patient_location: {known_patient.location}",
-                    f"- patient_phone: {known_patient.phone}",
-                    "If patient data is already known and still valid, do not ask for it again.",
-                ]
-            )
-
-        prompt_lines.append(
-            "Tools habilitadas en este turno (usa solo estas y ninguna otra): "
-            + ", ".join(runtime_context.enabled_tool_names)
-        )
-        prompt_lines.extend(self.build_runtime_state_specific_instructions(runtime_context))
-        return "\n".join(prompt_lines)
+        return self._assembler.build_runtime_prompt(runtime_context, known_patient)
 
     def build_runtime_state_specific_instructions(
         self,
         runtime_context: agentic_state_models.RuntimePromptContext,
     ) -> list[str]:
-        if runtime_context.state == "NO_ACTIVE_REQUEST":
-            return [
-                "Flujo actual: inicio de agendamiento.",
-                "Si aun no conoces el nombre del paciente, pidelo antes de avanzar. No pidas mas datos en ese mensaje.",
-                "Si ya tienes el nombre pero falta motivo o modalidad, pide en formato lista con bullet points:",
-                "• Motivo de consulta",
-                "• Modalidad: presencial o virtual",
-                "Si la modalidad es VIRTUAL, pide tambien patient_location.",
-                "Apenas tengas consultation_reason y appointment_modality, llama submit_consultation_reason_for_review.",
-                "No llames confirm_selected_slot_and_create_event en este estado.",
-            ]
-        if runtime_context.state == "AWAITING_CONSULTATION_DETAILS":
-            return [
-                "Flujo actual: el profesional pidio mas detalle del motivo.",
-                "No repitas la pregunta del motivo base. Pide detalles adicionales del mismo motivo.",
-                "Si aun no tienes appointment_modality, pidela tambien.",
-                "Cuando tengas suficiente contexto, llama submit_consultation_reason_for_review con motivo y modalidad.",
-                "No llames confirm_selected_slot_and_create_event en este estado.",
-            ]
-        if runtime_context.state == "AWAITING_PATIENT_CHOICE":
-            return [
-                "Flujo actual: hay horarios propuestos y se espera una seleccion numerica.",
-                "Si el paciente aun no eligio, recuerda elegir solo con numero de opcion.",
-                "No llames confirm_selected_slot_and_create_event hasta tener slot seleccionado.",
-            ]
-        if runtime_context.state == "COLLECTING_CONFIRMATION_DATA":
-            if runtime_context.missing_confirmation_fields:
-                missing_fields_bullet = "\n• ".join(runtime_context.missing_confirmation_fields)
-                return [
-                    "Flujo actual: ya hay slot seleccionado, completa perfil para confirmar.",
-                    f"Campos faltantes para confirmar:\n• {missing_fields_bullet}",
-                    "Pide TODOS los campos faltantes en UN SOLO mensaje usando lista con bullet points (•).",
-                    "Cuando no falte ningun campo, llama confirm_selected_slot_and_create_event.",
-                ]
-            return [
-                "Flujo actual: ya hay slot seleccionado y no faltan campos de perfil.",
-                "Llama confirm_selected_slot_and_create_event para completar la reserva.",
-            ]
-        if runtime_context.state == "AWAITING_CONSULTATION_REVIEW":
-            return [
-                "Flujo actual: motivo de consulta enviado, esperando revision del profesional.",
-                "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
-                "horarios, modalidades, direccion del consultorio o informacion general del profesional.",
-                "No avances el flujo de agendamiento ni solicites datos adicionales.",
-                "Si el paciente hace una pregunta que va mas alla de lo que puedes responder "
-                "con la informacion disponible, usa handoff_to_human.",
-            ]
-        if runtime_context.state == "AWAITING_PAYMENT_CONFIRMATION":
-            return [
-                "Flujo actual: pago pendiente de aprobacion por el profesional.",
-                "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
-                "precios, datos de pago, horarios o informacion general del consultorio.",
-                "No solicites el comprobante de nuevo ni avances el flujo de agendamiento.",
-                "IMPORTANTE sobre medio de pago: el unico medio de pago disponible es transferencia a Nequi. "
-                "No preguntes si el paciente puede pagar por ese medio. Solo indica las instrucciones de pago "
-                "de forma directiva. Si el paciente pregunta por otros medios de pago (efectivo, tarjeta, etc.), "
-                "responde que por el momento solo se acepta Nequi y repite las instrucciones de pago. "
-                "Solo usa handoff_to_human si el paciente dice explicitamente que NO puede pagar por Nequi "
-                "y necesita hablar con alguien para buscar una alternativa.",
-                "Si el paciente hace una pregunta que va mas alla de lo que puedes responder "
-                "con la informacion disponible, usa handoff_to_human.",
-            ]
-        if runtime_context.state == "POST_BOOKING_FOLLOWUP":
-            return [
-                "Flujo actual: la cita fue reservada exitosamente.",
-                "Pregunta al paciente si necesita algo mas: '¿Hay algo mas en lo que pueda ayudarte?'",
-                "Puedes responder preguntas generales del paciente: informacion del consultorio, "
-                "horarios, direccion, preparacion para la cita u otros datos generales.",
-                "NO inicies un nuevo proceso de agendamiento. Si el paciente quiere agendar otra cita, "
-                "indicale que debe iniciar una nueva conversacion o usa handoff_to_human.",
-                "Cuando el paciente confirme que no necesita nada mas (ej: 'no gracias', 'eso es todo', "
-                "'ya estoy bien', 'listo'), despidete amablemente y llama close_session.",
-                "IMPORTANTE: tu UNICO objetivo en este estado es responder preguntas generales y "
-                "cerrar la sesion cuando el paciente termine. No debes salir de este estado por "
-                "ningun otro motivo.",
-            ]
-        return ["Mantente en flujo natural y sin mencionar procesos internos."]
-
-    def _build_patient_full_name(
-        self,
-        first_name: str | None,
-        last_name: str | None,
-    ) -> str | None:
-        normalized_first_name = self._normalize_patient_text(first_name)
-        normalized_last_name = self._normalize_patient_text(last_name)
-        if normalized_first_name is None and normalized_last_name is None:
-            return None
-        if normalized_first_name is None:
-            return normalized_last_name
-        if normalized_last_name is None:
-            return normalized_first_name
-        return f"{normalized_first_name} {normalized_last_name}"
-
-    def _normalize_patient_text(self, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized_value = value.strip()
-        if normalized_value == "":
-            return None
-        return normalized_value
+        return state_instructions._instructions_for_state(runtime_context)

@@ -1,3 +1,5 @@
+import time
+
 import src.adapters.outbound.firestore.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.firestore.blacklist_repository_adapter as blacklist_repository_adapter
 import src.adapters.outbound.firestore.client_factory as firestore_client_factory
@@ -24,6 +26,21 @@ import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
+import src.services.agentic.guards.numeric_slot_selection_guard as numeric_slot_guard
+import src.services.agentic.guards.waiting_patient_choice_guard as patient_choice_guard
+import src.services.agentic.guards.waiting_professional_override_guard as professional_override_guard
+import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard
+import src.services.agentic.prompt_builder as prompt_builder_mod
+import src.services.agentic.tool_calling_orchestrator as tool_calling_orchestrator_mod
+import src.services.agentic.tool_handlers.cancel_request_handler as cancel_request_handler
+import src.services.agentic.tool_handlers.close_session_handler as close_session_handler
+import src.services.agentic.tool_handlers.confirm_slot_handler as confirm_slot_handler
+import src.services.agentic.tool_handlers.handoff_handler as handoff_handler
+import src.services.agentic.tool_handlers.patient_profile_resolver as patient_profile_resolver
+import src.services.agentic.tool_handlers.registry as tool_handler_registry
+import src.services.agentic.tool_handlers.set_contact_name_handler as set_contact_name_handler
+import src.services.agentic.tool_handlers.submit_consultation_reason_handler as submit_consultation_reason_handler
+import src.services.agentic.tool_registry as tool_definition_registry_mod
 import src.services.agentic.workflow_engine as workflow_engine
 import src.services.use_cases.agent_service as agent_service
 import src.services.use_cases.auth_service as auth_service
@@ -221,6 +238,72 @@ class AppContainer:
             clock=self.clock_adapter,
         )
 
+        self.patient_profile_resolver = patient_profile_resolver.PatientProfileResolver(
+            scheduling_svc=self.scheduling_service,
+            patient_repository=self.patient_repository,
+            clock=self.clock_adapter,
+            professional_signature="Psi. Alejandra Escobar",
+            sleep_seconds=time.sleep,
+        )
+        self.tool_handler_registry = tool_handler_registry.ToolHandlerRegistry(
+            handlers=[
+                set_contact_name_handler.SetContactNameHandler(
+                    conversation_repository=self.conversation_repository,
+                ),
+                close_session_handler.CloseSessionHandler(
+                    scheduling_svc=self.scheduling_service,
+                ),
+                cancel_request_handler.CancelActiveRequestHandler(
+                    scheduling_svc=self.scheduling_service,
+                ),
+                handoff_handler.HandoffToHumanHandler(
+                    scheduling_svc=self.scheduling_service,
+                ),
+                submit_consultation_reason_handler.SubmitConsultationReasonHandler(
+                    scheduling_svc=self.scheduling_service,
+                ),
+                confirm_slot_handler.ConfirmSlotHandler(
+                    resolver=self.patient_profile_resolver,
+                ),
+            ],
+            tracer=self.langsmith_tracer,
+        )
+
+        self.tool_definition_registry = tool_definition_registry_mod.ToolDefinitionRegistry()
+        self.numeric_slot_guard = numeric_slot_guard.NumericSlotSelectionGuard(
+            scheduling_svc=self.scheduling_service,
+            llm_provider=self.llm_provider_adapter,
+        )
+        self.patient_choice_guard = patient_choice_guard.WaitingPatientChoiceGuard(
+            scheduling_svc=self.scheduling_service,
+            llm_provider=self.llm_provider_adapter,
+            conversation_repository=self.conversation_repository,
+            tool_handler_registry=self.tool_handler_registry,
+            tool_definition_registry=self.tool_definition_registry,
+        )
+        self.professional_override_guard = (
+            professional_override_guard.WaitingProfessionalOverrideGuard(
+                scheduling_svc=self.scheduling_service,
+                llm_provider=self.llm_provider_adapter,
+                conversation_repository=self.conversation_repository,
+                tool_handler_registry=self.tool_handler_registry,
+                tool_definition_registry=self.tool_definition_registry,
+            )
+        )
+        self.professional_silent_guard = professional_silent_guard.WaitingProfessionalSilentGuard(
+            scheduling_svc=self.scheduling_service,
+        )
+
+        self.prompt_builder = prompt_builder_mod.RuntimePromptBuilder()
+        self.tool_calling_orchestrator = tool_calling_orchestrator_mod.ToolCallingOrchestrator(
+            llm_provider=self.llm_provider_adapter,
+            tool_handler_registry=self.tool_handler_registry,
+            prompt_builder_instance=self.prompt_builder,
+            tool_definition_registry=self.tool_definition_registry,
+            patient_repository=self.patient_repository,
+            tracer=self.langsmith_tracer,
+        )
+
         self.webhook_service = webhook_service.WebhookService(
             whatsapp_connection_repository=self.whatsapp_connection_repository,
             conversation_repository=self.conversation_repository,
@@ -230,14 +313,18 @@ class AppContainer:
             agent_profile_repository=self.agent_profile_repository,
             conversation_processing_lock=self.conversation_processing_lock,
             scheduling_service=self.scheduling_service,
-            llm_provider=self.llm_provider_adapter,
             whatsapp_provider=self.whatsapp_provider_adapter,
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
-            default_system_prompt=self.settings.default_system_prompt,
             context_message_limit=self.settings.conversation_context_messages,
             tracer=self.langsmith_tracer,
             agent_workflow=self.agent_workflow_engine,
+            tool_handler_registry=self.tool_handler_registry,
+            patient_choice_guard=self.patient_choice_guard,
+            numeric_slot_guard=self.numeric_slot_guard,
+            professional_override_guard=self.professional_override_guard,
+            professional_silent_guard=self.professional_silent_guard,
+            tool_calling_orchestrator=self.tool_calling_orchestrator,
         )
 
         self.conversation_query_service = conversation_query_service.ConversationQueryService(

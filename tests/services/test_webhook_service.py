@@ -15,6 +15,12 @@ import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.blacklist_entry as blacklist_entry_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
+import src.infra.langsmith_tracer as langsmith_tracer
+import src.services.agentic.prompt_builder as prompt_builder_mod
+import src.services.agentic.tool_calling_orchestrator as tool_calling_orchestrator_mod
+import src.services.agentic.tool_handlers.registry as tool_handler_registry_mod
+import src.services.agentic.tool_handlers.set_contact_name_handler as set_contact_name_handler
+import src.services.agentic.tool_registry as tool_definition_registry_mod
 import src.services.dto.llm_dto as llm_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.dto.webhook_dto as webhook_dto
@@ -82,6 +88,28 @@ def build_webhook_service(
     id_generator = fake_adapters.SequenceIdGenerator(id_values)
     clock = fake_adapters.FixedClock(now_value)
 
+    tracer = langsmith_tracer.LangsmithTracer(enabled=False)
+    tool_def_registry = tool_definition_registry_mod.ToolDefinitionRegistry()
+    handler_registry = tool_handler_registry_mod.ToolHandlerRegistry(
+        handlers=[
+            set_contact_name_handler.SetContactNameHandler(
+                conversation_repository=conversation_repository
+            ),
+        ],
+        tracer=tracer,
+    )
+    prompt_builder = prompt_builder_mod.RuntimePromptBuilder()
+    effective_sleep = sleep_seconds if sleep_seconds is not None else (lambda _: None)
+    orchestrator = tool_calling_orchestrator_mod.ToolCallingOrchestrator(
+        llm_provider=llm_provider,
+        tool_handler_registry=handler_registry,
+        prompt_builder_instance=prompt_builder,
+        tool_definition_registry=tool_def_registry,
+        patient_repository=patient_repository,
+        tracer=tracer,
+        sleep_fn=effective_sleep,
+    )
+
     service = webhook_service.WebhookService(
         whatsapp_connection_repository=connection_repository,
         conversation_repository=conversation_repository,
@@ -90,13 +118,13 @@ def build_webhook_service(
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
         scheduling_service=None,
-        llm_provider=llm_provider,
         whatsapp_provider=provider,
         id_generator=id_generator,
         clock=clock,
-        default_system_prompt="default prompt",
         context_message_limit=8,
         sleep_seconds=sleep_seconds,
+        tool_handler_registry=handler_registry,
+        tool_calling_orchestrator=orchestrator,
     )
 
     return (

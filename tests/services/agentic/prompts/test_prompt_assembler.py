@@ -1,0 +1,156 @@
+import datetime
+
+import src.domain.entities.patient as patient_entity
+import src.services.agentic.prompt_builder as prompt_builder
+import src.services.agentic.state_models as agentic_state_models
+
+
+def _build_builder() -> prompt_builder.RuntimePromptBuilder:
+    return prompt_builder.RuntimePromptBuilder()
+
+
+def _build_patient() -> patient_entity.Patient:
+    return patient_entity.Patient(
+        tenant_id="t-1",
+        whatsapp_user_id="wu-1",
+        first_name="Maria",
+        last_name="Garcia",
+        email="maria@test.com",
+        age=30,
+        consultation_reason="Ansiedad",
+        location="Bogota",
+        phone="+573001234567",
+        created_at=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
+    )
+
+
+class TestPromptAssemblerOutputParity:
+    def test_no_active_request_without_patient(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="NO_ACTIVE_REQUEST",
+            enabled_tool_names=["submit_consultation_reason_for_review", "set_contact_name"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "INSTRUCCIONES RUNTIME (PRIORIDAD ALTA):" in result
+        assert "- estado_conversacion: NO_ACTIVE_REQUEST" in result
+        assert "- Known patient profile: not found" in result
+        assert "Flujo actual: inicio de agendamiento." in result
+        assert "submit_consultation_reason_for_review, set_contact_name" in result
+
+    def test_no_active_request_with_patient(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="NO_ACTIVE_REQUEST",
+            enabled_tool_names=["submit_consultation_reason_for_review"],
+        )
+        patient = _build_patient()
+        result = builder.build_runtime_system_prompt(ctx, known_patient=patient)
+        assert "Known patient profile (reuse this context" in result
+        assert "- patient_full_name: Maria Garcia" in result
+        assert "- patient_email: maria@test.com" in result
+        assert "- patient_age: 30" in result
+
+    def test_awaiting_consultation_details(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="AWAITING_CONSULTATION_DETAILS",
+            request_id="req-1",
+            request_status="AWAITING_CONSULTATION_DETAILS",
+            professional_note="Necesito mas detalle",
+            enabled_tool_names=["submit_consultation_reason_for_review"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "- request_id_activo: req-1" in result
+        assert "Notas del profesional" in result
+        assert "Necesito mas detalle" in result
+        assert "Flujo actual: el profesional pidio mas detalle" in result
+
+    def test_awaiting_patient_choice(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="AWAITING_PATIENT_CHOICE",
+            request_id="req-1",
+            request_status="AWAITING_PATIENT_CHOICE",
+            appointment_modality="PRESENCIAL",
+            enabled_tool_names=["handoff_to_human"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "- modalidad_actual: PRESENCIAL" in result
+        assert "seleccion numerica" in result
+
+    def test_collecting_confirmation_with_missing_fields(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="COLLECTING_CONFIRMATION_DATA",
+            request_id="req-1",
+            request_status="AWAITING_PATIENT_CHOICE",
+            selected_slot_id="slot-1",
+            missing_confirmation_fields=["email", "age"],
+            enabled_tool_names=["confirm_selected_slot_and_create_event"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "- slot_seleccionado_actual: slot-1" in result
+        assert "Campos faltantes para confirmar:" in result
+        assert "email" in result
+        assert "age" in result
+
+    def test_collecting_confirmation_no_missing_fields(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="COLLECTING_CONFIRMATION_DATA",
+            request_id="req-1",
+            request_status="AWAITING_PATIENT_CHOICE",
+            selected_slot_id="slot-1",
+            enabled_tool_names=["confirm_selected_slot_and_create_event"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "no faltan campos de perfil" in result
+        assert "confirm_selected_slot_and_create_event" in result
+
+    def test_awaiting_consultation_review(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="AWAITING_CONSULTATION_REVIEW",
+            request_id="req-1",
+            request_status="AWAITING_CONSULTATION_REVIEW",
+            enabled_tool_names=["handoff_to_human"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "esperando revision del profesional" in result
+
+    def test_awaiting_payment_confirmation(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="AWAITING_PAYMENT_CONFIRMATION",
+            request_id="req-1",
+            request_status="AWAITING_PAYMENT_CONFIRMATION",
+            enabled_tool_names=["handoff_to_human"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "pago pendiente" in result
+        assert "Nequi" in result
+
+    def test_post_booking_followup(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="POST_BOOKING_FOLLOWUP",
+            request_id="req-1",
+            request_status="BOOKED",
+            enabled_tool_names=["close_session", "handoff_to_human"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "cita fue reservada exitosamente" in result
+        assert "close_session" in result
+
+    def test_compose_full_prompt(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="NO_ACTIVE_REQUEST",
+            enabled_tool_names=["set_contact_name"],
+        )
+        runtime = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        full = builder.compose_base_and_runtime_system_prompt("Base prompt", runtime)
+        assert full.startswith("Base prompt")
+        assert "### Runtime Context (Generated by Backend)" in full
+        assert "INSTRUCCIONES RUNTIME" in full
