@@ -27,3 +27,4 @@ frontend/coverage/
 frontend/.claude/
 .mcp.json
 sp.xt
+scripts/eval_results/*.md

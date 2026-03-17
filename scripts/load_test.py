@@ -13,13 +13,16 @@ Requiere:
     - ADC configurado (gcloud auth application-default login)
 
 Uso:
-    uv run python scripts/load_test.py
+    uv run python scripts/load_test.py                          # local
+    API_BASE=https://tu-backend.run.app uv run python scripts/load_test.py  # GCP
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import pathlib
 import time
 import typing
 import uuid
@@ -28,16 +31,39 @@ import httpx
 from google import genai
 
 # ---------------------------------------------------------------------------
+# Cargar .secrets/make_credentials.env y .secrets/make_api_base.env
+# ---------------------------------------------------------------------------
+_SECRETS_DIR = pathlib.Path(__file__).resolve().parent.parent / ".secrets"
+
+
+def _load_env_file(path: pathlib.Path) -> None:
+    """Carga un archivo KEY=VALUE en os.environ (no sobreescribe)."""
+    if not path.is_file():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition("=")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_env_file(_SECRETS_DIR / "make_credentials.env")
+_load_env_file(_SECRETS_DIR / "make_api_base.env")
+
+# ---------------------------------------------------------------------------
 # Configuracion
 # ---------------------------------------------------------------------------
-API_BASE = "http://localhost:8000"
-OWNER_EMAIL = "owner@acme.com"
-OWNER_PASSWORD = "supersecret"
+API_BASE = os.environ.get("API_BASE", "http://localhost:8000")
+OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
+OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
 
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_LOCATION = "us-central1"
 
-POLL_INTERVAL = 3  # segundos entre cada poll de scheduling requests
+NUM_PATIENTS = 1  # cuantos pacientes simular (max 10 perfiles disponibles)
+POLL_INTERVAL = 10  # segundos entre cada poll de scheduling requests
 STAGGER_DELAY = 2  # segundos entre lanzamiento de cada paciente
 MAX_TURNS = 20  # maximo de mensajes por paciente (evita loops infinitos)
 
@@ -376,7 +402,7 @@ async def _setup(client: httpx.AsyncClient) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 # Polling: estado del scheduling request
 # ---------------------------------------------------------------------------
-_TERMINAL_STATUSES = {"BOOKED", "CANCELLED", "REJECTED"}
+_TERMINAL_STATUSES = {"SESSION_CLOSED", "CANCELLED", "REJECTED"}
 _WAIT_FOR_OWNER_STATUSES = {"AWAITING_CONSULTATION_REVIEW", "AWAITING_PAYMENT_REVIEW"}
 
 
@@ -485,8 +511,9 @@ async def _run_patient(
 # Main
 # ---------------------------------------------------------------------------
 async def main() -> None:
+    selected = PATIENTS[:NUM_PATIENTS]
     total_start = time.monotonic()
-    logger.info("Iniciando load test con %d pacientes...", len(PATIENTS))
+    logger.info("Iniciando load test con %d pacientes...", len(selected))
 
     async with httpx.AsyncClient(base_url=API_BASE, timeout=120.0) as client:
         access_token, phone_number_id = await _setup(client)
@@ -507,7 +534,7 @@ async def main() -> None:
                 )
                 return patient["display_name"], exc
 
-        tasks = [_launch_patient(patient, i) for i, patient in enumerate(PATIENTS)]
+        tasks = [_launch_patient(patient, i) for i, patient in enumerate(selected)]
         results = await asyncio.gather(*tasks)
 
     total_elapsed = time.monotonic() - total_start
