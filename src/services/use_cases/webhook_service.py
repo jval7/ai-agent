@@ -20,23 +20,23 @@ import src.ports.patient_repository_port as patient_repository_port
 import src.ports.processed_webhook_event_repository_port as processed_webhook_event_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
+import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
 import src.services.agentic.guards.base as guard_base
 import src.services.agentic.guards.numeric_slot_selection_guard as numeric_slot_guard_mod
 import src.services.agentic.guards.waiting_patient_choice_guard as patient_choice_guard_mod
 import src.services.agentic.guards.waiting_professional_override_guard as professional_override_guard_mod
 import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard_mod
 import src.services.agentic.prompt_builder as prompt_builder
+import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
 import src.services.agentic.state_models as agentic_state_models
 import src.services.agentic.tool_calling_orchestrator as tool_calling_orchestrator_mod
 import src.services.agentic.tool_handlers.base as tool_handler_base
-import src.services.agentic.tool_handlers.registry as tool_handler_registry_mod
 import src.services.agentic.workflow_engine as workflow_engine
 import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.llm_dto as llm_dto
-import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
-import src.services.use_cases.scheduling_service as scheduling_service
+import src.services.use_cases.scheduling_service as scheduling_service_mod
 
 logger = app_logs.get_logger(__name__)
 
@@ -66,40 +66,62 @@ class WebhookConversationWorkflowRuntimeAdapter(
         self._known_patient = known_patient
 
     def load_runtime_prompt_context(self) -> RuntimePromptContext:
-        return self._webhook_service._resolve_runtime_prompt_context(
+        resolver = self._webhook_service._runtime_context_resolver
+        if resolver is None:
+            raise service_exceptions.InvalidStateError("runtime_context_resolver is not configured")
+        return resolver.resolve(
             tenant_id=self._tenant_id,
             conversation_id=self._conversation_id,
             known_patient=self._known_patient,
         )
 
     def handle_waiting_patient_choice_override(self) -> str | None:
-        return self._webhook_service._handle_waiting_patient_choice_state_message(
+        guard = self._webhook_service._patient_choice_guard
+        if guard is None:
+            return None
+        context = guard_base.GuardContext(
             tenant_id=self._tenant_id,
             conversation_id=self._conversation_id,
             whatsapp_user_id=self._whatsapp_user_id,
             latest_user_text=self._latest_user_text,
         )
+        return guard.evaluate(context)
 
     def enforce_required_numeric_slot_selection(self) -> str | None:
-        return self._webhook_service._enforce_required_numeric_slot_selection(
+        guard = self._webhook_service._numeric_slot_guard
+        if guard is None:
+            return None
+        context = guard_base.GuardContext(
             tenant_id=self._tenant_id,
             conversation_id=self._conversation_id,
+            whatsapp_user_id="",
             latest_user_text=self._latest_user_text,
         )
+        return guard.evaluate(context)
 
     def handle_waiting_professional_override(self) -> str | None:
-        return self._webhook_service._handle_waiting_professional_state_message(
+        guard = self._webhook_service._professional_override_guard
+        if guard is None:
+            return None
+        context = guard_base.GuardContext(
             tenant_id=self._tenant_id,
             conversation_id=self._conversation_id,
             whatsapp_user_id=self._whatsapp_user_id,
             latest_user_text=self._latest_user_text,
         )
+        return guard.evaluate(context)
 
     def is_waiting_professional_state_active(self) -> bool:
-        return self._webhook_service._is_waiting_professional_state_active(
+        guard = self._webhook_service._professional_silent_guard
+        if guard is None:
+            return False
+        context = guard_base.GuardContext(
             tenant_id=self._tenant_id,
             conversation_id=self._conversation_id,
+            whatsapp_user_id="",
+            latest_user_text="",
         )
+        return guard.is_active(context)
 
     def build_runtime_prompt_preview(
         self,
@@ -136,7 +158,7 @@ class WebhookService:
         ),
         blacklist_repository: blacklist_repository_port.BlacklistRepositoryPort,
         agent_profile_repository: agent_profile_repository_port.AgentProfileRepositoryPort,
-        scheduling_service: scheduling_service.SchedulingService | None,
+        scheduling_service: scheduling_service_mod.SchedulingService | None,
         whatsapp_provider: whatsapp_provider_port.WhatsappProviderPort,
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
@@ -147,7 +169,6 @@ class WebhookService:
         runtime_prompt_builder: prompt_builder.RuntimePromptBuilder | None = None,
         conversation_processing_lock: conversation_processing_lock_port.ConversationProcessingLockPort
         | None = None,
-        tool_handler_registry: tool_handler_registry_mod.ToolHandlerRegistry | None = None,
         patient_choice_guard: patient_choice_guard_mod.WaitingPatientChoiceGuard | None = None,
         numeric_slot_guard: numeric_slot_guard_mod.NumericSlotSelectionGuard | None = None,
         professional_override_guard: professional_override_guard_mod.WaitingProfessionalOverrideGuard
@@ -156,6 +177,8 @@ class WebhookService:
         | None = None,
         tool_calling_orchestrator: tool_calling_orchestrator_mod.ToolCallingOrchestrator
         | None = None,
+        runtime_context_resolver: runtime_context_resolver_mod.RuntimeContextResolver | None = None,
+        message_sender: conversation_message_sender_mod.ConversationMessageSender | None = None,
     ) -> None:
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._conversation_repository = conversation_repository
@@ -164,7 +187,6 @@ class WebhookService:
         self._blacklist_repository = blacklist_repository
         self._agent_profile_repository = agent_profile_repository
         self._conversation_processing_lock = conversation_processing_lock
-        self._scheduling_service = scheduling_service
         self._whatsapp_provider = whatsapp_provider
         self._id_generator = id_generator
         self._clock = clock
@@ -187,12 +209,13 @@ class WebhookService:
             r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"
         )
         self._trace_phone_pattern = re.compile(r"\+?\d{7,15}")
-        self._tool_handler_registry = tool_handler_registry
         self._patient_choice_guard = patient_choice_guard
         self._numeric_slot_guard = numeric_slot_guard
         self._professional_override_guard = professional_override_guard
         self._professional_silent_guard = professional_silent_guard
         self._tool_calling_orchestrator = tool_calling_orchestrator
+        self._runtime_context_resolver = runtime_context_resolver
+        self._message_sender = message_sender
         if sleep_seconds is not None:
             self._sleep_seconds = sleep_seconds
         else:
@@ -598,7 +621,7 @@ class WebhookService:
                         text=workflow_result.text,
                     )
                     if workflow_result.reason == "AI_REPLY":
-                        self._archive_new_active_messages_into_latest_subsession_if_booking_occurred(
+                        self._archive_if_booking_occurred(
                             tenant_id=tenant_id,
                             conversation_id=conversation.id,
                             subsessions_count_before_ai_reply=subsessions_count_before_ai_reply,
@@ -757,95 +780,30 @@ class WebhookService:
         whatsapp_user_id: str,
         text: str,
     ) -> str:
-        if connection.access_token is None or connection.phone_number_id is None:
-            raise service_exceptions.InvalidStateError("whatsapp connection is missing credentials")
-        outbound_message_provider_id = self._whatsapp_provider.send_text_message(
-            access_token=connection.access_token,
-            phone_number_id=connection.phone_number_id,
-            whatsapp_user_id=whatsapp_user_id,
-            text=text,
-        )
-        outbound_message = message_entity.Message(
-            id=self._id_generator.new_id(),
-            conversation_id=conversation_id,
-            tenant_id=tenant_id,
-            direction="OUTBOUND",
-            role="assistant",
-            content=text,
-            provider_message_id=outbound_message_provider_id,
-            created_at=self._clock.now(),
-        )
-        self._conversation_repository.save_message(outbound_message)
-        latest_conversation = self._conversation_repository.get_conversation_by_id(
-            tenant_id, conversation_id
-        )
-        if latest_conversation is None:
-            raise service_exceptions.EntityNotFoundError("conversation not found")
-        latest_conversation.append_message(
-            outbound_message.id,
-            outbound_message.content,
-            outbound_message.created_at,
-        )
-        self._conversation_repository.save_conversation(latest_conversation)
-        return outbound_message_provider_id
+        if self._message_sender is not None:
+            return self._message_sender.send_assistant_message(
+                connection=connection,
+                conversation_id=conversation_id,
+                tenant_id=tenant_id,
+                whatsapp_user_id=whatsapp_user_id,
+                text=text,
+            )
+        raise service_exceptions.InvalidStateError("message_sender is not configured")
 
-    def _archive_new_active_messages_into_latest_subsession_if_booking_occurred(
+    def _archive_if_booking_occurred(
         self,
         tenant_id: str,
         conversation_id: str,
         subsessions_count_before_ai_reply: int,
     ) -> None:
-        latest_conversation = self._conversation_repository.get_conversation_by_id(
-            tenant_id,
-            conversation_id,
-        )
-        if latest_conversation is None:
-            raise service_exceptions.EntityNotFoundError("conversation not found")
-
-        if len(latest_conversation.subsessions) <= subsessions_count_before_ai_reply:
+        if self._message_sender is not None:
+            self._message_sender.archive_messages_into_subsession_if_booking_occurred(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                subsessions_count_before_ai_reply=subsessions_count_before_ai_reply,
+            )
             return
-
-        latest_subsession = latest_conversation.subsessions[-1]
-        active_messages = self._conversation_repository.list_messages(
-            tenant_id,
-            conversation_id,
-        )
-        if not active_messages:
-            return
-
-        sorted_active_messages = sorted(active_messages, key=lambda item: item.created_at)
-        existing_message_ids = {message.id for message in latest_subsession.messages}
-        appended_messages_count = 0
-        for active_message in sorted_active_messages:
-            if active_message.id in existing_message_ids:
-                continue
-            latest_subsession.messages.append(active_message.model_copy(deep=True))
-            existing_message_ids.add(active_message.id)
-            appended_messages_count += 1
-
-        latest_conversation.messages = []
-        latest_conversation.message_ids = []
-        latest_conversation.last_message_preview = None
-        latest_conversation.updated_at = self._clock.now()
-        self._conversation_repository.save_conversation(latest_conversation)
-        self._conversation_repository.delete_messages(tenant_id, conversation_id)
-        logger.info(
-            "webhook.booking_confirmation_message_archived",
-            extra={
-                "event_data": app_logs.build_log_event(
-                    event_name="webhook.booking_confirmation_message_archived",
-                    message=(
-                        "booking confirmation message archived into latest booking subsession"
-                    ),
-                    data={
-                        "tenant_id": tenant_id,
-                        "conversation_id": conversation_id,
-                        "appended_messages_count": appended_messages_count,
-                        "subsessions_count": len(latest_conversation.subsessions),
-                    },
-                )
-            },
-        )
+        raise service_exceptions.InvalidStateError("message_sender is not configured")
 
     def _generate_reply_with_tools(
         self,
@@ -855,9 +813,9 @@ class WebhookService:
         llm_messages: list[llm_dto.ChatMessageDTO],
         known_patient: patient_entity.Patient | None,
     ) -> str:
-        if self._tool_calling_orchestrator is None:
+        if self._tool_calling_orchestrator is None or self._runtime_context_resolver is None:
             raise service_exceptions.ExternalProviderError(
-                "tool_calling_orchestrator is not configured"
+                "tool_calling_orchestrator or runtime_context_resolver is not configured"
             )
         base_system_prompt = self._resolve_agent_system_prompt(tenant_id)
         tool_context = tool_handler_base.ToolExecutionContext(
@@ -870,7 +828,7 @@ class WebhookService:
             messages=llm_messages,
             tool_execution_context=tool_context,
             known_patient=known_patient,
-            runtime_context_resolver=self._resolve_runtime_prompt_context,
+            runtime_context_resolver=self._runtime_context_resolver.resolve,
         )
         if result.response_text is None:
             raise service_exceptions.ExternalProviderError("llm returned empty content")
@@ -889,259 +847,6 @@ class WebhookService:
                 "agent system prompt is not configured for this tenant"
             )
         return agent_profile.system_prompt
-
-    def _resolve_runtime_prompt_context(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-        known_patient: patient_entity.Patient | None,
-    ) -> RuntimePromptContext:
-        latest_open_request = self._find_latest_open_scheduling_request(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-        )
-        if latest_open_request is None:
-            return RuntimePromptContext(
-                state="NO_ACTIVE_REQUEST",
-                enabled_tool_names=self._enabled_tools_for_state("NO_ACTIVE_REQUEST"),
-            )
-
-        request_status = latest_open_request.status
-        if request_status == "AWAITING_CONSULTATION_DETAILS":
-            return RuntimePromptContext(
-                state="AWAITING_CONSULTATION_DETAILS",
-                request_id=latest_open_request.request_id,
-                request_status=request_status,
-                professional_note=latest_open_request.professional_note,
-                enabled_tool_names=self._enabled_tools_for_state("AWAITING_CONSULTATION_DETAILS"),
-            )
-        if request_status == "AWAITING_PATIENT_CHOICE":
-            if latest_open_request.selected_slot_id is None:
-                return RuntimePromptContext(
-                    state="AWAITING_PATIENT_CHOICE",
-                    request_id=latest_open_request.request_id,
-                    request_status=request_status,
-                    appointment_modality=latest_open_request.appointment_modality,
-                    patient_location=latest_open_request.patient_location,
-                    patient_preference_note=latest_open_request.patient_preference_note,
-                    enabled_tool_names=self._enabled_tools_for_state("AWAITING_PATIENT_CHOICE"),
-                )
-
-            return RuntimePromptContext(
-                state="COLLECTING_CONFIRMATION_DATA",
-                request_id=latest_open_request.request_id,
-                request_status=request_status,
-                appointment_modality=latest_open_request.appointment_modality,
-                patient_location=latest_open_request.patient_location,
-                patient_preference_note=latest_open_request.patient_preference_note,
-                selected_slot_id=latest_open_request.selected_slot_id,
-                missing_confirmation_fields=self._compute_missing_confirmation_fields(
-                    request=latest_open_request,
-                    known_patient=known_patient,
-                ),
-                enabled_tool_names=self._enabled_tools_for_state("COLLECTING_CONFIRMATION_DATA"),
-            )
-        if request_status == "AWAITING_PAYMENT_CONFIRMATION":
-            return RuntimePromptContext(
-                state="AWAITING_PAYMENT_CONFIRMATION",
-                request_id=latest_open_request.request_id,
-                request_status=request_status,
-                appointment_modality=latest_open_request.appointment_modality,
-                selected_slot_id=latest_open_request.selected_slot_id,
-                enabled_tool_names=self._enabled_tools_for_state("AWAITING_PAYMENT_CONFIRMATION"),
-            )
-        if request_status == "AWAITING_CONSULTATION_REVIEW":
-            return RuntimePromptContext(
-                state="AWAITING_CONSULTATION_REVIEW",
-                request_id=latest_open_request.request_id,
-                request_status=request_status,
-                professional_note=latest_open_request.professional_note,
-                enabled_tool_names=self._enabled_tools_for_state("AWAITING_CONSULTATION_REVIEW"),
-            )
-        if request_status == "BOOKED":
-            if self._is_session_already_archived(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                scheduling_request_id=latest_open_request.request_id,
-            ):
-                return RuntimePromptContext(
-                    state="NO_ACTIVE_REQUEST",
-                    enabled_tool_names=self._enabled_tools_for_state("NO_ACTIVE_REQUEST"),
-                )
-            return RuntimePromptContext(
-                state="POST_BOOKING_FOLLOWUP",
-                request_id=latest_open_request.request_id,
-                request_status=request_status,
-                enabled_tool_names=self._enabled_tools_for_state("POST_BOOKING_FOLLOWUP"),
-            )
-        return RuntimePromptContext(
-            state="NO_ACTIVE_REQUEST",
-            enabled_tool_names=self._enabled_tools_for_state("NO_ACTIVE_REQUEST"),
-        )
-
-    def _find_latest_open_scheduling_request(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-    ) -> scheduling_dto.SchedulingRequestSummaryDTO | None:
-        if self._scheduling_service is None:
-            return None
-
-        request_list = self._scheduling_service.list_requests_by_conversation(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-        )
-        for request in request_list.items:
-            if request.status in (
-                "AWAITING_CONSULTATION_DETAILS",
-                "AWAITING_CONSULTATION_REVIEW",
-                "AWAITING_PATIENT_CHOICE",
-                "AWAITING_PAYMENT_CONFIRMATION",
-                "BOOKED",
-            ):
-                return request
-        return None
-
-    def _is_session_already_archived(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-        scheduling_request_id: str,
-    ) -> bool:
-        conversation = self._conversation_repository.get_conversation_by_id(
-            tenant_id,
-            conversation_id,
-        )
-        if conversation is None:
-            return False
-        for subsession in conversation.subsessions:
-            if subsession.scheduling_request_id == scheduling_request_id:
-                return True
-        return False
-
-    def _enabled_tools_for_state(self, state: str) -> list[str]:
-        if state in ("NO_ACTIVE_REQUEST", "AWAITING_CONSULTATION_DETAILS"):
-            return [
-                "submit_consultation_reason_for_review",
-                "handoff_to_human",
-                "cancel_active_scheduling_request",
-            ]
-        if state == "AWAITING_PATIENT_CHOICE":
-            return [
-                "handoff_to_human",
-                "cancel_active_scheduling_request",
-            ]
-        if state == "AWAITING_PAYMENT_CONFIRMATION":
-            return [
-                "handoff_to_human",
-                "cancel_active_scheduling_request",
-            ]
-        if state == "COLLECTING_CONFIRMATION_DATA":
-            return [
-                "confirm_selected_slot_and_create_event",
-                "handoff_to_human",
-                "cancel_active_scheduling_request",
-            ]
-        if state == "POST_BOOKING_FOLLOWUP":
-            return [
-                "close_session",
-                "handoff_to_human",
-            ]
-        return ["handoff_to_human", "cancel_active_scheduling_request"]
-
-    def _compute_missing_confirmation_fields(
-        self,
-        request: scheduling_dto.SchedulingRequestSummaryDTO,
-        known_patient: patient_entity.Patient | None,
-    ) -> list[str]:
-        if known_patient is not None:
-            return []
-
-        missing_fields: list[str] = []
-
-        first = (request.patient_first_name or "").strip() or None
-        last = (request.patient_last_name or "").strip() or None
-        if first is None and last is None:
-            missing_fields.append("patient_full_name")
-        if request.patient_age is None:
-            missing_fields.append("patient_age")
-        if request.consultation_reason is None:
-            missing_fields.append("consultation_reason")
-
-        requires_location = request.appointment_modality == "VIRTUAL"
-        if requires_location and request.patient_location is None:
-            missing_fields.append("patient_location")
-
-        missing_fields.append("patient_email")
-        whatsapp_id_normalized = (request.whatsapp_user_id or "").strip() or None
-        if whatsapp_id_normalized is None:
-            missing_fields.append("patient_phone")
-        return missing_fields
-
-    def _enforce_required_numeric_slot_selection(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-        latest_user_text: str,
-    ) -> str | None:
-        if self._numeric_slot_guard is None:
-            return None
-        context = guard_base.GuardContext(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            whatsapp_user_id="",
-            latest_user_text=latest_user_text,
-        )
-        return self._numeric_slot_guard.evaluate(context)
-
-    def _handle_waiting_patient_choice_state_message(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-        whatsapp_user_id: str,
-        latest_user_text: str,
-    ) -> str | None:
-        if self._patient_choice_guard is None:
-            return None
-        context = guard_base.GuardContext(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            whatsapp_user_id=whatsapp_user_id,
-            latest_user_text=latest_user_text,
-        )
-        return self._patient_choice_guard.evaluate(context)
-
-    def _handle_waiting_professional_state_message(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-        whatsapp_user_id: str,
-        latest_user_text: str,
-    ) -> str | None:
-        if self._professional_override_guard is None:
-            return None
-        context = guard_base.GuardContext(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            whatsapp_user_id=whatsapp_user_id,
-            latest_user_text=latest_user_text,
-        )
-        return self._professional_override_guard.evaluate(context)
-
-    def _is_waiting_professional_state_active(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-    ) -> bool:
-        if self._professional_silent_guard is None:
-            return False
-        context = guard_base.GuardContext(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            whatsapp_user_id="",
-            latest_user_text="",
-        )
-        return self._professional_silent_guard.is_active(context)
 
     def _conversation_has_provider_message_id(
         self,
@@ -1212,4 +917,4 @@ class WebhookService:
             return "unknown webhook processing error"
         if len(normalized_reason) <= 280:
             return normalized_reason
-        return f"{normalized_reason[:280]}..."
+        return f"{normalized_reason[:277]}..."

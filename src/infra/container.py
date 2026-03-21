@@ -26,11 +26,13 @@ import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
+import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
 import src.services.agentic.guards.numeric_slot_selection_guard as numeric_slot_guard
 import src.services.agentic.guards.waiting_patient_choice_guard as patient_choice_guard
 import src.services.agentic.guards.waiting_professional_override_guard as professional_override_guard
 import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard
 import src.services.agentic.prompt_builder as prompt_builder_mod
+import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
 import src.services.agentic.tool_calling_orchestrator as tool_calling_orchestrator_mod
 import src.services.agentic.tool_handlers.cancel_request_handler as cancel_request_handler
 import src.services.agentic.tool_handlers.close_session_handler as close_session_handler
@@ -294,6 +296,16 @@ class AppContainer:
             scheduling_svc=self.scheduling_service,
         )
 
+        self.runtime_context_resolver = runtime_context_resolver_mod.RuntimeContextResolver(
+            scheduling_svc=self.scheduling_service,
+            conversation_repository=self.conversation_repository,
+        )
+        self.message_sender = conversation_message_sender_mod.ConversationMessageSender(
+            whatsapp_provider=self.whatsapp_provider_adapter,
+            conversation_repository=self.conversation_repository,
+            id_generator=self.id_generator_adapter,
+            clock=self.clock_adapter,
+        )
         self.prompt_builder = prompt_builder_mod.RuntimePromptBuilder()
         self.tool_calling_orchestrator = tool_calling_orchestrator_mod.ToolCallingOrchestrator(
             llm_provider=self.llm_provider_adapter,
@@ -319,12 +331,13 @@ class AppContainer:
             context_message_limit=self.settings.conversation_context_messages,
             tracer=self.langsmith_tracer,
             agent_workflow=self.agent_workflow_engine,
-            tool_handler_registry=self.tool_handler_registry,
             patient_choice_guard=self.patient_choice_guard,
             numeric_slot_guard=self.numeric_slot_guard,
             professional_override_guard=self.professional_override_guard,
             professional_silent_guard=self.professional_silent_guard,
             tool_calling_orchestrator=self.tool_calling_orchestrator,
+            runtime_context_resolver=self.runtime_context_resolver,
+            message_sender=self.message_sender,
         )
 
         self.conversation_query_service = conversation_query_service.ConversationQueryService(
