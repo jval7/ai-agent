@@ -4,7 +4,6 @@ import typing
 
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
-import src.domain.entities.patient as patient_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.domain.entities.whatsapp_user as whatsapp_user_entity
 import src.infra.langsmith_tracer as langsmith_tracer
@@ -21,17 +20,15 @@ import src.ports.processed_webhook_event_repository_port as processed_webhook_ev
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
-import src.services.agentic.guards.base as guard_base
 import src.services.agentic.guards.numeric_slot_selection_guard as numeric_slot_guard_mod
 import src.services.agentic.guards.waiting_patient_choice_guard as patient_choice_guard_mod
 import src.services.agentic.guards.waiting_professional_override_guard as professional_override_guard_mod
 import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard_mod
 import src.services.agentic.prompt_builder as prompt_builder
 import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
-import src.services.agentic.state_models as agentic_state_models
 import src.services.agentic.tool_calling_orchestrator as tool_calling_orchestrator_mod
-import src.services.agentic.tool_handlers.base as tool_handler_base
 import src.services.agentic.workflow_engine as workflow_engine
+import src.services.agentic.workflow_runtime_adapter as workflow_runtime_adapter_mod
 import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.llm_dto as llm_dto
 import src.services.dto.webhook_dto as webhook_dto
@@ -39,112 +36,6 @@ import src.services.exceptions as service_exceptions
 import src.services.use_cases.scheduling_service as scheduling_service_mod
 
 logger = app_logs.get_logger(__name__)
-
-
-RuntimePromptContext = agentic_state_models.RuntimePromptContext
-
-
-class WebhookConversationWorkflowRuntimeAdapter(
-    agent_workflow_port.ConversationWorkflowRuntimePort
-):
-    def __init__(
-        self,
-        webhook_service: "WebhookService",
-        tenant_id: str,
-        conversation_id: str,
-        whatsapp_user_id: str,
-        latest_user_text: str,
-        llm_messages: list[llm_dto.ChatMessageDTO],
-        known_patient: patient_entity.Patient | None,
-    ) -> None:
-        self._webhook_service = webhook_service
-        self._tenant_id = tenant_id
-        self._conversation_id = conversation_id
-        self._whatsapp_user_id = whatsapp_user_id
-        self._latest_user_text = latest_user_text
-        self._llm_messages = llm_messages
-        self._known_patient = known_patient
-
-    def load_runtime_prompt_context(self) -> RuntimePromptContext:
-        resolver = self._webhook_service._runtime_context_resolver
-        if resolver is None:
-            raise service_exceptions.InvalidStateError("runtime_context_resolver is not configured")
-        return resolver.resolve(
-            tenant_id=self._tenant_id,
-            conversation_id=self._conversation_id,
-            known_patient=self._known_patient,
-        )
-
-    def handle_waiting_patient_choice_override(self) -> str | None:
-        guard = self._webhook_service._patient_choice_guard
-        if guard is None:
-            return None
-        context = guard_base.GuardContext(
-            tenant_id=self._tenant_id,
-            conversation_id=self._conversation_id,
-            whatsapp_user_id=self._whatsapp_user_id,
-            latest_user_text=self._latest_user_text,
-        )
-        return guard.evaluate(context)
-
-    def enforce_required_numeric_slot_selection(self) -> str | None:
-        guard = self._webhook_service._numeric_slot_guard
-        if guard is None:
-            return None
-        context = guard_base.GuardContext(
-            tenant_id=self._tenant_id,
-            conversation_id=self._conversation_id,
-            whatsapp_user_id="",
-            latest_user_text=self._latest_user_text,
-        )
-        return guard.evaluate(context)
-
-    def handle_waiting_professional_override(self) -> str | None:
-        guard = self._webhook_service._professional_override_guard
-        if guard is None:
-            return None
-        context = guard_base.GuardContext(
-            tenant_id=self._tenant_id,
-            conversation_id=self._conversation_id,
-            whatsapp_user_id=self._whatsapp_user_id,
-            latest_user_text=self._latest_user_text,
-        )
-        return guard.evaluate(context)
-
-    def is_waiting_professional_state_active(self) -> bool:
-        guard = self._webhook_service._professional_silent_guard
-        if guard is None:
-            return False
-        context = guard_base.GuardContext(
-            tenant_id=self._tenant_id,
-            conversation_id=self._conversation_id,
-            whatsapp_user_id="",
-            latest_user_text="",
-        )
-        return guard.is_active(context)
-
-    def build_runtime_prompt_preview(
-        self,
-        runtime_context: RuntimePromptContext,
-    ) -> str:
-        base_prompt = self._webhook_service._resolve_agent_system_prompt(self._tenant_id)
-        runtime_prompt = self._webhook_service._prompt_builder.build_runtime_system_prompt(
-            runtime_context=runtime_context,
-            known_patient=self._known_patient,
-        )
-        return self._webhook_service._prompt_builder.compose_base_and_runtime_system_prompt(
-            base_system_prompt=base_prompt,
-            runtime_prompt=runtime_prompt,
-        )
-
-    def generate_reply_with_tools(self) -> str:
-        return self._webhook_service._generate_reply_with_tools(
-            tenant_id=self._tenant_id,
-            conversation_id=self._conversation_id,
-            whatsapp_user_id=self._whatsapp_user_id,
-            llm_messages=self._llm_messages,
-            known_patient=self._known_patient,
-        )
 
 
 class WebhookService:
@@ -163,6 +54,9 @@ class WebhookService:
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
         context_message_limit: int,
+        tool_calling_orchestrator: tool_calling_orchestrator_mod.ToolCallingOrchestrator,
+        runtime_context_resolver: runtime_context_resolver_mod.RuntimeContextResolver,
+        message_sender: conversation_message_sender_mod.ConversationMessageSender,
         tracer: langsmith_tracer.LangsmithTracer | None = None,
         sleep_seconds: typing.Callable[[float], None] | None = None,
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
@@ -175,10 +69,6 @@ class WebhookService:
         | None = None,
         professional_silent_guard: professional_silent_guard_mod.WaitingProfessionalSilentGuard
         | None = None,
-        tool_calling_orchestrator: tool_calling_orchestrator_mod.ToolCallingOrchestrator
-        | None = None,
-        runtime_context_resolver: runtime_context_resolver_mod.RuntimeContextResolver | None = None,
-        message_sender: conversation_message_sender_mod.ConversationMessageSender | None = None,
     ) -> None:
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._conversation_repository = conversation_repository
@@ -526,14 +416,23 @@ class WebhookService:
                 tags=["webhook"],
             ) as trace_run:
                 try:
-                    runtime_adapter = WebhookConversationWorkflowRuntimeAdapter(
-                        webhook_service=self,
-                        tenant_id=tenant_id,
-                        conversation_id=conversation.id,
-                        whatsapp_user_id=event.whatsapp_user_id,
-                        latest_user_text=latest_user_text,
-                        llm_messages=llm_messages,
-                        known_patient=known_patient,
+                    runtime_adapter = (
+                        workflow_runtime_adapter_mod.WebhookConversationWorkflowRuntimeAdapter(
+                            tenant_id=tenant_id,
+                            conversation_id=conversation.id,
+                            whatsapp_user_id=event.whatsapp_user_id,
+                            latest_user_text=latest_user_text,
+                            llm_messages=llm_messages,
+                            known_patient=known_patient,
+                            runtime_context_resolver=self._runtime_context_resolver,
+                            prompt_builder_instance=self._prompt_builder,
+                            agent_profile_repository=self._agent_profile_repository,
+                            tool_calling_orchestrator=self._tool_calling_orchestrator,
+                            patient_choice_guard=self._patient_choice_guard,
+                            numeric_slot_guard=self._numeric_slot_guard,
+                            professional_override_guard=self._professional_override_guard,
+                            professional_silent_guard=self._professional_silent_guard,
+                        )
                     )
                     workflow_result = self._agent_workflow.run_conversation_flow(
                         input_dto=agent_workflow_dto.ConversationWorkflowInputDTO(
@@ -613,7 +512,7 @@ class WebhookService:
                         )
                         continue
 
-                    outbound_message_provider_id = self._send_assistant_message(
+                    outbound_message_provider_id = self._message_sender.send_assistant_message(
                         connection=connection,
                         conversation_id=conversation.id,
                         tenant_id=tenant_id,
@@ -621,7 +520,7 @@ class WebhookService:
                         text=workflow_result.text,
                     )
                     if workflow_result.reason == "AI_REPLY":
-                        self._archive_if_booking_occurred(
+                        self._message_sender.archive_messages_into_subsession_if_booking_occurred(
                             tenant_id=tenant_id,
                             conversation_id=conversation.id,
                             subsessions_count_before_ai_reply=subsessions_count_before_ai_reply,
@@ -646,7 +545,7 @@ class WebhookService:
                     )
                     fallback_text = self._build_llm_failure_fallback_message(str(error))
                     try:
-                        self._send_assistant_message(
+                        self._message_sender.send_assistant_message(
                             connection=connection,
                             conversation_id=conversation.id,
                             tenant_id=tenant_id,
@@ -711,7 +610,7 @@ class WebhookService:
         outbound_message_provider_id: str,
         workflow_reason: str,
     ) -> None:
-        reason_log_map: dict[str, tuple[str, str]] = {
+        reason_events: dict[str, tuple[str, str]] = {
             "PATIENT_CHOICE_OVERRIDE": (
                 "webhook.patient_choice_override_sent",
                 "patient choice state override handled before numeric slot selection",
@@ -725,37 +624,21 @@ class WebhookService:
                 "customer requested explicit override while waiting professional response",
             ),
         }
-        log_entry = reason_log_map.get(workflow_reason)
-        if log_entry is not None:
-            event_name, log_message = log_entry
-            logger.info(
-                event_name,
-                extra={
-                    "event_data": app_logs.build_log_event(
-                        event_name=event_name,
-                        message=log_message,
-                        data={
-                            "tenant_id": tenant_id,
-                            "conversation_id": conversation_id,
-                            "provider_event_id": provider_event_id,
-                        },
-                    )
-                },
-            )
-            return
-
+        event_name, log_message = reason_events.get(
+            workflow_reason, ("webhook.ai_reply_sent", "ai reply sent and persisted")
+        )
+        data: dict[str, object] = {
+            "tenant_id": tenant_id,
+            "conversation_id": conversation_id,
+            "provider_event_id": provider_event_id,
+        }
+        if event_name == "webhook.ai_reply_sent":
+            data["outbound_provider_message_id"] = outbound_message_provider_id
         logger.info(
-            "webhook.ai_reply_sent",
+            event_name,
             extra={
                 "event_data": app_logs.build_log_event(
-                    event_name="webhook.ai_reply_sent",
-                    message="ai reply sent and persisted",
-                    data={
-                        "tenant_id": tenant_id,
-                        "conversation_id": conversation_id,
-                        "provider_event_id": provider_event_id,
-                        "outbound_provider_message_id": outbound_message_provider_id,
-                    },
+                    event_name=event_name, message=log_message, data=data
                 )
             },
         )
@@ -772,81 +655,11 @@ class WebhookService:
             "Si deseas, puedo pasarte con una persona del equipo."
         )
 
-    def _send_assistant_message(
-        self,
-        connection: whatsapp_connection_entity.WhatsappConnection,
-        conversation_id: str,
-        tenant_id: str,
-        whatsapp_user_id: str,
-        text: str,
-    ) -> str:
-        if self._message_sender is not None:
-            return self._message_sender.send_assistant_message(
-                connection=connection,
-                conversation_id=conversation_id,
-                tenant_id=tenant_id,
-                whatsapp_user_id=whatsapp_user_id,
-                text=text,
-            )
-        raise service_exceptions.InvalidStateError("message_sender is not configured")
-
-    def _archive_if_booking_occurred(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-        subsessions_count_before_ai_reply: int,
-    ) -> None:
-        if self._message_sender is not None:
-            self._message_sender.archive_messages_into_subsession_if_booking_occurred(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                subsessions_count_before_ai_reply=subsessions_count_before_ai_reply,
-            )
-            return
-        raise service_exceptions.InvalidStateError("message_sender is not configured")
-
-    def _generate_reply_with_tools(
-        self,
-        tenant_id: str,
-        conversation_id: str,
-        whatsapp_user_id: str,
-        llm_messages: list[llm_dto.ChatMessageDTO],
-        known_patient: patient_entity.Patient | None,
-    ) -> str:
-        if self._tool_calling_orchestrator is None or self._runtime_context_resolver is None:
-            raise service_exceptions.ExternalProviderError(
-                "tool_calling_orchestrator or runtime_context_resolver is not configured"
-            )
-        base_system_prompt = self._resolve_agent_system_prompt(tenant_id)
-        tool_context = tool_handler_base.ToolExecutionContext(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            whatsapp_user_id=whatsapp_user_id,
-        )
-        result = self._tool_calling_orchestrator.run(
-            base_system_prompt=base_system_prompt,
-            messages=llm_messages,
-            tool_execution_context=tool_context,
-            known_patient=known_patient,
-            runtime_context_resolver=self._runtime_context_resolver.resolve,
-        )
-        if result.response_text is None:
-            raise service_exceptions.ExternalProviderError("llm returned empty content")
-        return result.response_text
-
     def _resolve_debounce_delay_seconds(self, tenant_id: str) -> int:
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
         if agent_profile is None:
             return 0
         return agent_profile.message_debounce_delay_seconds
-
-    def _resolve_agent_system_prompt(self, tenant_id: str) -> str:
-        agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
-        if agent_profile is None:
-            raise service_exceptions.ExternalProviderError(
-                "agent system prompt is not configured for this tenant"
-            )
-        return agent_profile.system_prompt
 
     def _conversation_has_provider_message_id(
         self,
