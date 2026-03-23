@@ -58,7 +58,7 @@ function resolveAppointmentDisplayStatus(
   if (request.status === "AWAITING_PAYMENT_CONFIRMATION") {
     return "PAGO_PENDIENTE";
   }
-  if (request.status === "BOOKED") {
+  if (request.status === "BOOKED" || request.status === "SESSION_CLOSED") {
     const bookedSlot = request.slots.find((slot) => slot.status === "BOOKED");
     if (bookedSlot !== undefined) {
       const slotEnd = new Date(bookedSlot.endAt);
@@ -199,8 +199,13 @@ export function InboxPage() {
     mutationFn: (conversationId: string) =>
       appContainer.conversationUseCase.resetMessages(conversationId),
     onSuccess: async (_data, conversationId) => {
+      if (selectedConversationId === conversationId) {
+        setSelectedConversationId(null);
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: patientsQueryKey }),
         queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] })
       ]);
     }
@@ -437,7 +442,7 @@ export function InboxPage() {
                         return;
                       }
                       const isConfirmed = window.confirm(
-                        "¿Seguro que quieres resetear este chat? Se borrarán los mensajes activos."
+                        "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
                       );
                       if (!isConfirmed) {
                         return;
@@ -593,7 +598,7 @@ export function InboxPage() {
                     disabled={resetMessagesMutation.isPending}
                     onClick={() => {
                       const isConfirmed = window.confirm(
-                        "¿Seguro que quieres resetear este chat? Se borrarán los mensajes activos y la conversación quedará vacía."
+                        "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
                       );
                       if (!isConfirmed) {
                         return;

@@ -47,6 +47,7 @@ const agendaSections: AgendaSection[] = [
     label: "Agenda e Historial",
     statuses: [
       { status: "BOOKED", label: "Agendadas" },
+      { status: "SESSION_CLOSED", label: "Cerradas" },
       { status: "CANCELLED", label: "Canceladas" },
       { status: "HUMAN_HANDOFF", label: "Human Handoff" }
     ]
@@ -532,7 +533,9 @@ export function AgendaPage() {
         return;
       }
       if (section.id === "FINANCE") {
-        const bookedCount = allRequests.filter((request) => request.status === "BOOKED").length;
+        const bookedCount = allRequests.filter(
+          (request) => request.status === "BOOKED" || request.status === "SESSION_CLOSED"
+        ).length;
         const manualCount = allManualAppointments.filter(
           (appointment) => appointment.status === "SCHEDULED"
         ).length;
@@ -540,7 +543,9 @@ export function AgendaPage() {
         return;
       }
       if (section.id === "FINALIZED") {
-        counts[section.id] = requestCountByStatus.get("BOOKED") ?? 0;
+        counts[section.id] =
+          (requestCountByStatus.get("BOOKED") ?? 0) +
+          (requestCountByStatus.get("SESSION_CLOSED") ?? 0);
         return;
       }
       let sectionCount = 0;
@@ -699,7 +704,7 @@ export function AgendaPage() {
   }, [selectedRequest, selectedDayIso, timezone, busyIntervals]);
 
   const FINALIZED_STATUSES = reactModule.useMemo(
-    () => new Set<string>(["BOOKED", "HUMAN_HANDOFF"]),
+    () => new Set<string>(["BOOKED", "SESSION_CLOSED", "HUMAN_HANDOFF"]),
     []
   );
 
@@ -827,7 +832,7 @@ export function AgendaPage() {
   const financeAppointments = reactModule.useMemo<FinanceAppointmentItem[]>(() => {
     const items: FinanceAppointmentItem[] = [];
     allRequests
-      .filter((request) => request.status === "BOOKED")
+      .filter((request) => request.status === "BOOKED" || request.status === "SESSION_CLOSED")
       .forEach((request) => {
         const bookedSlot = resolveBookedSlot(request);
         if (bookedSlot === null) {
@@ -3345,7 +3350,8 @@ export function AgendaPage() {
                     </>
                   ) : null}
 
-                  {selectedRequest.status === "BOOKED" ? (
+                  {selectedRequest.status === "BOOKED" ||
+                  selectedRequest.status === "SESSION_CLOSED" ? (
                     <section className="rounded-lg border border-border-subtle p-3">
                       <h4 className="text-sm font-semibold text-brand-ink">
                         Gestionar cita del chatbot

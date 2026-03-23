@@ -10,6 +10,7 @@ export type SchedulingRequestStatus =
   | "CONSULTATION_REJECTED"
   | "CANCELLED"
   | "BOOKED"
+  | "SESSION_CLOSED"
   | "HUMAN_HANDOFF";
 
 export type SchedulingSlotStatus = "PROPOSED" | "SELECTED" | "BOOKED" | "REJECTED" | "UNAVAILABLE";

@@ -208,6 +208,7 @@ export interface SchedulingRequestSummaryApiResponse {
     | "CONSULTATION_REJECTED"
     | "CANCELLED"
     | "BOOKED"
+    | "SESSION_CLOSED"
     | "HUMAN_HANDOFF";
   audience_type: "ADULTS" | "CHILDREN" | null;
   round_number: number;
