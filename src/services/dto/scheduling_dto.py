@@ -85,6 +85,7 @@ class SubmitConsultationReasonForReviewToolInputDTO(pydantic.BaseModel):
     consultation_reason: str | None = None
     appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] | None = None
     patient_location: str | None = None
+    audience_type: typing.Literal["ADULTS", "CHILDREN"] | None = None
 
 
 class ConsultationReviewDecisionDTO(pydantic.BaseModel):
@@ -133,6 +134,10 @@ class HandoffToHumanInputDTO(pydantic.BaseModel):
 
 class CancelActiveSchedulingRequestInputDTO(pydantic.BaseModel):
     reason: str | None = None
+
+
+class CloseSessionInputDTO(pydantic.BaseModel):
+    farewell_message: str | None = None
 
 
 class RescheduleBookedSlotInputDTO(pydantic.BaseModel):

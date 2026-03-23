@@ -439,7 +439,6 @@ class SchedulingInboxService:
                     timezone_name=slot_candidate.timezone,
                 )
             )
-        lines.append("Responde con el numero de la opcion que prefieres (por ejemplo: 2).")
         return "\n".join(lines)
 
     def _validate_slot_duration(

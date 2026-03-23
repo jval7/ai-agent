@@ -61,6 +61,7 @@ export interface GoogleCalendarAvailabilityApiResponse {
 export interface ConversationSummaryApiResponse {
   conversation_id: string;
   whatsapp_user_id: string;
+  contact_name?: string | null;
   last_message_preview: string | null;
   updated_at: string;
   control_mode: "AI" | "HUMAN";
@@ -207,6 +208,7 @@ export interface SchedulingRequestSummaryApiResponse {
     | "CONSULTATION_REJECTED"
     | "CANCELLED"
     | "BOOKED"
+    | "SESSION_CLOSED"
     | "HUMAN_HANDOFF";
   audience_type: "ADULTS" | "CHILDREN" | null;
   round_number: number;
@@ -307,6 +309,18 @@ export interface UpdateBookedSlotPaymentApiRequest {
   payment_amount_cop: number;
   payment_method: "CASH" | "TRANSFER";
   payment_status: "PENDING" | "PAID";
+}
+
+export interface SendMessageApiRequest {
+  message_text: string;
+}
+
+export interface MessageSentApiResponse {
+  message_id: string;
+  conversation_id: string;
+  role: string;
+  content: string;
+  created_at: string;
 }
 
 export interface ApiErrorResponse {

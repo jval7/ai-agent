@@ -33,7 +33,7 @@ class ConversationWorkflowRuntimePort(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def generate_reply_with_tools(self) -> str:
+    def generate_reply_with_tools(self) -> str | None:
         raise NotImplementedError
 
 

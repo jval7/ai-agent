@@ -38,6 +38,7 @@ class Settings(pydantic.BaseModel):
     langsmith_tags: list[str]
     log_level: str
     log_include_request_summary: bool
+    whatsapp_outbound_noop: bool
 
     @classmethod
     def from_secret_json(cls, raw_app_config_json: str, adc_project_id: str) -> "Settings":
@@ -130,6 +131,11 @@ class Settings(pydantic.BaseModel):
             log_level=app_config_overrides.get("LOG_LEVEL", "INFO"),
             log_include_request_summary=app_config_overrides.get(
                 "LOG_INCLUDE_REQUEST_SUMMARY",
+                "false",
+            ).lower()
+            == "true",
+            whatsapp_outbound_noop=app_config_overrides.get(
+                "WHATSAPP_OUTBOUND_NOOP",
                 "false",
             ).lower()
             == "true",

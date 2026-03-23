@@ -234,6 +234,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return payload.items.map((item) => ({
       conversationId: item.conversation_id,
       whatsappUserId: item.whatsapp_user_id,
+      contactName: item.contact_name ?? null,
       lastMessagePreview: item.last_message_preview,
       updatedAt: item.updated_at,
       controlMode: item.control_mode
@@ -284,6 +285,30 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       method: "DELETE",
       authRequired: true
     });
+  }
+
+  async sendConversationMessage(
+    conversationId: string,
+    messageText: string
+  ): Promise<conversationModel.MessageSent> {
+    const payload = await this.request<httpTypes.MessageSentApiResponse>(
+      `/v1/conversations/${conversationId}/messages`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          message_text: messageText
+        } satisfies httpTypes.SendMessageApiRequest)
+      }
+    );
+
+    return {
+      messageId: payload.message_id,
+      conversationId: payload.conversation_id,
+      role: payload.role,
+      content: payload.content,
+      createdAt: payload.created_at
+    };
   }
 
   async listBlacklist(): Promise<blacklistModel.BlacklistEntry[]> {

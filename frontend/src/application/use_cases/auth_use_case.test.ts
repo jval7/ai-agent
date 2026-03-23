@@ -137,6 +137,13 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     return;
   }
 
+  async sendConversationMessage(
+    _conversationId: string,
+    _messageText: string
+  ): Promise<conversationModel.MessageSent> {
+    throw new Error("not used");
+  }
+
   async listSchedulingRequests(
     _status?: schedulingModel.SchedulingRequestStatus
   ): Promise<schedulingModel.SchedulingRequestSummary[]> {

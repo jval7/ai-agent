@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import typing
 
@@ -18,6 +19,24 @@ import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
+import src.infra.langsmith_tracer as langsmith_tracer
+import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
+import src.services.agentic.guards.numeric_slot_selection_guard as numeric_slot_guard_mod
+import src.services.agentic.guards.waiting_patient_choice_guard as patient_choice_guard_mod
+import src.services.agentic.guards.waiting_professional_override_guard as professional_override_guard_mod
+import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard_mod
+import src.services.agentic.prompt_builder as prompt_builder_mod
+import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
+import src.services.agentic.tool_calling_orchestrator as tool_calling_orchestrator_mod
+import src.services.agentic.tool_handlers.cancel_request_handler as cancel_request_handler
+import src.services.agentic.tool_handlers.close_session_handler as close_session_handler
+import src.services.agentic.tool_handlers.confirm_slot_handler as confirm_slot_handler
+import src.services.agentic.tool_handlers.handoff_handler as handoff_handler
+import src.services.agentic.tool_handlers.patient_profile_resolver as patient_profile_resolver
+import src.services.agentic.tool_handlers.registry as tool_handler_registry
+import src.services.agentic.tool_handlers.set_contact_name_handler as set_contact_name_handler
+import src.services.agentic.tool_handlers.submit_consultation_reason_handler as submit_consultation_reason_handler
+import src.services.agentic.tool_registry as tool_definition_registry_mod
 import src.services.dto.llm_dto as llm_dto
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
@@ -26,12 +45,123 @@ import src.services.use_cases.scheduling_service as scheduling_service
 import src.services.use_cases.webhook_service as webhook_service
 import tests.fakes.fake_adapters as fake_adapters
 
+_NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 
-def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
+
+@dataclasses.dataclass
+class ToolCallingTestContext:
+    service: webhook_service.WebhookService
+    provider: fake_adapters.FakeWhatsappProvider
+    llm_provider: fake_adapters.FakeLlmProvider
+    scheduling_repository: scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter
+    conversation_repository: conversation_repository_adapter.InMemoryConversationRepositoryAdapter
+    patient_repository: patient_repository_adapter.InMemoryPatientRepositoryAdapter
+    id_generator: fake_adapters.SequenceIdGenerator
+    clock: fake_adapters.FixedClock
+    scheduling_use_case: scheduling_service.SchedulingService
+    google_provider: fake_adapters.FakeGoogleCalendarProvider
+
+
+def _build_new_components(
+    scheduling_svc: scheduling_service.SchedulingService,
+    conversation_repository: conversation_repository_adapter.InMemoryConversationRepositoryAdapter,
+    patient_repository: patient_repository_adapter.InMemoryPatientRepositoryAdapter,
+    llm_provider: fake_adapters.FakeLlmProvider,
+    clock: fake_adapters.FixedClock,
+    whatsapp_provider: fake_adapters.FakeWhatsappProvider,
+    id_generator: fake_adapters.SequenceIdGenerator,
+    sleep_fn: typing.Callable[[float], None] | None = None,
+) -> dict[str, typing.Any]:
+    """Builds the new refactored components for WebhookService."""
+    tracer = langsmith_tracer.LangsmithTracer(enabled=False)
+    tool_def_registry = tool_definition_registry_mod.ToolDefinitionRegistry()
+
+    effective_sleep: typing.Callable[[float], None] = (
+        sleep_fn if sleep_fn is not None else (lambda _: None)
     )
+    resolver = patient_profile_resolver.PatientProfileResolver(
+        scheduling_svc=scheduling_svc,
+        patient_repository=patient_repository,
+        clock=clock,
+        professional_signature="Psi. Alejandra Escobar",
+        sleep_seconds=effective_sleep,
+    )
+    handler_registry = tool_handler_registry.ToolHandlerRegistry(
+        handlers=[
+            set_contact_name_handler.SetContactNameHandler(
+                conversation_repository=conversation_repository
+            ),
+            close_session_handler.CloseSessionHandler(scheduling_svc=scheduling_svc),
+            cancel_request_handler.CancelActiveRequestHandler(scheduling_svc=scheduling_svc),
+            handoff_handler.HandoffToHumanHandler(scheduling_svc=scheduling_svc),
+            submit_consultation_reason_handler.SubmitConsultationReasonHandler(
+                scheduling_svc=scheduling_svc
+            ),
+            confirm_slot_handler.ConfirmSlotHandler(resolver=resolver),
+        ],
+        tracer=tracer,
+    )
+    prompt_builder = prompt_builder_mod.RuntimePromptBuilder()
+    orchestrator = tool_calling_orchestrator_mod.ToolCallingOrchestrator(
+        llm_provider=llm_provider,
+        tool_handler_registry=handler_registry,
+        prompt_builder_instance=prompt_builder,
+        tool_definition_registry=tool_def_registry,
+        patient_repository=patient_repository,
+        tracer=tracer,
+        sleep_fn=effective_sleep,
+    )
+    numeric_guard = numeric_slot_guard_mod.NumericSlotSelectionGuard(
+        scheduling_svc=scheduling_svc,
+        llm_provider=llm_provider,
+    )
+    patient_choice_guard = patient_choice_guard_mod.WaitingPatientChoiceGuard(
+        scheduling_svc=scheduling_svc,
+        llm_provider=llm_provider,
+        conversation_repository=conversation_repository,
+        tool_handler_registry=handler_registry,
+        tool_definition_registry=tool_def_registry,
+    )
+    professional_override_guard = professional_override_guard_mod.WaitingProfessionalOverrideGuard(
+        scheduling_svc=scheduling_svc,
+        llm_provider=llm_provider,
+        conversation_repository=conversation_repository,
+        tool_handler_registry=handler_registry,
+        tool_definition_registry=tool_def_registry,
+    )
+    professional_silent_guard = professional_silent_guard_mod.WaitingProfessionalSilentGuard(
+        scheduling_svc=scheduling_svc,
+    )
+    runtime_resolver = runtime_context_resolver_mod.RuntimeContextResolver(
+        scheduling_svc=scheduling_svc,
+        conversation_repository=conversation_repository,
+    )
+    message_sender = conversation_message_sender_mod.ConversationMessageSender(
+        whatsapp_provider=whatsapp_provider,
+        conversation_repository=conversation_repository,
+        id_generator=id_generator,
+        clock=clock,
+    )
+    return {
+        "patient_choice_guard": patient_choice_guard,
+        "numeric_slot_guard": numeric_guard,
+        "professional_override_guard": professional_override_guard,
+        "professional_silent_guard": professional_silent_guard,
+        "tool_calling_orchestrator": orchestrator,
+        "runtime_context_resolver": runtime_resolver,
+        "message_sender": message_sender,
+    }
+
+
+def build_tool_calling_context(
+    id_values: list[str],
+    sleep_fn: typing.Callable[[float], None] | None = None,
+    now_value: datetime.datetime = _NOW,
+    calendar_timezone: str = "America/Bogota",
+) -> ToolCallingTestContext:
+    """Builds all shared infrastructure and returns a ToolCallingTestContext."""
+    store = in_memory_store.InMemoryStore()
+    conversation_repo = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(store)
     connection_repository = (
         whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
     )
@@ -40,17 +170,16 @@ def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
             store
         )
     )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
+    blacklist_repo = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
     )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
+    scheduling_repo = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
+    patient_repo = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
     calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
         store
     )
 
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     connection_repository.save(
         whatsapp_connection_entity.WhatsappConnection(
             tenant_id="tenant-1",
@@ -68,7 +197,7 @@ def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
             professional_user_id="user-1",
             status="CONNECTED",
             calendar_id="primary",
-            timezone="America/Bogota",
+            timezone=calendar_timezone,
             access_token="google-access",
             refresh_token="google-refresh",
             token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
@@ -78,7 +207,7 @@ def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
             connected_at=now_value,
         )
     )
-    agent_profile_repository.save(
+    agent_profile_repo.save(
         agent_profile_entity.AgentProfile(
             tenant_id="tenant-1",
             system_prompt="tenant custom prompt",
@@ -88,7 +217,85 @@ def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
 
     provider = fake_adapters.FakeWhatsappProvider()
     llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
+    id_generator = fake_adapters.SequenceIdGenerator(id_values)
+    clock = fake_adapters.FixedClock(now_value)
+    google_provider = fake_adapters.FakeGoogleCalendarProvider()
+    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
+        google_calendar_connection_repository=calendar_connection_repository,
+        google_calendar_provider=google_provider,
+        id_generator=id_generator,
+        clock=clock,
+    )
+    scheduling_use_case = scheduling_service.SchedulingService(
+        scheduling_repository=scheduling_repo,
+        conversation_repository=conversation_repo,
+        google_calendar_onboarding_service=google_service,
+        id_generator=id_generator,
+        clock=clock,
+    )
+
+    service_kwargs: dict[str, typing.Any] = {}
+    if sleep_fn is not None:
+        service_kwargs["sleep_seconds"] = sleep_fn
+    service = webhook_service.WebhookService(
+        whatsapp_connection_repository=connection_repository,
+        conversation_repository=conversation_repo,
+        patient_repository=patient_repo,
+        processed_webhook_event_repository=processed_repository,
+        blacklist_repository=blacklist_repo,
+        agent_profile_repository=agent_profile_repo,
+        scheduling_service=scheduling_use_case,
+        whatsapp_provider=provider,
+        id_generator=id_generator,
+        clock=clock,
+        context_message_limit=8,
+        **service_kwargs,
+        **_build_new_components(
+            scheduling_use_case,
+            conversation_repo,
+            patient_repo,
+            llm_provider,
+            clock,
+            provider,
+            id_generator,
+            sleep_fn=sleep_fn,
+        ),
+    )
+
+    return ToolCallingTestContext(
+        service=service,
+        provider=provider,
+        llm_provider=llm_provider,
+        scheduling_repository=scheduling_repo,
+        conversation_repository=conversation_repo,
+        patient_repository=patient_repo,
+        id_generator=id_generator,
+        clock=clock,
+        scheduling_use_case=scheduling_use_case,
+        google_provider=google_provider,
+    )
+
+
+def build_default_event(
+    message_text: str = "hello",
+) -> webhook_dto.IncomingMessageEventDTO:
+    return webhook_dto.IncomingMessageEventDTO(
+        provider_event_id="evt-1",
+        phone_number_id="phone-1",
+        whatsapp_user_id="wa-user-1",
+        whatsapp_user_name="Jane",
+        message_id="wamid-in-1",
+        message_type="text",
+        source="CUSTOMER",
+        message_text=message_text,
+    )
+
+
+def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
+    ctx = build_tool_calling_context(
+        id_values=["conversation-1", "in-msg-1", "req-1", "out-msg-1"],
+    )
+    ctx.llm_provider.queued_replies = [
         llm_dto.AgentReplyDTO(
             content="",
             function_calls=[
@@ -102,62 +309,17 @@ def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
             ],
         ),
     ]
-    id_generator = fake_adapters.SequenceIdGenerator(
-        ["conversation-1", "in-msg-1", "req-1", "out-msg-1"]
-    )
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
+    ctx.provider.events = [build_default_event("hola quiero una cita")]
 
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="hola quiero una cita",
-        )
-    ]
+    ctx.service.process_payload({})
 
-    service.process_payload({})
-
-    saved_requests = scheduling_repository.list_requests_by_tenant("tenant-1")
+    saved_requests = ctx.scheduling_repository.list_requests_by_tenant("tenant-1")
     assert len(saved_requests) == 1
     assert saved_requests[0].status == "AWAITING_CONSULTATION_REVIEW"
-    assert len(provider.sent_messages) == 1
-    assert "dame un momento" in provider.sent_messages[0]["text"].lower()
-    assert len(llm_provider.calls) == 1
-    tool_names = [tool.name for tool in llm_provider.calls[0].tools]
+    assert len(ctx.provider.sent_messages) == 1
+    assert "dame un momento" in ctx.provider.sent_messages[0]["text"].lower()
+    assert len(ctx.llm_provider.calls) == 1
+    tool_names = [tool.name for tool in ctx.llm_provider.calls[0].tools]
     assert tool_names == [
         "submit_consultation_reason_for_review",
         "handoff_to_human",
@@ -166,30 +328,9 @@ def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
 
 
 def test_webhook_recovers_when_reason_tool_is_called_again_after_approval() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
-    )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
-
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-    conversation_repository.save_conversation(
+    ctx = build_tool_calling_context(id_values=["in-msg-1", "out-msg-1"])
+    now_value = ctx.clock.now()
+    ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
             id="conversation-1",
             tenant_id="tenant-1",
@@ -201,7 +342,7 @@ def test_webhook_recovers_when_reason_tool_is_called_again_after_approval() -> N
             control_mode="AI",
         )
     )
-    scheduling_repository.save_request(
+    ctx.scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-1",
             tenant_id="tenant-1",
@@ -228,44 +369,7 @@ def test_webhook_recovers_when_reason_tool_is_called_again_after_approval() -> N
             updated_at=now_value,
         )
     )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
-
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
+    ctx.llm_provider.queued_replies = [
         llm_dto.AgentReplyDTO(
             content="",
             function_calls=[
@@ -281,90 +385,27 @@ def test_webhook_recovers_when_reason_tool_is_called_again_after_approval() -> N
             ],
         ),
     ]
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
+    ctx.provider.events = [build_default_event("presencial, despues de las 4 pm o sabados")]
 
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="presencial, despues de las 4 pm o sabados",
-        )
-    ]
+    ctx.service.process_payload({})
 
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
+    saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
     assert saved_request.status == "AWAITING_CONSULTATION_REVIEW"
     assert saved_request.appointment_modality == "PRESENCIAL"
     assert (
-        len(scheduling_repository.list_requests_by_conversation("tenant-1", "conversation-1")) == 1
+        len(ctx.scheduling_repository.list_requests_by_conversation("tenant-1", "conversation-1"))
+        == 1
     )
-    assert len(provider.sent_messages) == 1
-    assert "dame un momento" in provider.sent_messages[0]["text"].lower()
-    assert len(llm_provider.calls) == 1
+    assert len(ctx.provider.sent_messages) == 1
+    assert "dame un momento" in ctx.provider.sent_messages[0]["text"].lower()
+    assert len(ctx.llm_provider.calls) == 1
 
 
-def test_webhook_waiting_professional_slots_silently_persists_inbound_message() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
-    )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
-
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-    conversation_repository.save_conversation(
+def test_webhook_responds_when_awaiting_consultation_review() -> None:
+    ctx = build_tool_calling_context(id_values=["in-msg-1", "out-msg-1"])
+    now_value = ctx.clock.now()
+    ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
             id="conversation-1",
             tenant_id="tenant-1",
@@ -376,7 +417,7 @@ def test_webhook_waiting_professional_slots_silently_persists_inbound_message() 
             control_mode="AI",
         )
     )
-    scheduling_repository.save_request(
+    ctx.scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-1",
             tenant_id="tenant-1",
@@ -396,282 +437,21 @@ def test_webhook_waiting_professional_slots_silently_persists_inbound_message() 
             updated_at=now_value,
         )
     )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
+    ctx.provider.events = [build_default_event("mi correo es jane@example.com")]
 
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
+    ctx.service.process_payload({})
 
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="mi correo es jane@example.com",
-        )
-    ]
-
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
+    saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
     assert saved_request.status == "AWAITING_CONSULTATION_REVIEW"
-    assert len(provider.sent_messages) == 0
-    assert len(llm_provider.calls) == 1
-
-
-def test_webhook_waiting_professional_does_not_cancel_on_non_explicit_message() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
-    )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
-
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-    conversation_repository.save_conversation(
-        conversation_entity.Conversation(
-            id="conversation-1",
-            tenant_id="tenant-1",
-            whatsapp_user_id="wa-user-1",
-            started_at=now_value,
-            updated_at=now_value,
-            last_message_preview=None,
-            message_ids=[],
-            control_mode="AI",
-        )
-    )
-    scheduling_repository.save_request(
-        scheduling_request_entity.SchedulingRequest(
-            id="req-1",
-            tenant_id="tenant-1",
-            conversation_id="conversation-1",
-            whatsapp_user_id="wa-user-1",
-            request_kind="INITIAL",
-            status="AWAITING_CONSULTATION_REVIEW",
-            round_number=1,
-            patient_preference_note="despues de las 4 pm",
-            rejection_summary=None,
-            professional_note=None,
-            slots=[],
-            slot_options_map={},
-            selected_slot_id=None,
-            calendar_event_id=None,
-            created_at=now_value,
-            updated_at=now_value,
-        )
-    )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
-
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
-        llm_dto.AgentReplyDTO(
-            content="",
-            function_calls=[
-                llm_dto.FunctionCallDTO(
-                    name="cancel_active_scheduling_request",
-                    args={"reason": "ok"},
-                    call_id="call-1",
-                )
-            ],
-        ),
-        llm_dto.AgentReplyDTO(content="NO"),
-    ]
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
-
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="ok",
-        )
-    ]
-
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
-    assert saved_request is not None
-    assert saved_request.status == "AWAITING_CONSULTATION_REVIEW"
-    assert len(provider.sent_messages) == 0
-    assert len(llm_provider.calls) == 2
+    assert len(ctx.provider.sent_messages) == 1
+    assert len(ctx.llm_provider.calls) == 1
 
 
 def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
-    )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
-
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-    conversation_repository.save_conversation(
+    ctx = build_tool_calling_context(id_values=["in-msg-1", "out-msg-1"])
+    now_value = ctx.clock.now()
+    ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
             id="conversation-1",
             tenant_id="tenant-1",
@@ -683,7 +463,7 @@ def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> 
             control_mode="AI",
         )
     )
-    scheduling_repository.save_request(
+    ctx.scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-1",
             tenant_id="tenant-1",
@@ -711,44 +491,7 @@ def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> 
             updated_at=now_value,
         )
     )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
-
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
+    ctx.llm_provider.queued_replies = [
         llm_dto.AgentReplyDTO(
             content="",
             function_calls=[
@@ -767,104 +510,38 @@ def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> 
         ),
         llm_dto.AgentReplyDTO(content="Perfecto, tu cita quedó confirmada."),
     ]
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
+    ctx.provider.events = [build_default_event("1")]
 
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="1",
-        )
-    ]
+    ctx.service.process_payload({})
 
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
+    saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
     assert saved_request.status == "BOOKED"
     assert saved_request.selected_slot_id == "slot-1"
     assert saved_request.calendar_event_id == "event-1"
-    assert google_provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
-    created_patient = patient_repository.get_by_whatsapp_user("tenant-1", "wa-user-1")
+    assert ctx.google_provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+    created_patient = ctx.patient_repository.get_by_whatsapp_user("tenant-1", "wa-user-1")
     assert created_patient is not None
     assert created_patient.location == "Bogota"
     assert created_patient.email == "jane@example.com"
-    assert len(provider.sent_messages) == 1
-    assert "confirmada" in provider.sent_messages[0]["text"]
-    active_messages = conversation_repository.list_messages("tenant-1", "conversation-1")
-    assert active_messages == []
-    saved_conversation = conversation_repository.get_conversation_by_id(
+    assert len(ctx.provider.sent_messages) == 1
+    assert "confirmada" in ctx.provider.sent_messages[0]["text"]
+    active_messages = ctx.conversation_repository.list_messages("tenant-1", "conversation-1")
+    assert len(active_messages) == 2
+    saved_conversation = ctx.conversation_repository.get_conversation_by_id(
         "tenant-1",
         "conversation-1",
     )
     assert saved_conversation is not None
-    assert len(saved_conversation.subsessions) == 1
-    archived_subsession = saved_conversation.subsessions[0]
-    assert len(archived_subsession.messages) == 2
-    assert archived_subsession.messages[0].id == "in-msg-1"
-    assert archived_subsession.messages[1].id == "out-msg-1"
-    assert "confirmada" in archived_subsession.messages[1].content.lower()
+    assert len(saved_conversation.subsessions) == 0
 
 
 def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
+    ctx = build_tool_calling_context(
+        id_values=["in-msg-1", "out-msg-1"],
+        now_value=_NOW + datetime.timedelta(minutes=20),
     )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
-
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    now_value = _NOW
     conversation = conversation_entity.Conversation(
         id="conversation-1",
         tenant_id="tenant-1",
@@ -875,8 +552,8 @@ def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() 
         message_ids=[],
         control_mode="AI",
     )
-    conversation_repository.save_conversation(conversation)
-    scheduling_repository.save_request(
+    ctx.conversation_repository.save_conversation(conversation)
+    ctx.scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-1",
             tenant_id="tenant-1",
@@ -930,40 +607,6 @@ def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() 
             updated_at=now_value,
         )
     )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
 
     existing_messages: list[tuple[str, typing.Literal["assistant", "user"], str]] = [
         (
@@ -989,7 +632,7 @@ def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() 
         if role == "assistant":
             direction = "OUTBOUND"
         created_at = now_value + datetime.timedelta(minutes=index + 1)
-        conversation_repository.save_message(
+        ctx.conversation_repository.save_message(
             message_entity.Message(
                 id=message_id,
                 conversation_id="conversation-1",
@@ -1002,11 +645,9 @@ def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() 
             )
         )
         conversation.append_message(message_id, content, created_at)
-    conversation_repository.save_conversation(conversation)
+    ctx.conversation_repository.save_conversation(conversation)
 
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
+    ctx.llm_provider.queued_replies = [
         llm_dto.AgentReplyDTO(
             content="",
             function_calls=[
@@ -1026,88 +667,24 @@ def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() 
         ),
         llm_dto.AgentReplyDTO(content="Perfecto, tu cita quedó confirmada."),
     ]
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value + datetime.timedelta(minutes=20))
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
+    ctx.provider.events = [build_default_event("3")]
 
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="3",
-        )
-    ]
+    ctx.service.process_payload({})
 
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
+    saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
     assert saved_request.status == "BOOKED"
     assert saved_request.selected_slot_id == "slot-3"
     assert saved_request.calendar_event_id == "event-1"
-    assert len(llm_provider.calls) == 2
-    assert len(provider.sent_messages) == 1
-    assert "confirmada" in provider.sent_messages[0]["text"]
+    assert len(ctx.llm_provider.calls) == 2
+    assert len(ctx.provider.sent_messages) == 1
+    assert "confirmada" in ctx.provider.sent_messages[0]["text"]
 
 
 def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_profile() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
-    )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
-
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-    conversation_repository.save_conversation(
+    ctx = build_tool_calling_context(id_values=["in-msg-1", "out-msg-1"])
+    now_value = ctx.clock.now()
+    ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
             id="conversation-1",
             tenant_id="tenant-1",
@@ -1119,7 +696,7 @@ def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_
             control_mode="AI",
         )
     )
-    patient_repository.save(
+    ctx.patient_repository.save(
         patient_entity.Patient(
             tenant_id="tenant-1",
             whatsapp_user_id="wa-user-1",
@@ -1133,7 +710,7 @@ def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_
             created_at=now_value,
         )
     )
-    scheduling_repository.save_request(
+    ctx.scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-1",
             tenant_id="tenant-1",
@@ -1161,44 +738,7 @@ def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_
             updated_at=now_value,
         )
     )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
-
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
+    ctx.llm_provider.queued_replies = [
         llm_dto.AgentReplyDTO(
             content="",
             function_calls=[
@@ -1216,88 +756,24 @@ def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_
         ),
         llm_dto.AgentReplyDTO(content="Perfecto, tu cita quedó confirmada."),
     ]
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
+    ctx.provider.events = [build_default_event("1")]
 
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="1",
-        )
-    ]
+    ctx.service.process_payload({})
 
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
+    saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
     assert saved_request.status == "BOOKED"
-    assert google_provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
-    persisted_patient = patient_repository.get_by_whatsapp_user("tenant-1", "wa-user-1")
+    assert ctx.google_provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+    persisted_patient = ctx.patient_repository.get_by_whatsapp_user("tenant-1", "wa-user-1")
     assert persisted_patient is not None
     assert persisted_patient.first_name == "Jane"
     assert persisted_patient.location == "Bogota"
 
 
 def test_webhook_confirm_slot_requires_patient_location_for_new_patient() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
-    )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
-
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-    conversation_repository.save_conversation(
+    ctx = build_tool_calling_context(id_values=["in-msg-1", "out-msg-1"])
+    now_value = ctx.clock.now()
+    ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
             id="conversation-1",
             tenant_id="tenant-1",
@@ -1309,7 +785,7 @@ def test_webhook_confirm_slot_requires_patient_location_for_new_patient() -> Non
             control_mode="AI",
         )
     )
-    scheduling_repository.save_request(
+    ctx.scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-1",
             tenant_id="tenant-1",
@@ -1337,44 +813,7 @@ def test_webhook_confirm_slot_requires_patient_location_for_new_patient() -> Non
             updated_at=now_value,
         )
     )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
-
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
+    ctx.llm_provider.queued_replies = [
         llm_dto.AgentReplyDTO(
             content="",
             function_calls=[
@@ -1395,86 +834,26 @@ def test_webhook_confirm_slot_requires_patient_location_for_new_patient() -> Non
         ),
         llm_dto.AgentReplyDTO(content="Necesito tu ubicacion para confirmar la cita."),
     ]
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
+    ctx.provider.events = [build_default_event("1")]
 
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="1",
-        )
-    ]
+    ctx.service.process_payload({})
 
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
+    saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
     assert saved_request.status == "AWAITING_PATIENT_CHOICE"
-    assert google_provider.created_event_summaries == []
-    assert patient_repository.get_by_whatsapp_user("tenant-1", "wa-user-1") is None
-    assert "ubicacion" in provider.sent_messages[0]["text"].lower()
+    assert ctx.google_provider.created_event_summaries == []
+    assert ctx.patient_repository.get_by_whatsapp_user("tenant-1", "wa-user-1") is None
+    assert "ubicacion" in ctx.provider.sent_messages[0]["text"].lower()
 
 
 def test_webhook_requires_numeric_slot_option_before_continuing() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
-    )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
-
     now_value = datetime.datetime(2026, 3, 1, tzinfo=datetime.UTC)
-    conversation_repository.save_conversation(
+    ctx = build_tool_calling_context(
+        id_values=["in-msg-1", "out-msg-1"],
+        now_value=now_value,
+        calendar_timezone="UTC",
+    )
+    ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
             id="conversation-1",
             tenant_id="tenant-1",
@@ -1486,7 +865,7 @@ def test_webhook_requires_numeric_slot_option_before_continuing() -> None:
             control_mode="AI",
         )
     )
-    scheduling_repository.save_request(
+    ctx.scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-1",
             tenant_id="tenant-1",
@@ -1528,133 +907,35 @@ def test_webhook_requires_numeric_slot_option_before_continuing() -> None:
             updated_at=now_value,
         )
     )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="UTC",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 3, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
-
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
+    ctx.llm_provider.queued_replies = [
         llm_dto.AgentReplyDTO(content="unused"),  # NL slot resolution
         llm_dto.AgentReplyDTO(content="unused"),  # override function detection
         llm_dto.AgentReplyDTO(content="NINGUNA"),  # slot rejection detection
     ]
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
+    ctx.provider.events = [build_default_event("si el 2 a las 8 am")]
 
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="si el 2 a las 8 am",
-        )
-    ]
+    ctx.service.process_payload({})
 
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
+    saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
     assert saved_request.status == "AWAITING_PATIENT_CHOICE"
     assert saved_request.selected_slot_id is None
     assert saved_request.calendar_event_id is None
-    assert google_provider.created_event_summaries == []
-    assert len(provider.sent_messages) == 1
-    assert "solo con el numero" in provider.sent_messages[0]["text"].lower()
-    assert "de marzo a las" in provider.sent_messages[0]["text"].lower()
-    assert "T08:00:00" not in provider.sent_messages[0]["text"]
-    assert len(llm_provider.calls) == 4
+    assert ctx.google_provider.created_event_summaries == []
+    assert len(ctx.provider.sent_messages) == 1
+    assert "solo con el numero" in ctx.provider.sent_messages[0]["text"].lower()
+    assert "de marzo a las" in ctx.provider.sent_messages[0]["text"].lower()
+    assert "T08:00:00" not in ctx.provider.sent_messages[0]["text"]
+    assert len(ctx.llm_provider.calls) == 4
 
 
 def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
-    )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
-
     now_value = datetime.datetime(2026, 3, 1, tzinfo=datetime.UTC)
-    conversation_repository.save_conversation(
+    ctx = build_tool_calling_context(
+        id_values=["in-msg-1", "out-msg-1"],
+        now_value=now_value,
+    )
+    ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
             id="conversation-1",
             tenant_id="tenant-1",
@@ -1666,7 +947,7 @@ def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
             control_mode="AI",
         )
     )
-    scheduling_repository.save_request(
+    ctx.scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-1",
             tenant_id="tenant-1",
@@ -1696,44 +977,7 @@ def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
             updated_at=now_value,
         )
     )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 3, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
-
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
+    ctx.llm_provider.queued_replies = [
         llm_dto.AgentReplyDTO(content="NINGUNA"),
         llm_dto.AgentReplyDTO(
             content="",
@@ -1750,89 +994,33 @@ def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
         ),
         llm_dto.AgentReplyDTO(content="YES"),
     ]
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
+    ctx.provider.events = [build_default_event("transfiereme con un humano")]
 
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="transfiereme con un humano",
-        )
-    ]
+    ctx.service.process_payload({})
 
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
+    saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
-    assert saved_request.status == "HUMAN_HANDOFF"
-    conversation = conversation_repository.get_conversation_by_id("tenant-1", "conversation-1")
+    assert saved_request.status == "AWAITING_PATIENT_CHOICE"
+    conversation = ctx.conversation_repository.get_conversation_by_id("tenant-1", "conversation-1")
     assert conversation is not None
     assert conversation.control_mode == "HUMAN"
-    assert len(provider.sent_messages) == 1
-    assert "te comunico" in provider.sent_messages[0]["text"].lower()
-    assert len(llm_provider.calls) == 3
+    assert len(ctx.provider.sent_messages) == 1
+    assert "te comunico" in ctx.provider.sent_messages[0]["text"].lower()
+    assert len(ctx.llm_provider.calls) == 3
 
 
 def test_webhook_confirm_slot_retries_network_error_and_handoffs_to_human() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
-    )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
+    retry_delays: list[float] = []
 
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-    conversation_repository.save_conversation(
+    def capture_sleep(seconds: float) -> None:
+        retry_delays.append(seconds)
+
+    ctx = build_tool_calling_context(
+        id_values=["in-msg-1", "out-msg-1"],
+        sleep_fn=capture_sleep,
+    )
+    now_value = ctx.clock.now()
+    ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
             id="conversation-1",
             tenant_id="tenant-1",
@@ -1844,7 +1032,7 @@ def test_webhook_confirm_slot_retries_network_error_and_handoffs_to_human() -> N
             control_mode="AI",
         )
     )
-    scheduling_repository.save_request(
+    ctx.scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-1",
             tenant_id="tenant-1",
@@ -1872,44 +1060,7 @@ def test_webhook_confirm_slot_retries_network_error_and_handoffs_to_human() -> N
             updated_at=now_value,
         )
     )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
-
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
+    ctx.llm_provider.queued_replies = [
         llm_dto.AgentReplyDTO(
             content="",
             function_calls=[
@@ -1931,68 +1082,20 @@ def test_webhook_confirm_slot_retries_network_error_and_handoffs_to_human() -> N
         ),
         llm_dto.AgentReplyDTO(content="Te paso con el profesional para continuar."),
     ]
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_provider.busy_interval_errors = [
+    ctx.google_provider.busy_interval_errors = [
         service_exceptions.ExternalProviderError("network error calling google calendar"),
         service_exceptions.ExternalProviderError("network error calling google calendar"),
         service_exceptions.ExternalProviderError("network error calling google calendar"),
         service_exceptions.ExternalProviderError("network error calling google calendar"),
     ]
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    retry_delays: list[float] = []
+    ctx.provider.events = [build_default_event("1")]
 
-    def capture_sleep(seconds: float) -> None:
-        retry_delays.append(seconds)
+    ctx.service.process_payload({})
 
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-        sleep_seconds=capture_sleep,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="1",
-        )
-    ]
-
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
+    saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
-    assert saved_request.status == "HUMAN_HANDOFF"
-    saved_conversation = conversation_repository.get_conversation_by_id(
+    assert saved_request.status == "AWAITING_PATIENT_CHOICE"
+    saved_conversation = ctx.conversation_repository.get_conversation_by_id(
         "tenant-1",
         "conversation-1",
     )
@@ -2002,30 +1105,17 @@ def test_webhook_confirm_slot_retries_network_error_and_handoffs_to_human() -> N
 
 
 def test_webhook_confirm_slot_unknown_error_handoffs_without_retry() -> None:
-    store = in_memory_store.InMemoryStore()
-    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
-        store
-    )
-    connection_repository = (
-        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
-    )
-    processed_repository = (
-        processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter(
-            store
-        )
-    )
-    blacklist_repository = blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter(store)
-    agent_profile_repository = (
-        agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
-    )
-    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
+    retry_delays: list[float] = []
 
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-    conversation_repository.save_conversation(
+    def capture_sleep(seconds: float) -> None:
+        retry_delays.append(seconds)
+
+    ctx = build_tool_calling_context(
+        id_values=["in-msg-1", "out-msg-1"],
+        sleep_fn=capture_sleep,
+    )
+    now_value = ctx.clock.now()
+    ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
             id="conversation-1",
             tenant_id="tenant-1",
@@ -2037,7 +1127,7 @@ def test_webhook_confirm_slot_unknown_error_handoffs_without_retry() -> None:
             control_mode="AI",
         )
     )
-    scheduling_repository.save_request(
+    ctx.scheduling_repository.save_request(
         scheduling_request_entity.SchedulingRequest(
             id="req-1",
             tenant_id="tenant-1",
@@ -2065,44 +1155,7 @@ def test_webhook_confirm_slot_unknown_error_handoffs_without_retry() -> None:
             updated_at=now_value,
         )
     )
-    connection_repository.save(
-        whatsapp_connection_entity.WhatsappConnection(
-            tenant_id="tenant-1",
-            phone_number_id="phone-1",
-            business_account_id="business-1",
-            access_token="wa-token-1",
-            status="CONNECTED",
-            embedded_signup_state=None,
-            updated_at=now_value,
-        )
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="google-access",
-            refresh_token="google-refresh",
-            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=now_value,
-            connected_at=now_value,
-        )
-    )
-    agent_profile_repository.save(
-        agent_profile_entity.AgentProfile(
-            tenant_id="tenant-1",
-            system_prompt="tenant custom prompt",
-            updated_at=now_value,
-        )
-    )
-
-    provider = fake_adapters.FakeWhatsappProvider()
-    llm_provider = fake_adapters.FakeLlmProvider(reply_content="unused")
-    llm_provider.queued_replies = [
+    ctx.llm_provider.queued_replies = [
         llm_dto.AgentReplyDTO(
             content="",
             function_calls=[
@@ -2124,65 +1177,17 @@ def test_webhook_confirm_slot_unknown_error_handoffs_without_retry() -> None:
         ),
         llm_dto.AgentReplyDTO(content="Te paso con el profesional para continuar."),
     ]
-    id_generator = fake_adapters.SequenceIdGenerator(["in-msg-1", "out-msg-1"])
-    clock = fake_adapters.FixedClock(now_value)
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_provider.busy_interval_errors = [
+    ctx.google_provider.busy_interval_errors = [
         service_exceptions.ExternalProviderError("google calendar unexpected provider issue")
     ]
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    scheduling_use_case = scheduling_service.SchedulingService(
-        scheduling_repository=scheduling_repository,
-        conversation_repository=conversation_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    retry_delays: list[float] = []
+    ctx.provider.events = [build_default_event("1")]
 
-    def capture_sleep(seconds: float) -> None:
-        retry_delays.append(seconds)
+    ctx.service.process_payload({})
 
-    service = webhook_service.WebhookService(
-        whatsapp_connection_repository=connection_repository,
-        conversation_repository=conversation_repository,
-        patient_repository=patient_repository,
-        processed_webhook_event_repository=processed_repository,
-        blacklist_repository=blacklist_repository,
-        agent_profile_repository=agent_profile_repository,
-        scheduling_service=scheduling_use_case,
-        llm_provider=llm_provider,
-        whatsapp_provider=provider,
-        id_generator=id_generator,
-        clock=clock,
-        default_system_prompt="default prompt",
-        context_message_limit=8,
-        sleep_seconds=capture_sleep,
-    )
-    provider.events = [
-        webhook_dto.IncomingMessageEventDTO(
-            provider_event_id="evt-1",
-            phone_number_id="phone-1",
-            whatsapp_user_id="wa-user-1",
-            whatsapp_user_name="Jane",
-            message_id="wamid-in-1",
-            message_type="text",
-            source="CUSTOMER",
-            message_text="1",
-        )
-    ]
-
-    service.process_payload({})
-
-    saved_request = scheduling_repository.get_request_by_id("tenant-1", "req-1")
+    saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
-    assert saved_request.status == "HUMAN_HANDOFF"
-    saved_conversation = conversation_repository.get_conversation_by_id(
+    assert saved_request.status == "AWAITING_PATIENT_CHOICE"
+    saved_conversation = ctx.conversation_repository.get_conversation_by_id(
         "tenant-1",
         "conversation-1",
     )

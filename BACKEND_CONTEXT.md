@@ -22,7 +22,15 @@
 ## Estructura de capas
 - `src/entrypoints/web`: capa HTTP (routers, handlers, dependencias auth).
 - `src/services`: casos de uso y DTOs principales.
-- `src/services/agentic`: grafos y engine de orquestación (`ConversationGraph`, `SchedulingTransitionGraph`).
+- `src/services/agentic`: orquestación agéntica modular:
+  - `graphs/`: grafos LangGraph (`ConversationGraph`, `SchedulingTransitionGraph`) — routing y tracing, sin lógica de negocio.
+  - `tool_handlers/`: registry pattern — `ToolHandler` ABC + handlers por tool + `ToolHandlerRegistry` dispatcher.
+  - `guards/`: guard chain — `ConversationGuard` ABC + 4 guards individuales + helpers compartidos.
+  - `prompts/`: structured prompts — `PromptSection` ABC + 4 secciones + `PromptAssembler`.
+  - `tool_calling_orchestrator.py`: loop LLM → tools → LLM (framework-agnostic, puro Python).
+  - `runtime_context_resolver.py`: resuelve estado agéntico (request activa → `RuntimePromptContext`).
+  - `conversation_message_sender.py`: envío WA + persistencia + archivado de subsessions.
+  - `workflow_runtime_adapter.py`: adapter que implementa `ConversationWorkflowRuntimePort`, delega a los componentes anteriores.
 - `src/ports`: contratos/interfaces para adapters.
 - `src/adapters/outbound`: implementaciones concretas (Meta, Gemini, seguridad, Firestore, in-memory para tests).
 - `src/domain`: entidades/agregados Pydantic.
@@ -67,16 +75,15 @@
   - `GET /healthz`
 
 ## Lógica clave en webhook
-- Resuelve tenant por `phone_number_id`.
-- Deduplica por `provider_event_id`.
-- Si contacto está en blacklist: ignora conversación/mensajes/IA y marca procesado.
-- Si evento es de dueño (`OWNER_APP`, coexistence echo):
-  - guarda mensaje `role=human_agent`,
-  - fuerza conversación a `HUMAN`.
-- Si evento es cliente (`CUSTOMER`):
-  - guarda inbound,
-  - si conversación está en `HUMAN`, no responde IA,
-  - si está en `AI`, genera respuesta con Gemini y envía por WhatsApp.
+- `webhook_service.py` (~733 líneas): orquestación HTTP — resolve tenant, dedup, upsert conversation, debounce, fallback.
+- La lógica agéntica fue extraída a `src/services/agentic/` (ver estructura arriba).
+- Flujo simplificado:
+  1. Resuelve tenant por `phone_number_id`, deduplica por `provider_event_id`.
+  2. Si blacklist → ignora. Si `OWNER_APP` echo → guarda `role=human_agent`, fuerza `HUMAN`.
+  3. Si `CUSTOMER` en modo `AI` → ejecuta `ConversationGraph` (LangGraph):
+     - Guards evalúan estado (patient choice, slot selection, professional wait, silent).
+     - Si ningún guard intercepta → `ToolCallingOrchestrator` ejecuta loop LLM → tools → LLM.
+     - `ConversationMessageSender` envía respuesta por WA y persiste.
 
 ## Persistencia actual
 - Firestore como almacenamiento principal de estado de dominio.
@@ -113,7 +120,7 @@ flowchart TD
     J --> K["END"]
 ```
 
-Nodos: 9 (`load_runtime_context`, `guard_waiting_patient_choice_override`, `guard_required_numeric_slot_selection`, `guard_waiting_professional_override`, `guard_waiting_professional_silent`, `build_prompt_context`, `call_llm`, `execute_tools`, `decide_terminal_output`).
+Nodos: 9. Cada guard delega a su clase en `guards/`. `call_llm` delega a `ToolCallingOrchestrator`. LangGraph solo rutea y traza.
 
 ### SchedulingTransitionGraph (transiciones de agenda)
 ```mermaid

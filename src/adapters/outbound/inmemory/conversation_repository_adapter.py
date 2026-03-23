@@ -27,6 +27,14 @@ class InMemoryConversationRepositoryAdapter(
                 return None
             return whatsapp_user.model_copy(deep=True)
 
+    def list_whatsapp_users(self, tenant_id: str) -> list[whatsapp_user_entity.WhatsappUser]:
+        with self._store.lock:
+            users: list[whatsapp_user_entity.WhatsappUser] = []
+            for (stored_tenant_id, _), user in self._store.whatsapp_user_by_tenant_and_id.items():
+                if stored_tenant_id == tenant_id:
+                    users.append(user.model_copy(deep=True))
+            return users
+
     def save_conversation(self, conversation: conversation_entity.Conversation) -> None:
         with self._store.lock:
             key = (conversation.tenant_id, conversation.whatsapp_user_id)
@@ -116,4 +124,21 @@ class InMemoryConversationRepositoryAdapter(
             self._store.conversation_by_id[updated_conversation.id] = updated_conversation
             self._store.conversation_by_tenant_and_wa_user[conversation_key] = updated_conversation
             self._store.messages_by_conversation_id[conversation_id] = []
+            self._store.flush()
+
+    def delete_conversation(self, tenant_id: str, conversation_id: str) -> None:
+        with self._store.lock:
+            conversation = self._store.conversation_by_id.get(conversation_id)
+            if conversation is None or conversation.tenant_id != tenant_id:
+                return
+            conversation_key = (conversation.tenant_id, conversation.whatsapp_user_id)
+            self._store.conversation_by_id.pop(conversation_id, None)
+            self._store.conversation_by_tenant_and_wa_user.pop(conversation_key, None)
+            self._store.messages_by_conversation_id.pop(conversation_id, None)
+            self._store.flush()
+
+    def delete_whatsapp_user(self, tenant_id: str, whatsapp_user_id: str) -> None:
+        with self._store.lock:
+            key = (tenant_id, whatsapp_user_id)
+            self._store.whatsapp_user_by_tenant_and_id.pop(key, None)
             self._store.flush()

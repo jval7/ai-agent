@@ -1,9 +1,6 @@
 export type StatusBadgeTone = "neutral" | "success" | "warning" | "danger" | "info";
 
-export function StatusBadge(props: {
-  label: string;
-  tone: StatusBadgeTone;
-}) {
+export function StatusBadge(props: { label: string; tone: StatusBadgeTone }) {
   const toneClassByType = {
     neutral: "bg-slate-100 text-slate-700",
     success: "bg-emerald-100 text-emerald-700",

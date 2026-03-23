@@ -58,7 +58,7 @@ function resolveAppointmentDisplayStatus(
   if (request.status === "AWAITING_PAYMENT_CONFIRMATION") {
     return "PAGO_PENDIENTE";
   }
-  if (request.status === "BOOKED") {
+  if (request.status === "BOOKED" || request.status === "SESSION_CLOSED") {
     const bookedSlot = request.slots.find((slot) => slot.status === "BOOKED");
     if (bookedSlot !== undefined) {
       const slotEnd = new Date(bookedSlot.endAt);
@@ -199,9 +199,29 @@ export function InboxPage() {
     mutationFn: (conversationId: string) =>
       appContainer.conversationUseCase.resetMessages(conversationId),
     onSuccess: async (_data, conversationId) => {
+      if (selectedConversationId === conversationId) {
+        setSelectedConversationId(null);
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: patientsQueryKey }),
         queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] })
+      ]);
+    }
+  });
+
+  const [messageText, setMessageText] = reactModule.useState("");
+  const sendMessageMutation = reactQueryModule.useMutation({
+    mutationFn: (payload: { conversationId: string; messageText: string }) =>
+      appContainer.conversationUseCase.sendMessage(payload.conversationId, payload.messageText),
+    onSuccess: async () => {
+      setMessageText("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation-messages", selectedConversationId]
+        })
       ]);
     }
   });
@@ -215,12 +235,13 @@ export function InboxPage() {
 
   const selectedConversationRequest =
     selectedConversationId !== null
-      ? latestRequestByConversationId.get(selectedConversationId) ?? null
+      ? (latestRequestByConversationId.get(selectedConversationId) ?? null)
       : null;
   const selectedAppointmentStatus: AppointmentDisplayStatus =
     selectedConversationRequest !== null
       ? resolveAppointmentDisplayStatus(selectedConversationRequest)
       : "SIN_CITA";
+  // eslint-disable-next-line security/detect-object-injection
   const selectedAppointmentConfig = appointmentDisplayConfig[selectedAppointmentStatus];
 
   const renderConversationItem = (
@@ -228,9 +249,11 @@ export function InboxPage() {
     options: { onClick: () => void }
   ) => {
     const patientName = patientNameByWhatsappId.get(conversation.whatsappUserId);
+    const displayName = conversation.contactName ?? patientName ?? conversation.whatsappUserId;
     const request = latestRequestByConversationId.get(conversation.conversationId);
     const displayStatus: AppointmentDisplayStatus =
       request !== undefined ? resolveAppointmentDisplayStatus(request) : "SIN_CITA";
+    // eslint-disable-next-line security/detect-object-injection
     const config = appointmentDisplayConfig[displayStatus];
     return (
       <button
@@ -241,13 +264,9 @@ export function InboxPage() {
       >
         <div className="mb-1 flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-brand-ink">
-              {patientName ?? conversation.whatsappUserId}
-            </p>
-            {patientName !== undefined ? (
-              <p className="truncate text-[11px] text-slate-400">
-                {conversation.whatsappUserId}
-              </p>
+            <p className="truncate text-sm font-semibold text-brand-ink">{displayName}</p>
+            {conversation.contactName !== null ? (
+              <p className="truncate text-[11px] text-slate-400">{conversation.whatsappUserId}</p>
             ) : null}
           </div>
           <statusBadgeModule.StatusBadge
@@ -308,13 +327,24 @@ export function InboxPage() {
                   }}
                   type="button"
                 >
-                  <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M15.75 19.5L8.25 12l7.5-7.5"
+                    />
                   </svg>
                 </button>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-brand-ink">
-                    {patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
+                    {selectedConversation.contactName ??
+                      patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
                       selectedConversation.whatsappUserId}
                   </p>
                 </div>
@@ -367,6 +397,40 @@ export function InboxPage() {
               ) : null}
             </div>
 
+            {/* Send message input (HUMAN mode only) */}
+            {selectedConversation.controlMode === "HUMAN" ? (
+              <form
+                className="flex gap-2 border-t border-slate-200 bg-white px-2 py-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const trimmed = messageText.trim();
+                  if (trimmed === "" || selectedConversationId === null) {
+                    return;
+                  }
+                  sendMessageMutation.mutate({
+                    conversationId: selectedConversationId,
+                    messageText: trimmed
+                  });
+                }}
+              >
+                <input
+                  className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-teal focus:outline-none"
+                  disabled={sendMessageMutation.isPending}
+                  onChange={(event) => setMessageText(event.target.value)}
+                  placeholder="Escribe un mensaje..."
+                  type="text"
+                  value={messageText}
+                />
+                <button
+                  className="rounded-lg bg-brand-teal px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal/90 disabled:opacity-60"
+                  disabled={sendMessageMutation.isPending || messageText.trim() === ""}
+                  type="submit"
+                >
+                  {sendMessageMutation.isPending ? "Enviando..." : "Enviar"}
+                </button>
+              </form>
+            ) : null}
+
             {/* FAB + action menu */}
             <div className="pointer-events-none absolute bottom-4 right-2 flex flex-col items-end gap-2">
               {fabOpen ? (
@@ -378,7 +442,7 @@ export function InboxPage() {
                         return;
                       }
                       const isConfirmed = window.confirm(
-                        "¿Seguro que quieres resetear este chat? Se borrarán los mensajes activos."
+                        "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
                       );
                       if (!isConfirmed) {
                         return;
@@ -393,16 +457,13 @@ export function InboxPage() {
                   <button
                     className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
                     onClick={() => {
-                      const nextMode =
-                        selectedConversation.controlMode === "AI" ? "HUMAN" : "AI";
+                      const nextMode = selectedConversation.controlMode === "AI" ? "HUMAN" : "AI";
                       controlModeMutation.mutate(nextMode);
                       setFabOpen(false);
                     }}
                     type="button"
                   >
-                    {selectedConversation.controlMode === "AI"
-                      ? "Cambiar a HUMAN"
-                      : "Cambiar a AI"}
+                    {selectedConversation.controlMode === "AI" ? "Cambiar a HUMAN" : "Cambiar a AI"}
                   </button>
                   <button
                     className={[
@@ -434,12 +495,28 @@ export function InboxPage() {
                 type="button"
               >
                 {fabOpen ? (
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 ) : (
-                  <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z" />
+                  <svg
+                    className="h-6 w-6"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 6.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 12.75a.75.75 0 110-1.5.75.75 0 010 1.5zM12 18.75a.75.75 0 110-1.5.75.75 0 010 1.5z"
+                    />
                   </svg>
                 )}
               </button>
@@ -468,9 +545,12 @@ export function InboxPage() {
                 resetMessagesMutation.isPending &&
                 resetMessagesMutation.variables === conversation.conversationId;
               const patientName = patientNameByWhatsappId.get(conversation.whatsappUserId);
+              const desktopDisplayName =
+                conversation.contactName ?? patientName ?? conversation.whatsappUserId;
               const request = latestRequestByConversationId.get(conversation.conversationId);
               const displayStatus: AppointmentDisplayStatus =
                 request !== undefined ? resolveAppointmentDisplayStatus(request) : "SIN_CITA";
+              // eslint-disable-next-line security/detect-object-injection
               const config = appointmentDisplayConfig[displayStatus];
               return (
                 <article
@@ -492,9 +572,9 @@ export function InboxPage() {
                     <div className="mb-1 flex items-center justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-brand-ink">
-                          {patientName ?? conversation.whatsappUserId}
+                          {desktopDisplayName}
                         </p>
-                        {patientName !== undefined ? (
+                        {conversation.contactName !== null ? (
                           <p className="truncate text-[11px] text-slate-400">
                             {conversation.whatsappUserId}
                           </p>
@@ -518,7 +598,7 @@ export function InboxPage() {
                     disabled={resetMessagesMutation.isPending}
                     onClick={() => {
                       const isConfirmed = window.confirm(
-                        "¿Seguro que quieres resetear este chat? Se borrarán los mensajes activos y la conversación quedará vacía."
+                        "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
                       );
                       if (!isConfirmed) {
                         return;
@@ -540,7 +620,8 @@ export function InboxPage() {
             <h2 className="text-base font-semibold">Mensajes</h2>
             {selectedConversation !== undefined ? (
               <p className="text-xs text-slate-500">
-                {patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
+                {selectedConversation.contactName ??
+                  patientNameByWhatsappId.get(selectedConversation.whatsappUserId) ??
                   selectedConversation.whatsappUserId}
               </p>
             ) : (
@@ -577,6 +658,40 @@ export function InboxPage() {
               <p className="text-sm text-slate-500">No hay mensajes en esta conversación.</p>
             ) : null}
           </div>
+
+          {/* Send message input (HUMAN mode only) */}
+          {selectedConversation?.controlMode === "HUMAN" ? (
+            <form
+              className="flex gap-2 border-t border-border-subtle px-4 py-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const trimmed = messageText.trim();
+                if (trimmed === "" || selectedConversationId === null) {
+                  return;
+                }
+                sendMessageMutation.mutate({
+                  conversationId: selectedConversationId,
+                  messageText: trimmed
+                });
+              }}
+            >
+              <input
+                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-brand-teal focus:outline-none"
+                disabled={sendMessageMutation.isPending}
+                onChange={(event) => setMessageText(event.target.value)}
+                placeholder="Escribe un mensaje..."
+                type="text"
+                value={messageText}
+              />
+              <button
+                className="rounded-lg bg-brand-teal px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-brand-teal/90 disabled:opacity-60"
+                disabled={sendMessageMutation.isPending || messageText.trim() === ""}
+                type="submit"
+              >
+                {sendMessageMutation.isPending ? "Enviando..." : "Enviar"}
+              </button>
+            </form>
+          ) : null}
         </article>
 
         <article className="space-y-4 rounded-xl border border-border-subtle bg-white shadow-card p-4">
