@@ -43,6 +43,10 @@ class ConversationQueryService:
             raise service_exceptions.EntityNotFoundError("conversation not found")
 
         messages = self._conversation_repository.list_messages(tenant_id, conversation_id)
+
+        if not messages and conversation.subsessions:
+            messages = list(conversation.subsessions[-1].messages)
+
         sorted_messages = sorted(messages, key=lambda item: item.created_at)
 
         items: list[conversation_dto.MessageDTO] = []

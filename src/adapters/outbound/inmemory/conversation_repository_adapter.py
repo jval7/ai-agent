@@ -125,3 +125,20 @@ class InMemoryConversationRepositoryAdapter(
             self._store.conversation_by_tenant_and_wa_user[conversation_key] = updated_conversation
             self._store.messages_by_conversation_id[conversation_id] = []
             self._store.flush()
+
+    def delete_conversation(self, tenant_id: str, conversation_id: str) -> None:
+        with self._store.lock:
+            conversation = self._store.conversation_by_id.get(conversation_id)
+            if conversation is None or conversation.tenant_id != tenant_id:
+                return
+            conversation_key = (conversation.tenant_id, conversation.whatsapp_user_id)
+            self._store.conversation_by_id.pop(conversation_id, None)
+            self._store.conversation_by_tenant_and_wa_user.pop(conversation_key, None)
+            self._store.messages_by_conversation_id.pop(conversation_id, None)
+            self._store.flush()
+
+    def delete_whatsapp_user(self, tenant_id: str, whatsapp_user_id: str) -> None:
+        with self._store.lock:
+            key = (tenant_id, whatsapp_user_id)
+            self._store.whatsapp_user_by_tenant_and_id.pop(key, None)
+            self._store.flush()

@@ -302,3 +302,48 @@ class FirestoreConversationRepositoryAdapter(
             raise firestore_errors.FirestoreRepositoryError(
                 "failed to delete messages from firestore"
             ) from error
+
+    def delete_conversation(self, tenant_id: str, conversation_id: str) -> None:
+        conversation = self.get_conversation_by_id(tenant_id, conversation_id)
+        if conversation is None:
+            return
+        conversation_document = firestore_paths.tenant_conversation_document(
+            self._client,
+            tenant_id,
+            conversation_id,
+        )
+        conversation_lookup_document = firestore_paths.tenant_conversation_lookup_document(
+            self._client,
+            tenant_id,
+            conversation.whatsapp_user_id,
+        )
+        batch = self._client.batch()
+        batch.delete(conversation_document)
+        batch.delete(conversation_lookup_document)
+        try:
+            batch.commit()
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete conversation from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete conversation from firestore"
+            ) from error
+
+    def delete_whatsapp_user(self, tenant_id: str, whatsapp_user_id: str) -> None:
+        whatsapp_user_document = firestore_paths.tenant_whatsapp_user_document(
+            self._client,
+            tenant_id,
+            whatsapp_user_id,
+        )
+        try:
+            whatsapp_user_document.delete()
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete whatsapp user from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete whatsapp user from firestore"
+            ) from error

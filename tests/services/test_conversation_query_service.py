@@ -122,3 +122,55 @@ def test_list_messages_returns_ordered_history() -> None:
     assert len(response.items) == 2
     assert response.items[0].message_id == "msg-1"
     assert response.items[1].message_id == "msg-2"
+
+
+def test_list_messages_returns_latest_subsession_when_active_empty() -> None:
+    service, repository = build_query_service()
+    base_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+
+    archived_messages = [
+        message_entity.Message(
+            id="msg-a1",
+            conversation_id="conv-1",
+            tenant_id="tenant-1",
+            direction="INBOUND",
+            role="user",
+            content="Hola, quiero una cita",
+            provider_message_id="pa1",
+            created_at=base_time + datetime.timedelta(seconds=1),
+        ),
+        message_entity.Message(
+            id="msg-a2",
+            conversation_id="conv-1",
+            tenant_id="tenant-1",
+            direction="OUTBOUND",
+            role="assistant",
+            content="Claro, te ayudo con eso.",
+            provider_message_id="pa2",
+            created_at=base_time + datetime.timedelta(seconds=2),
+        ),
+    ]
+
+    conversation = conversation_entity.Conversation(
+        id="conv-1",
+        tenant_id="tenant-1",
+        whatsapp_user_id="wa-1",
+        started_at=base_time,
+        updated_at=base_time,
+        last_message_preview=None,
+        message_ids=[],
+        messages=[],
+    )
+    conversation.archive_current_session(
+        scheduling_request_id="req-1",
+        calendar_event_id="event-1",
+        messages=archived_messages,
+        now=base_time + datetime.timedelta(minutes=5),
+    )
+    repository.save_conversation(conversation)
+
+    response = service.list_messages("tenant-1", "conv-1")
+
+    assert len(response.items) == 2
+    assert response.items[0].content == "Hola, quiero una cita"
+    assert response.items[1].content == "Claro, te ayudo con eso."

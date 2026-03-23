@@ -21,12 +21,15 @@ import os
 import pathlib
 import sys
 
-import google.cloud.firestore as google_cloud_firestore
-import httpx
-from google import genai
+_PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_PROJECT_ROOT))
 
-import src.domain.entities.conversation as conversation_entity
-import src.domain.entities.message as message_entity
+import google.cloud.firestore as google_cloud_firestore  # noqa: E402
+import httpx  # noqa: E402
+from google import genai  # noqa: E402
+
+import src.domain.entities.conversation as conversation_entity  # noqa: E402
+import src.domain.entities.message as message_entity  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Cargar .secrets/

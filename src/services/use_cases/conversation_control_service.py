@@ -3,6 +3,7 @@ import src.infra.logs as app_logs
 import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
+import src.ports.patient_repository_port as patient_repository_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
@@ -19,6 +20,7 @@ class ConversationControlService:
         self,
         conversation_repository: conversation_repository_port.ConversationRepositoryPort,
         scheduling_repository: scheduling_repository_port.SchedulingRepositoryPort,
+        patient_repository: patient_repository_port.PatientRepositoryPort,
         whatsapp_connection_repository: whatsapp_connection_repository_port.WhatsappConnectionRepositoryPort,
         whatsapp_provider: whatsapp_provider_port.WhatsappProviderPort,
         id_generator: id_generator_port.IdGeneratorPort,
@@ -26,6 +28,7 @@ class ConversationControlService:
     ) -> None:
         self._conversation_repository = conversation_repository
         self._scheduling_repository = scheduling_repository
+        self._patient_repository = patient_repository
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._whatsapp_provider = whatsapp_provider
         self._id_generator = id_generator
@@ -85,40 +88,32 @@ class ConversationControlService:
         if conversation is None:
             raise service_exceptions.EntityNotFoundError("conversation not found")
 
-        now_value = self._clock.now()
         scheduling_requests = self._scheduling_repository.list_requests_by_conversation(
             claims.tenant_id,
             conversation_id,
         )
-        cancelled_request_ids: list[str] = []
+        deleted_request_ids: list[str] = []
         for request in scheduling_requests:
-            if request.status in (
-                "AWAITING_CONSULTATION_REVIEW",
-                "AWAITING_CONSULTATION_DETAILS",
-                "AWAITING_PATIENT_CHOICE",
-                "AWAITING_PAYMENT_CONFIRMATION",
-            ):
-                request.professional_note = "conversation reset by owner"
-                request.set_status("CANCELLED", now_value)
-                self._scheduling_repository.save_request(request)
-                cancelled_request_ids.append(request.id)
+            self._scheduling_repository.delete_request(claims.tenant_id, request.id)
+            deleted_request_ids.append(request.id)
 
-        conversation.message_ids = []
-        conversation.messages = []
-        conversation.last_message_preview = None
-        conversation.updated_at = now_value
-        self._conversation_repository.save_conversation(conversation)
+        self._patient_repository.delete(claims.tenant_id, conversation.whatsapp_user_id)
         self._conversation_repository.delete_messages(claims.tenant_id, conversation_id)
+        self._conversation_repository.delete_whatsapp_user(
+            claims.tenant_id, conversation.whatsapp_user_id
+        )
+        self._conversation_repository.delete_conversation(claims.tenant_id, conversation_id)
         logger.info(
-            "conversation.messages_reset",
+            "conversation.fully_reset",
             extra={
                 "event_data": app_logs.build_log_event(
-                    event_name="conversation.messages_reset",
-                    message="conversation messages reset by owner",
+                    event_name="conversation.fully_reset",
+                    message="conversation fully reset by owner",
                     data={
                         "tenant_id": conversation.tenant_id,
                         "conversation_id": conversation.id,
-                        "cancelled_scheduling_requests_count": len(cancelled_request_ids),
+                        "whatsapp_user_id": conversation.whatsapp_user_id,
+                        "deleted_scheduling_requests_count": len(deleted_request_ids),
                     },
                 )
             },
