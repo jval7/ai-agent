@@ -17,6 +17,13 @@ include $(MAKE_API_BASE_FILE)
 export
 endif
 
+# Resolve relative ADC path from .env to absolute so Terraform finds it
+# regardless of which subdirectory it runs in.
+ifneq (,$(GOOGLE_APPLICATION_CREDENTIALS))
+override GOOGLE_APPLICATION_CREDENTIALS := $(abspath $(GOOGLE_APPLICATION_CREDENTIALS))
+export GOOGLE_APPLICATION_CREDENTIALS
+endif
+
 API_BASE ?= http://localhost:8000
 TENANT_NAME ?= Acme
 OWNER_EMAIL ?= owner@acme.com
