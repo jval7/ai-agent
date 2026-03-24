@@ -1,0 +1,819 @@
+# API Endpoints (MVP WhatsApp Agent)
+
+Este documento describe qué hace cada endpoint del backend.
+
+## Convenciones
+
+- Base URL local: `http://localhost:8000`
+- Auth: `Authorization: Bearer <access_token>`
+- Content-Type JSON: `application/json`
+- Error mapping global:
+  - `400`: estado inválido (`InvalidStateError`)
+  - `401`: autenticación inválida/faltante (`AuthenticationError`)
+  - `403`: autorización inválida (`AuthorizationError`)
+  - `404`: entidad no encontrada (`EntityNotFoundError`)
+  - `409`: conflicto por duplicado (`DuplicateWebhookEventError`)
+  - `502`: error de proveedor externo (`ExternalProviderError`)
+  - `422`: validación de request por FastAPI/Pydantic
+
+---
+
+## Health
+
+### `GET /healthz`
+- Auth: no
+- Qué hace: confirma que la API está viva.
+- Response example:
+```json
+{
+  "status": "ok"
+}
+```
+
+---
+
+## Auth
+
+### `POST /v1/auth/register`
+- Estado: deshabilitado.
+- Resultado: `404 Not Found`.
+- Nota: la creación/eliminación de usuarios se hace solo por comandos locales (`make user-bootstrap-master`, `make user-create`, `make user-delete`).
+
+### `POST /v1/auth/login`
+- Auth: no
+- Qué hace: valida credenciales y emite tokens.
+- Request body:
+```json
+{
+  "email": "owner@acme.com",
+  "password": "supersecret"
+}
+```
+- Response body:
+```json
+{
+  "access_token": "...",
+  "refresh_token": "...",
+  "token_type": "bearer",
+  "expires_in_seconds": 1800
+}
+```
+
+### `POST /v1/auth/refresh`
+- Auth: no
+- Qué hace: rota refresh token y devuelve nuevo par de tokens.
+- Request body:
+```json
+{
+  "refresh_token": "..."
+}
+```
+- Response body: igual que `login`.
+
+### `POST /v1/auth/logout`
+- Auth: sí (access token)
+- Qué hace: revoca refresh token enviado en el body.
+- Request body:
+```json
+{
+  "refresh_token": "..."
+}
+```
+- Response: `204 No Content`.
+
+---
+
+## Agent
+
+### `GET /v1/agent/system-prompt`
+- Auth: sí
+- Qué hace: retorna system prompt del tenant autenticado.
+- Response body:
+```json
+{
+  "tenant_id": "...",
+  "system_prompt": "..."
+}
+```
+
+### `PUT /v1/agent/system-prompt`
+- Auth: sí
+- Qué hace: actualiza system prompt del tenant autenticado.
+- Request body:
+```json
+{
+  "system_prompt": "Eres un agente de soporte claro y directo"
+}
+```
+- Response body:
+```json
+{
+  "tenant_id": "...",
+  "system_prompt": "Eres un agente de soporte claro y directo"
+}
+```
+
+### `GET /v1/agent/settings`
+- Auth: sí
+- Qué hace: retorna configuración del agente del tenant autenticado.
+- Response body:
+```json
+{
+  "tenant_id": "...",
+  "message_debounce_delay_seconds": 5
+}
+```
+
+### `PUT /v1/agent/settings`
+- Auth: sí
+- Qué hace: actualiza configuración del agente.
+- Request body:
+```json
+{
+  "message_debounce_delay_seconds": 5
+}
+```
+- Validación: `message_debounce_delay_seconds` debe ser entero entre 0 y 30.
+- Response body: igual que `GET /v1/agent/settings`.
+
+---
+
+## WhatsApp Onboarding
+
+### `POST /v1/whatsapp/embedded-signup/session`
+- Auth: sí
+- Qué hace: crea estado de onboarding (`state`) y devuelve URL para iniciar Embedded Signup.
+- Response body:
+```json
+{
+  "state": "...",
+  "connect_url": "https://www.facebook.com/..."
+}
+```
+
+### `POST /v1/whatsapp/embedded-signup/complete`
+- Auth: sí
+- Qué hace: completa conexión WhatsApp para el tenant con `code` + `state`.
+- Request body:
+```json
+{
+  "code": "...",
+  "state": "..."
+}
+```
+- Response body:
+```json
+{
+  "tenant_id": "...",
+  "status": "CONNECTED",
+  "phone_number_id": "...",
+  "business_account_id": "..."
+}
+```
+- Nota local/dev: soporta `code` mock con formato:
+  - `mock::<phone_number_id>::<business_account_id>::<access_token>`
+
+### `GET /oauth/meta/callback`
+- Auth: no (redirección de Meta)
+- Qué hace: completa automáticamente Embedded Signup usando `code` + `state` del query string.
+- Comportamiento actual:
+  - éxito: redirige al frontend en `FRONTEND_APP_BASE_URL/inbox?meta_oauth=connected`
+  - error: redirige al frontend en `FRONTEND_APP_BASE_URL/onboarding/whatsapp?meta_oauth=error...`
+  - fallback: si `FRONTEND_APP_BASE_URL` está vacío, devuelve HTML de éxito/error.
+- Query params esperados:
+  - `code`
+  - `state`
+- Response:
+  - `303 Redirect` al frontend (default)
+  - `200/4xx/5xx HTML` solo en fallback
+- Uso recomendado:
+  - Configurar esta ruta como `META_REDIRECT_URI` en Meta para evitar copy/paste manual de `code` y `state`.
+
+### `GET /v1/whatsapp/connection`
+- Auth: sí
+- Qué hace: retorna estado actual de conexión WhatsApp del tenant.
+- Response body:
+```json
+{
+  "tenant_id": "...",
+  "status": "DISCONNECTED|PENDING|CONNECTED",
+  "phone_number_id": "...",
+  "business_account_id": "..."
+}
+```
+
+### `GET /v1/whatsapp/dev/verify-token`
+- Auth: sí
+- Qué hace: retorna el `verify_token` global de plataforma para configurar verificación de webhook en Meta (uso dev).
+- Response body:
+```json
+{
+  "verify_token": "..."
+}
+```
+
+### `POST /v1/dev/memory/reset`
+- Auth: sí
+- Qué hace: limpia estado en Firestore (tenants, users, conversaciones, eventos, índices y refresh tokens).
+- Uso: desarrollo local para resetear estado sin reiniciar la API.
+- Response body:
+```json
+{
+  "status": "reset"
+}
+```
+
+### `POST /v1/dev/memory/chat/reset`
+- Auth: sí
+- Qué hace: limpia solo estado de chat en Firestore (conversaciones, mensajes, scheduling, blacklist, pacientes, deduplicación de eventos).
+- Uso: desarrollo local para reiniciar conversación sin borrar configuración base del tenant.
+- Response body:
+```json
+{
+  "status": "chat_reset"
+}
+```
+
+---
+
+## Webhooks (Meta)
+
+### `GET /v1/webhooks/whatsapp`
+- Auth: no (llamado por Meta)
+- Qué hace: verificación inicial del webhook (`hub.challenge`).
+- Query params esperados:
+  - `hub.mode`
+  - `hub.verify_token`
+  - `hub.challenge`
+- Validación:
+  - `hub.verify_token` debe ser igual a `META_WEBHOOK_VERIFY_TOKEN`.
+- Response: texto plano con el valor de `hub.challenge` si la verificación es correcta.
+
+### `POST /v1/webhooks/whatsapp`
+- Auth: no (llamado por Meta)
+- Qué hace:
+  - parsea eventos de mensaje entrante
+  - resuelve tenant por `phone_number_id`
+  - deduplica por `provider_event_id`
+  - guarda mensaje inbound
+  - genera respuesta con Gemini
+  - envía respuesta por WhatsApp
+  - guarda outbound y marca evento procesado
+- Request body: payload oficial de Meta.
+- Response body:
+```json
+{
+  "status": "processed"
+}
+```
+- Nota: actualmente solo procesa mensajes de tipo `text`.
+
+---
+
+## Conversations
+
+### `GET /v1/conversations`
+- Auth: sí
+- Qué hace: lista conversaciones del tenant autenticado, ordenadas por `updated_at` descendente.
+- Response body:
+```json
+{
+  "items": [
+    {
+      "conversation_id": "...",
+      "whatsapp_user_id": "...",
+      "last_message_preview": "...",
+      "updated_at": "2026-02-14T00:00:00Z"
+    }
+  ]
+}
+```
+
+### `GET /v1/conversations/{conversation_id}/messages`
+- Auth: sí
+- Qué hace: retorna historial de mensajes de una conversación del tenant autenticado.
+- Response body:
+```json
+{
+  "items": [
+    {
+      "message_id": "...",
+      "conversation_id": "...",
+      "role": "user|assistant|system",
+      "direction": "INBOUND|OUTBOUND",
+      "content": "...",
+      "created_at": "2026-02-14T00:00:00Z"
+    }
+  ]
+}
+```
+
+### `PUT /v1/conversations/{conversation_id}/control-mode`
+- Auth: sí
+- Qué hace: cambia el modo de control de la conversación entre AI y humano.
+- Request body:
+```json
+{
+  "control_mode": "AI"
+}
+```
+- Valores válidos: `"AI"`, `"HUMAN"`.
+- Response body:
+```json
+{
+  "conversation_id": "...",
+  "tenant_id": "...",
+  "control_mode": "AI",
+  "updated_at": "2026-03-15T10:00:00Z"
+}
+```
+
+### `POST /v1/conversations/{conversation_id}/messages`
+- Auth: sí
+- Qué hace: envía un mensaje del profesional al paciente por WhatsApp.
+- Request body:
+```json
+{
+  "message_text": "Hola, te confirmo la cita para mañana."
+}
+```
+- Response: `201 Created`
+```json
+{
+  "message_id": "...",
+  "conversation_id": "...",
+  "role": "assistant",
+  "content": "Hola, te confirmo la cita para mañana.",
+  "created_at": "2026-03-15T10:00:00Z"
+}
+```
+
+### `DELETE /v1/conversations/{conversation_id}/messages`
+- Auth: sí
+- Qué hace: resetea el historial de mensajes de una conversación.
+- Response: `204 No Content`.
+
+---
+
+## Patients
+
+### `GET /v1/patients`
+- Auth: sí (owner)
+- Qué hace: lista pacientes registrados del tenant autenticado, ordenados por `created_at` descendente.
+- Response body:
+```json
+{
+  "items": [
+    {
+      "tenant_id": "...",
+      "whatsapp_user_id": "573001234567",
+      "first_name": "Jane",
+      "last_name": "Doe",
+      "email": "jane@example.com",
+      "age": 29,
+      "consultation_reason": "Ansiedad",
+      "location": "Bogota",
+      "phone": "573001234567",
+      "created_at": "2026-03-02T00:44:28Z"
+    }
+  ]
+}
+```
+
+### `GET /v1/patients/{whatsapp_user_id}`
+- Auth: sí (owner)
+- Qué hace: retorna el detalle de un paciente por `whatsapp_user_id`.
+- Response body:
+```json
+{
+  "tenant_id": "...",
+  "whatsapp_user_id": "573001234567",
+  "first_name": "Jane",
+  "last_name": "Doe",
+  "email": "jane@example.com",
+  "age": 29,
+  "consultation_reason": "Ansiedad",
+  "location": "Bogota",
+  "phone": "573001234567",
+  "created_at": "2026-03-02T00:44:28Z"
+}
+```
+
+### `POST /v1/patients`
+- Auth: sí (owner)
+- Qué hace: crea un paciente manualmente.
+- Request body:
+```json
+{
+  "whatsapp_user_id": "573001234567",
+  "first_name": "Jane",
+  "last_name": "Doe",
+  "email": "jane@example.com",
+  "age": 29,
+  "consultation_reason": "Ansiedad",
+  "location": "Bogota",
+  "phone": "573001234567"
+}
+```
+- Response body: igual que `GET /v1/patients/{whatsapp_user_id}`.
+
+### `PUT /v1/patients/{whatsapp_user_id}`
+- Auth: sí (owner)
+- Qué hace: actualiza datos de un paciente existente.
+- Request body: mismos campos que `POST` sin `whatsapp_user_id`.
+- Response body: igual que `GET /v1/patients/{whatsapp_user_id}`.
+
+### `DELETE /v1/patients/{whatsapp_user_id}`
+- Auth: sí (owner)
+- Qué hace: elimina un paciente.
+- Response: `204 No Content`.
+
+---
+
+## Blacklist
+
+### `GET /v1/blacklist`
+- Auth: sí
+- Qué hace: lista números bloqueados del tenant autenticado.
+- Response body:
+```json
+{
+  "items": [
+    {
+      "tenant_id": "...",
+      "whatsapp_user_id": "573001234567",
+      "created_at": "2026-03-15T10:00:00Z"
+    }
+  ]
+}
+```
+
+### `POST /v1/blacklist`
+- Auth: sí
+- Qué hace: agrega un número a la blacklist (upsert).
+- Request body:
+```json
+{
+  "whatsapp_user_id": "573001234567"
+}
+```
+- Response body: igual que un item de `GET /v1/blacklist`.
+
+### `DELETE /v1/blacklist/{whatsapp_user_id}`
+- Auth: sí
+- Qué hace: elimina un número de la blacklist.
+- Response: `204 No Content`.
+
+---
+
+## Google Calendar
+
+### `POST /v1/google-calendar/oauth/session`
+- Auth: sí
+- Qué hace: crea sesión OAuth para conectar Google Calendar.
+- Response body:
+```json
+{
+  "state": "...",
+  "connect_url": "https://accounts.google.com/o/oauth2/..."
+}
+```
+
+### `POST /v1/google-calendar/oauth/complete`
+- Auth: sí
+- Qué hace: completa conexión Google Calendar con `code` + `state`.
+- Request body:
+```json
+{
+  "code": "...",
+  "state": "..."
+}
+```
+- Response body:
+```json
+{
+  "tenant_id": "...",
+  "status": "CONNECTED",
+  "calendar_id": "primary",
+  "professional_timezone": "America/Bogota",
+  "connected_at": "2026-03-15T10:00:00Z"
+}
+```
+
+### `GET /v1/google-calendar/connection`
+- Auth: sí
+- Qué hace: retorna estado de conexión Google Calendar del tenant.
+- Response body:
+```json
+{
+  "tenant_id": "...",
+  "status": "CONNECTED",
+  "calendar_id": "primary",
+  "professional_timezone": "America/Bogota",
+  "connected_at": "2026-03-15T10:00:00Z"
+}
+```
+- Valores de `status`: `"CONNECTED"`, `"DISCONNECTED"`.
+
+### `GET /v1/google-calendar/availability`
+- Auth: sí
+- Qué hace: consulta intervalos ocupados en Google Calendar.
+- Query params:
+  - `from` (datetime ISO 8601, requerido)
+  - `to` (datetime ISO 8601, requerido)
+- Response body:
+```json
+{
+  "tenant_id": "...",
+  "calendar_id": "primary",
+  "timezone": "America/Bogota",
+  "busy_intervals": [
+    {
+      "start_at": "2026-03-15T09:00:00-05:00",
+      "end_at": "2026-03-15T10:00:00-05:00"
+    }
+  ]
+}
+```
+
+### `GET /oauth/google/callback`
+- Auth: no (redirección de Google)
+- Qué hace: completa OAuth de Google Calendar usando `code` + `state` del query string.
+- Query params: `code`, `state`.
+- Comportamiento:
+  - éxito: `303 Redirect` a `FRONTEND_APP_BASE_URL/inbox?google_oauth=connected`
+  - error: `303 Redirect` a `FRONTEND_APP_BASE_URL/onboarding/whatsapp?google_oauth=error&status=...&reason=...`
+  - fallback: HTML si `FRONTEND_APP_BASE_URL` está vacío.
+
+---
+
+## Onboarding
+
+### `GET /v1/onboarding/status`
+- Auth: sí
+- Qué hace: retorna estado de onboarding del tenant (conexiones activas).
+- Response body:
+```json
+{
+  "whatsapp_connected": true,
+  "google_calendar_connected": false,
+  "ready": false
+}
+```
+
+---
+
+## Manual Appointments
+
+### `GET /v1/manual-appointments`
+- Auth: sí
+- Qué hace: lista citas manuales del tenant.
+- Query params:
+  - `status` (string, opcional) — filtro por estado.
+- Response body:
+```json
+{
+  "items": [
+    {
+      "appointment_id": "...",
+      "tenant_id": "...",
+      "patient_whatsapp_user_id": "573001234567",
+      "status": "SCHEDULED",
+      "calendar_event_id": "...",
+      "start_at": "2026-03-20T09:00:00-05:00",
+      "end_at": "2026-03-20T10:00:00-05:00",
+      "timezone": "America/Bogota",
+      "summary": "Consulta inicial",
+      "payment_amount_cop": 150000,
+      "payment_method": "TRANSFER",
+      "payment_status": "PENDING",
+      "payment_updated_at": null,
+      "created_at": "2026-03-15T10:00:00Z",
+      "updated_at": "2026-03-15T10:00:00Z",
+      "cancelled_at": null
+    }
+  ]
+}
+```
+
+### `POST /v1/manual-appointments`
+- Auth: sí
+- Qué hace: crea una cita manual con evento en Google Calendar.
+- Request body:
+```json
+{
+  "patient_whatsapp_user_id": "573001234567",
+  "start_at": "2026-03-20T09:00:00-05:00",
+  "end_at": "2026-03-20T10:00:00-05:00",
+  "timezone": "America/Bogota",
+  "summary": "Consulta inicial"
+}
+```
+- Validación: `end_at` debe ser posterior a `start_at`.
+- Response: `201 Created` con el objeto de cita completo.
+
+### `PUT /v1/manual-appointments/{appointment_id}/reschedule`
+- Auth: sí
+- Qué hace: reprograma una cita existente.
+- Request body:
+```json
+{
+  "start_at": "2026-03-21T09:00:00-05:00",
+  "end_at": "2026-03-21T10:00:00-05:00",
+  "timezone": "America/Bogota",
+  "summary": "Consulta reprogramada"
+}
+```
+- Response body: objeto de cita actualizado.
+
+### `DELETE /v1/manual-appointments/{appointment_id}`
+- Auth: sí
+- Qué hace: cancela una cita manual.
+- Request body (opcional):
+```json
+{
+  "reason": "Paciente solicitó cancelar"
+}
+```
+- Response body: objeto de cita con `status: "CANCELLED"`.
+
+### `PUT /v1/manual-appointments/{appointment_id}/payment`
+- Auth: sí
+- Qué hace: registra o actualiza pago de una cita.
+- Request body:
+```json
+{
+  "payment_amount_cop": 150000,
+  "payment_method": "TRANSFER",
+  "payment_status": "PAID"
+}
+```
+- Valores de `payment_method`: `"CASH"`, `"TRANSFER"`.
+- Valores de `payment_status`: `"PENDING"`, `"PAID"`.
+- Validación: `payment_amount_cop` debe ser mayor a 0.
+- Response body: objeto de cita actualizado.
+
+---
+
+## Scheduling Requests
+
+### `GET /v1/scheduling-requests`
+- Auth: sí (owner)
+- Qué hace: lista solicitudes de agendamiento del tenant.
+- Query params:
+  - `status` (string, opcional) — filtro por estado.
+- Response body:
+```json
+{
+  "items": [
+    {
+      "request_id": "...",
+      "conversation_id": "...",
+      "whatsapp_user_id": "573001234567",
+      "request_kind": "...",
+      "status": "...",
+      "audience_type": "ADULTS",
+      "round_number": 1,
+      "consultation_reason": "Ansiedad",
+      "appointment_modality": "VIRTUAL",
+      "patient_location": "Bogota",
+      "selected_slot_id": null,
+      "calendar_event_id": null,
+      "payment_amount_cop": null,
+      "payment_method": null,
+      "payment_status": "PENDING",
+      "created_at": "2026-03-15T10:00:00Z",
+      "updated_at": "2026-03-15T10:00:00Z",
+      "slots": [
+        {
+          "slot_id": "...",
+          "start_at": "2026-03-20T09:00:00-05:00",
+          "end_at": "2026-03-20T10:00:00-05:00",
+          "timezone": "America/Bogota",
+          "status": "AVAILABLE"
+        }
+      ]
+    }
+  ]
+}
+```
+
+### `GET /v1/conversations/{conversation_id}/scheduling/requests`
+- Auth: sí (owner)
+- Qué hace: lista solicitudes de agendamiento de una conversación específica.
+- Response body: igual que `GET /v1/scheduling-requests`.
+
+### `POST /v1/conversations/{conversation_id}/scheduling/requests/{request_id}/consultation-review`
+- Auth: sí
+- Qué hace: el profesional revisa el motivo de consulta y decide.
+- Request body:
+```json
+{
+  "decision": "REQUEST_MORE_INFO",
+  "professional_note": "Necesito más detalle sobre los síntomas"
+}
+```
+- Valores de `decision`: `"REQUEST_MORE_INFO"`, `"REJECT"`.
+- Response body:
+```json
+{
+  "status": "...",
+  "outbound_message_id": "...",
+  "assistant_text": "..."
+}
+```
+
+### `POST /v1/conversations/{conversation_id}/scheduling/requests/{request_id}/payment-review`
+- Auth: sí
+- Qué hace: el profesional revisa el pago y decide.
+- Request body:
+```json
+{
+  "decision": "APPROVE",
+  "professional_note": null,
+  "payment_amount_cop": 150000
+}
+```
+- Valores de `decision`: `"APPROVE"`, `"SEND_REMINDER"`.
+- `payment_amount_cop` requerido si `decision` es `"APPROVE"`.
+- Response body: igual que `consultation-review`.
+
+### `POST /v1/conversations/{conversation_id}/scheduling/requests/{request_id}/professional-slots`
+- Auth: sí
+- Qué hace: el profesional propone horarios al paciente.
+- Request body:
+```json
+{
+  "slots": [
+    {
+      "slot_id": "slot-1",
+      "start_at": "2026-03-20T09:00:00-05:00",
+      "end_at": "2026-03-20T10:00:00-05:00",
+      "timezone": "America/Bogota"
+    }
+  ],
+  "professional_note": "Estos son los horarios disponibles"
+}
+```
+- Validación: al menos 1 slot requerido, `end_at` > `start_at` en cada slot.
+- Response body:
+```json
+{
+  "status": "AWAITING_PATIENT_CHOICE",
+  "slot_batch_id": "...",
+  "outbound_message_id": "...",
+  "assistant_text": "..."
+}
+```
+
+### `PUT /v1/scheduling-requests/{request_id}/booked-slot/reschedule`
+- Auth: sí (owner)
+- Qué hace: reprograma una cita reservada.
+- Request body:
+```json
+{
+  "start_at": "2026-03-21T09:00:00-05:00",
+  "end_at": "2026-03-21T10:00:00-05:00",
+  "timezone": "America/Bogota",
+  "event_summary": "Cita reprogramada"
+}
+```
+- Response body: objeto de scheduling request actualizado.
+
+### `DELETE /v1/scheduling-requests/{request_id}/booked-slot`
+- Auth: sí (owner)
+- Qué hace: cancela una cita reservada.
+- Request body (opcional):
+```json
+{
+  "reason": "Paciente solicitó cancelar"
+}
+```
+- Response body: objeto de scheduling request actualizado.
+
+### `PUT /v1/scheduling-requests/{request_id}/booked-slot/payment`
+- Auth: sí (owner)
+- Qué hace: registra pago de una cita de agendamiento.
+- Request body:
+```json
+{
+  "payment_amount_cop": 150000,
+  "payment_method": "TRANSFER",
+  "payment_status": "PAID"
+}
+```
+- Response body: objeto de scheduling request actualizado.
+
+---
+
+## Flujo mínimo recomendado (manual)
+
+1. `make user-bootstrap-master TENANT_NAME=... MASTER_EMAIL=... MASTER_PASSWORD=...` (solo primera vez por ambiente)
+2. `POST /v1/auth/login`
+3. `POST /v1/whatsapp/embedded-signup/session`
+4. `POST /v1/whatsapp/embedded-signup/complete`
+5. `GET /v1/whatsapp/dev/verify-token` (solo dev; en producción usar directamente `META_WEBHOOK_VERIFY_TOKEN`)
+6. `GET /v1/whatsapp/connection`
+7. Enviar mensaje de prueba en WhatsApp
+8. `GET /v1/conversations`
+9. `GET /v1/conversations/{conversation_id}/messages`

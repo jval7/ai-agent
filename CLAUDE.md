@@ -4,17 +4,18 @@
 Este archivo es la guía global mínima para trabajar en este repositorio.
 Los detalles específicos de backend/frontend viven en archivos de contexto dedicados.
 
-## Archivos Canónicos de Contexto
-- Backend (fuente de verdad): `BACKEND_CONTEXT.md`
-- Frontend (fuente de verdad): `FRONTEND_PLAN.md`
-- Referencia de API: `API_ENDPOINTS.md`
-- Despliegue (infra + codigo): `DEPLOYMENT.md`
+## Navegación y Delegación
 
-## Cómo Navegar
-- Si la tarea es de backend (arquitectura, casos de uso, providers, persistencia), leer `BACKEND_CONTEXT.md`.
-- Si la tarea es de frontend (UI/UX, flujos, cambios visuales), leer `FRONTEND_PLAN.md`.
-- Si la tarea es de contratos/endpoints, leer `API_ENDPOINTS.md`.
-- Si la tarea es de despliegue (infraestructura o release de codigo), leer `DEPLOYMENT.md`.
+| Dominio | Agente | Context doc |
+|---------|--------|-------------|
+| Backend (services, ports, adapters, domain, tests) | `backend` | `docs/BACKEND_CONTEXT.md` |
+| Frontend (UI, pages, hooks, React) | `frontend` | `docs/FRONTEND_PLAN.md` |
+| Infra (Terraform, Docker, deploys, GCP) | `infra` | `docs/DEPLOYMENT.md` |
+| Prompts (sp.txt, instrucciones de estado, tool descriptions) | `prompts` | `docs/PROMPTS_CONTEXT.md` |
+| Contratos/endpoints (referencia) | — | `docs/API_ENDPOINTS.md` |
+
+- Si una tarea cruza límites de dominio, coordinar desde la sesión principal.
+- Cada agente lee su context doc antes de actuar.
 - No duplicar reglas o detalles de backend/frontend en este archivo.
 
 ## Stack

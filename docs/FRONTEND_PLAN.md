@@ -13,12 +13,13 @@ Construir una UI operativa para el backend multi-tenant de WhatsApp, iterando di
 - ESLint + Prettier
 - Seguridad frontend: `eslint-plugin-security` + `npm audit`
 
-## Rutas iniciales
-- `/login`
-- `/register`
-- `/onboarding/whatsapp`
-- `/inbox`
-- `/agent/prompt`
+## Rutas
+- `/login` — LoginPage (registro deshabilitado, solo login)
+- `/configuraciones` — ConfiguracionesPage (onboarding WhatsApp + Google Calendar + prompt)
+- `/inbox` — InboxPage (conversaciones + mensajes)
+- `/agenda` — AgendaPage (calendario de citas)
+- `/clientes` — ClientsPage (gestión de pacientes)
+- Rutas legacy con redirect a `/configuraciones`: `/onboarding/whatsapp`, `/agent/prompt`
 
 ## Flujo de trabajo visual
 1. Tú compartes captura + cambio esperado.
@@ -27,11 +28,11 @@ Construir una UI operativa para el backend multi-tenant de WhatsApp, iterando di
 4. Repetimos hasta cerrar pantalla.
 
 ## Orden de construcción
-1. Auth (login/register).
-2. Onboarding (estado + conectar Meta).
-3. Inbox (conversaciones + mensajes).
-4. Control (AI/HUMAN + blacklist).
-5. Prompt (get/update system prompt).
+1. Auth (login).
+2. Configuraciones (onboarding WhatsApp + Google Calendar + prompt + settings).
+3. Inbox (conversaciones + mensajes + control AI/HUMAN + blacklist).
+4. Agenda (calendario de citas manuales + scheduling requests).
+5. Clientes (listado + detalle + CRUD de pacientes).
 
 ## Estructura hexagonal de frontend
 - `frontend/src/domain`
@@ -49,7 +50,4 @@ Construir una UI operativa para el backend multi-tenant de WhatsApp, iterando di
 - Renovación automática de access token al recibir 401.
 
 ## Comandos
-- `make fe-install`
-- `make fe-dev`
-- `make fe-checks`
-- `make checks` (backend + frontend)
+Ver sección "Comandos útiles" en `CLAUDE.md` (fuente canónica). Comando adicional: `make fe-install`.
