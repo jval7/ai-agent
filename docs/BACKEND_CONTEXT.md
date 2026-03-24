@@ -24,6 +24,7 @@ Ver sección "Reglas de Ingeniería Backend" en `CLAUDE.md` (fuente canónica).
   - `conversation_message_sender.py`: envío WA + persistencia + archivado de subsessions.
   - `workflow_runtime_adapter.py`: adapter que implementa `ConversationWorkflowRuntimePort`, delega a los componentes anteriores.
   - `prompt_builder.py`: `RuntimePromptBuilder` — orquesta el build completo del prompt llamando todas las `PromptSection`.
+
   - `tool_registry.py`: `ToolDefinitionRegistry` — define schemas de tools para function calling del LLM (6 tools).
   - `workflow_engine.py`: `LangGraphAgentWorkflowEngine` — entry point que ejecuta `ConversationGraph` y `SchedulingTransitionGraph`.
   - `state_models.py`: modelos de estado — `RuntimePromptContext`, `ConversationGraphState`, `SchedulingTransitionGraphState`.
