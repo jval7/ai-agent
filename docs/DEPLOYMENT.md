@@ -9,6 +9,22 @@ Guia operativa para desplegar backend y frontend de `ai-agent` en GCP usando los
   - `gcloud auth application-default login`
   - `gcloud config set project ai-agent-calendar-2603011621`
 
+## Archivos de infraestructura local
+
+### Dockerfiles
+- `Dockerfile.backend` — imagen de backend (Python 3.11-slim + uv).
+- `frontend/Dockerfile` — imagen de frontend (Node 22-alpine).
+
+### docker-compose.yml
+- Servicios: `backend` + `frontend` para desarrollo local.
+- Uso: `docker compose up` (no es el flujo principal de desarrollo; para dev local preferir `make fe-dev` + `uv run uvicorn ...`).
+
+### Flujo Terraform local
+- Los módulos Terraform viven en `infra/terraform/` (`runtime_deploy`, `frontend_spa_cdn`).
+- Al hacer deploy, Make copia via rsync a `.make-flow/deploy/terraform/{module}_local/` como working copies.
+- Los state files se persisten en `.make-flow/deploy/state/*.tfstate`.
+- No editar archivos en `.make-flow/` directamente; editar siempre en `infra/terraform/`.
+
 ## Variables y archivos usados por Make
 - Estado local de terraform: `.make-flow/deploy/state/*.tfstate`
 - Salida backend deploy: `.make-flow/deploy/back.env`
@@ -99,5 +115,4 @@ make chat-memory-reset
 - Frontend: URL en `.make-flow/deploy/front.env` (`DEPLOY_FRONTEND_URL=...`)
 
 ## Regla de commits
-- No usar `--no-verify`.
-- Si falla pre-commit/hooks, arreglar errores y volver a commitear (o `git commit --amend`).
+Ver "Principios de Trabajo" en `CLAUDE.md` (fuente canónica).

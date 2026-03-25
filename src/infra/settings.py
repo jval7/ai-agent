@@ -4,6 +4,7 @@ import os
 import pydantic
 
 _CORS_ALLOWED_ORIGINS_OVERRIDE_ENV_VAR = "CORS_ALLOWED_ORIGINS_OVERRIDE"
+_INSECURE_DEV_DEFAULT = "dev-secret-change-me"
 
 
 class Settings(pydantic.BaseModel):
@@ -141,18 +142,16 @@ class Settings(pydantic.BaseModel):
             == "true",
         )
 
-    _INSECURE_DEV_DEFAULT = "dev-secret-change-me"
-
     @staticmethod
     def _resolve_required_secret(
         app_config_overrides: dict[str, str],
         key: str,
     ) -> str:
-        dev_default = Settings._INSECURE_DEV_DEFAULT
+        dev_default = _INSECURE_DEV_DEFAULT
         if not app_config_overrides:
             return dev_default
         value = app_config_overrides.get(key, "").strip()
-        if value == "" or value == dev_default:
+        if not value or value == dev_default:
             raise ValueError(
                 f"{key} is missing or still set to the insecure default. "
                 f"Set it in the app config secret."

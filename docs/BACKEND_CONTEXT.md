@@ -8,16 +8,8 @@
   - WhatsApp: Meta Cloud API.
   - LLM: Gemini en Vertex AI (`GEMINI_*`).
 
-## Reglas de Ingeniería Backend (Obligatorias)
-1. No usar `hasattr()` / `getattr()` ni reflexión similar.
-2. Importar módulos, no objetos directamente.
-3. Respetar arquitectura hexagonal y límites limpios.
-4. No usar `global`.
-5. Usar sintaxis de unión con `|` (`str | None`), no `Optional[str]`.
-6. Mantener imports al inicio del archivo.
-7. Usar Pydantic para modelos de datos.
-8. Capturar excepciones específicas (evitar `Exception` genérica salvo necesidad estricta para no cortar flujo principal).
-9. Seguir el Zen de Python.
+## Reglas de Ingeniería Backend
+Ver sección "Reglas de Ingeniería Backend" en `CLAUDE.md` (fuente canónica).
 
 ## Estructura de capas
 - `src/entrypoints/web`: capa HTTP (routers, handlers, dependencias auth).
@@ -31,6 +23,11 @@
   - `runtime_context_resolver.py`: resuelve estado agéntico (request activa → `RuntimePromptContext`).
   - `conversation_message_sender.py`: envío WA + persistencia + archivado de subsessions.
   - `workflow_runtime_adapter.py`: adapter que implementa `ConversationWorkflowRuntimePort`, delega a los componentes anteriores.
+  - `prompt_builder.py`: `RuntimePromptBuilder` — orquesta el build completo del prompt llamando todas las `PromptSection`.
+  - `tool_registry.py`: `ToolDefinitionRegistry` — define schemas de tools para function calling del LLM (6 tools).
+  - `workflow_engine.py`: `LangGraphAgentWorkflowEngine` — entry point que ejecuta `ConversationGraph` y `SchedulingTransitionGraph`.
+  - `state_models.py`: modelos de estado — `RuntimePromptContext`, `ConversationGraphState`, `SchedulingTransitionGraphState`.
+  - `tool_handlers/patient_profile_resolver.py`: helper que resuelve datos de perfil del paciente para `confirm_slot_handler`.
 - `src/ports`: contratos/interfaces para adapters.
 - `src/adapters/outbound`: implementaciones concretas (Meta, Gemini, seguridad, Firestore, in-memory para tests).
 - `src/domain`: entidades/agregados Pydantic.
@@ -42,37 +39,11 @@
 - `services` y `domain` no deben depender de adapters concretos.
 
 ## Funcionalidad implementada
-- Auth:
-  - `POST /v1/auth/register` deshabilitado (`404`)
-  - `POST /v1/auth/login`
-  - `POST /v1/auth/refresh`
-  - `POST /v1/auth/logout`
-- User admin local (sin endpoint HTTP):
-  - `make user-bootstrap-master`
-  - `make user-create`
-  - `make user-delete`
-- Prompt del agente:
-  - `GET /v1/agent/system-prompt`
-  - `PUT /v1/agent/system-prompt`
-- Onboarding WhatsApp:
-  - `POST /v1/whatsapp/embedded-signup/session`
-  - `POST /v1/whatsapp/embedded-signup/complete`
-  - `GET /oauth/meta/callback`
-  - `GET /v1/whatsapp/connection`
-- Webhook:
-  - `GET /v1/webhooks/whatsapp` (verify token)
-  - `POST /v1/webhooks/whatsapp` (procesamiento inbound)
-- Conversaciones:
-  - `GET /v1/conversations`
-  - `GET /v1/conversations/{conversation_id}/messages`
-  - `PUT /v1/conversations/{conversation_id}/control-mode`
-- Blacklist por tenant:
-  - `GET /v1/blacklist`
-  - `POST /v1/blacklist`
-  - `DELETE /v1/blacklist/{whatsapp_user_id}`
-- Dev:
-  - `POST /v1/dev/memory/reset`
-  - `GET /healthz`
+Referencia completa de endpoints con schemas: ver `docs/API_ENDPOINTS.md`.
+
+Dominios funcionales: Auth, Agent (prompt + settings), WhatsApp Onboarding, Google Calendar, Webhooks, Conversations (mensajes + control mode), Patients (CRUD), Blacklist, Manual Appointments, Scheduling Requests, Onboarding status, Dev tools.
+
+User admin local (sin endpoint HTTP): `make user-bootstrap-master`, `make user-create`, `make user-delete`.
 
 ## Lógica clave en webhook
 - `webhook_service.py` (~733 líneas): orquestación HTTP — resolve tenant, dedup, upsert conversation, debounce, fallback.
@@ -149,16 +120,10 @@ Nodos: 5 (`validate_transition`, `apply_transition`, `execute_side_effects`, `pe
   - `LOG_INCLUDE_REQUEST_SUMMARY` (default `false`)
 
 ## Comandos útiles
-- Setup:
-  - `uv sync --group dev`
-  - `uv run pre-commit install`
-- Run API:
-  - `uv run uvicorn src.entrypoints.web.main:app --reload`
-- Checks:
-  - `make static-checks`
-  - `uv run pytest tests/services -q`
-- Flujo OAuth local:
-  - `make user-bootstrap-master` (solo primera vez)
-  - `make oauth-flow`
-  - `make memory-reset`
-  - `make chat-memory-reset`
+Ver sección "Comandos útiles" en `CLAUDE.md` (fuente canónica).
+
+Comandos específicos de flujo OAuth local:
+- `make user-bootstrap-master` (solo primera vez)
+- `make oauth-flow`
+- `make memory-reset`
+- `make chat-memory-reset`
