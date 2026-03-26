@@ -86,7 +86,8 @@ export function InboxPage() {
 
   const conversationsQuery = reactQueryModule.useQuery({
     queryKey: conversationsQueryKey,
-    queryFn: () => appContainer.conversationUseCase.listConversations()
+    queryFn: () => appContainer.conversationUseCase.listConversations(),
+    refetchInterval: 5_000
   });
 
   const blacklistQuery = reactQueryModule.useQuery({
@@ -101,7 +102,8 @@ export function InboxPage() {
 
   const schedulingRequestsQuery = reactQueryModule.useQuery({
     queryKey: schedulingRequestsQueryKey,
-    queryFn: () => appContainer.schedulingUseCase.listRequests()
+    queryFn: () => appContainer.schedulingUseCase.listRequests(),
+    refetchInterval: 5_000
   });
 
   const latestRequestByConversationId = reactModule.useMemo(() => {
@@ -163,7 +165,8 @@ export function InboxPage() {
   const messagesQuery = reactQueryModule.useQuery({
     queryKey: ["conversation-messages", selectedConversationId],
     enabled: selectedConversationId !== null,
-    queryFn: () => appContainer.conversationUseCase.listMessages(selectedConversationId ?? "")
+    queryFn: () => appContainer.conversationUseCase.listMessages(selectedConversationId ?? ""),
+    refetchInterval: 3_000
   });
 
   const controlModeMutation = reactQueryModule.useMutation({

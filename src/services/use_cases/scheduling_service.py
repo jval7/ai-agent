@@ -1037,6 +1037,10 @@ class SchedulingService:
             now_value=now_value,
         )
 
+        # TODO: Implementar cronjob/endpoint que cierre sesiones BOOKED automaticamente
+        #       tras 5 min de inactividad. Actualmente SESSION_CLOSED solo se ejecuta
+        #       cuando el paciente responde al "algo mas?" post-booking. Si el paciente
+        #       no responde, la sesion queda en BOOKED indefinidamente.
         booked_request.set_status("SESSION_CLOSED", now_value)
         self._scheduling_repository.save_request(booked_request)
 

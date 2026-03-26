@@ -417,7 +417,8 @@ export function AgendaPage() {
 
   const requestsQuery = reactQueryModule.useQuery({
     queryKey: schedulingRequestsQueryKey,
-    queryFn: () => appContainer.schedulingUseCase.listRequests()
+    queryFn: () => appContainer.schedulingUseCase.listRequests(),
+    refetchInterval: 5_000
   });
   const googleCalendarConnectionQuery = reactQueryModule.useQuery({
     queryKey: googleCalendarConnectionQueryKey,

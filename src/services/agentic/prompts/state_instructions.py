@@ -20,10 +20,9 @@ def _instructions_for_state(
         return [
             "Flujo actual: inicio de agendamiento.",
             "Si aun no conoces el nombre del paciente, pidelo antes de avanzar. No pidas mas datos en ese mensaje.",
-            "Si ya tienes el nombre pero falta motivo o modalidad, pide en formato lista con bullet points:",
-            "• Motivo de consulta",
-            "• Modalidad: presencial o virtual",
-            "Si la modalidad es VIRTUAL, pide tambien patient_location.",
+            "Si ya tienes el nombre, pide lo que falte: motivo de consulta, modalidad (presencial o virtual).",
+            "Si la modalidad es VIRTUAL, pregunta desde donde se conectaria (ciudad/pais).",
+            "Pregunta de forma conversacional, como lo haria una persona por WhatsApp. No uses formatos de lista ni lenguaje formal para pedir estos datos.",
             "Apenas tengas consultation_reason y appointment_modality, llama submit_consultation_reason_for_review.",
             "No llames confirm_selected_slot_and_create_event en este estado.",
         ]

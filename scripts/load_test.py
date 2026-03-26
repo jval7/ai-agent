@@ -63,6 +63,7 @@ GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_LOCATION = "us-central1"
 
 NUM_PATIENTS = 1  # cuantos pacientes simular (max 10 perfiles disponibles)
+RUN_ID = uuid.uuid4().hex[:6]  # ID unico por corrida para evitar reutilizar conversaciones
 POLL_INTERVAL = 10  # segundos entre cada poll de scheduling requests
 STAGGER_DELAY = 2  # segundos entre lanzamiento de cada paciente
 MAX_TURNS = 20  # maximo de mensajes por paciente (evita loops infinitos)
@@ -234,6 +235,9 @@ async def _generate_patient_message(
     #   - mensajes del assistant -> role "user" (lo que el otro lado dijo)
     contents: list[dict[str, typing.Any]] = []
 
+    # Filtrar mensajes vacios del historial
+    conversation_history = [m for m in conversation_history if m["content"].strip()]
+
     if not conversation_history:
         # Primer mensaje: trigger para que genere el saludo
         contents.append(
@@ -245,28 +249,82 @@ async def _generate_patient_message(
             }
         )
     else:
-        for msg in conversation_history:
-            gemini_role = "model" if msg["role"] == "patient" else "user"
+        # Gemini requiere que el primer mensaje sea role "user".
+        # Si el historial empieza con un mensaje del paciente (model),
+        # anteponemos el trigger inicial.
+        first_role = "model" if conversation_history[0]["role"] == "patient" else "user"
+        if first_role == "model":
             contents.append(
                 {
-                    "role": gemini_role,
-                    "parts": [{"text": msg["content"]}],
+                    "role": "user",
+                    "parts": [
+                        {"text": "Inicia la conversacion enviando tu primer mensaje de WhatsApp."}
+                    ],
                 }
             )
 
-    response = await asyncio.to_thread(
-        client.models.generate_content,
-        model=GEMINI_MODEL,
-        contents=contents,
-        config={
-            "system_instruction": system_instruction,
-            "max_output_tokens": 256,
-            "temperature": 0.9,
-        },
-    )
+        for msg in conversation_history:
+            gemini_role = "model" if msg["role"] == "patient" else "user"
+            # Gemini requiere alternancia estricta user/model.
+            # Si hay dos consecutivos del mismo rol, fusionar en el ultimo.
+            if contents and contents[-1]["role"] == gemini_role:
+                contents[-1]["parts"][0]["text"] += "\n" + msg["content"]
+            else:
+                contents.append(
+                    {
+                        "role": gemini_role,
+                        "parts": [{"text": msg["content"]}],
+                    }
+                )
 
-    text: str = response.candidates[0].content.parts[0].text.strip()
-    return text
+        # Gemini necesita que el ultimo mensaje sea "user" para generar "model"
+        if contents[-1]["role"] == "model":
+            contents.append(
+                {
+                    "role": "user",
+                    "parts": [{"text": "Responde al ultimo mensaje como lo haria tu personaje."}],
+                }
+            )
+
+    logger.info("Gemini contents (%d msgs): roles=%s", len(contents), [c["role"] for c in contents])
+    for i, c in enumerate(contents):
+        logger.info("  [%d] %s: %s", i, c["role"], c["parts"][0]["text"][:100])
+
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = await asyncio.to_thread(
+                client.models.generate_content,
+                model=GEMINI_MODEL,
+                contents=contents,
+                config={
+                    "system_instruction": system_instruction,
+                    "max_output_tokens": 1024,
+                    "temperature": 0.9,
+                },
+            )
+            break
+        except Exception as exc:
+            if "429" in str(exc) and attempt < max_retries - 1:
+                wait = 2 ** (attempt + 1)
+                logger.warning("Gemini 429, reintentando en %ds...", wait)
+                await asyncio.sleep(wait)
+            else:
+                raise
+
+    # Log raw response for debugging
+    candidate = response.candidates[0]
+    parts = candidate.content.parts if candidate.content and candidate.content.parts else []
+    logger.info("Gemini finish_reason=%s, parts=%d", candidate.finish_reason, len(parts))
+    for i, part in enumerate(parts):
+        logger.info("  part[%d].text=%r", i, part.text[:200] if part.text else part.text)
+
+    # Extraer texto de la primera part que tenga contenido
+    for part in parts:
+        text: str = part.text or ""
+        if text.strip():
+            return text.strip()
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +421,9 @@ async def _get_messages(
     resp.raise_for_status()
 
     history: list[dict[str, str]] = []
-    for msg in resp.json().get("items", []):
+    items = resp.json().get("items", [])
+    logger.info("Raw messages (%d): directions=%s", len(items), [m.get("direction") for m in items])
+    for msg in items:
         role = "patient" if msg.get("direction") == "INBOUND" else "assistant"
         history.append({"role": role, "content": msg.get("content", "")})
     return history
@@ -402,8 +462,8 @@ async def _setup(client: httpx.AsyncClient) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 # Polling: estado del scheduling request
 # ---------------------------------------------------------------------------
-_TERMINAL_STATUSES = {"SESSION_CLOSED", "CANCELLED", "REJECTED"}
-_WAIT_FOR_OWNER_STATUSES = {"AWAITING_CONSULTATION_REVIEW", "AWAITING_PAYMENT_REVIEW"}
+_TERMINAL_STATUSES = {"SESSION_CLOSED", "CANCELLED", "CONSULTATION_REJECTED", "HUMAN_HANDOFF"}
+_WAIT_FOR_OWNER_STATUSES = {"AWAITING_CONSULTATION_REVIEW", "AWAITING_PAYMENT_CONFIRMATION"}
 
 
 async def _get_scheduling_status(
@@ -446,6 +506,33 @@ async def _wait_for_owner_action(
 
 
 # ---------------------------------------------------------------------------
+# Helper: sincronizar mensajes nuevos del AI al historial local
+# ---------------------------------------------------------------------------
+async def _sync_new_assistant_messages(
+    client: httpx.AsyncClient,
+    access_token: str,
+    conversation_id: str,
+    local_history: list[dict[str, str]],
+    tag: str,
+    label: str,
+) -> None:
+    """Lee mensajes del backend y agrega los OUTBOUND nuevos al historial local."""
+    all_messages = await _get_messages(client, access_token, conversation_id)
+    assistant_msgs = [m for m in all_messages if m["role"] == "assistant" and m["content"].strip()]
+    if assistant_msgs:
+        last_assistant = assistant_msgs[-1]
+        if (
+            not local_history
+            or local_history[-1].get("role") != "assistant"
+            or local_history[-1]["content"] != last_assistant["content"]
+        ):
+            local_history.append({"role": "assistant", "content": last_assistant["content"]})
+            logger.info("[%s] %s AI respondio: %s", tag, label, last_assistant["content"][:80])
+    else:
+        logger.warning("[%s] %s: No se encontro respuesta OUTBOUND del AI", tag, label)
+
+
+# ---------------------------------------------------------------------------
 # Flujo por paciente (LLM-driven)
 # ---------------------------------------------------------------------------
 async def _run_patient(
@@ -455,32 +542,74 @@ async def _run_patient(
     patient: dict[str, str],
     index: int,
 ) -> float:
+    # Generar whatsapp_user_id unico por corrida para crear conversacion limpia
+    patient = {**patient, "whatsapp_user_id": f"{patient['whatsapp_user_id']}{RUN_ID}"}
     tag = f"Patient-{index + 1:02d}: {patient['display_name']}"
+    logger.info("[%s] whatsapp_user_id=%s", tag, patient["whatsapp_user_id"])
     start = time.monotonic()
     conversation_id: str | None = None
+    local_history: list[dict[str, str]] = []
+    # Cuando vemos un wait status por primera vez, dejamos que el paciente
+    # responda al AI antes de bloquear. En el siguiente turno, bloqueamos.
+    pending_wait_status: str | None = None
 
     for turn in range(1, MAX_TURNS + 1):
-        # --- Obtener historial de conversacion ---
-        history: list[dict[str, str]] = []
-        if conversation_id is not None:
-            history = await _get_messages(client, access_token, conversation_id)
-
         # --- Generar mensaje del paciente con LLM ---
         logger.info("[%s] Turno %d: Generando mensaje...", tag, turn)
         patient_message = await _generate_patient_message(
             display_name=patient["display_name"],
             persona=patient["persona"],
-            conversation_history=history,
+            conversation_history=local_history,
         )
+        if not patient_message:
+            logger.warning(
+                "[%s] Turno %d: Gemini devolvio mensaje vacio, reintentando...", tag, turn
+            )
+            continue
+
         logger.info("[%s] Turno %d: Enviando: %s", tag, turn, patient_message[:80])
 
         # --- Enviar via webhook ---
         await _send_webhook(client, phone_number_id, patient, patient_message)
+        local_history.append({"role": "patient", "content": patient_message})
 
         # --- Obtener conversation_id si aun no lo tenemos ---
         if conversation_id is None:
             conversation_id = await _get_conversation_id(
                 client, access_token, patient["whatsapp_user_id"]
+            )
+
+        # --- Si hay un wait pendiente, el paciente ya respondio -> ahora bloquear ---
+        if pending_wait_status is not None:
+            pending_wait_status = None
+            current = await _get_scheduling_status(
+                client, access_token, patient["whatsapp_user_id"]
+            )
+            if current in _TERMINAL_STATUSES:
+                elapsed = time.monotonic() - start
+                logger.info("[%s] Finalizado con status %s en %.1fs", tag, current, elapsed)
+                return elapsed
+            if current in _WAIT_FOR_OWNER_STATUSES:
+                logger.info("[%s] Esperando accion del owner (status=%s)...", tag, current)
+                new_status = await _wait_for_owner_action(
+                    client, access_token, patient["whatsapp_user_id"], tag, current
+                )
+                if new_status in _TERMINAL_STATUSES:
+                    elapsed = time.monotonic() - start
+                    logger.info("[%s] Finalizado con status %s en %.1fs", tag, new_status, elapsed)
+                    return elapsed
+                # Owner actuo -> leer mensajes nuevos del AI
+                if conversation_id is not None:
+                    await _sync_new_assistant_messages(
+                        client, access_token, conversation_id, local_history, tag, "Post-owner"
+                    )
+            # Continuar al siguiente turno para que el paciente responda al nuevo mensaje
+            continue
+
+        # --- Leer respuesta del AI desde el backend ---
+        if conversation_id is not None:
+            await _sync_new_assistant_messages(
+                client, access_token, conversation_id, local_history, tag, f"Turno {turn}"
             )
 
         # --- Verificar estado del scheduling request ---
@@ -492,15 +621,14 @@ async def _run_patient(
             return elapsed
 
         if status in _WAIT_FOR_OWNER_STATUSES:
-            logger.info("[%s] Esperando accion del owner (status=%s)...", tag, status)
-            new_status = await _wait_for_owner_action(
-                client, access_token, patient["whatsapp_user_id"], tag, status
+            # No bloquear aun: dejar que el paciente responda al mensaje
+            # del AI (ej: info de pago) en el siguiente turno, y DESPUES bloquear.
+            logger.info(
+                "[%s] Status=%s, paciente respondera primero antes de esperar al owner",
+                tag,
+                status,
             )
-            if new_status in _TERMINAL_STATUSES:
-                elapsed = time.monotonic() - start
-                logger.info("[%s] Finalizado con status %s en %.1fs", tag, new_status, elapsed)
-                return elapsed
-            # Owner actuo, el AI respondio con slots u otra cosa -> siguiente turno
+            pending_wait_status = status
 
     elapsed = time.monotonic() - start
     logger.info("[%s] Alcanzo MAX_TURNS (%d) en %.1fs", tag, MAX_TURNS, elapsed)

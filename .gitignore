@@ -28,3 +28,4 @@ frontend/.claude/
 .mcp.json
 sp.xt
 scripts/eval_results/*.md
+.gcp-config
