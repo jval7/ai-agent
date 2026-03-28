@@ -67,7 +67,7 @@ def test_bootstrap_master_creates_tenant_master_user_and_default_prompt() -> Non
     assert user is not None
     assert agent_profile is not None
     assert user.is_master is True
-    assert user.role == "owner"
+    assert user.role == "professional"
 
 
 def test_bootstrap_master_promotes_existing_user_when_credentials_are_valid() -> None:
@@ -89,7 +89,7 @@ def test_bootstrap_master_promotes_existing_user_when_credentials_are_valid() ->
             tenant_id="tenant-1",
             email="master@acme.com",
             password_hash=password_hasher.hash_password("supersecret"),
-            role="owner",
+            role="professional",
             is_active=True,
             is_master=False,
             created_at=now_value,
@@ -111,7 +111,7 @@ def test_bootstrap_master_promotes_existing_user_when_credentials_are_valid() ->
     assert agent_profile is not None
 
 
-def test_create_user_requires_master_and_creates_owner_user() -> None:
+def test_create_user_requires_master_and_creates_professional_user() -> None:
     service, _, user_repository, _, _ = build_user_admin_service(
         ["tenant-1", "user-master", "user-2"]
     )
@@ -127,14 +127,14 @@ def test_create_user_requires_master_and_creates_owner_user() -> None:
         user_admin_dto.CreateUserByMasterDTO(
             master_email="master@acme.com",
             master_password="supersecret",
-            email="owner2@acme.com",
+            email="professional2@acme.com",
             password="supersecret2",
         )
     )
 
-    created_user = user_repository.get_by_email("owner2@acme.com")
+    created_user = user_repository.get_by_email("professional2@acme.com")
     assert created_user is not None
-    assert created_user.role == "owner"
+    assert created_user.role == "professional"
     assert created_user.is_master is False
 
 
@@ -153,9 +153,9 @@ def test_create_user_fails_when_credentials_are_not_master() -> None:
         user_entity.User(
             id="user-1",
             tenant_id="tenant-1",
-            email="owner@acme.com",
+            email="professional@acme.com",
             password_hash=password_hasher.hash_password("supersecret"),
-            role="owner",
+            role="professional",
             is_active=True,
             is_master=False,
             created_at=now_value,
@@ -165,7 +165,7 @@ def test_create_user_fails_when_credentials_are_not_master() -> None:
     with pytest.raises(service_exceptions.AuthorizationError):
         service.create_user(
             user_admin_dto.CreateUserByMasterDTO(
-                master_email="owner@acme.com",
+                master_email="professional@acme.com",
                 master_password="supersecret",
                 email="other@acme.com",
                 password="supersecret2",
@@ -188,21 +188,21 @@ def test_delete_user_hard_deletes_regular_user_and_blocks_master_delete() -> Non
         user_admin_dto.CreateUserByMasterDTO(
             master_email="master@acme.com",
             master_password="supersecret",
-            email="owner2@acme.com",
+            email="professional2@acme.com",
             password="supersecret2",
         )
     )
-    created_user = user_repository.get_by_email("owner2@acme.com")
+    created_user = user_repository.get_by_email("professional2@acme.com")
     assert created_user is not None
 
     service.delete_user(
         user_admin_dto.DeleteUserByMasterDTO(
             master_email="master@acme.com",
             master_password="supersecret",
-            email="owner2@acme.com",
+            email="professional2@acme.com",
         )
     )
-    assert user_repository.get_by_email("owner2@acme.com") is None
+    assert user_repository.get_by_email("professional2@acme.com") is None
     assert user_repository.get_by_id(created_user.id) is None
 
     with pytest.raises(service_exceptions.InvalidStateError):

@@ -38,7 +38,7 @@ class ManualAppointmentService:
         claims: auth_dto.TokenClaimsDTO,
         status: str | None = None,
     ) -> manual_appointment_dto.ManualAppointmentListResponseDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         appointments = self._manual_appointment_repository.list_by_tenant(claims.tenant_id, status)
         sorted_appointments = sorted(appointments, key=lambda item: item.start_at)
         return manual_appointment_dto.ManualAppointmentListResponseDTO(
@@ -50,7 +50,7 @@ class ManualAppointmentService:
         claims: auth_dto.TokenClaimsDTO,
         create_dto: manual_appointment_dto.CreateManualAppointmentDTO,
     ) -> manual_appointment_dto.ManualAppointmentDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
 
         patient = self._patient_repository.get_by_whatsapp_user(
             claims.tenant_id,
@@ -105,7 +105,7 @@ class ManualAppointmentService:
         appointment_id: str,
         input_dto: manual_appointment_dto.RescheduleManualAppointmentDTO,
     ) -> manual_appointment_dto.ManualAppointmentDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         appointment = self._manual_appointment_repository.get_by_id(
             claims.tenant_id, appointment_id
         )
@@ -157,7 +157,7 @@ class ManualAppointmentService:
         input_dto: manual_appointment_dto.CancelManualAppointmentDTO,
     ) -> manual_appointment_dto.ManualAppointmentDTO:
         del input_dto
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         appointment = self._manual_appointment_repository.get_by_id(
             claims.tenant_id, appointment_id
         )
@@ -204,7 +204,7 @@ class ManualAppointmentService:
         appointment_id: str,
         input_dto: manual_appointment_dto.UpdateManualAppointmentPaymentDTO,
     ) -> manual_appointment_dto.ManualAppointmentDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         appointment = self._manual_appointment_repository.get_by_id(
             claims.tenant_id, appointment_id
         )
@@ -260,9 +260,9 @@ class ManualAppointmentService:
         normalized_message = error_message.lower()
         return "status=404" in normalized_message or "not found" in normalized_message
 
-    def _ensure_owner(self, claims: auth_dto.TokenClaimsDTO) -> None:
-        if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-            raise service_exceptions.AuthorizationError("owner role required")
+    def _ensure_professional(self, claims: auth_dto.TokenClaimsDTO) -> None:
+        if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+            raise service_exceptions.AuthorizationError("professional role required")
 
     def _to_dto(
         self,

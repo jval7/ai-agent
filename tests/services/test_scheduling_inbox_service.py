@@ -25,7 +25,7 @@ def build_claims() -> auth_dto.TokenClaimsDTO:
     return auth_dto.TokenClaimsDTO(
         sub="user-1",
         tenant_id="tenant-1",
-        role="owner",
+        role="professional",
         exp=0,
         jti="jti-1",
         token_kind="access",
@@ -220,7 +220,7 @@ def test_submit_professional_slots_skips_conflicts_and_requires_remaining_slots(
         )
 
 
-def test_submit_professional_slots_requires_owner_role() -> None:
+def test_submit_professional_slots_requires_professional_role() -> None:
     service, _, _, _ = build_services()
     non_owner_claims = auth_dto.TokenClaimsDTO(
         sub="user-2",

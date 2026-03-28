@@ -98,7 +98,7 @@ def test_domain_state_persists_across_restart_with_json_memory() -> None:
         register_result = auth_first_boot.register(
             auth_dto.RegisterUserDTO(
                 tenant_name="Acme",
-                email="owner@acme.com",
+                email="professional@acme.com",
                 password="supersecret",
             )
         )
@@ -122,7 +122,7 @@ def test_domain_state_persists_across_restart_with_json_memory() -> None:
 
         login_result = auth_second_boot.login(
             auth_dto.LoginDTO(
-                email="owner@acme.com",
+                email="professional@acme.com",
                 password="supersecret",
             )
         )

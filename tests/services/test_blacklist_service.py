@@ -37,77 +37,77 @@ def build_claims(role: str, tenant_id: str = "tenant-1") -> auth_dto.TokenClaims
 
 def test_blacklist_add_list_delete_is_isolated_per_tenant() -> None:
     service = build_blacklist_service()
-    owner_tenant_1 = build_claims(role="owner", tenant_id="tenant-1")
-    owner_tenant_2 = build_claims(role="owner", tenant_id="tenant-2")
+    professional_tenant_1 = build_claims(role="professional", tenant_id="tenant-1")
+    professional_tenant_2 = build_claims(role="professional", tenant_id="tenant-2")
 
     service.upsert_entry(
-        owner_tenant_1,
+        professional_tenant_1,
         blacklist_dto.UpsertBlacklistEntryDTO(whatsapp_user_id="wa-user-1"),
     )
     service.upsert_entry(
-        owner_tenant_2,
+        professional_tenant_2,
         blacklist_dto.UpsertBlacklistEntryDTO(whatsapp_user_id="wa-user-2"),
     )
 
-    tenant_1_entries = service.list_entries(owner_tenant_1)
-    tenant_2_entries = service.list_entries(owner_tenant_2)
+    tenant_1_entries = service.list_entries(professional_tenant_1)
+    tenant_2_entries = service.list_entries(professional_tenant_2)
 
     assert len(tenant_1_entries.items) == 1
     assert tenant_1_entries.items[0].whatsapp_user_id == "wa-user-1"
     assert len(tenant_2_entries.items) == 1
     assert tenant_2_entries.items[0].whatsapp_user_id == "wa-user-2"
 
-    service.delete_entry(owner_tenant_1, "wa-user-1")
-    tenant_1_after_delete = service.list_entries(owner_tenant_1)
+    service.delete_entry(professional_tenant_1, "wa-user-1")
+    tenant_1_after_delete = service.list_entries(professional_tenant_1)
     assert tenant_1_after_delete.items == []
-    assert len(service.list_entries(owner_tenant_2).items) == 1
+    assert len(service.list_entries(professional_tenant_2).items) == 1
 
 
 def test_blacklist_upsert_is_idempotent_for_same_contact() -> None:
     service = build_blacklist_service()
-    owner_claims = build_claims(role="owner")
+    professional_claims = build_claims(role="professional")
 
     first_entry = service.upsert_entry(
-        owner_claims,
+        professional_claims,
         blacklist_dto.UpsertBlacklistEntryDTO(whatsapp_user_id="wa-user-1"),
     )
     second_entry = service.upsert_entry(
-        owner_claims,
+        professional_claims,
         blacklist_dto.UpsertBlacklistEntryDTO(whatsapp_user_id="wa-user-1"),
     )
 
-    entries = service.list_entries(owner_claims)
+    entries = service.list_entries(professional_claims)
     assert len(entries.items) == 1
     assert first_entry.created_at == second_entry.created_at
 
 
-def test_blacklist_requires_owner_role() -> None:
+def test_blacklist_requires_professional_role() -> None:
     service = build_blacklist_service()
-    non_owner_claims = build_claims(role="agent")
+    non_professional_claims = build_claims(role="agent")
 
     with pytest.raises(service_exceptions.AuthorizationError):
-        service.list_entries(non_owner_claims)
+        service.list_entries(non_professional_claims)
 
     with pytest.raises(service_exceptions.AuthorizationError):
         service.upsert_entry(
-            non_owner_claims,
+            non_professional_claims,
             blacklist_dto.UpsertBlacklistEntryDTO(whatsapp_user_id="wa-user-1"),
         )
 
     with pytest.raises(service_exceptions.AuthorizationError):
-        service.delete_entry(non_owner_claims, "wa-user-1")
+        service.delete_entry(non_professional_claims, "wa-user-1")
 
 
 def test_blacklist_logs_add_and_delete_events(caplog: pytest.LogCaptureFixture) -> None:
     service = build_blacklist_service()
-    owner_claims = build_claims(role="owner")
+    professional_claims = build_claims(role="professional")
     caplog.set_level(logging.INFO, logger=LOGGER_NAME)
 
     service.upsert_entry(
-        owner_claims,
+        professional_claims,
         blacklist_dto.UpsertBlacklistEntryDTO(whatsapp_user_id="wa-user-1"),
     )
-    service.delete_entry(owner_claims, "wa-user-1")
+    service.delete_entry(professional_claims, "wa-user-1")
 
     events = [
         record.__dict__.get("event_data", {}).get("event")

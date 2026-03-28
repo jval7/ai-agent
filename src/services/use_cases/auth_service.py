@@ -84,7 +84,7 @@ class AuthService:
             tenant_id=tenant_id,
             email=register_dto.email,
             password_hash=password_hash,
-            role=service_constants.DEFAULT_OWNER_ROLE,
+            role=service_constants.DEFAULT_PROFESSIONAL_ROLE,
             is_active=True,
             is_master=False,
             created_at=now_value,

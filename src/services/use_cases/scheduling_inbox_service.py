@@ -72,7 +72,7 @@ class SchedulingInboxService:
         request_id: str,
         input_dto: scheduling_dto.ConsultationReviewDecisionDTO,
     ) -> scheduling_dto.ConsultationReviewDecisionResponseDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
 
         request = self._scheduling_service.resolve_consultation_review(
             tenant_id=claims.tenant_id,
@@ -136,7 +136,7 @@ class SchedulingInboxService:
         request_id: str,
         input_dto: scheduling_dto.PaymentReviewDecisionDTO,
     ) -> scheduling_dto.PaymentReviewDecisionResponseDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
 
         request = self._scheduling_service.approve_payment(
             tenant_id=claims.tenant_id,
@@ -200,7 +200,7 @@ class SchedulingInboxService:
         request_id: str,
         submit_dto: scheduling_dto.ProfessionalSubmitSlotsDTO,
     ) -> scheduling_dto.ProfessionalSubmitSlotsResponseDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
 
         request = self._scheduling_repository.get_request_by_id(claims.tenant_id, request_id)
         if request is None:
@@ -550,6 +550,6 @@ class SchedulingInboxService:
             return None
         return normalized_content
 
-    def _ensure_owner(self, claims: auth_dto.TokenClaimsDTO) -> None:
-        if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-            raise service_exceptions.AuthorizationError("owner role required")
+    def _ensure_professional(self, claims: auth_dto.TokenClaimsDTO) -> None:
+        if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+            raise service_exceptions.AuthorizationError("professional role required")

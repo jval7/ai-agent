@@ -57,7 +57,7 @@ class UserAdminService:
             tenant_id=tenant_id,
             email=request.master_email,
             password_hash=password_hash,
-            role=service_constants.DEFAULT_OWNER_ROLE,
+            role=service_constants.DEFAULT_PROFESSIONAL_ROLE,
             is_active=True,
             is_master=True,
             created_at=now_value,
@@ -80,7 +80,7 @@ class UserAdminService:
             tenant_id=master_user.tenant_id,
             email=request.email,
             password_hash=self._password_hasher.hash_password(request.password),
-            role=service_constants.DEFAULT_OWNER_ROLE,
+            role=service_constants.DEFAULT_PROFESSIONAL_ROLE,
             is_active=True,
             is_master=False,
             created_at=now_value,
@@ -118,7 +118,7 @@ class UserAdminService:
             raise service_exceptions.AuthenticationError("invalid master credentials")
 
         updated_user = existing_user.model_copy(deep=True)
-        updated_user.role = service_constants.DEFAULT_OWNER_ROLE
+        updated_user.role = service_constants.DEFAULT_PROFESSIONAL_ROLE
         updated_user.is_master = True
         self._user_repository.save(updated_user)
         self._ensure_agent_profile(existing_user.tenant_id, self._clock.now())

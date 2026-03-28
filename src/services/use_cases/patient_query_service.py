@@ -33,7 +33,7 @@ class PatientQueryService:
         self._clock = clock
 
     def list_patients(self, claims: auth_dto.TokenClaimsDTO) -> patient_dto.PatientListResponseDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         patients = self._patient_repository.list_by_tenant(claims.tenant_id)
         sorted_patients = sorted(patients, key=lambda item: item.created_at, reverse=True)
         return patient_dto.PatientListResponseDTO(
@@ -45,7 +45,7 @@ class PatientQueryService:
         claims: auth_dto.TokenClaimsDTO,
         whatsapp_user_id: str,
     ) -> patient_dto.PatientDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         patient = self._patient_repository.get_by_whatsapp_user(claims.tenant_id, whatsapp_user_id)
         if patient is None:
             raise service_exceptions.EntityNotFoundError("patient not found")
@@ -56,7 +56,7 @@ class PatientQueryService:
         claims: auth_dto.TokenClaimsDTO,
         create_dto: patient_dto.CreatePatientDTO,
     ) -> patient_dto.PatientDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         existing_patient = self._patient_repository.get_by_whatsapp_user(
             claims.tenant_id,
             create_dto.whatsapp_user_id,
@@ -82,7 +82,7 @@ class PatientQueryService:
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="patient.created",
-                    message="patient record created by owner",
+                    message="patient record created by professional",
                     data={
                         "tenant_id": claims.tenant_id,
                         "whatsapp_user_id": patient.whatsapp_user_id,
@@ -98,7 +98,7 @@ class PatientQueryService:
         whatsapp_user_id: str,
         update_dto: patient_dto.UpdatePatientDTO,
     ) -> patient_dto.PatientDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         existing_patient = self._patient_repository.get_by_whatsapp_user(
             claims.tenant_id, whatsapp_user_id
         )
@@ -123,7 +123,7 @@ class PatientQueryService:
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="patient.updated",
-                    message="patient record updated by owner",
+                    message="patient record updated by professional",
                     data={
                         "tenant_id": claims.tenant_id,
                         "whatsapp_user_id": updated_patient.whatsapp_user_id,
@@ -138,7 +138,7 @@ class PatientQueryService:
         claims: auth_dto.TokenClaimsDTO,
         whatsapp_user_id: str,
     ) -> None:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         requests = self._scheduling_repository.list_requests_by_tenant(claims.tenant_id)
         deleted_event_ids: set[str] = set()
         deleted_scheduling_requests_count = 0
@@ -183,7 +183,7 @@ class PatientQueryService:
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="patient.deleted",
-                    message="patient record deleted by owner",
+                    message="patient record deleted by professional",
                     data={
                         "tenant_id": claims.tenant_id,
                         "whatsapp_user_id": whatsapp_user_id,
@@ -195,9 +195,9 @@ class PatientQueryService:
             },
         )
 
-    def _ensure_owner(self, claims: auth_dto.TokenClaimsDTO) -> None:
-        if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-            raise service_exceptions.AuthorizationError("owner role required")
+    def _ensure_professional(self, claims: auth_dto.TokenClaimsDTO) -> None:
+        if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+            raise service_exceptions.AuthorizationError("professional role required")
 
     def _to_patient_dto(
         self,

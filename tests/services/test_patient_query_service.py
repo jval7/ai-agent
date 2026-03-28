@@ -97,7 +97,7 @@ def build_claims(role: str) -> auth_dto.TokenClaimsDTO:
     )
 
 
-def test_list_patients_requires_owner_role() -> None:
+def test_list_patients_requires_professional_role() -> None:
     service, _, _, _, _ = build_service()
 
     with pytest.raises(service_exceptions.AuthorizationError):
@@ -108,7 +108,7 @@ def test_get_patient_raises_not_found() -> None:
     service, _, _, _, _ = build_service()
 
     with pytest.raises(service_exceptions.EntityNotFoundError):
-        service.get_patient(build_claims("owner"), "wa-404")
+        service.get_patient(build_claims("professional"), "wa-404")
 
 
 def test_list_patients_returns_sorted_items() -> None:
@@ -142,7 +142,7 @@ def test_list_patients_returns_sorted_items() -> None:
         )
     )
 
-    response = service.list_patients(build_claims("owner"))
+    response = service.list_patients(build_claims("professional"))
 
     assert len(response.items) == 2
     assert response.items[0].whatsapp_user_id == "wa-2"
@@ -166,7 +166,7 @@ def test_get_patient_returns_single_patient() -> None:
         )
     )
 
-    response = service.get_patient(build_claims("owner"), "wa-1")
+    response = service.get_patient(build_claims("professional"), "wa-1")
 
     assert response.whatsapp_user_id == "wa-1"
     assert response.first_name == "Jane"
@@ -176,7 +176,7 @@ def test_create_patient_persists_new_patient() -> None:
     service, repository, _, _, _ = build_service()
 
     created_patient = service.create_patient(
-        claims=build_claims("owner"),
+        claims=build_claims("professional"),
         create_dto=patient_dto.CreatePatientDTO(
             whatsapp_user_id="wa-1",
             first_name="Jane",
@@ -213,7 +213,7 @@ def test_update_patient_overwrites_patient_data() -> None:
     )
 
     updated_patient = service.update_patient(
-        claims=build_claims("owner"),
+        claims=build_claims("professional"),
         whatsapp_user_id="wa-1",
         update_dto=patient_dto.UpdatePatientDTO(
             first_name="Jane Updated",
@@ -233,7 +233,7 @@ def test_update_patient_overwrites_patient_data() -> None:
     assert stored_patient.phone == "573009998877"
 
 
-def test_delete_patient_requires_owner_role() -> None:
+def test_delete_patient_requires_professional_role() -> None:
     service, _, _, _, _ = build_service()
 
     with pytest.raises(service_exceptions.AuthorizationError):
@@ -353,7 +353,7 @@ def test_delete_patient_removes_patient_for_tenant() -> None:
         )
     )
 
-    service.delete_patient(build_claims("owner"), "wa-1")
+    service.delete_patient(build_claims("professional"), "wa-1")
 
     assert repository.get_by_whatsapp_user("tenant-1", "wa-1") is None
     assert repository.get_by_whatsapp_user("tenant-2", "wa-1") is not None

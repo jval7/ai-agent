@@ -1,1 +1,1 @@
-DEFAULT_OWNER_ROLE = "owner"
+DEFAULT_PROFESSIONAL_ROLE = "professional"

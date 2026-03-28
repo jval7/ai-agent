@@ -75,15 +75,15 @@ def test_update_control_mode_switches_human_and_ai() -> None:
             control_mode="AI",
         )
     )
-    owner_claims = build_claims(role="owner")
+    professional_claims = build_claims(role="professional")
 
     human_result = service.update_control_mode(
-        claims=owner_claims,
+        claims=professional_claims,
         conversation_id="conv-1",
         update_dto=conversation_dto.UpdateConversationControlModeDTO(control_mode="HUMAN"),
     )
     ai_result = service.update_control_mode(
-        claims=owner_claims,
+        claims=professional_claims,
         conversation_id="conv-1",
         update_dto=conversation_dto.UpdateConversationControlModeDTO(control_mode="AI"),
     )
@@ -92,7 +92,7 @@ def test_update_control_mode_switches_human_and_ai() -> None:
     assert ai_result.control_mode == "AI"
 
 
-def test_update_control_mode_rejects_non_owner() -> None:
+def test_update_control_mode_rejects_non_professional() -> None:
     service, repository, _, _ = build_service()
     now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     repository.save_conversation(
@@ -196,7 +196,7 @@ def test_reset_deletes_conversation_user_patient_and_scheduling_requests() -> No
     )
 
     service.reset_messages(
-        claims=build_claims(role="owner"),
+        claims=build_claims(role="professional"),
         conversation_id="conv-1",
     )
 
@@ -207,7 +207,7 @@ def test_reset_deletes_conversation_user_patient_and_scheduling_requests() -> No
     assert scheduling_repository.get_request_by_id("tenant-1", "req-booked-1") is None
 
 
-def test_reset_messages_rejects_non_owner() -> None:
+def test_reset_messages_rejects_non_professional() -> None:
     service, repository, _, _ = build_service()
     now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     repository.save_conversation(
@@ -248,7 +248,7 @@ def test_update_control_mode_fails_when_conversation_not_found_or_other_tenant()
 
     with pytest.raises(service_exceptions.EntityNotFoundError):
         service.update_control_mode(
-            claims=build_claims(role="owner", tenant_id="tenant-1"),
+            claims=build_claims(role="professional", tenant_id="tenant-1"),
             conversation_id="conv-2",
             update_dto=conversation_dto.UpdateConversationControlModeDTO(control_mode="HUMAN"),
         )
@@ -272,7 +272,7 @@ def test_reset_messages_fails_when_conversation_not_found_or_other_tenant() -> N
 
     with pytest.raises(service_exceptions.EntityNotFoundError):
         service.reset_messages(
-            claims=build_claims(role="owner", tenant_id="tenant-1"),
+            claims=build_claims(role="professional", tenant_id="tenant-1"),
             conversation_id="conv-2",
         )
 
@@ -297,7 +297,7 @@ def test_update_control_mode_logs_control_mode_changed(
     caplog.set_level(logging.INFO, logger=LOGGER_NAME)
 
     service.update_control_mode(
-        claims=build_claims(role="owner"),
+        claims=build_claims(role="professional"),
         conversation_id="conv-1",
         update_dto=conversation_dto.UpdateConversationControlModeDTO(control_mode="HUMAN"),
     )

@@ -40,7 +40,7 @@ class ConversationControlService:
         conversation_id: str,
         update_dto: conversation_dto.UpdateConversationControlModeDTO,
     ) -> conversation_dto.ConversationControlModeResponseDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
 
         conversation = self._conversation_repository.get_conversation_by_id(
             claims.tenant_id,
@@ -79,7 +79,7 @@ class ConversationControlService:
         claims: auth_dto.TokenClaimsDTO,
         conversation_id: str,
     ) -> None:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
 
         conversation = self._conversation_repository.get_conversation_by_id(
             claims.tenant_id,
@@ -108,7 +108,7 @@ class ConversationControlService:
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="conversation.fully_reset",
-                    message="conversation fully reset by owner",
+                    message="conversation fully reset by professional",
                     data={
                         "tenant_id": conversation.tenant_id,
                         "conversation_id": conversation.id,
@@ -125,7 +125,7 @@ class ConversationControlService:
         conversation_id: str,
         send_dto: conversation_dto.SendProfessionalMessageDTO,
     ) -> conversation_dto.MessageSentResponseDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
 
         conversation = self._conversation_repository.get_conversation_by_id(
             claims.tenant_id,
@@ -194,6 +194,6 @@ class ConversationControlService:
             created_at=outbound_message.created_at,
         )
 
-    def _ensure_owner(self, claims: auth_dto.TokenClaimsDTO) -> None:
-        if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-            raise service_exceptions.AuthorizationError("owner role required")
+    def _ensure_professional(self, claims: auth_dto.TokenClaimsDTO) -> None:
+        if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+            raise service_exceptions.AuthorizationError("professional role required")

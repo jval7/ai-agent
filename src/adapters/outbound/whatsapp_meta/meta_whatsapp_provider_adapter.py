@@ -225,7 +225,7 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
                     if not isinstance(message_type, str) or not message_type:
                         continue
 
-                    message_text = f"[owner_app_non_text:{message_type}]"
+                    message_text = f"[professional_app_non_text:{message_type}]"
                     if message_type == "text":
                         text_payload = message_echo.get("text")
                         if not isinstance(text_payload, dict):
@@ -242,7 +242,7 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
                         whatsapp_user_name=None,
                         message_id=message_id,
                         message_type=message_type,
-                        source="OWNER_APP",
+                        source="PROFESSIONAL_APP",
                         message_text=message_text,
                     )
                     events.append(event)
