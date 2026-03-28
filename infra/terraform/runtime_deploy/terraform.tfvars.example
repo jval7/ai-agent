@@ -17,6 +17,6 @@ cpu                   = "1"
 memory                = "512Mi"
 container_port        = 8000
 
-# Single JSON secret read directly by the app at startup.
-manage_app_config_secret         = true
-app_config_secret_bootstrap_json = "{}"
+# Single JSON secret shell created by Terraform; content managed externally via:
+#   make app-config-secret-upsert DEPLOY_PROJECT_ID=<project> APP_CONFIG_PAIR='KEY:value'
+manage_app_config_secret = true

@@ -6,8 +6,6 @@ locals {
     if trimspace(api) != ""
   ])
 
-  app_config_secret_bootstrap_json_normalized = trimspace(var.app_config_secret_bootstrap_json)
-
   runtime_secret_ids = toset(var.manage_app_config_secret ? [local.app_config_secret_id] : [])
 }
 
@@ -54,15 +52,6 @@ resource "google_secret_manager_secret" "app_config_json" {
   depends_on = [
     google_project_service.apis,
   ]
-}
-
-resource "google_secret_manager_secret_version" "app_config_json_bootstrap" {
-  count = (
-    var.manage_app_config_secret && local.app_config_secret_bootstrap_json_normalized != ""
-  ) ? 1 : 0
-
-  secret      = google_secret_manager_secret.app_config_json[0].id
-  secret_data = local.app_config_secret_bootstrap_json_normalized
 }
 
 resource "google_cloud_run_v2_service" "backend" {

@@ -116,16 +116,9 @@ variable "ingress" {
 }
 
 variable "manage_app_config_secret" {
-  description = "If true, Terraform manages the single JSON app config secret container and bootstrap version."
+  description = "If true, Terraform manages the single JSON app config secret container. Secret content is managed externally via gcloud or the settings API."
   type        = bool
   default     = true
-}
-
-variable "app_config_secret_bootstrap_json" {
-  description = "Bootstrap JSON content for app config secret (stored in tfstate). Keep it minimal and upsert sensitive values later."
-  type        = string
-  default     = "{}"
-  sensitive   = true
 }
 
 variable "enable_apis" {

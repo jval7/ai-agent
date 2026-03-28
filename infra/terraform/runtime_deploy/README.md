@@ -38,7 +38,6 @@ terraform apply -auto-approve \
   -target=google_project_service.serviceusage \
   -target=google_project_service.apis \
   -target=google_secret_manager_secret.app_config_json \
-  -target=google_secret_manager_secret_version.app_config_json_bootstrap \
   -target=google_secret_manager_secret_iam_member.runtime_secret_accessor
 ```
 
@@ -74,9 +73,16 @@ El stack crea un secret JSON unico y la app lo lee directo desde Secret Manager 
 
 Variables Terraform relevantes:
 
-1. `manage_app_config_secret` (default `true`)
-2. `app_config_secret_bootstrap_json` (default `{}`)
-3. `min_instances` (recomendado `1` para reducir cold starts)
+1. `manage_app_config_secret` (default `true`) — Terraform crea el contenedor del secreto; el contenido se gestiona externamente.
+2. `min_instances` (recomendado `1` para reducir cold starts)
+
+Para poblar el secreto despues de crear la infra:
+
+```bash
+make app-config-secret-upsert \
+  DEPLOY_PROJECT_ID=<project-id> \
+  APP_CONFIG_PAIR='CLAVE:valor'
+```
 
 ## Bucket de state (una sola vez)
 

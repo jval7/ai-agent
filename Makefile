@@ -486,8 +486,7 @@ deploy-back:
 		'memory                = "512Mi"' \
 		'container_port        = 8000' \
 		'' \
-		'manage_app_config_secret         = true' \
-		'app_config_secret_bootstrap_json = "{}"' \
+		'manage_app_config_secret = true' \
 		> "$(DEPLOY_BACK_TF_DIR)/terraform.tfvars"; \
 	terraform -chdir="$(DEPLOY_BACK_TF_DIR)" init -migrate-state -force-copy; \
 	if ! terraform -chdir="$(DEPLOY_BACK_TF_DIR)" state show 'google_artifact_registry_repository.backend' >/dev/null 2>&1; then \
