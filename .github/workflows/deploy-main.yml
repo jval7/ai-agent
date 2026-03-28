@@ -3,15 +3,36 @@ name: Deploy to GCP
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - dev
 
 permissions:
   contents: read
   id-token: write
 
-env:
-  GCP_REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
-
 jobs:
+  # ── 0. Resolve target environment ──────────────────────────────────
+  resolve-env:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.env.outputs.environment }}
+    steps:
+      - id: env
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ inputs.environment }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "environment=dev" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── 1. Detect which areas changed ──────────────────────────────────
   detect-changes:
     runs-on: ubuntu-latest
@@ -40,9 +61,13 @@ jobs:
 
   # ── 2. Deploy backend (infra + Docker + Cloud Run) ─────────────────
   deploy-backend:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.infra-backend == 'true'
+    needs: [resolve-env, detect-changes]
+    if: >-
+      needs.detect-changes.outputs.backend == 'true' ||
+      needs.detect-changes.outputs.infra-backend == 'true' ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-env.outputs.environment }}
     outputs:
       backend_url: ${{ steps.deploy.outputs.backend_url }}
     steps:
@@ -65,16 +90,26 @@ jobs:
       - name: Deploy backend
         id: deploy
         env:
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          REGION: ${{ env.GCP_REGION }}
-          ARTIFACT_REPOSITORY: ${{ secrets.GCP_ARTIFACT_REPOSITORY || 'ai-agent-backend' }}
-          CLOUD_RUN_SERVICE_NAME: ${{ secrets.CLOUD_RUN_SERVICE_NAME || 'ai-agent-backend' }}
+          DEPLOY_ENV: ${{ needs.resolve-env.outputs.environment }}
+          REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
           RUNTIME_SA_EMAIL: ${{ secrets.RUNTIME_SERVICE_ACCOUNT_EMAIL }}
           TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
-          TF_STATE_PREFIX: ${{ secrets.TF_STATE_PREFIX || 'runtime-deploy' }}
           APP_CONFIG_SECRET_ID: AI_AGENT_APP_CONFIG_JSON
         run: |
           set -euo pipefail
+
+          cd infra/terraform/runtime_deploy
+          envfile="envs/${DEPLOY_ENV}.tfvars"
+
+          if [[ ! -f "$envfile" ]]; then
+            echo "::error::Environment file not found: $envfile"
+            exit 1
+          fi
+
+          # Read project_id from envs tfvars
+          PROJECT_ID=$(grep '^project_id' "$envfile" | sed 's/.*= *"\(.*\)"/\1/')
+          ARTIFACT_REPOSITORY=$(grep '^artifact_repository_id' "$envfile" | sed 's/.*= *"\(.*\)"/\1/' || echo "ai-agent-backend")
+          CLOUD_RUN_SERVICE_NAME=$(grep '^cloud_run_service_name' "$envfile" | sed 's/.*= *"\(.*\)"/\1/' || echo "ai-agent-backend")
 
           # Resolve runtime service account
           runtime_sa="$RUNTIME_SA_EMAIL"
@@ -87,33 +122,22 @@ jobs:
           image_tag="$(date +%Y%m%d-%H%M%S)-${GITHUB_SHA::8}"
           image_uri="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}/backend:${image_tag}"
 
-          # Write terraform.tfvars
-          cd infra/terraform/runtime_deploy
-          cat > terraform.tfvars <<TFVARS
-          project_id                    = "${PROJECT_ID}"
-          region                        = "${REGION}"
-          artifact_registry_location    = "${REGION}"
-          artifact_repository_id        = "${ARTIFACT_REPOSITORY}"
-          cloud_run_service_name        = "${CLOUD_RUN_SERVICE_NAME}"
+          # Build terraform.tfvars from env file + dynamic values
+          cp "$envfile" terraform.tfvars
+          cat >> terraform.tfvars <<APPEND
+
           runtime_service_account_email = "${runtime_sa}"
           container_image               = "${image_uri}"
-
           allow_unauthenticated = true
-          min_instances         = 0
-          max_instances         = 10
-          container_concurrency = 40
-          timeout_seconds       = 300
-          cpu                   = "1"
-          memory                = "512Mi"
-          container_port        = 8000
-
           manage_app_config_secret = true
-          TFVARS
+          APPEND
 
-          # Init with GCS backend
+          echo "Deploying backend [env=${DEPLOY_ENV}] to project ${PROJECT_ID}"
+
+          # Init with GCS backend (prefixed by environment)
           terraform init \
             -backend-config="bucket=${TF_STATE_BUCKET}" \
-            -backend-config="prefix=${TF_STATE_PREFIX}"
+            -backend-config="prefix=${DEPLOY_ENV}/runtime-deploy"
 
           # Import existing resources if not in state
           terraform import -var-file=terraform.tfvars \
@@ -150,13 +174,16 @@ jobs:
           # Capture output
           backend_url=$(terraform output -raw cloud_run_service_url)
           echo "backend_url=${backend_url}" >> "$GITHUB_OUTPUT"
-          echo "Backend deployed: ${backend_url}"
+          echo "Backend deployed [${DEPLOY_ENV}]: ${backend_url}"
 
   # ── 3. Deploy frontend infra (Storage + LB + CDN) ──────────────────
   deploy-frontend-infra:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.infra-frontend == 'true'
+    needs: [resolve-env, detect-changes]
+    if: >-
+      needs.detect-changes.outputs.infra-frontend == 'true' ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-env.outputs.environment }}
     outputs:
       bucket_name: ${{ steps.deploy.outputs.bucket_name }}
     steps:
@@ -176,57 +203,51 @@ jobs:
       - name: Deploy frontend infra
         id: deploy
         env:
-          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+          DEPLOY_ENV: ${{ needs.resolve-env.outputs.environment }}
           TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
-          TF_STATE_PREFIX: ${{ secrets.TF_STATE_PREFIX_FRONTEND || 'frontend-spa-cdn' }}
-          FRONTEND_DOMAINS_JSON: ${{ vars.TF_VAR_FRONTEND_DOMAINS_JSON }}
           BUCKET_NAME: ${{ vars.TF_VAR_FRONTEND_BUCKET_NAME }}
-          BUCKET_LOCATION: ${{ vars.TF_VAR_FRONTEND_BUCKET_LOCATION || 'US' }}
-          RESOURCE_NAME_PREFIX: ${{ vars.TF_VAR_FRONTEND_RESOURCE_NAME_PREFIX || 'ai-agent-frontend' }}
         run: |
           set -euo pipefail
 
           cd infra/terraform/frontend_spa_cdn
+          envfile="envs/${DEPLOY_ENV}.tfvars"
 
-          # Build terraform.tfvars
-          cat > terraform.tfvars <<TFVARS
-          project_id           = "${PROJECT_ID}"
-          enable_https         = true
-          enable_http_redirect = true
-          frontend_domains     = ${FRONTEND_DOMAINS_JSON}
-          bucket_location      = "${BUCKET_LOCATION}"
-          resource_name_prefix = "${RESOURCE_NAME_PREFIX}"
-          enable_cdn           = true
-          force_destroy_bucket = false
-          index_document       = "index.html"
-          error_document       = "index.html"
-          TFVARS
+          if [[ ! -f "$envfile" ]]; then
+            echo "::error::Environment file not found: $envfile"
+            exit 1
+          fi
 
-          # Add optional bucket_name
+          # Build terraform.tfvars from env file
+          cp "$envfile" terraform.tfvars
+
+          # Add optional bucket_name override
           if [[ -n "${BUCKET_NAME:-}" ]]; then
             echo "bucket_name = \"${BUCKET_NAME}\"" >> terraform.tfvars
           fi
 
-          # Init with GCS backend
+          echo "Deploying frontend infra [env=${DEPLOY_ENV}]"
+
+          # Init with GCS backend (prefixed by environment)
           terraform init \
             -backend-config="bucket=${TF_STATE_BUCKET}" \
-            -backend-config="prefix=${TF_STATE_PREFIX}"
+            -backend-config="prefix=${DEPLOY_ENV}/frontend-spa-cdn"
 
           terraform apply -auto-approve -var-file=terraform.tfvars
 
           bucket_name=$(terraform output -raw frontend_bucket_name)
           echo "bucket_name=${bucket_name}" >> "$GITHUB_OUTPUT"
-          echo "Frontend infra ready (bucket=${bucket_name})"
+          echo "Frontend infra ready [${DEPLOY_ENV}] (bucket=${bucket_name})"
 
   # ── 4. Deploy frontend code (build + upload to GCS) ────────────────
   deploy-frontend:
-    needs: [detect-changes, deploy-backend, deploy-frontend-infra]
+    needs: [resolve-env, detect-changes, deploy-backend, deploy-frontend-infra]
     if: |
       always() &&
       !cancelled() &&
       !failure() &&
-      (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.infra-frontend == 'true')
+      (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.infra-frontend == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+    environment: ${{ needs.resolve-env.outputs.environment }}
     steps:
       - uses: actions/checkout@v4
 
@@ -267,15 +288,15 @@ jobs:
       - name: Resolve frontend bucket
         id: bucket
         env:
+          DEPLOY_ENV: ${{ needs.resolve-env.outputs.environment }}
           DEPLOYED_BUCKET: ${{ needs.deploy-frontend-infra.outputs.bucket_name }}
           TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
-          TF_STATE_PREFIX: ${{ secrets.TF_STATE_PREFIX_FRONTEND || 'frontend-spa-cdn' }}
         run: |
           bucket="$DEPLOYED_BUCKET"
           if [[ -z "$bucket" ]]; then
             # Fetch from existing terraform state
             cd infra/terraform/frontend_spa_cdn
-            terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="prefix=${TF_STATE_PREFIX}"
+            terraform init -backend-config="bucket=${TF_STATE_BUCKET}" -backend-config="prefix=${DEPLOY_ENV}/frontend-spa-cdn"
             bucket=$(terraform output -raw frontend_bucket_name)
             cd "$GITHUB_WORKSPACE"
           fi
@@ -295,6 +316,7 @@ jobs:
       - name: Upload to GCS and set cache headers
         env:
           BUCKET: ${{ steps.bucket.outputs.name }}
+          DEPLOY_ENV: ${{ needs.resolve-env.outputs.environment }}
         run: |
           gcloud storage rsync --recursive --delete-unmatched-destination-objects \
             frontend/dist "gs://${BUCKET}"
@@ -311,4 +333,4 @@ jobs:
             done <<< "$asset_objects"
           fi
 
-          echo "Frontend uploaded to gs://${BUCKET}"
+          echo "Frontend uploaded [${DEPLOY_ENV}] to gs://${BUCKET}"

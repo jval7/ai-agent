@@ -20,6 +20,7 @@ frontend/coverage/
 *.tfstate.*
 *.tfvars
 *.tfvars.json
+!infra/terraform/**/envs/*.tfvars
 **/tfplan
 **/*.tfplan
 .claude/

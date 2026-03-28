@@ -40,31 +40,25 @@ SIM_WA_USER_ID ?= 573001234567
 SIM_WA_USER_NAME ?= Cliente Demo
 MESSAGE ?= Hola desde WhatsApp
 SIM_PROVIDER_MESSAGE_ID ?=
-DEPLOY_PROJECT_ID ?= ai-agent-calendar-2603011621
+DEPLOY_PROJECT_ID ?=
 DEPLOY_REGION ?= us-central1
 DEPLOY_ARTIFACT_REPOSITORY ?= ai-agent-backend
 DEPLOY_CLOUD_RUN_SERVICE_NAME ?= ai-agent-backend
 DEPLOY_RUNTIME_SERVICE_ACCOUNT_EMAIL ?=
 DEPLOY_BACKEND_IMAGE_TAG ?=
-DEPLOY_MIN_INSTANCES ?= 0
 DEPLOY_BACKEND_URL ?=
 DEPLOY_FRONTEND_BUCKET_NAME ?=
-DEPLOY_FRONTEND_BUCKET_LOCATION ?= US
-DEPLOY_FRONTEND_RESOURCE_PREFIX ?= ai-agent-frontend
-DEPLOY_FRONTEND_ENABLE_HTTPS ?= true
-DEPLOY_FRONTEND_ENABLE_HTTP_REDIRECT ?= false
-DEPLOY_FRONTEND_DOMAINS ?= alejaescobar.com
-DEPLOY_ENABLE_CDN ?= true
-DEPLOY_FORCE_DESTROY_BUCKET ?= false
 DEPLOY_APP_CONFIG_SECRET_ID ?= AI_AGENT_APP_CONFIG_JSON
 DEPLOY_BASE_DIR ?= $(FLOW_DIR)/deploy
-DEPLOY_STATE_DIR ?= $(DEPLOY_BASE_DIR)/state
+DEPLOY_STATE_DIR ?= $(DEPLOY_BASE_DIR)/state/dev
 DEPLOY_FRONT_TF_DIR ?= $(DEPLOY_BASE_DIR)/terraform/frontend_spa_cdn_local
 DEPLOY_BACK_TF_DIR ?= $(DEPLOY_BASE_DIR)/terraform/runtime_deploy_local
 DEPLOY_FRONT_STATE_FILE ?= $(DEPLOY_STATE_DIR)/frontend_spa_cdn.tfstate
 DEPLOY_BACK_STATE_FILE ?= $(DEPLOY_STATE_DIR)/runtime_deploy.tfstate
-DEPLOY_FRONT_ENV_FILE ?= $(DEPLOY_BASE_DIR)/front.env
-DEPLOY_BACK_ENV_FILE ?= $(DEPLOY_BASE_DIR)/back.env
+DEPLOY_FRONT_ENV_FILE ?= $(DEPLOY_BASE_DIR)/dev-front.env
+DEPLOY_BACK_ENV_FILE ?= $(DEPLOY_BASE_DIR)/dev-back.env
+DEPLOY_BACK_ENVS_DIR ?= infra/terraform/runtime_deploy/envs
+DEPLOY_FRONT_ENVS_DIR ?= infra/terraform/frontend_spa_cdn/envs
 APP_CONFIG_KEY ?=
 APP_CONFIG_VALUE ?=
 APP_CONFIG_VALUE_JSON ?=
@@ -317,6 +311,11 @@ docker-logs:
 
 deploy-front-infra:
 	@command -v terraform >/dev/null 2>&1 || { echo "terraform is required."; exit 1; }
+	@if [[ ! -f "$(DEPLOY_FRONT_ENVS_DIR)/dev.tfvars" ]]; then \
+		echo "Environment file not found: $(DEPLOY_FRONT_ENVS_DIR)/dev.tfvars"; \
+		exit 1; \
+	fi
+	@echo "Deploying frontend infra [env=dev]"
 	@mkdir -p "$(DEPLOY_FRONT_TF_DIR)"
 	@mkdir -p "$(DEPLOY_STATE_DIR)"
 	@rsync -a \
@@ -344,37 +343,10 @@ deploy-front-infra:
 		'' \
 		'provider "google" {}' \
 		> "$(DEPLOY_FRONT_TF_DIR)/versions.tf"
-	@if [[ "$(DEPLOY_FRONTEND_ENABLE_HTTPS)" == "true" && -z "$(DEPLOY_FRONTEND_DOMAINS)" ]]; then \
-		echo "DEPLOY_FRONTEND_DOMAINS is required when DEPLOY_FRONTEND_ENABLE_HTTPS=true"; \
-		exit 1; \
+	@cp "$(DEPLOY_FRONT_ENVS_DIR)/dev.tfvars" "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"
+	@if [[ -n "$(DEPLOY_FRONTEND_BUCKET_NAME)" ]]; then \
+		printf '\nbucket_name = "%s"\n' "$(DEPLOY_FRONTEND_BUCKET_NAME)" >> "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"; \
 	fi
-	@domains_hcl=$$(echo "$(DEPLOY_FRONTEND_DOMAINS)" | awk -F',' '{ \
-		printf "["; \
-		sep=""; \
-		for (i=1; i<=NF; i++) { \
-			gsub(/^[[:space:]]+|[[:space:]]+$$/, "", $$i); \
-			if (length($$i) > 0) { \
-				printf "%s\"%s\"", sep, $$i; \
-				sep=", "; \
-			} \
-		} \
-		printf "]"; \
-	}'); \
-	printf '%s\n' \
-		'project_id = "$(DEPLOY_PROJECT_ID)"' \
-		'' \
-		'enable_https         = $(DEPLOY_FRONTEND_ENABLE_HTTPS)' \
-		'enable_http_redirect = $(DEPLOY_FRONTEND_ENABLE_HTTP_REDIRECT)' \
-		"frontend_domains     = $${domains_hcl}" \
-		'' \
-		'bucket_name          = $(if $(DEPLOY_FRONTEND_BUCKET_NAME),"$(DEPLOY_FRONTEND_BUCKET_NAME)",null)' \
-		'bucket_location      = "$(DEPLOY_FRONTEND_BUCKET_LOCATION)"' \
-		'resource_name_prefix = "$(DEPLOY_FRONTEND_RESOURCE_PREFIX)"' \
-		'enable_cdn           = $(DEPLOY_ENABLE_CDN)' \
-		'force_destroy_bucket = $(DEPLOY_FORCE_DESTROY_BUCKET)' \
-		'index_document       = "index.html"' \
-		'error_document       = "index.html"' \
-		> "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"
 	@terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" init -migrate-state -force-copy
 	@terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" apply -auto-approve -var-file=terraform.tfvars
 	@frontend_url=$$(terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" output -raw frontend_http_url 2>/dev/null || true); \
@@ -384,7 +356,7 @@ deploy-front-infra:
 	frontend_bucket=$$(terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" output -raw frontend_bucket_name); \
 	mkdir -p "$(DEPLOY_BASE_DIR)"; \
 	printf "DEPLOY_FRONTEND_URL=%s\nDEPLOY_FRONTEND_BUCKET=%s\n" "$$frontend_url" "$$frontend_bucket" > "$(DEPLOY_FRONT_ENV_FILE)"; \
-	echo "Frontend infra ready: $$frontend_url (bucket=$$frontend_bucket)"
+	echo "Frontend infra ready [dev]: $$frontend_url (bucket=$$frontend_bucket)"
 
 deploy-front-upload:
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
@@ -430,6 +402,11 @@ deploy-back:
 	@command -v terraform >/dev/null 2>&1 || { echo "terraform is required."; exit 1; }
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
 	@command -v docker >/dev/null 2>&1 || { echo "docker is required."; exit 1; }
+	@if [[ ! -f "$(DEPLOY_BACK_ENVS_DIR)/dev.tfvars" ]]; then \
+		echo "Environment file not found: $(DEPLOY_BACK_ENVS_DIR)/dev.tfvars"; \
+		exit 1; \
+	fi
+	@echo "Deploying backend [env=dev]"
 	@mkdir -p "$(DEPLOY_BACK_TF_DIR)"
 	@mkdir -p "$(DEPLOY_STATE_DIR)"
 	@rsync -a \
@@ -458,68 +435,62 @@ deploy-back:
 		'provider "google" {}' \
 		> "$(DEPLOY_BACK_TF_DIR)/versions.tf"
 	@set -euo pipefail; \
+	project_id="$(DEPLOY_PROJECT_ID)"; \
+	if [[ -z "$$project_id" ]]; then \
+		project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/dev.tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+	fi; \
+	region="$(DEPLOY_REGION)"; \
+	artifact_repo="$(DEPLOY_ARTIFACT_REPOSITORY)"; \
+	service_name="$(DEPLOY_CLOUD_RUN_SERVICE_NAME)"; \
 	runtime_sa_email="$(DEPLOY_RUNTIME_SERVICE_ACCOUNT_EMAIL)"; \
 	if [[ -z "$$runtime_sa_email" ]]; then \
-		project_number=$$(gcloud projects describe "$(DEPLOY_PROJECT_ID)" --format='value(projectNumber)'); \
+		project_number=$$(gcloud projects describe "$$project_id" --format='value(projectNumber)'); \
 		runtime_sa_email="$$project_number-compute@developer.gserviceaccount.com"; \
 	fi; \
 	image_tag="$(DEPLOY_BACKEND_IMAGE_TAG)"; \
 	if [[ -z "$$image_tag" ]]; then \
 		image_tag=$$(date +%Y%m%d-%H%M%S)-amd64; \
 	fi; \
-	image_uri="$(DEPLOY_REGION)-docker.pkg.dev/$(DEPLOY_PROJECT_ID)/$(DEPLOY_ARTIFACT_REPOSITORY)/backend:$$image_tag"; \
-	printf '%s\n' \
-		'project_id                    = "$(DEPLOY_PROJECT_ID)"' \
-		'region                        = "$(DEPLOY_REGION)"' \
-		'artifact_registry_location    = "$(DEPLOY_REGION)"' \
-		'artifact_repository_id        = "$(DEPLOY_ARTIFACT_REPOSITORY)"' \
-		'cloud_run_service_name        = "$(DEPLOY_CLOUD_RUN_SERVICE_NAME)"' \
+	image_uri="$$region-docker.pkg.dev/$$project_id/$$artifact_repo/backend:$$image_tag"; \
+	cp "$(DEPLOY_BACK_ENVS_DIR)/dev.tfvars" "$(DEPLOY_BACK_TF_DIR)/terraform.tfvars"; \
+	printf '\n%s\n%s\n%s\n%s\n' \
 		"runtime_service_account_email = \"$$runtime_sa_email\"" \
 		"container_image               = \"$$image_uri\"" \
-		'' \
 		'allow_unauthenticated = true' \
-		'min_instances         = $(DEPLOY_MIN_INSTANCES)' \
-		'max_instances         = 10' \
-		'container_concurrency = 40' \
-		'timeout_seconds       = 300' \
-		'cpu                   = "1"' \
-		'memory                = "512Mi"' \
-		'container_port        = 8000' \
-		'' \
 		'manage_app_config_secret = true' \
-		> "$(DEPLOY_BACK_TF_DIR)/terraform.tfvars"; \
+		>> "$(DEPLOY_BACK_TF_DIR)/terraform.tfvars"; \
 	terraform -chdir="$(DEPLOY_BACK_TF_DIR)" init -migrate-state -force-copy; \
 	if ! terraform -chdir="$(DEPLOY_BACK_TF_DIR)" state show 'google_artifact_registry_repository.backend' >/dev/null 2>&1; then \
 		terraform -chdir="$(DEPLOY_BACK_TF_DIR)" import -var-file=terraform.tfvars \
 			'google_artifact_registry_repository.backend' \
-			"projects/$(DEPLOY_PROJECT_ID)/locations/$(DEPLOY_REGION)/repositories/$(DEPLOY_ARTIFACT_REPOSITORY)" >/dev/null 2>&1 || true; \
+			"projects/$$project_id/locations/$$region/repositories/$$artifact_repo" >/dev/null 2>&1 || true; \
 	fi; \
 	if ! terraform -chdir="$(DEPLOY_BACK_TF_DIR)" state show 'google_secret_manager_secret.app_config_json[0]' >/dev/null 2>&1; then \
 		terraform -chdir="$(DEPLOY_BACK_TF_DIR)" import -var-file=terraform.tfvars \
 			'google_secret_manager_secret.app_config_json[0]' \
-			"projects/$(DEPLOY_PROJECT_ID)/secrets/$(DEPLOY_APP_CONFIG_SECRET_ID)" >/dev/null 2>&1 || true; \
+			"projects/$$project_id/secrets/$(DEPLOY_APP_CONFIG_SECRET_ID)" >/dev/null 2>&1 || true; \
 	fi; \
 	if ! terraform -chdir="$(DEPLOY_BACK_TF_DIR)" state show 'google_cloud_run_v2_service.backend' >/dev/null 2>&1; then \
 		terraform -chdir="$(DEPLOY_BACK_TF_DIR)" import -var-file=terraform.tfvars \
 			'google_cloud_run_v2_service.backend' \
-			"projects/$(DEPLOY_PROJECT_ID)/locations/$(DEPLOY_REGION)/services/$(DEPLOY_CLOUD_RUN_SERVICE_NAME)" >/dev/null 2>&1 || true; \
+			"projects/$$project_id/locations/$$region/services/$$service_name" >/dev/null 2>&1 || true; \
 	fi; \
 	if ! terraform -chdir="$(DEPLOY_BACK_TF_DIR)" state show 'google_secret_manager_secret_iam_member.runtime_secret_accessor["$(DEPLOY_APP_CONFIG_SECRET_ID)"]' >/dev/null 2>&1; then \
 		terraform -chdir="$(DEPLOY_BACK_TF_DIR)" import -var-file=terraform.tfvars \
 			'google_secret_manager_secret_iam_member.runtime_secret_accessor["$(DEPLOY_APP_CONFIG_SECRET_ID)"]' \
-			"projects/$(DEPLOY_PROJECT_ID)/secrets/$(DEPLOY_APP_CONFIG_SECRET_ID)/roles/secretmanager.secretAccessor/serviceAccount:$$runtime_sa_email" >/dev/null 2>&1 || true; \
+			"projects/$$project_id/secrets/$(DEPLOY_APP_CONFIG_SECRET_ID)/roles/secretmanager.secretAccessor/serviceAccount:$$runtime_sa_email" >/dev/null 2>&1 || true; \
 	fi; \
 	terraform -chdir="$(DEPLOY_BACK_TF_DIR)" apply -auto-approve -var-file=terraform.tfvars \
 		-target=google_project_service.serviceusage \
 		-target=google_project_service.apis \
 		-target=google_artifact_registry_repository.backend; \
-	gcloud auth configure-docker "$(DEPLOY_REGION)-docker.pkg.dev" --quiet; \
+	gcloud auth configure-docker "$$region-docker.pkg.dev" --quiet; \
 	docker buildx build --platform linux/amd64 -f Dockerfile.backend -t "$$image_uri" --push .; \
 	terraform -chdir="$(DEPLOY_BACK_TF_DIR)" apply -auto-approve -var-file=terraform.tfvars; \
 	backend_url=$$(terraform -chdir="$(DEPLOY_BACK_TF_DIR)" output -raw cloud_run_service_url); \
 	mkdir -p "$(DEPLOY_BASE_DIR)"; \
 	printf "DEPLOY_BACKEND_URL=%s\nDEPLOY_BACKEND_IMAGE_URI=%s\nDEPLOY_RUNTIME_SERVICE_ACCOUNT_EMAIL=%s\n" "$$backend_url" "$$image_uri" "$$runtime_sa_email" > "$(DEPLOY_BACK_ENV_FILE)"; \
-	echo "Backend deployed: $$backend_url"
+	echo "Backend deployed [dev]: $$backend_url"
 
 deploy-all:
 	@$(MAKE) deploy-front-infra
