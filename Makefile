@@ -26,14 +26,10 @@ endif
 
 API_BASE ?= http://localhost:8000
 TENANT_NAME ?= Acme
-PROFESSIONAL_EMAIL ?= professional@acme.com
-PROFESSIONAL_PASSWORD ?= supersecret
-MASTER_EMAIL ?= $(PROFESSIONAL_EMAIL)
-MASTER_PASSWORD ?= $(PROFESSIONAL_PASSWORD)
+MASTER_EMAIL ?=
+MASTER_PASSWORD ?=
 USER_EMAIL ?=
 USER_PASSWORD ?=
-PROFESSIONAL_EMAIL_ORIGIN := $(origin PROFESSIONAL_EMAIL)
-PROFESSIONAL_PASSWORD_ORIGIN := $(origin PROFESSIONAL_PASSWORD)
 FLOW_DIR ?= .make-flow
 FRONTEND_DIR ?= frontend
 SIM_WA_USER_ID ?= 573001234567
@@ -66,12 +62,11 @@ APP_CONFIG_PRUNE_ENV ?= false
 APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECONDS DEFAULT_SYSTEM_PROMPT CONTEXT_MESSAGE_LIMIT FIRESTORE_DATABASE_ID CORS_ALLOWED_ORIGINS FRONTEND_APP_BASE_URL ENABLE_DEV_ENDPOINTS META_APP_ID META_APP_SECRET META_REDIRECT_URI META_WEBHOOK_VERIFY_TOKEN META_PHONE_REGISTRATION_PIN META_API_VERSION GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REDIRECT_URI GOOGLE_CLOUD_PROJECT GEMINI_LOCATION GEMINI_MODEL GEMINI_MAX_OUTPUT_TOKENS LANGSMITH_TRACING_ENABLED LANGSMITH_PROJECT LANGSMITH_API_KEY LANGSMITH_ENDPOINT LANGSMITH_WORKSPACE_ID LANGSMITH_ENVIRONMENT LANGSMITH_TAGS LOG_LEVEL LOG_INCLUDE_REQUEST_SUMMARY LANGCHAIN_API_KEY LANGCHAIN_ENDPOINT
 
 .PHONY: \
+	setup-master \
 	oauth-flow \
-	user-bootstrap-master \
 	user-create \
 	user-delete \
 	save-api-base \
-	save-credentials \
 	memory-reset \
 	chat-memory-reset \
 	static-checks \
@@ -99,19 +94,43 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 	simulate-whatsapp-message \
 	calendar-cleanup
 
+define require_master_credentials
+	@if [[ -z "$(MASTER_EMAIL)" || -z "$(MASTER_PASSWORD)" ]]; then \
+		echo "Error: Master credentials not found."; \
+		echo "Run first: make setup-master MASTER_EMAIL=you@example.com MASTER_PASSWORD=secret TENANT_NAME=MyTenant"; \
+		exit 1; \
+	fi
+endef
+
+setup-master:
+	@if [[ -z "$(MASTER_EMAIL)" ]]; then \
+		echo "MASTER_EMAIL is required. Example: make setup-master MASTER_EMAIL=you@example.com MASTER_PASSWORD=secret TENANT_NAME=MyTenant"; \
+		exit 1; \
+	fi
+	@if [[ -z "$(MASTER_PASSWORD)" ]]; then \
+		echo "MASTER_PASSWORD is required. Example: make setup-master MASTER_EMAIL=you@example.com MASTER_PASSWORD=secret TENANT_NAME=MyTenant"; \
+		exit 1; \
+	fi
+	@uv run python -m src.entrypoints.local.user_admin_cli bootstrap-master \
+		--tenant-name "$(TENANT_NAME)" \
+		--master-email "$(MASTER_EMAIL)" \
+		--master-password "$(MASTER_PASSWORD)"
+	@mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"
+	@printf "MASTER_EMAIL=%s\nMASTER_PASSWORD=%s\n" "$(MASTER_EMAIL)" "$(MASTER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"
+	@chmod 600 "$(MAKE_CREDENTIALS_FILE)"
+	@echo "Credentials saved to $(MAKE_CREDENTIALS_FILE)"
+
 oauth-flow:
+	$(require_master_credentials)
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@mkdir -p "$(FLOW_DIR)"
 	@login_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/login" \
 		-H "Content-Type: application/json" \
-		-d '{"email":"$(PROFESSIONAL_EMAIL)","password":"$(PROFESSIONAL_PASSWORD)"}'); \
+		-d '{"email":"$(MASTER_EMAIL)","password":"$(MASTER_PASSWORD)"}'); \
 	access_token=$$(echo "$$login_response" | jq -r '.access_token'); \
 	if [[ "$$access_token" == "null" || -z "$$access_token" ]]; then \
 		echo "Login failed:"; \
 		echo "$$login_response" | jq . 2>/dev/null || echo "$$login_response"; \
-		echo ""; \
-		echo "Si es la primera vez en este ambiente, bootstrap del master:"; \
-		echo "make user-bootstrap-master TENANT_NAME='$(TENANT_NAME)' MASTER_EMAIL='$(MASTER_EMAIL)' MASTER_PASSWORD='$(MASTER_PASSWORD)'"; \
 		exit 1; \
 	fi; \
 	echo "$$access_token" > "$(FLOW_DIR)/access_token"; \
@@ -147,19 +166,8 @@ save-api-base:
 	@chmod 600 "$(MAKE_API_BASE_FILE)"
 	@echo "Saved API_BASE to $(MAKE_API_BASE_FILE)"
 
-save-credentials:
-	@mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"
-	@printf "PROFESSIONAL_EMAIL=%s\nPROFESSIONAL_PASSWORD=%s\n" "$(PROFESSIONAL_EMAIL)" "$(PROFESSIONAL_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"
-	@chmod 600 "$(MAKE_CREDENTIALS_FILE)"
-	@echo "Saved PROFESSIONAL_EMAIL/PROFESSIONAL_PASSWORD to $(MAKE_CREDENTIALS_FILE)"
-
-user-bootstrap-master:
-	@uv run python -m src.entrypoints.local.user_admin_cli bootstrap-master \
-		--tenant-name "$(TENANT_NAME)" \
-		--master-email "$(MASTER_EMAIL)" \
-		--master-password "$(MASTER_PASSWORD)"
-
 user-create:
+	$(require_master_credentials)
 	@if [[ -z "$(USER_EMAIL)" ]]; then \
 		echo "USER_EMAIL is required. Example: make user-create USER_EMAIL=user@acme.com USER_PASSWORD=supersecret"; \
 		exit 1; \
@@ -175,6 +183,7 @@ user-create:
 		--password "$(USER_PASSWORD)"
 
 user-delete:
+	$(require_master_credentials)
 	@if [[ -z "$(USER_EMAIL)" ]]; then \
 		echo "USER_EMAIL is required. Example: make user-delete USER_EMAIL=user@acme.com"; \
 		exit 1; \
@@ -196,6 +205,7 @@ memory-reset:
 	@echo "Firestore reset endpoint finished. No local JSON snapshot cleanup is required."
 
 chat-memory-reset:
+	$(require_master_credentials)
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@mkdir -p "$(FLOW_DIR)"
 	@live_reset_ok=0; \
@@ -211,12 +221,6 @@ chat-memory-reset:
 		fi; \
 	fi; \
 	echo "Using API_BASE=$$resolved_api_base"; \
-	if [[ "$(PROFESSIONAL_EMAIL_ORIGIN)" == "command line" || "$(PROFESSIONAL_PASSWORD_ORIGIN)" == "command line" ]]; then \
-		mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
-		printf "PROFESSIONAL_EMAIL=%s\nPROFESSIONAL_PASSWORD=%s\n" "$(PROFESSIONAL_EMAIL)" "$(PROFESSIONAL_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"; \
-		chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
-		echo "Saved credentials to $(MAKE_CREDENTIALS_FILE)"; \
-	fi; \
 	resolved_access_token=""; \
 	if [[ -f "$(FLOW_DIR)/access_token" ]]; then \
 		resolved_access_token=$$(cat "$(FLOW_DIR)/access_token"); \
@@ -235,7 +239,7 @@ chat-memory-reset:
 	if [[ $$live_reset_ok -eq 0 ]]; then \
 		login_response=$$(curl -sS -X POST "$$resolved_api_base/v1/auth/login" \
 			-H "Content-Type: application/json" \
-			-d '{"email":"$(PROFESSIONAL_EMAIL)","password":"$(PROFESSIONAL_PASSWORD)"}' || true); \
+			-d '{"email":"$(MASTER_EMAIL)","password":"$(MASTER_PASSWORD)"}' || true); \
 		login_access_token=$$(echo "$$login_response" | jq -r '.access_token // empty' 2>/dev/null); \
 		if [[ -n "$$login_access_token" ]]; then \
 			echo "$$login_access_token" > "$(FLOW_DIR)/access_token"; \
@@ -245,10 +249,6 @@ chat-memory-reset:
 			if [[ "$$live_chat_reset_status" == "chat_reset" ]]; then \
 				live_reset_ok=1; \
 				echo "Live chat reset response: $$live_chat_reset_response"; \
-				mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
-				printf "PROFESSIONAL_EMAIL=%s\nPROFESSIONAL_PASSWORD=%s\n" "$(PROFESSIONAL_EMAIL)" "$(PROFESSIONAL_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"; \
-				chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
-				echo "Saved credentials to $(MAKE_CREDENTIALS_FILE)"; \
 			else \
 				echo "Live chat reset failed after login: $$live_chat_reset_response"; \
 			fi; \
@@ -576,12 +576,13 @@ app-config-secret-sync-env:
 	fi
 
 simulate-whatsapp-message:
+	$(require_master_credentials)
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
-	@echo "Using API_BASE=$(API_BASE) PROFESSIONAL_EMAIL=$(PROFESSIONAL_EMAIL)"
+	@echo "Using API_BASE=$(API_BASE) MASTER_EMAIL=$(MASTER_EMAIL)"
 	@mkdir -p "$(FLOW_DIR)"; \
 	login_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/login" \
 		-H "Content-Type: application/json" \
-		-d '{"email":"$(PROFESSIONAL_EMAIL)","password":"$(PROFESSIONAL_PASSWORD)"}'); \
+		-d '{"email":"$(MASTER_EMAIL)","password":"$(MASTER_PASSWORD)"}'); \
 	access_token=$$(echo "$$login_response" | jq -r '.access_token'); \
 	if [[ "$$access_token" == "null" || -z "$$access_token" ]]; then \
 		echo "Login failed (needed to run simulation). Response:"; \
@@ -598,10 +599,10 @@ simulate-whatsapp-message:
 		echo "WhatsApp connection is not ready. Response:"; \
 		echo "$$connection_response" | jq . 2>/dev/null || echo "$$connection_response"; \
 		echo ""; \
-		echo "Hint: you are logged into tenant=$$tenant_id with PROFESSIONAL_EMAIL=$(PROFESSIONAL_EMAIL)."; \
+		echo "Hint: you are logged into tenant=$$tenant_id with MASTER_EMAIL=$(MASTER_EMAIL)."; \
 		echo "If your UI shows another tenant as CONNECTED, you're using a different account or backend."; \
 		echo "Run OAuth for this same account:"; \
-		echo "make oauth-flow PROFESSIONAL_EMAIL='$(PROFESSIONAL_EMAIL)' PROFESSIONAL_PASSWORD='$(PROFESSIONAL_PASSWORD)' API_BASE='$(API_BASE)'"; \
+		echo "make oauth-flow"; \
 		exit 1; \
 	fi; \
 	provider_message_id="$(SIM_PROVIDER_MESSAGE_ID)"; \

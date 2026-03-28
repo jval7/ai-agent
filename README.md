@@ -37,18 +37,20 @@ make fe-dev
 
 ## Local auth bootstrap
 
-Public signup (`POST /v1/auth/register`) is disabled. User management is local-only through Make commands:
+Public signup (`POST /v1/auth/register`) is disabled. User management is local-only through Make commands.
+
+First, bootstrap the master (only once). Credentials are saved to `.secrets/` automatically:
 
 ```bash
-make user-bootstrap-master TENANT_NAME=Acme MASTER_EMAIL=owner@acme.com MASTER_PASSWORD=supersecret
-make user-create MASTER_EMAIL=owner@acme.com MASTER_PASSWORD=supersecret USER_EMAIL=user@acme.com USER_PASSWORD=supersecret
-make user-delete MASTER_EMAIL=professional@acme.com MASTER_PASSWORD=supersecret USER_EMAIL=user@acme.com
+make setup-master MASTER_EMAIL=you@example.com MASTER_PASSWORD=secret TENANT_NAME=Acme
 ```
 
-After bootstrapping master, run OAuth flow with login:
+After that, all commands use the saved credentials — no need to pass them again:
 
 ```bash
-make oauth-flow PROFESSIONAL_EMAIL=professional@acme.com PROFESSIONAL_PASSWORD=supersecret
+make user-create USER_EMAIL=user@acme.com USER_PASSWORD=supersecret
+make user-delete USER_EMAIL=user@acme.com
+make oauth-flow
 ```
 
 ## Run with Docker
