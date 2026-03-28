@@ -427,11 +427,13 @@ class SchedulingInboxService:
             slot_by_id[slot.id] = slot
 
         lines = ["¿Alguno de estos horarios te funciona?"]
+        timezone_name: str = ""
         for option_number in sorted(slot_options_map.keys(), key=int):
             slot_id = slot_options_map[option_number]
             slot_candidate = slot_by_id.get(slot_id)
             if slot_candidate is None:
                 continue
+            timezone_name = slot_candidate.timezone
             lines.append(
                 scheduling_slot_formatter.format_slot_option_line(
                     option_number=option_number,
@@ -439,6 +441,9 @@ class SchedulingInboxService:
                     timezone_name=slot_candidate.timezone,
                 )
             )
+        if timezone_name:
+            display_tz = scheduling_slot_formatter.humanize_timezone(timezone_name)
+            lines.append(f"Todos los horarios en {display_tz}")
         return "\n".join(lines)
 
     def _validate_slot_duration(

@@ -15,6 +15,7 @@ import src.entrypoints.web.routers.oauth_router as oauth_router
 import src.entrypoints.web.routers.onboarding_router as onboarding_router
 import src.entrypoints.web.routers.patient_router as patient_router
 import src.entrypoints.web.routers.scheduling_router as scheduling_router
+import src.entrypoints.web.routers.settings_router as settings_router
 import src.entrypoints.web.routers.webhook_router as webhook_router
 import src.entrypoints.web.routers.whatsapp_router as whatsapp_router
 import src.infra.container as app_container
@@ -49,6 +50,7 @@ def create_app() -> fastapi.FastAPI:
     app.include_router(patient_router.router)
     app.include_router(manual_appointment_router.router)
     app.include_router(scheduling_router.router)
+    app.include_router(settings_router.router)
     app.include_router(oauth_router.router)
     if app.state.container.settings.enable_dev_endpoints:
         app.include_router(dev_router.router)

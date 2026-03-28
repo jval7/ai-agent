@@ -1,5 +1,4 @@
 import re
-import typing
 import unicodedata
 
 import src.infra.logs as app_logs
@@ -158,32 +157,6 @@ def build_slot_selection_retry_message(
         )
     lines.append("Ejemplo: 2")
     return "\n".join(lines)
-
-
-def build_payment_instructions_message(
-    audience_type: typing.Literal["ADULTS", "CHILDREN"] | None,
-) -> str:
-    if audience_type == "CHILDREN":
-        session_price = "*$150.000 COP* por sesión"
-        packages = (
-            "• Paquete 3 sesiones: $427.500 (5% off, c/u $142.500)\n"
-            "• Paquete 4 sesiones: $552.000 (8% off, c/u $138.000)"
-        )
-    else:
-        session_price = "*$130.000 COP* por sesión"
-        packages = (
-            "• Paquete 3 sesiones: $370.500 (5% off, c/u $123.500)\n"
-            "• Paquete 4 sesiones: $478.400 (8% off, c/u $119.600)"
-        )
-    return (
-        f"¡Listo! El valor de la sesión es {session_price}\n\n"
-        f"Si quieres aprovechar un paquete con descuento:\n"
-        f"{packages}\n\n"
-        "Para  continuar con el proceso de agendamiento de tu cita, realiza el pago por transferencia:\n"
-        "• Nequi: 318 732 6409\n"
-        "• A nombre de: Alejandra Escobar\n\n"
-        "Cuando tengas el comprobante, me lo puedes enviar por aquí, por favor"
-    )
 
 
 HANDOFF_ACK_MESSAGE = "Claro, te comunico con una persona de nuestro equipo."

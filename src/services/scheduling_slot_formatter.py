@@ -34,7 +34,23 @@ def format_slot_option_line(
     localized_start = _localize_datetime(start_at, timezone_name)
     date_text = _format_spanish_date(localized_start)
     start_time_text = _format_spanish_time(localized_start)
-    return f"{option_number}) {date_text} a las {start_time_text} - {timezone_name}"
+    return f"{option_number}) {date_text} a las {start_time_text}"
+
+
+_TIMEZONE_DISPLAY_NAMES: dict[str, str] = {
+    "America/Bogota": "hora Colombia",
+    "America/Mexico_City": "hora México",
+    "America/Lima": "hora Perú",
+    "America/Santiago": "hora Chile",
+    "America/Argentina/Buenos_Aires": "hora Argentina",
+    "Europe/Madrid": "hora España",
+    "America/New_York": "hora Este EEUU",
+    "America/Los_Angeles": "hora Pacífico EEUU",
+}
+
+
+def humanize_timezone(timezone_name: str) -> str:
+    return _TIMEZONE_DISPLAY_NAMES.get(timezone_name, timezone_name)
 
 
 def _localize_datetime(

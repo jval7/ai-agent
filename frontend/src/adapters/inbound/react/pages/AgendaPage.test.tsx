@@ -9,6 +9,7 @@ import type * as containerModule from "@infrastructure/di/container";
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 
+import * as calendarUtilsModule from "@shared/utils/calendar";
 import * as agendaPageModule from "./AgendaPage";
 
 function renderAgendaPage(container: unknown) {
@@ -48,7 +49,7 @@ vitestModule.describe("AgendaPage", () => {
 
   vitestModule.it("marks slot as busy when it overlaps a busy interval", () => {
     const now = luxonModule.DateTime.fromISO("2026-03-01T00:00:00Z", { zone: "UTC" });
-    const candidates = agendaPageModule.buildCalendarSlotCandidates({
+    const candidates = calendarUtilsModule.buildCalendarSlotCandidates({
       requestId: "req-1",
       timezone: "UTC",
       selectedDayIso: "2026-03-01",

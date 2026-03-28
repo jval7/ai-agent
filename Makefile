@@ -104,7 +104,8 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 	deploy-all \
 	app-config-secret-upsert \
 	app-config-secret-sync-env \
-	simulate-whatsapp-message
+	simulate-whatsapp-message \
+	calendar-cleanup
 
 oauth-flow:
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
@@ -740,3 +741,6 @@ simulate-whatsapp-message:
 		-H "Authorization: Bearer $$access_token"); \
 	echo "Messages:"; \
 	echo "$$messages_response" | jq . 2>/dev/null || echo "$$messages_response"
+
+calendar-cleanup:
+	uv run python scripts/cleanup_calendar_events.py $(CLEANUP_ARGS)

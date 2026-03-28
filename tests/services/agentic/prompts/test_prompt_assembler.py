@@ -73,11 +73,15 @@ class TestPromptAssemblerOutputParity:
             request_id="req-1",
             request_status="AWAITING_PATIENT_CHOICE",
             appointment_modality="PRESENCIAL",
-            enabled_tool_names=["handoff_to_human"],
+            enabled_tool_names=[
+                "select_proposed_slot",
+                "reject_proposed_slots",
+                "handoff_to_human",
+            ],
         )
         result = builder.build_runtime_system_prompt(ctx, known_patient=None)
         assert "- modalidad_actual: PRESENCIAL" in result
-        assert "seleccion numerica" in result
+        assert "select_proposed_slot" in result
 
     def test_collecting_confirmation_with_missing_fields(self) -> None:
         builder = _build_builder()
@@ -129,7 +133,7 @@ class TestPromptAssemblerOutputParity:
         )
         result = builder.build_runtime_system_prompt(ctx, known_patient=None)
         assert "pago pendiente" in result
-        assert "Nequi" in result
+        assert "dame un momento" in result
 
     def test_post_booking_followup(self) -> None:
         builder = _build_builder()

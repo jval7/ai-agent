@@ -63,6 +63,46 @@ class ToolDefinitionRegistry:
         all_tool_definitions = [
             self._build_set_contact_name_definition(),
             llm_dto.FunctionDeclarationDTO(
+                name="select_proposed_slot",
+                description=(
+                    "Selecciona uno de los horarios propuestos al paciente. "
+                    "Usa cuando el paciente indique cual horario prefiere, "
+                    "ya sea por numero o describiendo el horario."
+                ),
+                parameters_json_schema={
+                    "type": "object",
+                    "properties": {
+                        "slot_option_number": {
+                            "type": "string",
+                            "description": "Numero de opcion elegido por el paciente (ej: '1', '2')",
+                        },
+                    },
+                    "required": ["slot_option_number"],
+                    "additionalProperties": False,
+                },
+            ),
+            llm_dto.FunctionDeclarationDTO(
+                name="reject_proposed_slots",
+                description=(
+                    "Rechaza todos los horarios propuestos porque ninguno le sirve al paciente. "
+                    "El profesional propondra nuevos horarios."
+                ),
+                parameters_json_schema={
+                    "type": "object",
+                    "properties": {
+                        "patient_preference": {
+                            "type": "string",
+                            "description": (
+                                "Resumen de la preferencia o restriccion del paciente "
+                                "(ej: 'prefiere lunes en la tarde', 'no puede antes de las 5pm')"
+                            ),
+                        },
+                    },
+                    "required": ["patient_preference"],
+                    "additionalProperties": False,
+                },
+            ),
+            llm_dto.FunctionDeclarationDTO(
                 name="submit_consultation_reason_for_review",
                 description=(
                     "Envia el motivo de consulta y modalidad para revision del profesional. "

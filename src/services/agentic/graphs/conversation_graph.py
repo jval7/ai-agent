@@ -11,18 +11,6 @@ class ConversationGraph:
         state_graph = langgraph_graph.StateGraph(agentic_state_models.ConversationGraphState)
         state_graph.add_node("load_runtime_context", self._load_runtime_context)
         state_graph.add_node(
-            "guard_waiting_patient_choice_override",
-            self._guard_waiting_patient_choice_override,
-        )
-        state_graph.add_node(
-            "guard_required_numeric_slot_selection",
-            self._guard_required_numeric_slot_selection,
-        )
-        state_graph.add_node(
-            "guard_waiting_professional_override",
-            self._guard_waiting_professional_override,
-        )
-        state_graph.add_node(
             "guard_waiting_professional_silent",
             self._guard_waiting_professional_silent,
         )
@@ -32,25 +20,8 @@ class ConversationGraph:
         state_graph.add_node("decide_terminal_output", self._decide_terminal_output)
 
         state_graph.add_edge(langgraph_graph.START, "load_runtime_context")
-        state_graph.add_edge("load_runtime_context", "guard_waiting_patient_choice_override")
         state_graph.add_conditional_edges(
-            "guard_waiting_patient_choice_override",
-            self._route_on_terminal,
-            {
-                "continue": "guard_required_numeric_slot_selection",
-                "stop": langgraph_graph.END,
-            },
-        )
-        state_graph.add_conditional_edges(
-            "guard_required_numeric_slot_selection",
-            self._route_on_terminal,
-            {
-                "continue": "guard_waiting_professional_override",
-                "stop": langgraph_graph.END,
-            },
-        )
-        state_graph.add_conditional_edges(
-            "guard_waiting_professional_override",
+            "load_runtime_context",
             self._route_on_terminal,
             {
                 "continue": "guard_waiting_professional_silent",
@@ -90,57 +61,6 @@ class ConversationGraph:
         return {
             "runtime_context": runtime_context,
             "enabled_tool_names": runtime_context.enabled_tool_names,
-        }
-
-    def _guard_waiting_patient_choice_override(
-        self,
-        state: agentic_state_models.ConversationGraphState,
-    ) -> dict[str, object]:
-        runtime_port = typing.cast(
-            agent_workflow_port.ConversationWorkflowRuntimePort,
-            state.runtime_port,
-        )
-        guard_text = runtime_port.handle_waiting_patient_choice_override()
-        if guard_text is None:
-            return {}
-        return {
-            "terminal_mode": "SEND_MESSAGE",
-            "terminal_reason": "PATIENT_CHOICE_OVERRIDE",
-            "terminal_text": guard_text,
-        }
-
-    def _guard_required_numeric_slot_selection(
-        self,
-        state: agentic_state_models.ConversationGraphState,
-    ) -> dict[str, object]:
-        runtime_port = typing.cast(
-            agent_workflow_port.ConversationWorkflowRuntimePort,
-            state.runtime_port,
-        )
-        guard_text = runtime_port.enforce_required_numeric_slot_selection()
-        if guard_text is None:
-            return {}
-        return {
-            "terminal_mode": "SEND_MESSAGE",
-            "terminal_reason": "NUMERIC_SLOT_RETRY",
-            "terminal_text": guard_text,
-        }
-
-    def _guard_waiting_professional_override(
-        self,
-        state: agentic_state_models.ConversationGraphState,
-    ) -> dict[str, object]:
-        runtime_port = typing.cast(
-            agent_workflow_port.ConversationWorkflowRuntimePort,
-            state.runtime_port,
-        )
-        guard_text = runtime_port.handle_waiting_professional_override()
-        if guard_text is None:
-            return {}
-        return {
-            "terminal_mode": "SEND_MESSAGE",
-            "terminal_reason": "WAITING_PROFESSIONAL_OVERRIDE",
-            "terminal_text": guard_text,
         }
 
     def _guard_waiting_professional_silent(

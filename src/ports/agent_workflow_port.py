@@ -10,18 +10,6 @@ class ConversationWorkflowRuntimePort(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def handle_waiting_patient_choice_override(self) -> str | None:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def enforce_required_numeric_slot_selection(self) -> str | None:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def handle_waiting_professional_override(self) -> str | None:
-        raise NotImplementedError
-
-    @abc.abstractmethod
     def is_waiting_professional_state_active(self) -> bool:
         raise NotImplementedError
 

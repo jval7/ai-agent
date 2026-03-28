@@ -47,4 +47,4 @@ class NumericSlotSelectionGuard(base.ConversationGuard):
             )
         except service_exceptions.ServiceError:
             return guard_helpers.build_slot_selection_retry_message(active_request)
-        return guard_helpers.build_payment_instructions_message(active_request.audience_type)
+        return None

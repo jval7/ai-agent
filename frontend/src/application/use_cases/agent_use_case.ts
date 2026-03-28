@@ -22,4 +22,12 @@ export class AgentUseCase {
   async updateAgentSettings(debounceDelay: number) {
     return this.api.updateAgentSettings(debounceDelay);
   }
+
+  async getSandboxMode() {
+    return this.api.getSandboxMode();
+  }
+
+  async updateSandboxMode(enabled: boolean) {
+    return this.api.updateSandboxMode(enabled);
+  }
 }

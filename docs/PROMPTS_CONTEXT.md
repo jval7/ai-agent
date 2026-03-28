@@ -16,7 +16,7 @@ Fuente: `src/services/agentic/prompts/state_instructions.py`
 | `AWAITING_PATIENT_CHOICE` | Horarios propuestos, esperando seleccion | Recordar elegir por numero de opcion | `confirm_selected_slot_and_create_event` |
 | `COLLECTING_CONFIRMATION_DATA` | Slot seleccionado, completar perfil | Pedir TODOS los campos faltantes en UN mensaje | `confirm_selected_slot_and_create_event` |
 | `AWAITING_CONSULTATION_REVIEW` | Motivo enviado, esperando revision profesional | Responder preguntas generales, no avanzar flujo | `handoff_to_human` |
-| `AWAITING_PAYMENT_CONFIRMATION` | Pago pendiente de aprobacion | Dar info de pago (solo Nequi), no repedir comprobante | `handoff_to_human` |
+| `AWAITING_PAYMENT_CONFIRMATION` | Pago pendiente de aprobacion | Dar info de pago (Nequi o Zelle segun ubicacion), no repedir comprobante | `handoff_to_human` |
 | `POST_BOOKING_FOLLOWUP` | Cita reservada exitosamente | Preguntar si necesita algo mas, cerrar sesion cuando termine | `close_session`, `handoff_to_human` |
 
 Tools disponibles en TODOS los estados: `set_contact_name`, `handoff_to_human`, `cancel_active_scheduling_request`.

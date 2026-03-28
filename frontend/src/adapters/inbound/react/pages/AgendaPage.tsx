@@ -10,6 +10,7 @@ import type * as manualAppointmentModel from "@domain/models/manual_appointment"
 import type * as patientModel from "@domain/models/patient";
 import type * as schedulingModel from "@domain/models/scheduling";
 import * as uiErrorModule from "@shared/http/ui_error";
+import * as calendarUtilsModule from "@shared/utils/calendar";
 import * as dateUtilsModule from "@shared/utils/date";
 
 const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
@@ -88,26 +89,10 @@ const ACTIONABLE_APPROVAL_STATUSES = new Set<schedulingModel.SchedulingRequestSt
   "AWAITING_CONSULTATION_DETAILS"
 ]);
 
-const weekDayLabels = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
-
-interface BusyIntervalRange {
-  start: luxonModule.DateTime;
-  end: luxonModule.DateTime;
-}
-
 interface LocalDateTimeParts {
   date: string;
   hour: string;
   minute: "00" | "30";
-}
-
-export interface CalendarSlotCandidate {
-  slotId: string;
-  startAt: string;
-  endAt: string;
-  timezone: string;
-  isBusy: boolean;
-  isPast: boolean;
 }
 
 interface BookedAppointment {
@@ -364,50 +349,6 @@ function resolveBookedSlot(
 
   const firstSlot = request.slots[0];
   return firstSlot ?? null;
-}
-
-export function buildCalendarSlotCandidates(params: {
-  requestId: string;
-  timezone: string;
-  selectedDayIso: string;
-  busyIntervals: BusyIntervalRange[];
-  now: luxonModule.DateTime;
-}): CalendarSlotCandidate[] {
-  const selectedDay = luxonModule.DateTime.fromISO(params.selectedDayIso, {
-    zone: params.timezone
-  }).startOf("day");
-  if (!selectedDay.isValid) {
-    return [];
-  }
-
-  const slots: CalendarSlotCandidate[] = [];
-  for (let hour = 6; hour < 22; hour += 1) {
-    const startAt = selectedDay.set({
-      hour,
-      minute: 0,
-      second: 0,
-      millisecond: 0
-    });
-    const endAt = startAt.plus({ hours: 1 });
-    const isBusy = params.busyIntervals.some((interval) => {
-      return startAt < interval.end && interval.start < endAt;
-    });
-    const isPast = startAt <= params.now;
-    const startAtIso = startAt.toISO();
-    const endAtIso = endAt.toISO();
-    if (startAtIso === null || endAtIso === null) {
-      continue;
-    }
-    slots.push({
-      slotId: `${params.requestId}_${startAt.toFormat("yyyyLLdd_HHmm")}`,
-      startAt: startAtIso,
-      endAt: endAtIso,
-      timezone: params.timezone,
-      isBusy,
-      isPast
-    });
-  }
-  return slots;
 }
 
 export function AgendaPage() {
@@ -672,30 +613,18 @@ export function AgendaPage() {
     }
   }, [visibleMonthStart.year, visibleMonthStart.month]);
 
-  const busyIntervals = reactModule.useMemo<BusyIntervalRange[]>(() => {
+  const busyIntervals = reactModule.useMemo<calendarUtilsModule.BusyIntervalRange[]>(() => {
     if (availabilityQuery.data === undefined) {
       return [];
     }
-    return availabilityQuery.data.busyIntervals
-      .map((interval) => {
-        const start = luxonModule.DateTime.fromISO(interval.startAt, { zone: timezone });
-        const end = luxonModule.DateTime.fromISO(interval.endAt, { zone: timezone });
-        if (!start.isValid || !end.isValid) {
-          return null;
-        }
-        return {
-          start,
-          end
-        };
-      })
-      .filter((interval): interval is BusyIntervalRange => interval !== null);
+    return calendarUtilsModule.parseBusyIntervals(availabilityQuery.data.busyIntervals, timezone);
   }, [availabilityQuery.data, timezone]);
 
   const calendarSlots = reactModule.useMemo(() => {
     if (selectedRequest === undefined || selectedDayIso === "") {
       return [];
     }
-    return buildCalendarSlotCandidates({
+    return calendarUtilsModule.buildCalendarSlotCandidates({
       requestId: selectedRequest.requestId,
       selectedDayIso,
       timezone,
@@ -2032,7 +1961,7 @@ export function AgendaPage() {
                   </div>
 
                   <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
-                    {weekDayLabels.map((label) => (
+                    {calendarUtilsModule.weekDayLabels.map((label) => (
                       <span key={label}>{label}</span>
                     ))}
                   </div>
@@ -2119,7 +2048,7 @@ export function AgendaPage() {
                       return hour >= 12;
                     });
 
-                    const renderSlotButton = (slot: CalendarSlotCandidate) => {
+                    const renderSlotButton = (slot: calendarUtilsModule.CalendarSlotCandidate) => {
                       const isSelected = selectedSlotIdSet.has(slot.slotId);
                       const isDisabled = slot.isBusy || slot.isPast;
                       const startDt = luxonModule.DateTime.fromISO(slot.startAt, {
@@ -2347,7 +2276,7 @@ export function AgendaPage() {
                   {/* Mobile compact calendar - only visible in calendar step */}
                   <div className={mobileBookedStep === "calendar" ? "sm:hidden" : "hidden"}>
                     <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] font-semibold text-slate-500">
-                      {weekDayLabels.map((label) => (
+                      {calendarUtilsModule.weekDayLabels.map((label) => (
                         <span key={`mobile-${label}`}>{label}</span>
                       ))}
                     </div>
@@ -2484,7 +2413,7 @@ export function AgendaPage() {
                     <div className="overflow-x-auto pb-1">
                       <div className="min-w-[42rem]">
                         <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
-                          {weekDayLabels.map((label) => (
+                          {calendarUtilsModule.weekDayLabels.map((label) => (
                             <span key={label}>{label}</span>
                           ))}
                         </div>
@@ -2970,7 +2899,7 @@ export function AgendaPage() {
                         <div className="overflow-x-auto pb-1">
                           <div className="min-w-[22rem]">
                             <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
-                              {weekDayLabels.map((label) => (
+                              {calendarUtilsModule.weekDayLabels.map((label) => (
                                 <span key={label}>{label}</span>
                               ))}
                             </div>

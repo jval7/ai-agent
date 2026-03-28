@@ -146,7 +146,14 @@ class RuntimeContextResolver:
         return False
 
     def _enabled_tools_for_state(self, state: str) -> list[str]:
-        if state in ("NO_ACTIVE_REQUEST", "AWAITING_CONSULTATION_DETAILS"):
+        if state == "NO_ACTIVE_REQUEST":
+            return [
+                "submit_consultation_reason_for_review",
+                "close_session",
+                "handoff_to_human",
+                "cancel_active_scheduling_request",
+            ]
+        if state == "AWAITING_CONSULTATION_DETAILS":
             return [
                 "submit_consultation_reason_for_review",
                 "handoff_to_human",
@@ -154,6 +161,8 @@ class RuntimeContextResolver:
             ]
         if state == "AWAITING_PATIENT_CHOICE":
             return [
+                "select_proposed_slot",
+                "reject_proposed_slots",
                 "handoff_to_human",
                 "cancel_active_scheduling_request",
             ]

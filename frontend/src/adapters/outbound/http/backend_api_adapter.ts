@@ -674,6 +674,21 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return mapSchedulingRequestSummary(payload);
   }
 
+  async getSandboxMode(): Promise<{ sandbox_enabled: boolean }> {
+    return this.request<{ sandbox_enabled: boolean }>("/v1/settings/sandbox", {
+      method: "GET",
+      authRequired: true
+    });
+  }
+
+  async updateSandboxMode(enabled: boolean): Promise<{ sandbox_enabled: boolean }> {
+    return this.request<{ sandbox_enabled: boolean }>("/v1/settings/sandbox", {
+      method: "PUT",
+      authRequired: true,
+      body: JSON.stringify({ sandbox_enabled: enabled })
+    });
+  }
+
   private async request<T>(path: string, options: RequestOptions): Promise<T> {
     const retryOnUnauthorized = options.retryOnUnauthorized ?? true;
     const requestId = options.requestId ?? requestIdModule.createRequestId();

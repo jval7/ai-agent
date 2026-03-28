@@ -27,9 +27,6 @@ import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
-import src.services.agentic.guards.numeric_slot_selection_guard as numeric_slot_guard
-import src.services.agentic.guards.waiting_patient_choice_guard as patient_choice_guard
-import src.services.agentic.guards.waiting_professional_override_guard as professional_override_guard
 import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard
 import src.services.agentic.prompt_builder as prompt_builder_mod
 import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
@@ -40,6 +37,8 @@ import src.services.agentic.tool_handlers.confirm_slot_handler as confirm_slot_h
 import src.services.agentic.tool_handlers.handoff_handler as handoff_handler
 import src.services.agentic.tool_handlers.patient_profile_resolver as patient_profile_resolver
 import src.services.agentic.tool_handlers.registry as tool_handler_registry
+import src.services.agentic.tool_handlers.reject_proposed_slots_handler as reject_proposed_slots_handler
+import src.services.agentic.tool_handlers.select_proposed_slot_handler as select_proposed_slot_handler
 import src.services.agentic.tool_handlers.set_contact_name_handler as set_contact_name_handler
 import src.services.agentic.tool_handlers.submit_consultation_reason_handler as submit_consultation_reason_handler
 import src.services.agentic.tool_registry as tool_definition_registry_mod
@@ -146,13 +145,12 @@ class AppContainer:
         meta_whatsapp_adapter = meta_whatsapp_provider_adapter.MetaWhatsappProviderAdapter(
             settings=self.settings,
         )
-        self.whatsapp_provider_adapter: whatsapp_provider_port.WhatsappProviderPort
-        if self.settings.whatsapp_outbound_noop:
-            self.whatsapp_provider_adapter = noop_whatsapp_send_adapter.NoopWhatsappSendAdapter(
+        self.whatsapp_provider_adapter: whatsapp_provider_port.WhatsappProviderPort = (
+            noop_whatsapp_send_adapter.NoopWhatsappSendAdapter(
                 delegate=meta_whatsapp_adapter,
+                settings=self.settings,
             )
-        else:
-            self.whatsapp_provider_adapter = meta_whatsapp_adapter
+        )
         self.google_calendar_provider_adapter = (
             google_calendar_provider_adapter.GoogleCalendarProviderAdapter(
                 settings=self.settings,
@@ -267,31 +265,17 @@ class AppContainer:
                 confirm_slot_handler.ConfirmSlotHandler(
                     resolver=self.patient_profile_resolver,
                 ),
+                select_proposed_slot_handler.SelectProposedSlotHandler(
+                    scheduling_svc=self.scheduling_service,
+                ),
+                reject_proposed_slots_handler.RejectProposedSlotsHandler(
+                    scheduling_svc=self.scheduling_service,
+                ),
             ],
             tracer=self.langsmith_tracer,
         )
 
         self.tool_definition_registry = tool_definition_registry_mod.ToolDefinitionRegistry()
-        self.numeric_slot_guard = numeric_slot_guard.NumericSlotSelectionGuard(
-            scheduling_svc=self.scheduling_service,
-            llm_provider=self.llm_provider_adapter,
-        )
-        self.patient_choice_guard = patient_choice_guard.WaitingPatientChoiceGuard(
-            scheduling_svc=self.scheduling_service,
-            llm_provider=self.llm_provider_adapter,
-            conversation_repository=self.conversation_repository,
-            tool_handler_registry=self.tool_handler_registry,
-            tool_definition_registry=self.tool_definition_registry,
-        )
-        self.professional_override_guard = (
-            professional_override_guard.WaitingProfessionalOverrideGuard(
-                scheduling_svc=self.scheduling_service,
-                llm_provider=self.llm_provider_adapter,
-                conversation_repository=self.conversation_repository,
-                tool_handler_registry=self.tool_handler_registry,
-                tool_definition_registry=self.tool_definition_registry,
-            )
-        )
         self.professional_silent_guard = professional_silent_guard.WaitingProfessionalSilentGuard(
             scheduling_svc=self.scheduling_service,
         )
@@ -331,9 +315,6 @@ class AppContainer:
             context_message_limit=self.settings.conversation_context_messages,
             tracer=self.langsmith_tracer,
             agent_workflow=self.agent_workflow_engine,
-            patient_choice_guard=self.patient_choice_guard,
-            numeric_slot_guard=self.numeric_slot_guard,
-            professional_override_guard=self.professional_override_guard,
             professional_silent_guard=self.professional_silent_guard,
             tool_calling_orchestrator=self.tool_calling_orchestrator,
             runtime_context_resolver=self.runtime_context_resolver,

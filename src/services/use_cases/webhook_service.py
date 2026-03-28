@@ -20,9 +20,6 @@ import src.ports.processed_webhook_event_repository_port as processed_webhook_ev
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
-import src.services.agentic.guards.numeric_slot_selection_guard as numeric_slot_guard_mod
-import src.services.agentic.guards.waiting_patient_choice_guard as patient_choice_guard_mod
-import src.services.agentic.guards.waiting_professional_override_guard as professional_override_guard_mod
 import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard_mod
 import src.services.agentic.prompt_builder as prompt_builder
 import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
@@ -63,10 +60,6 @@ class WebhookService:
         runtime_prompt_builder: prompt_builder.RuntimePromptBuilder | None = None,
         conversation_processing_lock: conversation_processing_lock_port.ConversationProcessingLockPort
         | None = None,
-        patient_choice_guard: patient_choice_guard_mod.WaitingPatientChoiceGuard | None = None,
-        numeric_slot_guard: numeric_slot_guard_mod.NumericSlotSelectionGuard | None = None,
-        professional_override_guard: professional_override_guard_mod.WaitingProfessionalOverrideGuard
-        | None = None,
         professional_silent_guard: professional_silent_guard_mod.WaitingProfessionalSilentGuard
         | None = None,
     ) -> None:
@@ -99,9 +92,6 @@ class WebhookService:
             r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"
         )
         self._trace_phone_pattern = re.compile(r"\+?\d{7,15}")
-        self._patient_choice_guard = patient_choice_guard
-        self._numeric_slot_guard = numeric_slot_guard
-        self._professional_override_guard = professional_override_guard
         self._professional_silent_guard = professional_silent_guard
         self._tool_calling_orchestrator = tool_calling_orchestrator
         self._runtime_context_resolver = runtime_context_resolver
@@ -428,9 +418,6 @@ class WebhookService:
                             prompt_builder_instance=self._prompt_builder,
                             agent_profile_repository=self._agent_profile_repository,
                             tool_calling_orchestrator=self._tool_calling_orchestrator,
-                            patient_choice_guard=self._patient_choice_guard,
-                            numeric_slot_guard=self._numeric_slot_guard,
-                            professional_override_guard=self._professional_override_guard,
                             professional_silent_guard=self._professional_silent_guard,
                         )
                     )

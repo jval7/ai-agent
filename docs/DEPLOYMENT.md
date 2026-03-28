@@ -109,6 +109,12 @@ Reset de memoria de chat contra backend desplegado:
 make chat-memory-reset
 ```
 
+## APIs de GCP gestionadas por Terraform
+Las APIs del proyecto se declaran en `infra/terraform/project_bootstrap/variables.tf` (`enable_apis`).
+Si se necesita habilitar una nueva API de GCP, agregarla ahi para que Terraform sea la fuente de verdad.
+
+APIs actuales: `calendar-json`, `secretmanager`, `stitch` (Google Stitch - diseño UI con AI).
+
 ## Verificacion rapida post-deploy
 - Backend docs: `https://<cloud-run-url>/docs`
 - Health: `https://<cloud-run-url>/healthz`

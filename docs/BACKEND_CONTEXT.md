@@ -17,7 +17,7 @@ Ver sección "Reglas de Ingeniería Backend" en `CLAUDE.md` (fuente canónica).
 - `src/services/agentic`: orquestación agéntica modular:
   - `graphs/`: grafos LangGraph (`ConversationGraph`, `SchedulingTransitionGraph`) — routing y tracing, sin lógica de negocio.
   - `tool_handlers/`: registry pattern — `ToolHandler` ABC + handlers por tool + `ToolHandlerRegistry` dispatcher.
-  - `guards/`: guard chain — `ConversationGuard` ABC + 4 guards individuales + helpers compartidos.
+  - `guards/`: guard chain — `ConversationGuard` ABC + 2 guards activos (`WaitingProfessionalOverrideGuard`, `WaitingProfessionalSilentGuard`) + helpers compartidos. Los guards `WaitingPatientChoiceGuard` y `NumericSlotSelectionGuard` ya no están en el grafo; su lógica la maneja el orquestador via `select_proposed_slot` y `reject_proposed_slots`.
   - `prompts/`: structured prompts — `PromptSection` ABC + 4 secciones + `PromptAssembler`.
   - `tool_calling_orchestrator.py`: loop LLM → tools → LLM (framework-agnostic, puro Python).
   - `runtime_context_resolver.py`: resuelve estado agéntico (request activa → `RuntimePromptContext`).
@@ -25,7 +25,7 @@ Ver sección "Reglas de Ingeniería Backend" en `CLAUDE.md` (fuente canónica).
   - `workflow_runtime_adapter.py`: adapter que implementa `ConversationWorkflowRuntimePort`, delega a los componentes anteriores.
   - `prompt_builder.py`: `RuntimePromptBuilder` — orquesta el build completo del prompt llamando todas las `PromptSection`.
 
-  - `tool_registry.py`: `ToolDefinitionRegistry` — define schemas de tools para function calling del LLM (6 tools).
+  - `tool_registry.py`: `ToolDefinitionRegistry` — define schemas de tools para function calling del LLM (8 tools, incluyendo `select_proposed_slot` y `reject_proposed_slots`).
   - `workflow_engine.py`: `LangGraphAgentWorkflowEngine` — entry point que ejecuta `ConversationGraph` y `SchedulingTransitionGraph`.
   - `state_models.py`: modelos de estado — `RuntimePromptContext`, `ConversationGraphState`, `SchedulingTransitionGraphState`.
   - `tool_handlers/patient_profile_resolver.py`: helper que resuelve datos de perfil del paciente para `confirm_slot_handler`.
@@ -72,27 +72,21 @@ User admin local (sin endpoint HTTP): `make user-bootstrap-master`, `make user-c
 ```mermaid
 flowchart TD
     A["START"] --> B["load_runtime_context"]
-    B --> C["guard_waiting_patient_choice_override"]
+    B --> C["guard_waiting_professional_override"]
 
-    C -->|continue| D["guard_required_numeric_slot_selection"]
-    C -->|stop| Z1["END: SEND_MESSAGE (PATIENT_CHOICE_OVERRIDE)"]
+    C -->|continue| D["guard_waiting_professional_silent"]
+    C -->|stop| Z1["END: SEND_MESSAGE (WAITING_PROFESSIONAL_OVERRIDE)"]
 
-    D -->|continue| E["guard_waiting_professional_override"]
-    D -->|stop| Z2["END: SEND_MESSAGE (NUMERIC_SLOT_RETRY)"]
+    D -->|continue| E["build_prompt_context"]
+    D -->|stop| Z2["END: SKIP_SILENT (WAITING_PROFESSIONAL_SILENT)"]
 
-    E -->|continue| F["guard_waiting_professional_silent"]
-    E -->|stop| Z3["END: SEND_MESSAGE (WAITING_PROFESSIONAL_OVERRIDE)"]
-
-    F -->|continue| G["build_prompt_context"]
-    F -->|stop| Z4["END: SKIP_SILENT (WAITING_PROFESSIONAL_SILENT)"]
-
-    G --> H["call_llm"]
-    H --> I["execute_tools"]
-    I --> J["decide_terminal_output"]
-    J --> K["END"]
+    E --> F["call_llm"]
+    F --> G["execute_tools"]
+    G --> H["decide_terminal_output"]
+    H --> I["END"]
 ```
 
-Nodos: 9. Cada guard delega a su clase en `guards/`. `call_llm` delega a `ToolCallingOrchestrator`. LangGraph solo rutea y traza.
+Nodos: 7. Cada guard delega a su clase en `guards/`. `call_llm` delega a `ToolCallingOrchestrator`. LangGraph solo rutea y traza. La selección/rechazo de slots propuestos la maneja el orquestador via tools `select_proposed_slot` y `reject_proposed_slots`.
 
 ### SchedulingTransitionGraph (transiciones de agenda)
 ```mermaid

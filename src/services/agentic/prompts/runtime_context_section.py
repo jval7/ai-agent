@@ -12,7 +12,6 @@ class RuntimeContextSection(prompt_section.PromptSection):
         del known_patient
         lines = [
             "INSTRUCCIONES RUNTIME (PRIORIDAD ALTA):",
-            "FORMATO: Usa formato WhatsApp. *negrita* para enfasis. Si hay mas de 2 items o datos, usa bullet points (•) en lista. Mensajes cortos y estructurados.",
             f"- estado_conversacion: {runtime_context.state}",
         ]
         if runtime_context.request_id is not None:

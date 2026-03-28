@@ -1,5 +1,6 @@
-"""Wrapper que delega todo al adapter real excepto send_text_message,
-que simplemente retorna un ID sintetico sin llamar a Meta."""
+"""Wrapper que delega todo al adapter real. En send_text_message,
+consulta settings.whatsapp_outbound_noop en runtime para decidir
+si envía realmente o retorna un ID sintético."""
 
 from __future__ import annotations
 
@@ -7,6 +8,7 @@ import logging
 import typing
 import uuid
 
+import src.infra.settings as app_settings
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.dto.whatsapp_dto as whatsapp_dto
@@ -15,8 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 class NoopWhatsappSendAdapter(whatsapp_provider_port.WhatsappProviderPort):
-    def __init__(self, delegate: whatsapp_provider_port.WhatsappProviderPort) -> None:
+    def __init__(
+        self,
+        delegate: whatsapp_provider_port.WhatsappProviderPort,
+        settings: app_settings.Settings,
+    ) -> None:
         self._delegate = delegate
+        self._settings = settings
 
     def build_embedded_signup_url(self, state: str) -> str:
         return self._delegate.build_embedded_signup_url(state)
@@ -37,6 +44,10 @@ class NoopWhatsappSendAdapter(whatsapp_provider_port.WhatsappProviderPort):
         whatsapp_user_id: str,
         text: str,
     ) -> str:
+        if not self._settings.whatsapp_outbound_noop:
+            return self._delegate.send_text_message(
+                access_token, phone_number_id, whatsapp_user_id, text
+            )
         synthetic_id = f"noop-{uuid.uuid4().hex[:12]}"
         logger.info(
             "noop_whatsapp_send",

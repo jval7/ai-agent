@@ -1,16 +1,40 @@
 import collections.abc
+import logging
 import typing
 
 import google.auth.exceptions as google_auth_exceptions
 import google.genai.errors as genai_errors
 import google.genai.types as genai_types
 import httpx
+import tenacity
 from google import genai
 
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.ports.llm_provider_port as llm_provider_port
 import src.services.dto.llm_dto as llm_dto
 import src.services.exceptions as service_exceptions
+
+logger = logging.getLogger(__name__)
+
+
+def _is_retryable_error(error: BaseException) -> bool:
+    if isinstance(error, genai_errors.ClientError) and error.code == 429:
+        return True
+    if isinstance(error, genai_errors.ServerError):
+        return True
+    return isinstance(error, httpx.TimeoutException)
+
+
+def _log_retry(retry_state: tenacity.RetryCallState) -> None:
+    attempt = retry_state.attempt_number
+    outcome = retry_state.outcome
+    if outcome is not None and outcome.failed:
+        exc = outcome.exception()
+        logger.warning(
+            "gemini_retry attempt=%d error=%s",
+            attempt,
+            str(exc)[:120] if exc else "unknown",
+        )
 
 
 class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
@@ -79,10 +103,10 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
             client = self._get_client()
 
             try:
-                response = client.models.generate_content(
-                    model=self._model,
-                    contents=request_contents,
-                    config=request_config,
+                response = self._generate_with_retry(
+                    client=client,
+                    request_contents=request_contents,
+                    request_config=request_config,
                 )
             except google_auth_exceptions.DefaultCredentialsError as error:
                 trace_run.set_error("google application default credentials are required")
@@ -135,6 +159,25 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
                 content=reply_text if reply_text is not None else "",
                 function_calls=function_calls,
             )
+
+    @tenacity.retry(  # type: ignore[misc]
+        retry=tenacity.retry_if_exception(_is_retryable_error),
+        wait=tenacity.wait_exponential(multiplier=1, min=2, max=30),
+        stop=tenacity.stop_after_attempt(4),
+        before_sleep=_log_retry,
+        reraise=True,
+    )
+    def _generate_with_retry(
+        self,
+        client: genai.Client,
+        request_contents: list[dict[str, typing.Any]],
+        request_config: genai_types.GenerateContentConfigDict,
+    ) -> genai_types.GenerateContentResponse:
+        return client.models.generate_content(
+            model=self._model,
+            contents=request_contents,
+            config=request_config,
+        )
 
     def _get_client(self) -> genai.Client:
         if self._client is None:

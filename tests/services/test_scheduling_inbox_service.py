@@ -161,7 +161,7 @@ def test_submit_professional_slots_resumes_conversation() -> None:
     assert response.status == "AWAITING_PATIENT_CHOICE"
     assert len(whatsapp_provider.sent_messages) == 1
     assert "de enero a las" in whatsapp_provider.sent_messages[0]["text"]
-    assert "America/Bogota" in whatsapp_provider.sent_messages[0]["text"]
+    assert "hora Colombia" in whatsapp_provider.sent_messages[0]["text"]
     assert "T10:00:00" not in whatsapp_provider.sent_messages[0]["text"]
     saved = repository.get_request_by_id("tenant-1", "req-1")
     assert saved is not None

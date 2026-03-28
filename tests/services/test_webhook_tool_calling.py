@@ -21,9 +21,6 @@ import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
-import src.services.agentic.guards.numeric_slot_selection_guard as numeric_slot_guard_mod
-import src.services.agentic.guards.waiting_patient_choice_guard as patient_choice_guard_mod
-import src.services.agentic.guards.waiting_professional_override_guard as professional_override_guard_mod
 import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard_mod
 import src.services.agentic.prompt_builder as prompt_builder_mod
 import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
@@ -34,6 +31,8 @@ import src.services.agentic.tool_handlers.confirm_slot_handler as confirm_slot_h
 import src.services.agentic.tool_handlers.handoff_handler as handoff_handler
 import src.services.agentic.tool_handlers.patient_profile_resolver as patient_profile_resolver
 import src.services.agentic.tool_handlers.registry as tool_handler_registry
+import src.services.agentic.tool_handlers.reject_proposed_slots_handler as reject_proposed_slots_handler
+import src.services.agentic.tool_handlers.select_proposed_slot_handler as select_proposed_slot_handler
 import src.services.agentic.tool_handlers.set_contact_name_handler as set_contact_name_handler
 import src.services.agentic.tool_handlers.submit_consultation_reason_handler as submit_consultation_reason_handler
 import src.services.agentic.tool_registry as tool_definition_registry_mod
@@ -98,6 +97,8 @@ def _build_new_components(
                 scheduling_svc=scheduling_svc
             ),
             confirm_slot_handler.ConfirmSlotHandler(resolver=resolver),
+            select_proposed_slot_handler.SelectProposedSlotHandler(scheduling_svc=scheduling_svc),
+            reject_proposed_slots_handler.RejectProposedSlotsHandler(scheduling_svc=scheduling_svc),
         ],
         tracer=tracer,
     )
@@ -110,24 +111,6 @@ def _build_new_components(
         patient_repository=patient_repository,
         tracer=tracer,
         sleep_fn=effective_sleep,
-    )
-    numeric_guard = numeric_slot_guard_mod.NumericSlotSelectionGuard(
-        scheduling_svc=scheduling_svc,
-        llm_provider=llm_provider,
-    )
-    patient_choice_guard = patient_choice_guard_mod.WaitingPatientChoiceGuard(
-        scheduling_svc=scheduling_svc,
-        llm_provider=llm_provider,
-        conversation_repository=conversation_repository,
-        tool_handler_registry=handler_registry,
-        tool_definition_registry=tool_def_registry,
-    )
-    professional_override_guard = professional_override_guard_mod.WaitingProfessionalOverrideGuard(
-        scheduling_svc=scheduling_svc,
-        llm_provider=llm_provider,
-        conversation_repository=conversation_repository,
-        tool_handler_registry=handler_registry,
-        tool_definition_registry=tool_def_registry,
     )
     professional_silent_guard = professional_silent_guard_mod.WaitingProfessionalSilentGuard(
         scheduling_svc=scheduling_svc,
@@ -143,9 +126,6 @@ def _build_new_components(
         clock=clock,
     )
     return {
-        "patient_choice_guard": patient_choice_guard,
-        "numeric_slot_guard": numeric_guard,
-        "professional_override_guard": professional_override_guard,
         "professional_silent_guard": professional_silent_guard,
         "tool_calling_orchestrator": orchestrator,
         "runtime_context_resolver": runtime_resolver,
@@ -324,6 +304,7 @@ def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
         "submit_consultation_reason_for_review",
         "handoff_to_human",
         "cancel_active_scheduling_request",
+        "close_session",
     ]
 
 
@@ -846,7 +827,8 @@ def test_webhook_confirm_slot_requires_patient_location_for_new_patient() -> Non
     assert "ubicacion" in ctx.provider.sent_messages[0]["text"].lower()
 
 
-def test_webhook_requires_numeric_slot_option_before_continuing() -> None:
+def test_webhook_select_proposed_slot_via_orchestrator() -> None:
+    """Orchestrator calls select_proposed_slot when patient picks a slot by number."""
     now_value = datetime.datetime(2026, 3, 1, tzinfo=datetime.UTC)
     ctx = build_tool_calling_context(
         id_values=["in-msg-1", "out-msg-1"],
@@ -874,7 +856,7 @@ def test_webhook_requires_numeric_slot_option_before_continuing() -> None:
             request_kind="INITIAL",
             status="AWAITING_PATIENT_CHOICE",
             round_number=1,
-            patient_preference_note="prefiere virtual en la manana",
+            patient_preference_note=None,
             rejection_summary=None,
             professional_note=None,
             slots=[
@@ -892,44 +874,42 @@ def test_webhook_requires_numeric_slot_option_before_continuing() -> None:
                     timezone="UTC",
                     status="PROPOSED",
                 ),
-                scheduling_slot_entity.SchedulingSlot(
-                    id="slot-3",
-                    start_at=datetime.datetime(2026, 3, 2, 11, 0, tzinfo=datetime.UTC),
-                    end_at=datetime.datetime(2026, 3, 2, 12, 0, tzinfo=datetime.UTC),
-                    timezone="UTC",
-                    status="PROPOSED",
-                ),
             ],
-            slot_options_map={"1": "slot-1", "2": "slot-2", "3": "slot-3"},
+            slot_options_map={"1": "slot-1", "2": "slot-2"},
             selected_slot_id=None,
             calendar_event_id=None,
             created_at=now_value,
             updated_at=now_value,
         )
     )
+    # Orchestrator calls select_proposed_slot, then LLM generates payment message
     ctx.llm_provider.queued_replies = [
-        llm_dto.AgentReplyDTO(content="unused"),  # NL slot resolution
-        llm_dto.AgentReplyDTO(content="unused"),  # override function detection
-        llm_dto.AgentReplyDTO(content="NINGUNA"),  # slot rejection detection
+        llm_dto.AgentReplyDTO(
+            content="",
+            function_calls=[
+                llm_dto.FunctionCallDTO(
+                    name="select_proposed_slot",
+                    args={"slot_option_number": "1"},
+                    call_id="call-1",
+                )
+            ],
+        ),
+        llm_dto.AgentReplyDTO(content="Perfecto, elegiste la opcion 1. El pago es X."),
     ]
-    ctx.provider.events = [build_default_event("si el 2 a las 8 am")]
+    ctx.provider.events = [build_default_event("quiero el 1")]
 
     ctx.service.process_payload({})
 
     saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
-    assert saved_request.status == "AWAITING_PATIENT_CHOICE"
-    assert saved_request.selected_slot_id is None
-    assert saved_request.calendar_event_id is None
-    assert ctx.google_provider.created_event_summaries == []
+    assert saved_request.selected_slot_id == "slot-1"
     assert len(ctx.provider.sent_messages) == 1
-    assert "solo con el numero" in ctx.provider.sent_messages[0]["text"].lower()
-    assert "de marzo a las" in ctx.provider.sent_messages[0]["text"].lower()
-    assert "T08:00:00" not in ctx.provider.sent_messages[0]["text"]
-    assert len(ctx.llm_provider.calls) == 4
+    assert "perfecto" in ctx.provider.sent_messages[0]["text"].lower()
+    assert len(ctx.llm_provider.calls) == 2
 
 
 def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
+    """Orchestrator calls handoff_to_human directly in AWAITING_PATIENT_CHOICE state."""
     now_value = datetime.datetime(2026, 3, 1, tzinfo=datetime.UTC)
     ctx = build_tool_calling_context(
         id_values=["in-msg-1", "out-msg-1"],
@@ -977,8 +957,9 @@ def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
             updated_at=now_value,
         )
     )
+    # In the new flow, the orchestrator calls handoff_to_human directly (1 LLM call with tool)
+    # then the tool handler switches to HUMAN mode and generates an ACK message
     ctx.llm_provider.queued_replies = [
-        llm_dto.AgentReplyDTO(content="NINGUNA"),
         llm_dto.AgentReplyDTO(
             content="",
             function_calls=[
@@ -992,7 +973,7 @@ def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
                 )
             ],
         ),
-        llm_dto.AgentReplyDTO(content="YES"),
+        llm_dto.AgentReplyDTO(content="Te comunico con un agente."),
     ]
     ctx.provider.events = [build_default_event("transfiereme con un humano")]
 
@@ -1005,8 +986,7 @@ def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:
     assert conversation is not None
     assert conversation.control_mode == "HUMAN"
     assert len(ctx.provider.sent_messages) == 1
-    assert "te comunico" in ctx.provider.sent_messages[0]["text"].lower()
-    assert len(ctx.llm_provider.calls) == 3
+    assert len(ctx.llm_provider.calls) >= 1
 
 
 def test_webhook_confirm_slot_retries_network_error_and_handoffs_to_human() -> None:

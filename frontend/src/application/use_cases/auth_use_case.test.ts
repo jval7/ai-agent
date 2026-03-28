@@ -268,6 +268,14 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
   ): Promise<schedulingModel.SchedulingRequestSummary> {
     throw new Error("not used");
   }
+
+  async getSandboxMode(): Promise<{ sandbox_enabled: boolean }> {
+    throw new Error("not used");
+  }
+
+  async updateSandboxMode(_enabled: boolean): Promise<{ sandbox_enabled: boolean }> {
+    throw new Error("not used");
+  }
 }
 
 vitestModule.describe("AuthUseCase", () => {

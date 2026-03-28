@@ -59,7 +59,7 @@ class WaitingPatientChoiceGuard(base.ConversationGuard):
                 )
             except service_exceptions.ServiceError:
                 return guard_helpers.build_slot_selection_retry_message(active_request)
-            return guard_helpers.build_payment_instructions_message(active_request.audience_type)
+            return None
 
         function_calls = self._resolve_override_function_calls(
             latest_user_text=context.latest_user_text,

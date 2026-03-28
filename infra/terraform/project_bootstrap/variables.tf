@@ -54,6 +54,7 @@ variable "enable_apis" {
   default = [
     "calendar-json.googleapis.com",
     "secretmanager.googleapis.com",
+    "stitch.googleapis.com",
   ]
 }
 

@@ -2,18 +2,24 @@ import * as reactModule from "react";
 
 import * as reactQueryModule from "@tanstack/react-query";
 import * as radixSwitchModule from "@radix-ui/react-switch";
+import * as luxonModule from "luxon";
 
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
+import * as slotPickerModule from "@adapters/inbound/react/components/SlotPicker";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
+import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
 import type * as conversationModel from "@domain/models/conversation";
 import type * as schedulingModel from "@domain/models/scheduling";
+import * as calendarUtilsModule from "@shared/utils/calendar";
 import * as dateUtilsModule from "@shared/utils/date";
 
 const conversationsQueryKey = ["conversations"] as const;
 const blacklistQueryKey = ["blacklist"] as const;
 const patientsQueryKey = ["patients"] as const;
 const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
+const promptQueryKey = ["system-prompt"] as const;
+const sandboxQueryKey = ["sandbox-mode"] as const;
 
 type AppointmentDisplayStatus =
   | "PENDIENTE_REVISION"
@@ -31,8 +37,8 @@ const appointmentDisplayConfig: Record<
   AppointmentDisplayStatus,
   { label: string; tone: statusBadgeModule.StatusBadgeTone }
 > = {
-  PENDIENTE_REVISION: { label: "Pendiente revisión", tone: "warning" },
-  ESPERANDO_INFO: { label: "Esperando info", tone: "warning" },
+  PENDIENTE_REVISION: { label: "Pendiente revisión", tone: "danger" },
+  ESPERANDO_INFO: { label: "Esperando info", tone: "info" },
   ELIGIENDO_HORARIO: { label: "Eligiendo horario", tone: "info" },
   PAGO_PENDIENTE: { label: "Pago pendiente", tone: "warning" },
   AGENDADA: { label: "Agendada", tone: "success" },
@@ -106,6 +112,22 @@ export function InboxPage() {
     refetchInterval: 5_000
   });
 
+  const googleCalendarConnectionQuery = reactQueryModule.useQuery({
+    queryKey: ["google-calendar-connection"],
+    queryFn: () => appContainer.onboardingUseCase.getGoogleCalendarConnectionStatus()
+  });
+
+  const professionalTimezone =
+    googleCalendarConnectionQuery.data?.professionalTimezone ?? "America/Bogota";
+
+  const [slotPickerMonth, setSlotPickerMonth] = reactModule.useState<{
+    year: number;
+    month: number;
+  }>(() => {
+    const now = luxonModule.DateTime.now();
+    return { year: now.year, month: now.month };
+  });
+
   const latestRequestByConversationId = reactModule.useMemo(() => {
     const map = new Map<string, schedulingModel.SchedulingRequestSummary>();
     if (schedulingRequestsQuery.data === undefined) {
@@ -139,6 +161,7 @@ export function InboxPage() {
   );
   const [inboxMobileStep, setInboxMobileStep] = reactModule.useState<"LIST" | "DETAIL">("LIST");
   const [fabOpen, setFabOpen] = reactModule.useState(false);
+  const [promptDrawerOpen, setPromptDrawerOpen] = reactModule.useState(false);
 
   reactModule.useEffect(() => {
     if (conversationsQuery.data === undefined || conversationsQuery.data.length === 0) {
@@ -215,6 +238,12 @@ export function InboxPage() {
   });
 
   const [messageText, setMessageText] = reactModule.useState("");
+  const [selectedSlots, setSelectedSlots] = reactModule.useState<
+    schedulingModel.ProfessionalSlotInput[]
+  >([]);
+  const [slotPickerOpen, setSlotPickerOpen] = reactModule.useState(false);
+  const [paymentAmountInput, setPaymentAmountInput] = reactModule.useState("");
+  const [reviewNoteInput, setReviewNoteInput] = reactModule.useState("");
   const sendMessageMutation = reactQueryModule.useMutation({
     mutationFn: (payload: { conversationId: string; messageText: string }) =>
       appContainer.conversationUseCase.sendMessage(payload.conversationId, payload.messageText),
@@ -228,6 +257,92 @@ export function InboxPage() {
       ]);
     }
   });
+
+  const submitSlotsMutation = reactQueryModule.useMutation({
+    mutationFn: (payload: {
+      request: schedulingModel.SchedulingRequestSummary;
+      slots: schedulingModel.ProfessionalSlotInput[];
+      professionalNote: string | null;
+    }) =>
+      appContainer.schedulingUseCase.submitProfessionalSlots(
+        payload.request.conversationId,
+        payload.request.requestId,
+        { slots: payload.slots, professionalNote: payload.professionalNote }
+      ),
+    onSuccess: async () => {
+      setSelectedSlots([]);
+      setReviewNoteInput("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation-messages", selectedConversationId]
+        })
+      ]);
+    }
+  });
+
+  const resolvePaymentMutation = reactQueryModule.useMutation({
+    mutationFn: (payload: {
+      request: schedulingModel.SchedulingRequestSummary;
+      decision: "APPROVE" | "SEND_REMINDER";
+      paymentAmountCop: number | null;
+      professionalNote: string | null;
+    }) =>
+      appContainer.schedulingUseCase.resolvePaymentReview(
+        payload.request.conversationId,
+        payload.request.requestId,
+        {
+          decision: payload.decision,
+          professionalNote: payload.professionalNote,
+          paymentAmountCop: payload.paymentAmountCop
+        }
+      ),
+    onSuccess: async () => {
+      setPaymentAmountInput("");
+      setReviewNoteInput("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey }),
+        queryClient.invalidateQueries({
+          queryKey: ["conversation-messages", selectedConversationId]
+        })
+      ]);
+    }
+  });
+
+  const promptQuery = reactQueryModule.useQuery({
+    queryKey: promptQueryKey,
+    queryFn: () => appContainer.agentUseCase.getSystemPrompt()
+  });
+
+  const [systemPromptText, setSystemPromptText] = reactModule.useState("");
+
+  reactModule.useEffect(() => {
+    if (promptQuery.data !== undefined) {
+      setSystemPromptText(promptQuery.data.systemPrompt);
+    }
+  }, [promptQuery.data]);
+
+  const updatePromptMutation = reactQueryModule.useMutation({
+    mutationFn: () => appContainer.agentUseCase.updateSystemPrompt(systemPromptText),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: promptQueryKey });
+      setPromptDrawerOpen(false);
+    }
+  });
+
+  const sandboxQuery = reactQueryModule.useQuery({
+    queryKey: sandboxQueryKey,
+    queryFn: () => appContainer.agentUseCase.getSandboxMode()
+  });
+
+  const sandboxMutation = reactQueryModule.useMutation({
+    mutationFn: (enabled: boolean) => appContainer.agentUseCase.updateSandboxMode(enabled),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: sandboxQueryKey });
+    }
+  });
+
+  const sandboxEnabled = sandboxQuery.data?.sandbox_enabled ?? false;
 
   const selectedWhatsappUserId = selectedConversation?.whatsappUserId ?? null;
   const isBlocked =
@@ -246,6 +361,45 @@ export function InboxPage() {
       : "SIN_CITA";
   // eslint-disable-next-line security/detect-object-injection
   const selectedAppointmentConfig = appointmentDisplayConfig[selectedAppointmentStatus];
+
+  const needsOwnerAction =
+    selectedConversationRequest !== null &&
+    (selectedConversationRequest.status === "AWAITING_CONSULTATION_REVIEW" ||
+      selectedConversationRequest.status === "AWAITING_PAYMENT_CONFIRMATION");
+
+  const slotPickerMonthStart = luxonModule.DateTime.fromObject(
+    { year: slotPickerMonth.year, month: slotPickerMonth.month, day: 1 },
+    { zone: professionalTimezone }
+  );
+  const slotPickerMonthEnd = slotPickerMonthStart.plus({ months: 1 });
+  const slotPickerMonthFromIso = slotPickerMonthStart.toISO();
+  const slotPickerMonthToIso = slotPickerMonthEnd.toISO();
+
+  const availabilityQuery = reactQueryModule.useQuery({
+    queryKey: [
+      "google-calendar-availability",
+      slotPickerMonthFromIso,
+      slotPickerMonthToIso,
+      professionalTimezone
+    ],
+    enabled:
+      needsOwnerAction &&
+      selectedConversationRequest?.status === "AWAITING_CONSULTATION_REVIEW" &&
+      slotPickerMonthFromIso !== null &&
+      slotPickerMonthToIso !== null,
+    queryFn: () =>
+      appContainer.schedulingUseCase.getAvailability(slotPickerMonthFromIso!, slotPickerMonthToIso!)
+  });
+
+  const busyIntervals = reactModule.useMemo<calendarUtilsModule.BusyIntervalRange[]>(() => {
+    if (availabilityQuery.data === undefined) {
+      return [];
+    }
+    return calendarUtilsModule.parseBusyIntervals(
+      availabilityQuery.data.busyIntervals,
+      professionalTimezone
+    );
+  }, [availabilityQuery.data, professionalTimezone]);
 
   const renderConversationItem = (
     conversation: conversationModel.ConversationSummary,
@@ -293,6 +447,36 @@ export function InboxPage() {
       <div className="lg:hidden">
         {inboxMobileStep === "LIST" ? (
           <div className="space-y-2">
+            <div
+              className={[
+                "mb-2 flex items-center justify-between rounded-lg border px-3 py-2",
+                sandboxEnabled ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
+              ].join(" ")}
+            >
+              <div className="min-w-0 flex-1">
+                <p
+                  className={[
+                    "text-xs font-semibold",
+                    sandboxEnabled ? "text-amber-800" : "text-slate-500"
+                  ].join(" ")}
+                >
+                  Sandbox
+                </p>
+                {sandboxEnabled ? (
+                  <p className="text-[11px] text-amber-700">WhatsApp no envía mensajes reales</p>
+                ) : null}
+              </div>
+              <radixSwitchModule.Root
+                checked={sandboxEnabled}
+                className="relative h-6 w-11 rounded-full bg-slate-300 data-[state=checked]:bg-amber-500"
+                disabled={sandboxMutation.isPending}
+                onCheckedChange={(checked) => {
+                  sandboxMutation.mutate(checked);
+                }}
+              >
+                <radixSwitchModule.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform data-[state=checked]:translate-x-5" />
+              </radixSwitchModule.Root>
+            </div>
             <header className="mb-3">
               <h2 className="text-base font-semibold text-brand-ink">Conversaciones</h2>
               <p className="text-[11px] text-slate-500">
@@ -400,6 +584,54 @@ export function InboxPage() {
               ) : null}
             </div>
 
+            {/* Owner action bar */}
+            {needsOwnerAction && selectedConversationRequest !== null ? (
+              <div className="shrink-0 border-t border-amber-200 bg-amber-50 px-3 py-2">
+                {selectedConversationRequest.status === "AWAITING_CONSULTATION_REVIEW" ? (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-amber-800">Proponer horarios</p>
+                    <button
+                      className="w-full rounded-md bg-brand-teal px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-teal/90"
+                      onClick={() => setSlotPickerOpen(true)}
+                      type="button"
+                    >
+                      Seleccionar horarios
+                    </button>
+                  </div>
+                ) : null}
+                {selectedConversationRequest.status === "AWAITING_PAYMENT_CONFIRMATION" ? (
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-amber-800">Confirmar pago</p>
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs focus:border-brand-teal focus:outline-none"
+                        onChange={(e) => setPaymentAmountInput(e.target.value)}
+                        placeholder="Monto COP (opcional)"
+                        type="number"
+                        value={paymentAmountInput}
+                      />
+                      <button
+                        className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                        disabled={resolvePaymentMutation.isPending}
+                        onClick={() =>
+                          resolvePaymentMutation.mutate({
+                            request: selectedConversationRequest,
+                            decision: "APPROVE",
+                            paymentAmountCop:
+                              paymentAmountInput !== "" ? parseInt(paymentAmountInput, 10) : null,
+                            professionalNote: null
+                          })
+                        }
+                        type="button"
+                      >
+                        {resolvePaymentMutation.isPending ? "Confirmando..." : "Confirmar"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             {/* Send message input (HUMAN mode only) */}
             {selectedConversation.controlMode === "HUMAN" ? (
               <form
@@ -435,7 +667,12 @@ export function InboxPage() {
             ) : null}
 
             {/* FAB + action menu */}
-            <div className="pointer-events-none absolute bottom-4 right-2 flex flex-col items-end gap-2">
+            <div
+              className={[
+                "pointer-events-none absolute right-2 flex flex-col items-end gap-2",
+                needsOwnerAction ? "bottom-20" : "bottom-4"
+              ].join(" ")}
+            >
               {fabOpen ? (
                 <div className="pointer-events-auto flex flex-col gap-2">
                   <button
@@ -524,6 +761,68 @@ export function InboxPage() {
                 )}
               </button>
             </div>
+
+            {slotPickerOpen &&
+            selectedConversationRequest !== null &&
+            selectedConversationRequest.status === "AWAITING_CONSULTATION_REVIEW" ? (
+              <div className="fixed inset-0 z-50 flex flex-col bg-white">
+                <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <h2 className="text-sm font-semibold text-slate-800">Proponer horarios</h2>
+                  <button
+                    className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                    onClick={() => setSlotPickerOpen(false)}
+                    type="button"
+                  >
+                    <svg
+                      className="h-5 w-5"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </header>
+                <div className="flex-1 overflow-auto px-4 py-3">
+                  <slotPickerModule.SlotPicker
+                    busyIntervals={busyIntervals}
+                    isLoadingAvailability={availabilityQuery.isLoading}
+                    onMonthChange={setSlotPickerMonth}
+                    onSelectedSlotsChange={setSelectedSlots}
+                    requestId={selectedConversationRequest.requestId}
+                    selectedSlots={selectedSlots}
+                    timezone={professionalTimezone}
+                  />
+                  <textarea
+                    className="mt-3 w-full rounded border border-slate-300 px-2 py-1 text-xs focus:border-brand-teal focus:outline-none"
+                    onChange={(e) => setReviewNoteInput(e.target.value)}
+                    placeholder="Nota profesional (opcional)"
+                    rows={2}
+                    value={reviewNoteInput}
+                  />
+                </div>
+                <div className="border-t border-slate-200 px-4 py-3">
+                  <button
+                    className="w-full rounded-md bg-brand-teal px-3 py-2.5 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-60"
+                    disabled={submitSlotsMutation.isPending || selectedSlots.length === 0}
+                    onClick={() => {
+                      submitSlotsMutation.mutate({
+                        request: selectedConversationRequest,
+                        slots: selectedSlots,
+                        professionalNote: reviewNoteInput.trim() || null
+                      });
+                      setSlotPickerOpen(false);
+                    }}
+                    type="button"
+                  >
+                    {submitSlotsMutation.isPending
+                      ? "Enviando..."
+                      : `Enviar ${selectedSlots.length} horario${selectedSlots.length !== 1 ? "s" : ""}`}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -531,6 +830,36 @@ export function InboxPage() {
       {/* ===== DESKTOP: 3-column layout (unchanged) ===== */}
       <section className="hidden gap-4 lg:grid lg:grid-cols-[280px_minmax(0,1fr)_320px]">
         <article className="rounded-xl border border-border-subtle bg-white shadow-card">
+          <div
+            className={[
+              "flex items-center justify-between border-b px-4 py-2",
+              sandboxEnabled ? "border-amber-200 bg-amber-50" : "border-slate-100 bg-slate-50"
+            ].join(" ")}
+          >
+            <div className="min-w-0 flex-1">
+              <p
+                className={[
+                  "text-xs font-semibold",
+                  sandboxEnabled ? "text-amber-800" : "text-slate-500"
+                ].join(" ")}
+              >
+                Sandbox
+              </p>
+              {sandboxEnabled ? (
+                <p className="text-[11px] text-amber-700">WhatsApp no envía mensajes reales</p>
+              ) : null}
+            </div>
+            <radixSwitchModule.Root
+              checked={sandboxEnabled}
+              className="relative h-6 w-11 rounded-full bg-slate-300 data-[state=checked]:bg-amber-500"
+              disabled={sandboxMutation.isPending}
+              onCheckedChange={(checked) => {
+                sandboxMutation.mutate(checked);
+              }}
+            >
+              <radixSwitchModule.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform data-[state=checked]:translate-x-5" />
+            </radixSwitchModule.Root>
+          </div>
           <header className="border-b border-border-subtle px-5 py-4">
             <h2 className="text-base font-semibold">Conversaciones</h2>
             <p className="text-xs text-slate-500">Selecciona una conversación para ver detalle.</p>
@@ -706,6 +1035,85 @@ export function InboxPage() {
             </p>
           ) : (
             <>
+              {needsOwnerAction && selectedConversationRequest !== null ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-amber-700">
+                    Acción requerida
+                  </p>
+                  {selectedConversationRequest.status === "AWAITING_CONSULTATION_REVIEW" ? (
+                    <div className="mt-2 space-y-3">
+                      <slotPickerModule.SlotPicker
+                        busyIntervals={busyIntervals}
+                        isLoadingAvailability={availabilityQuery.isLoading}
+                        onMonthChange={setSlotPickerMonth}
+                        onSelectedSlotsChange={setSelectedSlots}
+                        requestId={selectedConversationRequest.requestId}
+                        selectedSlots={selectedSlots}
+                        timezone={professionalTimezone}
+                      />
+                      <textarea
+                        className="w-full rounded border border-slate-300 px-2 py-1 text-xs focus:border-brand-teal focus:outline-none"
+                        onChange={(e) => setReviewNoteInput(e.target.value)}
+                        placeholder="Nota profesional (opcional)"
+                        rows={2}
+                        value={reviewNoteInput}
+                      />
+                      <button
+                        className="w-full rounded-md bg-brand-teal px-3 py-2 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-60"
+                        disabled={submitSlotsMutation.isPending || selectedSlots.length === 0}
+                        onClick={() => {
+                          submitSlotsMutation.mutate({
+                            request: selectedConversationRequest,
+                            slots: selectedSlots,
+                            professionalNote: reviewNoteInput.trim() || null
+                          });
+                        }}
+                        type="button"
+                      >
+                        {submitSlotsMutation.isPending
+                          ? "Enviando..."
+                          : `Enviar ${selectedSlots.length} horario${selectedSlots.length !== 1 ? "s" : ""}`}
+                      </button>
+                    </div>
+                  ) : null}
+                  {selectedConversationRequest.status === "AWAITING_PAYMENT_CONFIRMATION" ? (
+                    <div className="mt-2 space-y-2">
+                      <p className="text-xs text-amber-800">Confirmar pago del paciente</p>
+                      <input
+                        className="w-full rounded border border-slate-300 px-2 py-1 text-xs focus:border-brand-teal focus:outline-none"
+                        onChange={(e) => setPaymentAmountInput(e.target.value)}
+                        placeholder="Monto COP (opcional)"
+                        type="number"
+                        value={paymentAmountInput}
+                      />
+                      <textarea
+                        className="w-full rounded border border-slate-300 px-2 py-1 text-xs focus:border-brand-teal focus:outline-none"
+                        onChange={(e) => setReviewNoteInput(e.target.value)}
+                        placeholder="Nota (opcional)"
+                        rows={2}
+                        value={reviewNoteInput}
+                      />
+                      <button
+                        className="w-full rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                        disabled={resolvePaymentMutation.isPending}
+                        onClick={() =>
+                          resolvePaymentMutation.mutate({
+                            request: selectedConversationRequest,
+                            decision: "APPROVE",
+                            paymentAmountCop:
+                              paymentAmountInput !== "" ? parseInt(paymentAmountInput, 10) : null,
+                            professionalNote: reviewNoteInput.trim() || null
+                          })
+                        }
+                        type="button"
+                      >
+                        {resolvePaymentMutation.isPending ? "Confirmando..." : "Confirmar pago"}
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="rounded-lg border border-border-subtle p-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Modo de control
@@ -765,6 +1173,80 @@ export function InboxPage() {
           )}
         </article>
       </section>
+
+      {/* System Prompt FAB */}
+      <button
+        className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-slate-700 text-white shadow-lg transition-transform hover:scale-105 hover:bg-slate-800"
+        onClick={() => setPromptDrawerOpen(true)}
+        title="System Prompt"
+        type="button"
+      >
+        <svg
+          className="h-5 w-5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
+          />
+        </svg>
+      </button>
+
+      {/* Prompt Drawer Overlay */}
+      {promptDrawerOpen ? (
+        <div className="fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/30"
+            onClick={() => setPromptDrawerOpen(false)}
+          />
+          {/* Drawer */}
+          <div className="relative ml-auto flex h-full w-full flex-col bg-white shadow-2xl lg:max-w-xl">
+            <header className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+              <h2 className="text-base font-semibold text-brand-ink">System Prompt</h2>
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-lg bg-brand-teal px-4 py-1.5 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-60"
+                  disabled={updatePromptMutation.isPending}
+                  onClick={() => updatePromptMutation.mutate()}
+                  type="button"
+                >
+                  {updatePromptMutation.isPending ? "Guardando..." : "Guardar"}
+                </button>
+                <button
+                  className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
+                  onClick={() => setPromptDrawerOpen(false)}
+                  type="button"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </header>
+            <div className="flex-1 overflow-auto p-4">
+              {promptQuery.isLoading ? (
+                <p className="text-sm text-slate-500">Cargando prompt...</p>
+              ) : (
+                <xmlTagEditorModule.XmlTagEditor
+                  onChange={setSystemPromptText}
+                  value={systemPromptText}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </appShellModule.AppShell>
   );
 }
