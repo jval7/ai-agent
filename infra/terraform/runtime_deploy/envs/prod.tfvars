@@ -1,0 +1,10 @@
+project_id             = "ai-agent-calendar-2603011621"
+region                 = "us-central1"
+cloud_run_service_name = "ai-agent-backend"
+artifact_repository_id = "ai-agent-backend"
+min_instances          = 1
+max_instances          = 10
+container_concurrency  = 40
+timeout_seconds        = 300
+cpu                    = "1"
+memory                 = "512Mi"
