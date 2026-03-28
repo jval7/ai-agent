@@ -363,9 +363,8 @@ export function AgendaPage() {
   });
 
   const [activeSectionId, setActiveSectionId] = reactModule.useState<string>("FINALIZED");
-  const [activeTab, setActiveTab] = reactModule.useState<schedulingModel.SchedulingRequestStatus>(
-    "AWAITING_CONSULTATION_REVIEW"
-  );
+  const [activeTab, setActiveTab] =
+    reactModule.useState<schedulingModel.SchedulingRequestStatus>("BOOKED");
   const [selectedRequestId, setSelectedRequestId] = reactModule.useState<string | null>(null);
   const [selectedBookedItemKey, setSelectedBookedItemKey] = reactModule.useState<string | null>(
     null
