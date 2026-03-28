@@ -50,13 +50,11 @@ DEPLOY_BACKEND_URL ?=
 DEPLOY_FRONTEND_BUCKET_NAME ?=
 DEPLOY_APP_CONFIG_SECRET_ID ?= AI_AGENT_APP_CONFIG_JSON
 DEPLOY_BASE_DIR ?= $(FLOW_DIR)/deploy
-DEPLOY_STATE_DIR ?= $(DEPLOY_BASE_DIR)/state/dev
 DEPLOY_FRONT_TF_DIR ?= $(DEPLOY_BASE_DIR)/terraform/frontend_spa_cdn_local
 DEPLOY_BACK_TF_DIR ?= $(DEPLOY_BASE_DIR)/terraform/runtime_deploy_local
-DEPLOY_FRONT_STATE_FILE ?= $(DEPLOY_STATE_DIR)/frontend_spa_cdn.tfstate
-DEPLOY_BACK_STATE_FILE ?= $(DEPLOY_STATE_DIR)/runtime_deploy.tfstate
 DEPLOY_FRONT_ENV_FILE ?= $(DEPLOY_BASE_DIR)/dev-front.env
 DEPLOY_BACK_ENV_FILE ?= $(DEPLOY_BASE_DIR)/dev-back.env
+TF_STATE_BUCKET ?= ai-agent-calendar-dev-tf-state
 DEPLOY_BACK_ENVS_DIR ?= infra/terraform/runtime_deploy/envs
 DEPLOY_FRONT_ENVS_DIR ?= infra/terraform/frontend_spa_cdn/envs
 APP_CONFIG_KEY ?=
@@ -317,37 +315,19 @@ deploy-front-infra:
 	fi
 	@echo "Deploying frontend infra [env=dev]"
 	@mkdir -p "$(DEPLOY_FRONT_TF_DIR)"
-	@mkdir -p "$(DEPLOY_STATE_DIR)"
 	@rsync -a \
 		--exclude='.terraform' \
 		--exclude='terraform.tfstate' \
 		--exclude='terraform.tfstate.backup' \
-		--exclude='versions.tf' \
 		infra/terraform/frontend_spa_cdn/ \
 		"$(DEPLOY_FRONT_TF_DIR)/"
-	@printf '%s\n' \
-		'terraform {' \
-		'  required_version = ">= 1.5.0"' \
-		'' \
-		'  backend "local" {' \
-		'    path = "$(abspath $(DEPLOY_FRONT_STATE_FILE))"' \
-		'  }' \
-		'' \
-		'  required_providers {' \
-		'    google = {' \
-		'      source  = "hashicorp/google"' \
-		'      version = "~> 5.0"' \
-		'    }' \
-		'  }' \
-		'}' \
-		'' \
-		'provider "google" {}' \
-		> "$(DEPLOY_FRONT_TF_DIR)/versions.tf"
 	@cp "$(DEPLOY_FRONT_ENVS_DIR)/dev.tfvars" "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"
 	@if [[ -n "$(DEPLOY_FRONTEND_BUCKET_NAME)" ]]; then \
 		printf '\nbucket_name = "%s"\n' "$(DEPLOY_FRONTEND_BUCKET_NAME)" >> "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"; \
 	fi
-	@terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" init -migrate-state -force-copy
+	@terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" init -reconfigure \
+		-backend-config="bucket=$(TF_STATE_BUCKET)" \
+		-backend-config="prefix=dev/frontend-spa-cdn"
 	@terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" apply -auto-approve -var-file=terraform.tfvars
 	@frontend_url=$$(terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" output -raw frontend_http_url 2>/dev/null || true); \
 	if [[ -z "$$frontend_url" || "$$frontend_url" == "null" ]]; then \
@@ -408,32 +388,12 @@ deploy-back:
 	fi
 	@echo "Deploying backend [env=dev]"
 	@mkdir -p "$(DEPLOY_BACK_TF_DIR)"
-	@mkdir -p "$(DEPLOY_STATE_DIR)"
 	@rsync -a \
 		--exclude='.terraform' \
 		--exclude='terraform.tfstate' \
 		--exclude='terraform.tfstate.backup' \
-		--exclude='versions.tf' \
 		infra/terraform/runtime_deploy/ \
 		"$(DEPLOY_BACK_TF_DIR)/"
-	@printf '%s\n' \
-		'terraform {' \
-		'  required_version = ">= 1.5.0"' \
-		'' \
-		'  backend "local" {' \
-		'    path = "$(abspath $(DEPLOY_BACK_STATE_FILE))"' \
-		'  }' \
-		'' \
-		'  required_providers {' \
-		'    google = {' \
-		'      source  = "hashicorp/google"' \
-		'      version = "~> 5.0"' \
-		'    }' \
-		'  }' \
-		'}' \
-		'' \
-		'provider "google" {}' \
-		> "$(DEPLOY_BACK_TF_DIR)/versions.tf"
 	@set -euo pipefail; \
 	project_id="$(DEPLOY_PROJECT_ID)"; \
 	if [[ -z "$$project_id" ]]; then \
@@ -459,7 +419,9 @@ deploy-back:
 		'allow_unauthenticated = true' \
 		'manage_app_config_secret = true' \
 		>> "$(DEPLOY_BACK_TF_DIR)/terraform.tfvars"; \
-	terraform -chdir="$(DEPLOY_BACK_TF_DIR)" init -migrate-state -force-copy; \
+	terraform -chdir="$(DEPLOY_BACK_TF_DIR)" init -reconfigure \
+		-backend-config="bucket=$(TF_STATE_BUCKET)" \
+		-backend-config="prefix=dev/runtime-deploy"; \
 	if ! terraform -chdir="$(DEPLOY_BACK_TF_DIR)" state show 'google_artifact_registry_repository.backend' >/dev/null 2>&1; then \
 		terraform -chdir="$(DEPLOY_BACK_TF_DIR)" import -var-file=terraform.tfvars \
 			'google_artifact_registry_repository.backend' \
