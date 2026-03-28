@@ -785,6 +785,26 @@ export function InboxPage() {
                   </button>
                 </header>
                 <div className="flex-1 overflow-auto px-4 py-3">
+                  <div className="mb-3 space-y-1 text-xs text-slate-600">
+                    {selectedConversationRequest.consultationReason ? (
+                      <p>
+                        <span className="font-semibold">Motivo:</span>{" "}
+                        {selectedConversationRequest.consultationReason}
+                      </p>
+                    ) : null}
+                    {selectedConversationRequest.patientLocation ? (
+                      <p>
+                        <span className="font-semibold">Ubicación:</span>{" "}
+                        {selectedConversationRequest.patientLocation}
+                      </p>
+                    ) : null}
+                    {selectedConversationRequest.appointmentModality ? (
+                      <p>
+                        <span className="font-semibold">Modalidad:</span>{" "}
+                        {selectedConversationRequest.appointmentModality}
+                      </p>
+                    ) : null}
+                  </div>
                   <slotPickerModule.SlotPicker
                     busyIntervals={busyIntervals}
                     isLoadingAvailability={availabilityQuery.isLoading}
@@ -1042,6 +1062,26 @@ export function InboxPage() {
                   </p>
                   {selectedConversationRequest.status === "AWAITING_CONSULTATION_REVIEW" ? (
                     <div className="mt-2 space-y-3">
+                      <div className="space-y-1 text-xs text-slate-600">
+                        {selectedConversationRequest.consultationReason ? (
+                          <p>
+                            <span className="font-semibold">Motivo:</span>{" "}
+                            {selectedConversationRequest.consultationReason}
+                          </p>
+                        ) : null}
+                        {selectedConversationRequest.patientLocation ? (
+                          <p>
+                            <span className="font-semibold">Ubicación:</span>{" "}
+                            {selectedConversationRequest.patientLocation}
+                          </p>
+                        ) : null}
+                        {selectedConversationRequest.appointmentModality ? (
+                          <p>
+                            <span className="font-semibold">Modalidad:</span>{" "}
+                            {selectedConversationRequest.appointmentModality}
+                          </p>
+                        ) : null}
+                      </div>
                       <slotPickerModule.SlotPicker
                         busyIntervals={busyIntervals}
                         isLoadingAvailability={availabilityQuery.isLoading}

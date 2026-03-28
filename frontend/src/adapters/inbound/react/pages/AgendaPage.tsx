@@ -33,17 +33,6 @@ interface AgendaSection {
 
 const agendaSections: AgendaSection[] = [
   {
-    id: "APPROVALS",
-    label: "Aprobaciones",
-    statuses: [
-      { status: "AWAITING_CONSULTATION_REVIEW", label: "Pendiente revisión" },
-      { status: "AWAITING_CONSULTATION_DETAILS", label: "Esperando detalles" },
-      { status: "AWAITING_PATIENT_CHOICE", label: "Esperando paciente" },
-      { status: "AWAITING_PAYMENT_CONFIRMATION", label: "Pendiente pago" },
-      { status: "CONSULTATION_REJECTED", label: "Rechazado" }
-    ]
-  },
-  {
     id: "FINALIZED",
     label: "Agenda e Historial",
     statuses: [
@@ -75,19 +64,6 @@ const approvalStatusLabels: Record<
   AWAITING_PAYMENT_CONFIRMATION: { label: "Pendiente pago", tone: "warning" },
   CONSULTATION_REJECTED: { label: "Rechazado", tone: "danger" }
 };
-
-const APPROVAL_STATUSES: schedulingModel.SchedulingRequestStatus[] = [
-  "AWAITING_CONSULTATION_REVIEW",
-  "AWAITING_CONSULTATION_DETAILS",
-  "AWAITING_PATIENT_CHOICE",
-  "AWAITING_PAYMENT_CONFIRMATION",
-  "CONSULTATION_REJECTED"
-];
-
-const ACTIONABLE_APPROVAL_STATUSES = new Set<schedulingModel.SchedulingRequestStatus>([
-  "AWAITING_CONSULTATION_REVIEW",
-  "AWAITING_CONSULTATION_DETAILS"
-]);
 
 interface LocalDateTimeParts {
   date: string;
@@ -322,12 +298,24 @@ function formatCopCurrency(value: number): string {
   }).format(value);
 }
 
-function resolvePatientDisplayName(request: schedulingModel.SchedulingRequestSummary): string {
+function resolvePatientDisplayName(
+  request: schedulingModel.SchedulingRequestSummary,
+  patientMap?: Map<string, patientModel.Patient>
+): string {
   const names = [request.patientFirstName, request.patientLastName]
     .map((value) => value?.trim() ?? "")
     .filter((value) => value !== "");
   if (names.length > 0) {
     return names.join(" ");
+  }
+  if (patientMap !== undefined) {
+    const patient = patientMap.get(request.whatsappUserId);
+    if (patient !== undefined) {
+      const patientName = `${patient.firstName} ${patient.lastName}`.trim();
+      if (patientName !== "") {
+        return patientName;
+      }
+    }
   }
   return request.whatsappUserId;
 }
@@ -374,7 +362,7 @@ export function AgendaPage() {
     queryFn: () => appContainer.manualAppointmentUseCase.listAppointments()
   });
 
-  const [activeSectionId, setActiveSectionId] = reactModule.useState<string>("APPROVALS");
+  const [activeSectionId, setActiveSectionId] = reactModule.useState<string>("FINALIZED");
   const [activeTab, setActiveTab] = reactModule.useState<schedulingModel.SchedulingRequestStatus>(
     "AWAITING_CONSULTATION_REVIEW"
   );
@@ -393,18 +381,6 @@ export function AgendaPage() {
   const [mobileBookedStep, setMobileBookedStep] = reactModule.useState<
     "calendar" | "dayList" | "detail"
   >("calendar");
-  const [selectedSlotsByRequestId, setSelectedSlotsByRequestId] = reactModule.useState<
-    Record<string, schedulingModel.ProfessionalSlotInput[]>
-  >({});
-  const [professionalNotesByRequestId, setProfessionalNotesByRequestId] = reactModule.useState<
-    Record<string, string>
-  >({});
-  const [reviewNotesByRequestId, setReviewNotesByRequestId] = reactModule.useState<
-    Record<string, string>
-  >({});
-  const [paymentAmountByRequestId, setPaymentAmountByRequestId] = reactModule.useState<
-    Record<string, string>
-  >({});
   const [localSubmitErrorMessage, setLocalSubmitErrorMessage] = reactModule.useState<string | null>(
     null
   );
@@ -431,9 +407,6 @@ export function AgendaPage() {
   >(null);
   const [manualRescheduleFormState, setManualRescheduleFormState] =
     reactModule.useState<ManualAppointmentFormState>(emptyManualAppointmentForm());
-  const [approvalMobileStep, setApprovalMobileStep] = reactModule.useState<
-    "REQUEST_LIST" | "REQUEST_DETAIL" | "CALENDAR" | "SLOTS"
-  >("REQUEST_LIST");
   const [bookedAppointmentFormState, setBookedAppointmentFormState] =
     reactModule.useState<BookedAppointmentFormState>(emptyBookedAppointmentForm());
   const [manualPaymentFormState, setManualPaymentFormState] =
@@ -499,14 +472,9 @@ export function AgendaPage() {
     return counts;
   }, [allManualAppointments, requestCountByStatus]);
 
-  const isApprovalSection = activeSectionId === "APPROVALS";
   const filteredRequests = reactModule.useMemo(() => {
-    if (isApprovalSection) {
-      const approvalStatusSet = new Set<string>(APPROVAL_STATUSES);
-      return allRequests.filter((request) => approvalStatusSet.has(request.status));
-    }
     return allRequests.filter((request) => request.status === activeTab);
-  }, [allRequests, activeTab, isApprovalSection]);
+  }, [allRequests, activeTab]);
   const isManualSchedulingSection = activeSectionId === "MANUAL_SCHEDULING";
   const isFinanceSection = activeSectionId === "FINANCE";
   const isFinalizedSection = activeSectionId === "FINALIZED";
@@ -544,7 +512,6 @@ export function AgendaPage() {
     setSubmitSuccessMessage(null);
     setLocalSubmitErrorMessage(null);
     setMobileBookedStep("calendar");
-    setApprovalMobileStep("REQUEST_LIST");
     const section = agendaSections.find((s) => s.id === sectionId);
     if (section && section.statuses.length > 0) {
       const firstStatus = section.statuses[0];
@@ -587,51 +554,12 @@ export function AgendaPage() {
       zone: timezone
     }
   ).startOf("day");
-  const visibleMonthEnd = visibleMonthStart.endOf("month");
-  const monthRangeFromIso = visibleMonthStart.toISO();
-  const monthRangeToIso = visibleMonthEnd.toISO();
-
-  const availabilityQuery = reactQueryModule.useQuery({
-    queryKey: ["google-calendar-availability", monthRangeFromIso, monthRangeToIso, timezone],
-    enabled:
-      selectedRequest !== undefined &&
-      ACTIONABLE_APPROVAL_STATUSES.has(selectedRequest.status) &&
-      monthRangeFromIso !== null &&
-      monthRangeToIso !== null,
-    queryFn: async () => {
-      if (monthRangeFromIso === null || monthRangeToIso === null) {
-        throw new Error("month range is invalid");
-      }
-      return appContainer.schedulingUseCase.getAvailability(monthRangeFromIso, monthRangeToIso);
-    }
-  });
-
   reactModule.useEffect(() => {
     const firstDayIso = visibleMonthStart.toISODate();
     if (firstDayIso !== null) {
       setSelectedDayIso(firstDayIso);
     }
   }, [visibleMonthStart.year, visibleMonthStart.month]);
-
-  const busyIntervals = reactModule.useMemo<calendarUtilsModule.BusyIntervalRange[]>(() => {
-    if (availabilityQuery.data === undefined) {
-      return [];
-    }
-    return calendarUtilsModule.parseBusyIntervals(availabilityQuery.data.busyIntervals, timezone);
-  }, [availabilityQuery.data, timezone]);
-
-  const calendarSlots = reactModule.useMemo(() => {
-    if (selectedRequest === undefined || selectedDayIso === "") {
-      return [];
-    }
-    return calendarUtilsModule.buildCalendarSlotCandidates({
-      requestId: selectedRequest.requestId,
-      selectedDayIso,
-      timezone,
-      busyIntervals,
-      now: luxonModule.DateTime.now().setZone(timezone)
-    });
-  }, [selectedRequest, selectedDayIso, timezone, busyIntervals]);
 
   const FINALIZED_STATUSES = reactModule.useMemo(
     () => new Set<string>(["BOOKED", "SESSION_CLOSED", "HUMAN_HANDOFF"]),
@@ -663,7 +591,7 @@ export function AgendaPage() {
         if (!startAt.isValid || !endAt.isValid || dayIso === null) {
           return;
         }
-        const patientDisplayName = resolvePatientDisplayName(request);
+        const patientDisplayName = resolvePatientDisplayName(request, patientsByWhatsappUserId);
         combinedAppointments.push({
           itemKey: `bot:${request.requestId}`,
           source: "BOT",
@@ -771,7 +699,7 @@ export function AgendaPage() {
         items.push({
           itemKey: `finance-bot:${request.requestId}`,
           source: "CHATBOT",
-          patientDisplayName: resolvePatientDisplayName(request),
+          patientDisplayName: resolvePatientDisplayName(request, patientsByWhatsappUserId),
           whatsappUserId: request.whatsappUserId,
           startAt: bookedSlot.startAt,
           endAt: bookedSlot.endAt,
@@ -967,116 +895,8 @@ export function AgendaPage() {
     });
   }, [selectedBookedBotRequest]);
 
-  const selectedSlots =
-    selectedRequest !== undefined
-      ? (selectedSlotsByRequestId[selectedRequest.requestId] ?? [])
-      : [];
-  const selectedSlotIdSet = new Set(selectedSlots.map((slot) => slot.slotId));
-  const currentProfessionalNote =
-    selectedRequest !== undefined
-      ? (professionalNotesByRequestId[selectedRequest.requestId] ?? "")
-      : "";
-  const currentReviewNote =
-    selectedRequest !== undefined ? (reviewNotesByRequestId[selectedRequest.requestId] ?? "") : "";
-  const currentPaymentAmount =
-    selectedRequest !== undefined
-      ? (paymentAmountByRequestId[selectedRequest.requestId] ?? "")
-      : "";
   const manualCreateStartParts = splitLocalDateTimeInput(manualAppointmentFormState.startAt);
   const manualRescheduleStartParts = splitLocalDateTimeInput(manualRescheduleFormState.startAt);
-
-  const submitSlotsMutation = reactQueryModule.useMutation({
-    mutationFn: (payload: {
-      request: schedulingModel.SchedulingRequestSummary;
-      slots: schedulingModel.ProfessionalSlotInput[];
-      professionalNote: string | null;
-    }) => {
-      return appContainer.schedulingUseCase.submitProfessionalSlots(
-        payload.request.conversationId,
-        payload.request.requestId,
-        {
-          slots: payload.slots,
-          professionalNote: payload.professionalNote
-        }
-      );
-    },
-    onSuccess: (result, payload) => {
-      setSubmitSuccessMessage(result.assistantText);
-      setLocalSubmitErrorMessage(null);
-      setSelectedSlotsByRequestId((currentValue) => ({
-        ...currentValue,
-        [payload.request.requestId]: []
-      }));
-      queryClient.setQueryData<schedulingModel.SchedulingRequestSummary[]>(
-        schedulingRequestsQueryKey,
-        (currentValue) => {
-          if (currentValue === undefined) {
-            return currentValue;
-          }
-          return currentValue.map((request) => {
-            if (request.requestId !== payload.request.requestId) {
-              return request;
-            }
-            return {
-              ...request,
-              status: "AWAITING_PATIENT_CHOICE",
-              updatedAt: luxonModule.DateTime.now().toISO() ?? request.updatedAt,
-              professionalNote: payload.professionalNote,
-              slots: payload.slots.map((slot) => ({
-                slotId: slot.slotId,
-                startAt: slot.startAt,
-                endAt: slot.endAt,
-                timezone: slot.timezone,
-                status: "PROPOSED"
-              }))
-            };
-          });
-        }
-      );
-      setActiveTab("AWAITING_PATIENT_CHOICE");
-    }
-  });
-
-  const resolveConsultationReviewMutation = reactQueryModule.useMutation({
-    mutationFn: (payload: {
-      request: schedulingModel.SchedulingRequestSummary;
-      decision: "REQUEST_MORE_INFO" | "REJECT";
-      professionalNote: string | null;
-    }) => {
-      return appContainer.schedulingUseCase.resolveConsultationReview(
-        payload.request.conversationId,
-        payload.request.requestId,
-        {
-          decision: payload.decision,
-          professionalNote: payload.professionalNote
-        }
-      );
-    },
-    onSuccess: (result, payload) => {
-      setSubmitSuccessMessage(result.assistantText);
-      setLocalSubmitErrorMessage(null);
-      queryClient.setQueryData<schedulingModel.SchedulingRequestSummary[]>(
-        schedulingRequestsQueryKey,
-        (currentValue) => {
-          if (currentValue === undefined) {
-            return currentValue;
-          }
-          return currentValue.map((request) => {
-            if (request.requestId !== payload.request.requestId) {
-              return request;
-            }
-            return {
-              ...request,
-              status: result.status,
-              updatedAt: luxonModule.DateTime.now().toISO() ?? request.updatedAt,
-              professionalNote: payload.professionalNote
-            };
-          });
-        }
-      );
-      setActiveTab(result.status);
-    }
-  });
 
   const resolvePaymentReviewMutation = reactQueryModule.useMutation({
     mutationFn: (payload: {
@@ -1267,8 +1087,6 @@ export function AgendaPage() {
   });
 
   const submitErrorMessage = uiErrorModule.resolveUiErrorMessage([
-    submitSlotsMutation.error,
-    resolveConsultationReviewMutation.error,
     resolvePaymentReviewMutation.error,
     createPatientMutation.error,
     updatePatientMutation.error,
@@ -1284,7 +1102,6 @@ export function AgendaPage() {
   const loadingErrorMessage = uiErrorModule.resolveUiErrorMessage([
     requestsQuery.error,
     googleCalendarConnectionQuery.error,
-    availabilityQuery.error,
     patientsQuery.error,
     manualAppointmentsQuery.error
   ]);
@@ -1333,21 +1150,6 @@ export function AgendaPage() {
               const isActive = activeSectionId === section.id;
               const count = sectionCounts[section.id] ?? 0;
               const iconBySection: Record<string, React.ReactNode> = {
-                APPROVALS: (
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                ),
                 FINALIZED: (
                   <svg
                     className="h-5 w-5"
@@ -1395,7 +1197,6 @@ export function AgendaPage() {
                 )
               };
               const shortLabels: Record<string, string> = {
-                APPROVALS: "Aprob.",
                 FINALIZED: "Agenda",
                 MANUAL_SCHEDULING: "Manual",
                 FINANCE: "Finanzas"
@@ -1461,8 +1262,7 @@ export function AgendaPage() {
             })}
           </div>
 
-          {!isApprovalSection &&
-          !isFinalizedSection &&
+          {!isFinalizedSection &&
           (agendaSections.find((s) => s.id === activeSectionId)?.statuses.length ?? 0) > 0 ? (
             <div className="flex flex-wrap gap-2">
               {agendaSections
@@ -1495,719 +1295,9 @@ export function AgendaPage() {
 
       {!isManualSchedulingSection && !isFinanceSection ? (
         <section className="mt-4">
-          {/* ===== MOBILE APPROVAL WIZARD (only for approval section) ===== */}
-          {isApprovalSection ? (
-            <div className="sm:hidden">
-              {approvalMobileStep === "REQUEST_LIST" ? (
-                <article className="rounded-xl border border-border-subtle bg-white shadow-card">
-                  <header className="border-b border-border-subtle px-3 py-3">
-                    <h3 className="text-sm font-semibold">Solicitudes</h3>
-                    <p className="text-[11px] text-slate-500">
-                      {filteredRequests.length} solicitudes pendientes
-                    </p>
-                  </header>
-                  <div className="space-y-2 p-2">
-                    {requestsQuery.isLoading ? (
-                      <p className="text-sm text-slate-500">Cargando...</p>
-                    ) : null}
-                    {filteredRequests.length === 0 ? (
-                      <p className="text-sm text-slate-500">No hay solicitudes en este estado.</p>
-                    ) : null}
-                    {filteredRequests.map((request) => {
-                      const statusConfig = approvalStatusLabels[request.status];
-                      return (
-                        <button
-                          className="w-full rounded-lg border border-slate-200 bg-white p-3 text-left transition-colors hover:border-slate-300"
-                          key={request.requestId}
-                          onClick={() => {
-                            setSelectedRequestId(request.requestId);
-                            setSubmitSuccessMessage(null);
-                            setLocalSubmitErrorMessage(null);
-                            setApprovalMobileStep("REQUEST_DETAIL");
-                          }}
-                          type="button"
-                        >
-                          <div className="mb-1 flex items-center justify-between gap-2">
-                            <p className="truncate text-sm font-semibold text-brand-ink">
-                              {resolvePatientDisplayName(request)}
-                            </p>
-                            <statusBadgeModule.StatusBadge
-                              label={statusConfig?.label ?? request.status}
-                              tone={statusConfig?.tone ?? "neutral"}
-                            />
-                          </div>
-                          {request.audienceType !== null ? (
-                            <span className="text-xs font-medium text-violet-600">
-                              {request.audienceType === "CHILDREN" ? "Infantil" : "Adulto"}
-                            </span>
-                          ) : null}
-                          {request.consultationReason !== null ? (
-                            <p className="truncate text-xs text-slate-600">
-                              {request.consultationReason}
-                            </p>
-                          ) : null}
-                          <p className="mt-1 text-xs text-slate-500">
-                            {dateUtilsModule.formatDateTime(request.updatedAt)}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </article>
-              ) : null}
-
-              {approvalMobileStep === "REQUEST_DETAIL" && selectedRequest !== undefined ? (
-                <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
-                  <header className="mb-3 flex items-center gap-2">
-                    <button
-                      className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
-                      onClick={() => {
-                        setApprovalMobileStep("REQUEST_LIST");
-                        setSelectedRequestId(null);
-                      }}
-                      type="button"
-                    >
-                      <svg
-                        className="h-5 w-5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M15.75 19.5L8.25 12l7.5-7.5"
-                        />
-                      </svg>
-                    </button>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-sm font-semibold text-brand-ink">
-                        {resolvePatientDisplayName(selectedRequest)}
-                      </h3>
-                    </div>
-                    <statusBadgeModule.StatusBadge
-                      label={
-                        approvalStatusLabels[selectedRequest.status]?.label ??
-                        selectedRequest.status
-                      }
-                      tone={approvalStatusLabels[selectedRequest.status]?.tone ?? "neutral"}
-                    />
-                  </header>
-
-                  <section className="space-y-2 rounded-lg border border-border-subtle p-3 text-sm text-slate-700">
-                    <p>
-                      <span className="font-semibold text-slate-500">Nombre</span>
-                      <br />
-                      {resolvePatientDisplayName(selectedRequest)}
-                    </p>
-                    <p>
-                      <span className="font-semibold text-slate-500">Motivo</span>
-                      <br />
-                      {selectedRequest.consultationReason ?? "-"}
-                    </p>
-                    {selectedRequest.consultationDetails !== null ? (
-                      <p>
-                        <span className="font-semibold text-slate-500">Detalles</span>
-                        <br />
-                        {selectedRequest.consultationDetails}
-                      </p>
-                    ) : null}
-                    <p>
-                      <span className="font-semibold text-slate-500">Teléfono</span>
-                      <br />
-                      {selectedRequest.whatsappUserId}
-                    </p>
-                    {selectedRequest.patientLocation !== null ? (
-                      <p>
-                        <span className="font-semibold text-slate-500">Ubicación</span>
-                        <br />
-                        {selectedRequest.patientLocation}
-                      </p>
-                    ) : null}
-                    {selectedRequest.audienceType !== null ? (
-                      <p>
-                        <span className="font-semibold text-slate-500">Tipo de consulta</span>
-                        <br />
-                        {selectedRequest.audienceType === "CHILDREN"
-                          ? "Psicología Infantil"
-                          : "Adultos"}
-                      </p>
-                    ) : null}
-                    {selectedRequest.appointmentModality !== null ? (
-                      <p>
-                        <span className="font-semibold text-slate-500">Modalidad</span>
-                        <br />
-                        {selectedRequest.appointmentModality}
-                      </p>
-                    ) : null}
-                  </section>
-
-                  {selectedRequest.patientPreferenceNote !== null ? (
-                    <div className="mt-3 rounded-md bg-slate-50 p-3">
-                      <p className="text-xs font-semibold text-slate-500">
-                        Preferencias del paciente
-                      </p>
-                      <p className="mt-1 text-sm text-slate-700">
-                        {selectedRequest.patientPreferenceNote}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  {selectedRequest.rejectionSummary !== null ? (
-                    <div className="mt-2 rounded-md bg-red-50 p-3">
-                      <p className="text-xs font-semibold text-red-600">Resumen rechazo</p>
-                      <p className="mt-1 text-sm text-red-700">
-                        {selectedRequest.rejectionSummary}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  {ACTIONABLE_APPROVAL_STATUSES.has(selectedRequest.status) ? (
-                    <button
-                      className="mt-4 w-full rounded-lg bg-brand-teal px-4 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover"
-                      onClick={() => setApprovalMobileStep("CALENDAR")}
-                      type="button"
-                    >
-                      Elegir horario
-                    </button>
-                  ) : null}
-
-                  {ACTIONABLE_APPROVAL_STATUSES.has(selectedRequest.status) ? (
-                    <section className="mt-4 rounded-lg border border-border-subtle p-3">
-                      <h4 className="text-sm font-semibold text-brand-ink">Acciones</h4>
-                      <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Nota para el bot
-                        <textarea
-                          className="mt-1 min-h-16 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            if (selectedRequest === undefined) {
-                              return;
-                            }
-                            const nextValue = event.target.value;
-                            setReviewNotesByRequestId((currentValue) => ({
-                              ...currentValue,
-                              [selectedRequest.requestId]: nextValue
-                            }));
-                          }}
-                          value={currentReviewNote}
-                        />
-                      </label>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={resolveConsultationReviewMutation.isPending}
-                          onClick={() => {
-                            if (selectedRequest === undefined) {
-                              return;
-                            }
-                            if (currentReviewNote.trim() === "") {
-                              setLocalSubmitErrorMessage(
-                                "Debes agregar una nota para pedir más información."
-                              );
-                              return;
-                            }
-                            setLocalSubmitErrorMessage(null);
-                            setSubmitSuccessMessage(null);
-                            resolveConsultationReviewMutation.mutate({
-                              request: selectedRequest,
-                              decision: "REQUEST_MORE_INFO",
-                              professionalNote: currentReviewNote.trim()
-                            });
-                          }}
-                          type="button"
-                        >
-                          Pedir más info
-                        </button>
-                        <button
-                          className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={resolveConsultationReviewMutation.isPending}
-                          onClick={() => {
-                            if (selectedRequest === undefined) {
-                              return;
-                            }
-                            setLocalSubmitErrorMessage(null);
-                            setSubmitSuccessMessage(null);
-                            resolveConsultationReviewMutation.mutate({
-                              request: selectedRequest,
-                              decision: "REJECT",
-                              professionalNote:
-                                currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
-                            });
-                          }}
-                          type="button"
-                        >
-                          Rechazar
-                        </button>
-                      </div>
-                    </section>
-                  ) : null}
-
-                  {selectedRequest.status === "AWAITING_PAYMENT_CONFIRMATION" ? (
-                    <>
-                      {(() => {
-                        const patientSlot = resolveBookedSlot(selectedRequest);
-                        if (patientSlot === null) {
-                          return null;
-                        }
-                        return (
-                          <section className="mt-3 rounded-lg border border-border-subtle p-3">
-                            <h4 className="text-sm font-semibold text-brand-ink">
-                              Horario seleccionado por el paciente
-                            </h4>
-                            <div className="mt-2 flex items-center gap-3 rounded-md bg-emerald-50 px-3 py-2">
-                              <span className="text-emerald-600">
-                                <svg
-                                  className="h-5 w-5"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                  />
-                                </svg>
-                              </span>
-                              <div>
-                                <p className="text-sm font-semibold text-slate-800">
-                                  {dateUtilsModule.formatDateTime(patientSlot.startAt)}
-                                </p>
-                                <p className="text-xs text-slate-500">{patientSlot.timezone}</p>
-                              </div>
-                            </div>
-                          </section>
-                        );
-                      })()}
-                      <section className="mt-3 rounded-lg border border-border-subtle p-3">
-                        <h4 className="text-sm font-semibold text-brand-ink">
-                          Confirmar pago del paciente
-                        </h4>
-                        <p className="mt-2 text-xs text-slate-600">
-                          El paciente seleccionó un horario y se le enviaron los datos de pago.
-                          Verifica el comprobante y aprueba, o envía un recordatorio de pago.
-                        </p>
-                        <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Valor del pago (COP) *
-                          <input
-                            className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                            inputMode="numeric"
-                            onChange={(event) => {
-                              if (selectedRequest === undefined) {
-                                return;
-                              }
-                              const nextValue = event.target.value.replace(/[^0-9]/g, "");
-                              setPaymentAmountByRequestId((currentValue) => ({
-                                ...currentValue,
-                                [selectedRequest.requestId]: nextValue
-                              }));
-                            }}
-                            placeholder="Ej: 150000"
-                            type="text"
-                            value={currentPaymentAmount}
-                          />
-                        </label>
-                        <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Nota para el bot
-                          <textarea
-                            className="mt-1 min-h-16 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                            onChange={(event) => {
-                              if (selectedRequest === undefined) {
-                                return;
-                              }
-                              const nextValue = event.target.value;
-                              setReviewNotesByRequestId((currentValue) => ({
-                                ...currentValue,
-                                [selectedRequest.requestId]: nextValue
-                              }));
-                            }}
-                            value={currentReviewNote}
-                          />
-                        </label>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={
-                              resolvePaymentReviewMutation.isPending ||
-                              currentPaymentAmount.trim() === "" ||
-                              Number(currentPaymentAmount) <= 0
-                            }
-                            onClick={() => {
-                              if (selectedRequest === undefined) {
-                                return;
-                              }
-                              const parsedAmount = Number(currentPaymentAmount);
-                              if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-                                setLocalSubmitErrorMessage(
-                                  "Debes ingresar un valor de pago válido para aprobar."
-                                );
-                                return;
-                              }
-                              setLocalSubmitErrorMessage(null);
-                              setSubmitSuccessMessage(null);
-                              resolvePaymentReviewMutation.mutate({
-                                request: selectedRequest,
-                                decision: "APPROVE",
-                                professionalNote:
-                                  currentReviewNote.trim() === "" ? null : currentReviewNote.trim(),
-                                paymentAmountCop: parsedAmount
-                              });
-                            }}
-                            type="button"
-                          >
-                            Aprobar pago
-                          </button>
-                          <button
-                            className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={resolvePaymentReviewMutation.isPending}
-                            onClick={() => {
-                              if (selectedRequest === undefined) {
-                                return;
-                              }
-                              setLocalSubmitErrorMessage(null);
-                              setSubmitSuccessMessage(null);
-                              resolvePaymentReviewMutation.mutate({
-                                request: selectedRequest,
-                                decision: "SEND_REMINDER",
-                                professionalNote:
-                                  currentReviewNote.trim() === "" ? null : currentReviewNote.trim(),
-                                paymentAmountCop: null
-                              });
-                            }}
-                            type="button"
-                          >
-                            Enviar recordatorio
-                          </button>
-                        </div>
-                      </section>
-                    </>
-                  ) : null}
-
-                  {loadingErrorMessage !== null ? (
-                    <errorBannerModule.ErrorBanner message={loadingErrorMessage} />
-                  ) : null}
-                  {localSubmitErrorMessage !== null ? (
-                    <errorBannerModule.ErrorBanner message={localSubmitErrorMessage} />
-                  ) : null}
-                  {submitSuccessMessage !== null ? (
-                    <div className="mt-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                      {submitSuccessMessage}
-                    </div>
-                  ) : null}
-                </article>
-              ) : null}
-
-              {approvalMobileStep === "CALENDAR" && selectedRequest !== undefined ? (
-                <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
-                  <header className="mb-3 flex items-center gap-2">
-                    <button
-                      className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
-                      onClick={() => setApprovalMobileStep("REQUEST_DETAIL")}
-                      type="button"
-                    >
-                      <svg
-                        className="h-5 w-5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M15.75 19.5L8.25 12l7.5-7.5"
-                        />
-                      </svg>
-                    </button>
-                    <h3 className="text-sm font-semibold text-brand-ink">
-                      Calendario ({timezone})
-                    </h3>
-                  </header>
-
-                  <div className="mb-3 flex items-center justify-between">
-                    <p className="text-sm font-semibold capitalize text-brand-ink">
-                      {visibleMonthStart.toFormat("LLLL yyyy")}
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                        onClick={() => {
-                          const previous = visibleMonthStart.minus({ months: 1 });
-                          setVisibleMonth({
-                            year: previous.year,
-                            month: previous.month as luxonModule.MonthNumbers
-                          });
-                        }}
-                        type="button"
-                      >
-                        Anterior
-                      </button>
-                      <button
-                        className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                        onClick={() => {
-                          const next = visibleMonthStart.plus({ months: 1 });
-                          setVisibleMonth({
-                            year: next.year,
-                            month: next.month as luxonModule.MonthNumbers
-                          });
-                        }}
-                        type="button"
-                      >
-                        Siguiente
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
-                    {calendarUtilsModule.weekDayLabels.map((label) => (
-                      <span key={label}>{label}</span>
-                    ))}
-                  </div>
-                  <div className="mt-2 grid grid-cols-7 gap-1">
-                    {dayGrid.map((dateCell, index) => {
-                      if (dateCell === null) {
-                        return (
-                          <div className="h-10 rounded-md bg-slate-50" key={`empty-${index}`} />
-                        );
-                      }
-                      const isoDate = dateCell.toISODate();
-                      const isSelected = isoDate === selectedDayIso;
-                      return (
-                        <button
-                          className={[
-                            "h-10 rounded-md border text-sm",
-                            isSelected
-                              ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                              : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                          ].join(" ")}
-                          key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
-                          onClick={() => {
-                            if (isoDate !== null) {
-                              setSelectedDayIso(isoDate);
-                              setApprovalMobileStep("SLOTS");
-                            }
-                          }}
-                          type="button"
-                        >
-                          {dateCell.day}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {availabilityQuery.isLoading ? (
-                    <p className="mt-3 text-xs text-slate-500">
-                      Cargando disponibilidad del mes...
-                    </p>
-                  ) : null}
-                </article>
-              ) : null}
-
-              {approvalMobileStep === "SLOTS" && selectedRequest !== undefined ? (
-                <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
-                  <header className="mb-3 flex items-center gap-2">
-                    <button
-                      className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
-                      onClick={() => setApprovalMobileStep("CALENDAR")}
-                      type="button"
-                    >
-                      <svg
-                        className="h-5 w-5"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M15.75 19.5L8.25 12l7.5-7.5"
-                        />
-                      </svg>
-                    </button>
-                    <div>
-                      <h3 className="text-sm font-semibold text-brand-ink">Seleccionar horarios</h3>
-                      <p className="text-[11px] text-slate-500">
-                        {selectedDayIso !== "" ? selectedDayIso : "-"} &middot; Slots de 60 min
-                      </p>
-                    </div>
-                  </header>
-
-                  {(() => {
-                    const morningSlots = calendarSlots.filter((slot) => {
-                      const hour = luxonModule.DateTime.fromISO(slot.startAt, {
-                        zone: timezone
-                      }).hour;
-                      return hour < 12;
-                    });
-                    const afternoonSlots = calendarSlots.filter((slot) => {
-                      const hour = luxonModule.DateTime.fromISO(slot.startAt, {
-                        zone: timezone
-                      }).hour;
-                      return hour >= 12;
-                    });
-
-                    const renderSlotButton = (slot: calendarUtilsModule.CalendarSlotCandidate) => {
-                      const isSelected = selectedSlotIdSet.has(slot.slotId);
-                      const isDisabled = slot.isBusy || slot.isPast;
-                      const startDt = luxonModule.DateTime.fromISO(slot.startAt, {
-                        zone: timezone
-                      });
-                      const endDt = luxonModule.DateTime.fromISO(slot.endAt, { zone: timezone });
-                      const slotStartText = startDt.toFormat("h:mm a");
-                      const slotEndText = endDt.toFormat("h:mm a");
-                      return (
-                        <button
-                          className={[
-                            "rounded-lg border px-2 py-2.5 text-center text-xs font-semibold",
-                            isDisabled
-                              ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
-                              : isSelected
-                                ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                                : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                          ].join(" ")}
-                          disabled={isDisabled}
-                          key={slot.slotId}
-                          onClick={() => {
-                            if (selectedRequest === undefined) {
-                              return;
-                            }
-                            setSelectedSlotsByRequestId((currentValue) => {
-                              const currentRequestSlots =
-                                currentValue[selectedRequest.requestId] ?? [];
-                              const slotExists = currentRequestSlots.some(
-                                (currentSlot) => currentSlot.slotId === slot.slotId
-                              );
-                              const nextRequestSlots = slotExists
-                                ? currentRequestSlots.filter(
-                                    (currentSlot) => currentSlot.slotId !== slot.slotId
-                                  )
-                                : [
-                                    ...currentRequestSlots,
-                                    {
-                                      slotId: slot.slotId,
-                                      startAt: slot.startAt,
-                                      endAt: slot.endAt,
-                                      timezone: slot.timezone
-                                    }
-                                  ].sort((left, right) =>
-                                    left.startAt.localeCompare(right.startAt)
-                                  );
-                              return {
-                                ...currentValue,
-                                [selectedRequest.requestId]: nextRequestSlots
-                              };
-                            });
-                          }}
-                          type="button"
-                        >
-                          {slotStartText} - {slotEndText}
-                          {slot.isBusy ? (
-                            <span className="block text-[10px] font-normal">No disponible</span>
-                          ) : null}
-                          {slot.isPast ? (
-                            <span className="block text-[10px] font-normal">Pasado</span>
-                          ) : null}
-                        </button>
-                      );
-                    };
-
-                    return (
-                      <>
-                        {morningSlots.length > 0 ? (
-                          <div className="mb-3">
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Mañana
-                            </p>
-                            <div className="grid grid-cols-3 gap-1.5">
-                              {morningSlots.map(renderSlotButton)}
-                            </div>
-                          </div>
-                        ) : null}
-                        {afternoonSlots.length > 0 ? (
-                          <div>
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Tarde
-                            </p>
-                            <div className="grid grid-cols-3 gap-1.5">
-                              {afternoonSlots.map(renderSlotButton)}
-                            </div>
-                          </div>
-                        ) : null}
-                      </>
-                    );
-                  })()}
-                  <p className="mt-3 text-xs text-slate-600">
-                    Slots seleccionados: {selectedSlots.length}
-                  </p>
-                  <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Nota para paciente (opcional)
-                    <textarea
-                      className="mt-1 min-h-16 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                      onChange={(event) => {
-                        if (selectedRequest === undefined) {
-                          return;
-                        }
-                        const nextValue = event.target.value;
-                        setProfessionalNotesByRequestId((currentValue) => ({
-                          ...currentValue,
-                          [selectedRequest.requestId]: nextValue
-                        }));
-                      }}
-                      value={currentProfessionalNote}
-                    />
-                  </label>
-                  <div className="mt-3">
-                    <button
-                      className="w-full rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={submitSlotsMutation.isPending}
-                      onClick={() => {
-                        if (selectedRequest === undefined) {
-                          return;
-                        }
-                        if (selectedSlots.length === 0) {
-                          setLocalSubmitErrorMessage("Debes seleccionar al menos un slot.");
-                          return;
-                        }
-                        setLocalSubmitErrorMessage(null);
-                        setSubmitSuccessMessage(null);
-                        submitSlotsMutation.mutate({
-                          request: selectedRequest,
-                          slots: selectedSlots,
-                          professionalNote:
-                            currentProfessionalNote.trim() === ""
-                              ? null
-                              : currentProfessionalNote.trim()
-                        });
-                      }}
-                      type="button"
-                    >
-                      {submitSlotsMutation.isPending ? "Enviando..." : "Enviar espacios"}
-                    </button>
-                  </div>
-
-                  {loadingErrorMessage !== null ? (
-                    <errorBannerModule.ErrorBanner message={loadingErrorMessage} />
-                  ) : null}
-                  {localSubmitErrorMessage !== null ? (
-                    <errorBannerModule.ErrorBanner message={localSubmitErrorMessage} />
-                  ) : null}
-                  {submitSuccessMessage !== null ? (
-                    <div className="mt-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                      {submitSuccessMessage}
-                    </div>
-                  ) : null}
-                </article>
-              ) : null}
-            </div>
-          ) : null}
-
-          {/* ===== DESKTOP LAYOUT (and non-approval mobile) ===== */}
           <div
             className={[
               "grid gap-4",
-              isApprovalSection ? "hidden sm:grid" : "",
               isBookedTab
                 ? "lg:grid-cols-[520px_minmax(0,1fr)]"
                 : "lg:grid-cols-[320px_minmax(0,1fr)]"
@@ -2573,9 +1663,7 @@ export function AgendaPage() {
                 <header className="border-b border-border-subtle px-3 py-3 sm:p-4">
                   <h3 className="text-sm font-semibold sm:text-base">Solicitudes</h3>
                   <p className="text-[11px] text-slate-500 sm:text-xs">
-                    {isApprovalSection
-                      ? `${filteredRequests.length} solicitudes pendientes`
-                      : `Estado actual: ${activeTab}`}
+                    {`Estado actual: ${activeTab}`}
                   </p>
                 </header>
                 <div className="max-h-[calc(100vh-12rem)] space-y-2 overflow-auto p-2 sm:p-3">
@@ -2606,7 +1694,7 @@ export function AgendaPage() {
                       >
                         <div className="mb-1 flex items-center justify-between gap-2">
                           <p className="truncate text-sm font-semibold text-brand-ink">
-                            {resolvePatientDisplayName(request)}
+                            {resolvePatientDisplayName(request, patientsByWhatsappUserId)}
                           </p>
                           <statusBadgeModule.StatusBadge
                             label={statusConfig?.label ?? request.status}
@@ -2793,7 +1881,7 @@ export function AgendaPage() {
                         <p>
                           <span className="font-semibold text-slate-500">Nombre</span>
                           <br />
-                          {resolvePatientDisplayName(selectedRequest)}
+                          {resolvePatientDisplayName(selectedRequest, patientsByWhatsappUserId)}
                         </p>
                         <p>
                           <span className="font-semibold text-slate-500">Motivo</span>
@@ -2858,427 +1946,6 @@ export function AgendaPage() {
                       </div>
                     ) : null}
                   </section>
-
-                  {ACTIONABLE_APPROVAL_STATUSES.has(selectedRequest.status) ? (
-                    <>
-                      <section className="rounded-lg border border-border-subtle p-3">
-                        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                          <h4 className="text-sm font-semibold text-brand-ink">
-                            Calendario ({timezone}) - {visibleMonthStart.toFormat("LLLL yyyy")}
-                          </h4>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                              onClick={() => {
-                                const previous = visibleMonthStart.minus({ months: 1 });
-                                setVisibleMonth({
-                                  year: previous.year,
-                                  month: previous.month as luxonModule.MonthNumbers
-                                });
-                              }}
-                              type="button"
-                            >
-                              Anterior
-                            </button>
-                            <button
-                              className="rounded-lg border border-border-subtle px-3 py-1 text-sm text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                              onClick={() => {
-                                const next = visibleMonthStart.plus({ months: 1 });
-                                setVisibleMonth({
-                                  year: next.year,
-                                  month: next.month as luxonModule.MonthNumbers
-                                });
-                              }}
-                              type="button"
-                            >
-                              Siguiente
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="overflow-x-auto pb-1">
-                          <div className="min-w-[22rem]">
-                            <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
-                              {calendarUtilsModule.weekDayLabels.map((label) => (
-                                <span key={label}>{label}</span>
-                              ))}
-                            </div>
-                            <div className="mt-2 grid grid-cols-7 gap-1">
-                              {dayGrid.map((dateCell, index) => {
-                                if (dateCell === null) {
-                                  return (
-                                    <div
-                                      className="h-10 rounded-md bg-slate-50"
-                                      key={`empty-${index}`}
-                                    />
-                                  );
-                                }
-                                const isoDate = dateCell.toISODate();
-                                const isSelected = isoDate === selectedDayIso;
-                                return (
-                                  <button
-                                    className={[
-                                      "h-10 rounded-md border text-sm",
-                                      isSelected
-                                        ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
-                                    ].join(" ")}
-                                    key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
-                                    onClick={() => {
-                                      if (isoDate !== null) {
-                                        setSelectedDayIso(isoDate);
-                                      }
-                                    }}
-                                    type="button"
-                                  >
-                                    {dateCell.day}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                        {availabilityQuery.isLoading ? (
-                          <p className="mt-3 text-xs text-slate-500">
-                            Cargando disponibilidad del mes...
-                          </p>
-                        ) : null}
-                      </section>
-
-                      <section className="rounded-lg border border-border-subtle p-3">
-                        <h4 className="text-sm font-semibold text-brand-ink">
-                          Slots de 60 min (6:00 AM a 10:00 PM)
-                        </h4>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Día seleccionado: {selectedDayIso !== "" ? selectedDayIso : "-"}
-                        </p>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                          {calendarSlots.map((slot) => {
-                            const isSelected = selectedSlotIdSet.has(slot.slotId);
-                            const isDisabled = slot.isBusy || slot.isPast;
-                            const slotStartText = luxonModule.DateTime.fromISO(slot.startAt, {
-                              zone: timezone
-                            }).toFormat("h:mm a");
-                            const slotEndText = luxonModule.DateTime.fromISO(slot.endAt, {
-                              zone: timezone
-                            }).toFormat("h:mm a");
-                            return (
-                              <button
-                                className={[
-                                  "rounded-md border px-3 py-2 text-left text-sm",
-                                  isDisabled
-                                    ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
-                                    : isSelected
-                                      ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                                ].join(" ")}
-                                disabled={isDisabled}
-                                key={slot.slotId}
-                                onClick={() => {
-                                  if (selectedRequest === undefined) {
-                                    return;
-                                  }
-                                  setSelectedSlotsByRequestId((currentValue) => {
-                                    const currentRequestSlots =
-                                      currentValue[selectedRequest.requestId] ?? [];
-                                    const slotExists = currentRequestSlots.some(
-                                      (currentSlot) => currentSlot.slotId === slot.slotId
-                                    );
-                                    const nextRequestSlots = slotExists
-                                      ? currentRequestSlots.filter(
-                                          (currentSlot) => currentSlot.slotId !== slot.slotId
-                                        )
-                                      : [
-                                          ...currentRequestSlots,
-                                          {
-                                            slotId: slot.slotId,
-                                            startAt: slot.startAt,
-                                            endAt: slot.endAt,
-                                            timezone: slot.timezone
-                                          }
-                                        ].sort((left, right) =>
-                                          left.startAt.localeCompare(right.startAt)
-                                        );
-                                    return {
-                                      ...currentValue,
-                                      [selectedRequest.requestId]: nextRequestSlots
-                                    };
-                                  });
-                                }}
-                                type="button"
-                              >
-                                <p className="font-semibold">
-                                  {slotStartText} - {slotEndText}
-                                </p>
-                                {slot.isBusy ? <p className="text-xs">No disponible</p> : null}
-                                {slot.isPast ? <p className="text-xs">Horario pasado</p> : null}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <p className="mt-3 text-xs text-slate-600">
-                          Slots seleccionados: {selectedSlots.length}
-                        </p>
-                        <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Nota para paciente (opcional)
-                          <textarea
-                            className="mt-1 min-h-24 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                            onChange={(event) => {
-                              if (selectedRequest === undefined) {
-                                return;
-                              }
-                              const nextValue = event.target.value;
-                              setProfessionalNotesByRequestId((currentValue) => ({
-                                ...currentValue,
-                                [selectedRequest.requestId]: nextValue
-                              }));
-                            }}
-                            value={currentProfessionalNote}
-                          />
-                        </label>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            className="w-full rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                            disabled={submitSlotsMutation.isPending}
-                            onClick={() => {
-                              if (selectedRequest === undefined) {
-                                return;
-                              }
-                              if (selectedSlots.length === 0) {
-                                setLocalSubmitErrorMessage("Debes seleccionar al menos un slot.");
-                                return;
-                              }
-                              setLocalSubmitErrorMessage(null);
-                              setSubmitSuccessMessage(null);
-                              submitSlotsMutation.mutate({
-                                request: selectedRequest,
-                                slots: selectedSlots,
-                                professionalNote:
-                                  currentProfessionalNote.trim() === ""
-                                    ? null
-                                    : currentProfessionalNote.trim()
-                              });
-                            }}
-                            type="button"
-                          >
-                            {submitSlotsMutation.isPending ? "Enviando..." : "Enviar espacios"}
-                          </button>
-                        </div>
-                      </section>
-                    </>
-                  ) : null}
-
-                  {ACTIONABLE_APPROVAL_STATUSES.has(selectedRequest.status) ? (
-                    <section className="rounded-lg border border-border-subtle p-3">
-                      <h4 className="text-sm font-semibold text-brand-ink">Acciones</h4>
-                      <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Nota para el bot
-                        <textarea
-                          className="mt-1 min-h-24 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
-                          onChange={(event) => {
-                            if (selectedRequest === undefined) {
-                              return;
-                            }
-                            const nextValue = event.target.value;
-                            setReviewNotesByRequestId((currentValue) => ({
-                              ...currentValue,
-                              [selectedRequest.requestId]: nextValue
-                            }));
-                          }}
-                          value={currentReviewNote}
-                        />
-                      </label>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={resolveConsultationReviewMutation.isPending}
-                          onClick={() => {
-                            if (selectedRequest === undefined) {
-                              return;
-                            }
-                            if (currentReviewNote.trim() === "") {
-                              setLocalSubmitErrorMessage(
-                                "Debes agregar una nota para pedir más información."
-                              );
-                              return;
-                            }
-                            setLocalSubmitErrorMessage(null);
-                            setSubmitSuccessMessage(null);
-                            resolveConsultationReviewMutation.mutate({
-                              request: selectedRequest,
-                              decision: "REQUEST_MORE_INFO",
-                              professionalNote: currentReviewNote.trim()
-                            });
-                          }}
-                          type="button"
-                        >
-                          Pedir más info
-                        </button>
-                        <button
-                          className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={resolveConsultationReviewMutation.isPending}
-                          onClick={() => {
-                            if (selectedRequest === undefined) {
-                              return;
-                            }
-                            setLocalSubmitErrorMessage(null);
-                            setSubmitSuccessMessage(null);
-                            resolveConsultationReviewMutation.mutate({
-                              request: selectedRequest,
-                              decision: "REJECT",
-                              professionalNote:
-                                currentReviewNote.trim() === "" ? null : currentReviewNote.trim()
-                            });
-                          }}
-                          type="button"
-                        >
-                          Rechazar
-                        </button>
-                      </div>
-                    </section>
-                  ) : null}
-
-                  {selectedRequest.status === "AWAITING_PAYMENT_CONFIRMATION" ? (
-                    <>
-                      {(() => {
-                        const patientSlot = resolveBookedSlot(selectedRequest);
-                        if (patientSlot === null) {
-                          return null;
-                        }
-                        return (
-                          <section className="rounded-lg border border-border-subtle p-3">
-                            <h4 className="text-sm font-semibold text-brand-ink">
-                              Horario seleccionado por el paciente
-                            </h4>
-                            <div className="mt-2 flex items-center gap-3 rounded-md bg-emerald-50 px-3 py-2">
-                              <span className="text-emerald-600">
-                                <svg
-                                  className="h-5 w-5"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                  />
-                                </svg>
-                              </span>
-                              <div>
-                                <p className="text-sm font-semibold text-slate-800">
-                                  {dateUtilsModule.formatDateTime(patientSlot.startAt)}
-                                </p>
-                                <p className="text-xs text-slate-500">{patientSlot.timezone}</p>
-                              </div>
-                            </div>
-                          </section>
-                        );
-                      })()}
-                      <section className="rounded-lg border border-border-subtle p-3">
-                        <h4 className="text-sm font-semibold text-brand-ink">
-                          Confirmar pago del paciente
-                        </h4>
-                        <p className="mt-2 text-xs text-slate-600">
-                          El paciente seleccionó un horario y se le enviaron los datos de pago.
-                          Verifica el comprobante y aprueba, o envía un recordatorio de pago.
-                        </p>
-                        <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Valor del pago (COP) *
-                          <input
-                            className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
-                            inputMode="numeric"
-                            onChange={(event) => {
-                              if (selectedRequest === undefined) {
-                                return;
-                              }
-                              const nextValue = event.target.value.replace(/[^0-9]/g, "");
-                              setPaymentAmountByRequestId((currentValue) => ({
-                                ...currentValue,
-                                [selectedRequest.requestId]: nextValue
-                              }));
-                            }}
-                            placeholder="Ej: 150000"
-                            type="text"
-                            value={currentPaymentAmount}
-                          />
-                        </label>
-                        <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Nota para el bot
-                          <textarea
-                            className="mt-1 min-h-24 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
-                            onChange={(event) => {
-                              if (selectedRequest === undefined) {
-                                return;
-                              }
-                              const nextValue = event.target.value;
-                              setReviewNotesByRequestId((currentValue) => ({
-                                ...currentValue,
-                                [selectedRequest.requestId]: nextValue
-                              }));
-                            }}
-                            value={currentReviewNote}
-                          />
-                        </label>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <button
-                            className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={
-                              resolvePaymentReviewMutation.isPending ||
-                              currentPaymentAmount.trim() === "" ||
-                              Number(currentPaymentAmount) <= 0
-                            }
-                            onClick={() => {
-                              if (selectedRequest === undefined) {
-                                return;
-                              }
-                              const parsedAmount = Number(currentPaymentAmount);
-                              if (Number.isNaN(parsedAmount) || parsedAmount <= 0) {
-                                setLocalSubmitErrorMessage(
-                                  "Debes ingresar un valor de pago válido para aprobar."
-                                );
-                                return;
-                              }
-                              setLocalSubmitErrorMessage(null);
-                              setSubmitSuccessMessage(null);
-                              resolvePaymentReviewMutation.mutate({
-                                request: selectedRequest,
-                                decision: "APPROVE",
-                                professionalNote:
-                                  currentReviewNote.trim() === "" ? null : currentReviewNote.trim(),
-                                paymentAmountCop: parsedAmount
-                              });
-                            }}
-                            type="button"
-                          >
-                            Aprobar pago
-                          </button>
-                          <button
-                            className="rounded-md bg-amber-500 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={resolvePaymentReviewMutation.isPending}
-                            onClick={() => {
-                              if (selectedRequest === undefined) {
-                                return;
-                              }
-                              setLocalSubmitErrorMessage(null);
-                              setSubmitSuccessMessage(null);
-                              resolvePaymentReviewMutation.mutate({
-                                request: selectedRequest,
-                                decision: "SEND_REMINDER",
-                                professionalNote:
-                                  currentReviewNote.trim() === "" ? null : currentReviewNote.trim(),
-                                paymentAmountCop: null
-                              });
-                            }}
-                            type="button"
-                          >
-                            Enviar recordatorio
-                          </button>
-                        </div>
-                      </section>
-                    </>
-                  ) : null}
 
                   {selectedRequest.status === "BOOKED" ||
                   selectedRequest.status === "SESSION_CLOSED" ? (

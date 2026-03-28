@@ -26,6 +26,7 @@ frontend/coverage/
 .vite/
 frontend/.claude/
 .mcp.json
+.stitch-proxy.sh
 sp.xt
 scripts/eval_results/*.md
 .gcp-config
