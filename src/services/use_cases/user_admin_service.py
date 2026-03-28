@@ -87,6 +87,18 @@ class UserAdminService:
         )
         self._user_repository.save(user)
 
+    def delete_tenant(self, request: user_admin_dto.DeleteTenantByMasterDTO) -> None:
+        master_user = self._authenticate_master(
+            master_email=request.master_email,
+            master_password=request.master_password,
+        )
+        tenant = self._tenant_repository.get_by_id(master_user.tenant_id)
+        if tenant is None:
+            raise service_exceptions.EntityNotFoundError("tenant not found")
+        deleted = self._tenant_repository.delete_with_data(master_user.tenant_id)
+        if not deleted:
+            raise service_exceptions.EntityNotFoundError("tenant not found")
+
     def delete_user(self, request: user_admin_dto.DeleteUserByMasterDTO) -> None:
         master_user = self._authenticate_master(
             master_email=request.master_email,

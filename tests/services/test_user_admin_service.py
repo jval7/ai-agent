@@ -213,3 +213,76 @@ def test_delete_user_hard_deletes_regular_user_and_blocks_master_delete() -> Non
                 email="master@acme.com",
             )
         )
+
+
+def test_delete_tenant_removes_tenant_users_and_all_data() -> None:
+    service, tenant_repository, user_repository, agent_profile_repository, _ = (
+        build_user_admin_service(["tenant-1", "user-master", "user-2"])
+    )
+    service.bootstrap_master(
+        user_admin_dto.BootstrapMasterDTO(
+            tenant_name="Acme",
+            master_email="master@acme.com",
+            master_password="supersecret",
+        )
+    )
+    service.create_user(
+        user_admin_dto.CreateUserByMasterDTO(
+            master_email="master@acme.com",
+            master_password="supersecret",
+            email="professional2@acme.com",
+            password="supersecret2",
+        )
+    )
+
+    assert tenant_repository.get_by_id("tenant-1") is not None
+    assert user_repository.get_by_email("master@acme.com") is not None
+    assert user_repository.get_by_email("professional2@acme.com") is not None
+    assert agent_profile_repository.get_by_tenant_id("tenant-1") is not None
+
+    service.delete_tenant(
+        user_admin_dto.DeleteTenantByMasterDTO(
+            master_email="master@acme.com",
+            master_password="supersecret",
+        )
+    )
+
+    assert tenant_repository.get_by_id("tenant-1") is None
+    assert user_repository.get_by_email("master@acme.com") is None
+    assert user_repository.get_by_email("professional2@acme.com") is None
+    assert agent_profile_repository.get_by_tenant_id("tenant-1") is None
+
+
+def test_delete_tenant_rejects_non_master() -> None:
+    service, tenant_repository, user_repository, _, password_hasher = (
+        build_user_admin_service([])
+    )
+    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    tenant_repository.save(
+        tenant_entity.Tenant(
+            id="tenant-1",
+            name="Acme",
+            created_at=now_value,
+            updated_at=now_value,
+        )
+    )
+    user_repository.save(
+        user_entity.User(
+            id="user-1",
+            tenant_id="tenant-1",
+            email="regular@acme.com",
+            password_hash=password_hasher.hash_password("supersecret"),
+            role="professional",
+            is_active=True,
+            is_master=False,
+            created_at=now_value,
+        )
+    )
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.delete_tenant(
+            user_admin_dto.DeleteTenantByMasterDTO(
+                master_email="regular@acme.com",
+                master_password="supersecret",
+            )
+        )

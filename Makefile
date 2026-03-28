@@ -66,6 +66,7 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 	oauth-flow \
 	user-create \
 	user-delete \
+	delete-tenant \
 	save-api-base \
 	memory-reset \
 	chat-memory-reset \
@@ -192,6 +193,16 @@ user-delete:
 		--master-email "$(MASTER_EMAIL)" \
 		--master-password "$(MASTER_PASSWORD)" \
 		--email "$(USER_EMAIL)"
+
+delete-tenant:
+	$(require_master_credentials)
+	@echo "This will DELETE the tenant and ALL its data (users, conversations, patients, etc.)."
+	@echo "Press Ctrl+C to cancel, or Enter to continue..."
+	@read -r _
+	@uv run python -m src.entrypoints.local.user_admin_cli delete-tenant \
+		--master-email "$(MASTER_EMAIL)" \
+		--master-password "$(MASTER_PASSWORD)" \
+		--confirm
 
 memory-reset:
 	@if [[ -f "$(FLOW_DIR)/access_token" ]]; then \

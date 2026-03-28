@@ -45,6 +45,19 @@ def _build_parser() -> argparse.ArgumentParser:
     delete_parser.add_argument("--master-password", required=True)
     delete_parser.add_argument("--email", required=True)
 
+    delete_tenant_parser = subparsers.add_parser(
+        "delete-tenant",
+        help="Delete the master's tenant and all its data",
+    )
+    delete_tenant_parser.add_argument("--master-email", required=True)
+    delete_tenant_parser.add_argument("--master-password", required=True)
+    delete_tenant_parser.add_argument(
+        "--confirm",
+        action="store_true",
+        required=True,
+        help="Required flag to confirm destructive operation",
+    )
+
     return parser
 
 
@@ -99,6 +112,15 @@ def main() -> int:
             )
             service.create_user(create_request)
             print("User created successfully.")
+            return 0
+
+        if args.command == "delete-tenant":
+            delete_tenant_request = user_admin_dto.DeleteTenantByMasterDTO(
+                master_email=args.master_email,
+                master_password=args.master_password,
+            )
+            service.delete_tenant(delete_tenant_request)
+            print("Tenant and all its data deleted successfully.")
             return 0
 
         delete_request = user_admin_dto.DeleteUserByMasterDTO(

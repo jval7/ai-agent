@@ -67,6 +67,26 @@ class CreateUserByMasterDTO(pydantic.BaseModel):
         return value
 
 
+class DeleteTenantByMasterDTO(pydantic.BaseModel):
+    master_email: str
+    master_password: str
+
+    @pydantic.field_validator("master_email")
+    @classmethod
+    def validate_master_email(cls, value: str) -> str:
+        normalized_value = value.strip().lower()
+        if "@" not in normalized_value:
+            raise ValueError("master_email must contain @")
+        return normalized_value
+
+    @pydantic.field_validator("master_password")
+    @classmethod
+    def validate_master_password(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("master_password must have at least 8 characters")
+        return value
+
+
 class DeleteUserByMasterDTO(pydantic.BaseModel):
     master_email: str
     master_password: str
