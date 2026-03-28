@@ -26,14 +26,14 @@ endif
 
 API_BASE ?= http://localhost:8000
 TENANT_NAME ?= Acme
-OWNER_EMAIL ?= owner@acme.com
-OWNER_PASSWORD ?= supersecret
-MASTER_EMAIL ?= $(OWNER_EMAIL)
-MASTER_PASSWORD ?= $(OWNER_PASSWORD)
+PROFESSIONAL_EMAIL ?= professional@acme.com
+PROFESSIONAL_PASSWORD ?= supersecret
+MASTER_EMAIL ?= $(PROFESSIONAL_EMAIL)
+MASTER_PASSWORD ?= $(PROFESSIONAL_PASSWORD)
 USER_EMAIL ?=
 USER_PASSWORD ?=
-OWNER_EMAIL_ORIGIN := $(origin OWNER_EMAIL)
-OWNER_PASSWORD_ORIGIN := $(origin OWNER_PASSWORD)
+PROFESSIONAL_EMAIL_ORIGIN := $(origin PROFESSIONAL_EMAIL)
+PROFESSIONAL_PASSWORD_ORIGIN := $(origin PROFESSIONAL_PASSWORD)
 FLOW_DIR ?= .make-flow
 FRONTEND_DIR ?= frontend
 SIM_WA_USER_ID ?= 573001234567
@@ -104,7 +104,7 @@ oauth-flow:
 	@mkdir -p "$(FLOW_DIR)"
 	@login_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/login" \
 		-H "Content-Type: application/json" \
-		-d '{"email":"$(OWNER_EMAIL)","password":"$(OWNER_PASSWORD)"}'); \
+		-d '{"email":"$(PROFESSIONAL_EMAIL)","password":"$(PROFESSIONAL_PASSWORD)"}'); \
 	access_token=$$(echo "$$login_response" | jq -r '.access_token'); \
 	if [[ "$$access_token" == "null" || -z "$$access_token" ]]; then \
 		echo "Login failed:"; \
@@ -149,9 +149,9 @@ save-api-base:
 
 save-credentials:
 	@mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"
-	@printf "OWNER_EMAIL=%s\nOWNER_PASSWORD=%s\n" "$(OWNER_EMAIL)" "$(OWNER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"
+	@printf "PROFESSIONAL_EMAIL=%s\nPROFESSIONAL_PASSWORD=%s\n" "$(PROFESSIONAL_EMAIL)" "$(PROFESSIONAL_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"
 	@chmod 600 "$(MAKE_CREDENTIALS_FILE)"
-	@echo "Saved OWNER_EMAIL/OWNER_PASSWORD to $(MAKE_CREDENTIALS_FILE)"
+	@echo "Saved PROFESSIONAL_EMAIL/PROFESSIONAL_PASSWORD to $(MAKE_CREDENTIALS_FILE)"
 
 user-bootstrap-master:
 	@uv run python -m src.entrypoints.local.user_admin_cli bootstrap-master \
@@ -211,9 +211,9 @@ chat-memory-reset:
 		fi; \
 	fi; \
 	echo "Using API_BASE=$$resolved_api_base"; \
-	if [[ "$(OWNER_EMAIL_ORIGIN)" == "command line" || "$(OWNER_PASSWORD_ORIGIN)" == "command line" ]]; then \
+	if [[ "$(PROFESSIONAL_EMAIL_ORIGIN)" == "command line" || "$(PROFESSIONAL_PASSWORD_ORIGIN)" == "command line" ]]; then \
 		mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
-		printf "OWNER_EMAIL=%s\nOWNER_PASSWORD=%s\n" "$(OWNER_EMAIL)" "$(OWNER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"; \
+		printf "PROFESSIONAL_EMAIL=%s\nPROFESSIONAL_PASSWORD=%s\n" "$(PROFESSIONAL_EMAIL)" "$(PROFESSIONAL_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"; \
 		chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
 		echo "Saved credentials to $(MAKE_CREDENTIALS_FILE)"; \
 	fi; \
@@ -235,7 +235,7 @@ chat-memory-reset:
 	if [[ $$live_reset_ok -eq 0 ]]; then \
 		login_response=$$(curl -sS -X POST "$$resolved_api_base/v1/auth/login" \
 			-H "Content-Type: application/json" \
-			-d '{"email":"$(OWNER_EMAIL)","password":"$(OWNER_PASSWORD)"}' || true); \
+			-d '{"email":"$(PROFESSIONAL_EMAIL)","password":"$(PROFESSIONAL_PASSWORD)"}' || true); \
 		login_access_token=$$(echo "$$login_response" | jq -r '.access_token // empty' 2>/dev/null); \
 		if [[ -n "$$login_access_token" ]]; then \
 			echo "$$login_access_token" > "$(FLOW_DIR)/access_token"; \
@@ -246,7 +246,7 @@ chat-memory-reset:
 				live_reset_ok=1; \
 				echo "Live chat reset response: $$live_chat_reset_response"; \
 				mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
-				printf "OWNER_EMAIL=%s\nOWNER_PASSWORD=%s\n" "$(OWNER_EMAIL)" "$(OWNER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"; \
+				printf "PROFESSIONAL_EMAIL=%s\nPROFESSIONAL_PASSWORD=%s\n" "$(PROFESSIONAL_EMAIL)" "$(PROFESSIONAL_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"; \
 				chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
 				echo "Saved credentials to $(MAKE_CREDENTIALS_FILE)"; \
 			else \
@@ -577,11 +577,11 @@ app-config-secret-sync-env:
 
 simulate-whatsapp-message:
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
-	@echo "Using API_BASE=$(API_BASE) OWNER_EMAIL=$(OWNER_EMAIL)"
+	@echo "Using API_BASE=$(API_BASE) PROFESSIONAL_EMAIL=$(PROFESSIONAL_EMAIL)"
 	@mkdir -p "$(FLOW_DIR)"; \
 	login_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/login" \
 		-H "Content-Type: application/json" \
-		-d '{"email":"$(OWNER_EMAIL)","password":"$(OWNER_PASSWORD)"}'); \
+		-d '{"email":"$(PROFESSIONAL_EMAIL)","password":"$(PROFESSIONAL_PASSWORD)"}'); \
 	access_token=$$(echo "$$login_response" | jq -r '.access_token'); \
 	if [[ "$$access_token" == "null" || -z "$$access_token" ]]; then \
 		echo "Login failed (needed to run simulation). Response:"; \
@@ -598,10 +598,10 @@ simulate-whatsapp-message:
 		echo "WhatsApp connection is not ready. Response:"; \
 		echo "$$connection_response" | jq . 2>/dev/null || echo "$$connection_response"; \
 		echo ""; \
-		echo "Hint: you are logged into tenant=$$tenant_id with OWNER_EMAIL=$(OWNER_EMAIL)."; \
+		echo "Hint: you are logged into tenant=$$tenant_id with PROFESSIONAL_EMAIL=$(PROFESSIONAL_EMAIL)."; \
 		echo "If your UI shows another tenant as CONNECTED, you're using a different account or backend."; \
 		echo "Run OAuth for this same account:"; \
-		echo "make oauth-flow OWNER_EMAIL='$(OWNER_EMAIL)' OWNER_PASSWORD='$(OWNER_PASSWORD)' API_BASE='$(API_BASE)'"; \
+		echo "make oauth-flow PROFESSIONAL_EMAIL='$(PROFESSIONAL_EMAIL)' PROFESSIONAL_PASSWORD='$(PROFESSIONAL_PASSWORD)' API_BASE='$(API_BASE)'"; \
 		exit 1; \
 	fi; \
 	provider_message_id="$(SIM_PROVIDER_MESSAGE_ID)"; \

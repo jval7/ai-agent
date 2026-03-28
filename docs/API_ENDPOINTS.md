@@ -45,7 +45,7 @@ Este documento describe qué hace cada endpoint del backend.
 - Request body:
 ```json
 {
-  "email": "owner@acme.com",
+  "email": "professional@acme.com",
   "password": "supersecret"
 }
 ```

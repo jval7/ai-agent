@@ -42,13 +42,13 @@ Public signup (`POST /v1/auth/register`) is disabled. User management is local-o
 ```bash
 make user-bootstrap-master TENANT_NAME=Acme MASTER_EMAIL=owner@acme.com MASTER_PASSWORD=supersecret
 make user-create MASTER_EMAIL=owner@acme.com MASTER_PASSWORD=supersecret USER_EMAIL=user@acme.com USER_PASSWORD=supersecret
-make user-delete MASTER_EMAIL=owner@acme.com MASTER_PASSWORD=supersecret USER_EMAIL=user@acme.com
+make user-delete MASTER_EMAIL=professional@acme.com MASTER_PASSWORD=supersecret USER_EMAIL=user@acme.com
 ```
 
 After bootstrapping master, run OAuth flow with login:
 
 ```bash
-make oauth-flow OWNER_EMAIL=owner@acme.com OWNER_PASSWORD=supersecret
+make oauth-flow PROFESSIONAL_EMAIL=professional@acme.com PROFESSIONAL_PASSWORD=supersecret
 ```
 
 ## Run with Docker
