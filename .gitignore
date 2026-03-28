@@ -31,3 +31,4 @@ frontend/.claude/
 sp.xt
 scripts/eval_results/*.md
 .gcp-config
+product_log.txt
