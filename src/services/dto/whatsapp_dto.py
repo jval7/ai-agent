@@ -1,6 +1,10 @@
 import pydantic
 
 
+class EmbeddedSignupSessionRequestDTO(pydantic.BaseModel):
+    registration_pin: str | None = None
+
+
 class EmbeddedSignupSessionResponseDTO(pydantic.BaseModel):
     state: str
     connect_url: str

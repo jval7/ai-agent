@@ -27,11 +27,15 @@ class WhatsappOnboardingService:
         self._webhook_verify_token = webhook_verify_token
 
     def create_embedded_signup_session(
-        self, tenant_id: str
+        self,
+        tenant_id: str,
+        session_request: whatsapp_dto.EmbeddedSignupSessionRequestDTO | None = None,
     ) -> whatsapp_dto.EmbeddedSignupSessionResponseDTO:
         now_value = self._clock.now()
         state_token = self._id_generator.new_token()
         existing_connection = self._whatsapp_connection_repository.get_by_tenant_id(tenant_id)
+
+        registration_pin = session_request.registration_pin if session_request else None
 
         connection = whatsapp_connection_entity.WhatsappConnection(
             tenant_id=tenant_id,
@@ -42,6 +46,7 @@ class WhatsappOnboardingService:
             access_token=existing_connection.access_token if existing_connection else None,
             status="PENDING",
             embedded_signup_state=state_token,
+            registration_pin=registration_pin,
             updated_at=now_value,
         )
         self._whatsapp_connection_repository.save(connection)
@@ -128,7 +133,9 @@ class WhatsappOnboardingService:
             raise service_exceptions.EntityNotFoundError("embedded signup state not found")
 
         credentials = self._whatsapp_provider.exchange_code_for_credentials(code)
-        return self._finalize_connection(connection, credentials, registration_pin=None)
+        return self._finalize_connection(
+            connection, credentials, registration_pin=connection.registration_pin
+        )
 
     def _finalize_connection(
         self,

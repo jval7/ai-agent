@@ -11,4 +11,5 @@ class WhatsappConnection(pydantic.BaseModel):
     access_token: str | None
     status: typing.Literal["DISCONNECTED", "PENDING", "CONNECTED"]
     embedded_signup_state: str | None
+    registration_pin: str | None = None
     updated_at: datetime.datetime

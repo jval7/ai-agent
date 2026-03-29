@@ -11,7 +11,7 @@ export class WhatsappOnboardingUseCase {
     return this.api.getWhatsappConnection();
   }
 
-  async createEmbeddedSignupSession() {
-    return this.api.createEmbeddedSignupSession();
+  async createEmbeddedSignupSession(registrationPin?: string) {
+    return this.api.createEmbeddedSignupSession(registrationPin);
   }
 }

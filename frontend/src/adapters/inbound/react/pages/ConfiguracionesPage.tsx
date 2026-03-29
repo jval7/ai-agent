@@ -65,9 +65,12 @@ export function ConfiguracionesPage() {
     queryFn: () => appContainer.onboardingUseCase.getOnboardingStatus()
   });
 
+  const [registrationPin, setRegistrationPin] = reactModule.useState("");
+
   const queryClient = reactQueryModule.useQueryClient();
   const whatsappSessionMutation = reactQueryModule.useMutation({
-    mutationFn: () => appContainer.onboardingUseCase.createWhatsappSession(),
+    mutationFn: () =>
+      appContainer.onboardingUseCase.createWhatsappSession(registrationPin.trim() || undefined),
     onSuccess: (session) => {
       window.location.assign(session.connectUrl);
     }
@@ -223,7 +226,27 @@ export function ConfiguracionesPage() {
                 </div>
               ) : null}
 
-              <div className="mt-6">
+              <div className="mt-4">
+                <label
+                  className="block text-sm font-medium text-slate-700"
+                  htmlFor="registration-pin"
+                >
+                  PIN de registro (solo si tienes 2FA)
+                </label>
+                <input
+                  className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal"
+                  id="registration-pin"
+                  maxLength={6}
+                  onChange={(e) => {
+                    setRegistrationPin(e.target.value);
+                  }}
+                  placeholder="6 dígitos (opcional)"
+                  type="password"
+                  value={registrationPin}
+                />
+              </div>
+
+              <div className="mt-4">
                 <button
                   className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={whatsappSessionMutation.isPending}

@@ -12,10 +12,15 @@ router = fastapi.APIRouter(prefix="/v1/whatsapp", tags=["whatsapp"])
     "/embedded-signup/session", response_model=whatsapp_dto.EmbeddedSignupSessionResponseDTO
 )
 def create_embedded_signup_session(
+    session_request: whatsapp_dto.EmbeddedSignupSessionRequestDTO = fastapi.Body(
+        default=whatsapp_dto.EmbeddedSignupSessionRequestDTO()
+    ),
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> whatsapp_dto.EmbeddedSignupSessionResponseDTO:
-    return container.whatsapp_onboarding_service.create_embedded_signup_session(claims.tenant_id)
+    return container.whatsapp_onboarding_service.create_embedded_signup_session(
+        claims.tenant_id, session_request
+    )
 
 
 @router.post("/embedded-signup/complete", response_model=whatsapp_dto.WhatsappConnectionStatusDTO)

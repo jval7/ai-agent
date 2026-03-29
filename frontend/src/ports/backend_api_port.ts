@@ -19,7 +19,9 @@ export interface BackendApiPort {
   getAgentSettings(): Promise<agentModel.AgentSettings>;
   updateAgentSettings(debounceDelay: number): Promise<agentModel.AgentSettings>;
 
-  createEmbeddedSignupSession(): Promise<whatsappModel.EmbeddedSignupSession>;
+  createEmbeddedSignupSession(
+    registrationPin?: string
+  ): Promise<whatsappModel.EmbeddedSignupSession>;
   getWhatsappConnection(): Promise<whatsappModel.WhatsappConnection>;
   createGoogleOauthSession(): Promise<googleCalendarModel.GoogleOauthSession>;
   getGoogleCalendarConnection(): Promise<googleCalendarModel.GoogleCalendarConnection>;
