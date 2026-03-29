@@ -37,7 +37,7 @@ Este documento describe qué hace cada endpoint del backend.
 ### `POST /v1/auth/register`
 - Estado: deshabilitado.
 - Resultado: `404 Not Found`.
-- Nota: la creación/eliminación de usuarios se hace solo por comandos locales (`make user-bootstrap-master`, `make user-create`, `make user-delete`).
+- Nota: la creación/eliminación de profesionales se hace solo por comandos locales (`make create-professional`, `make delete-professional`).
 
 ### `POST /v1/auth/login`
 - Auth: no
@@ -808,7 +808,7 @@ Este documento describe qué hace cada endpoint del backend.
 
 ## Flujo mínimo recomendado (manual)
 
-1. `make user-bootstrap-master TENANT_NAME=... MASTER_EMAIL=... MASTER_PASSWORD=...` (solo primera vez por ambiente)
+1. `make create-professional EMAIL=... PASSWORD=... TENANT_NAME=...` (solo primera vez por ambiente)
 2. `POST /v1/auth/login`
 3. `POST /v1/whatsapp/embedded-signup/session`
 4. `POST /v1/whatsapp/embedded-signup/complete`

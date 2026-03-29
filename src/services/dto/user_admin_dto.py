@@ -1,10 +1,10 @@
 import pydantic
 
 
-class BootstrapMasterDTO(pydantic.BaseModel):
+class CreateProfessionalDTO(pydantic.BaseModel):
     tenant_name: str
-    master_email: str
-    master_password: str
+    email: str
+    password: str
 
     @pydantic.field_validator("tenant_name")
     @classmethod
@@ -12,35 +12,6 @@ class BootstrapMasterDTO(pydantic.BaseModel):
         normalized_value = value.strip()
         if not normalized_value:
             raise ValueError("tenant_name cannot be empty")
-        return normalized_value
-
-    @pydantic.field_validator("master_email")
-    @classmethod
-    def validate_master_email(cls, value: str) -> str:
-        normalized_value = value.strip().lower()
-        if "@" not in normalized_value:
-            raise ValueError("master_email must contain @")
-        return normalized_value
-
-    @pydantic.field_validator("master_password")
-    @classmethod
-    def validate_master_password(cls, value: str) -> str:
-        if len(value) < 8:
-            raise ValueError("master_password must have at least 8 characters")
-        return value
-
-
-class CreateUserDTO(pydantic.BaseModel):
-    tenant_email: str
-    email: str
-    password: str
-
-    @pydantic.field_validator("tenant_email")
-    @classmethod
-    def validate_tenant_email(cls, value: str) -> str:
-        normalized_value = value.strip().lower()
-        if "@" not in normalized_value:
-            raise ValueError("tenant_email must contain @")
         return normalized_value
 
     @pydantic.field_validator("email")
@@ -59,19 +30,7 @@ class CreateUserDTO(pydantic.BaseModel):
         return value
 
 
-class DeleteTenantDTO(pydantic.BaseModel):
-    email: str
-
-    @pydantic.field_validator("email")
-    @classmethod
-    def validate_email(cls, value: str) -> str:
-        normalized_value = value.strip().lower()
-        if "@" not in normalized_value:
-            raise ValueError("email must contain @")
-        return normalized_value
-
-
-class DeleteUserDTO(pydantic.BaseModel):
+class DeleteProfessionalDTO(pydantic.BaseModel):
     email: str
 
     @pydantic.field_validator("email")

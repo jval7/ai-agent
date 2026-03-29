@@ -26,10 +26,8 @@ endif
 
 API_BASE ?= http://localhost:8000
 TENANT_NAME ?= Acme
-MASTER_EMAIL ?=
-MASTER_PASSWORD ?=
-USER_EMAIL ?=
-USER_PASSWORD ?=
+EMAIL ?=
+PASSWORD ?=
 FLOW_DIR ?= .make-flow
 FRONTEND_DIR ?= frontend
 SIM_WA_USER_ID ?= 573001234567
@@ -63,11 +61,9 @@ APP_CONFIG_PRUNE_ENV ?= false
 APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECONDS DEFAULT_SYSTEM_PROMPT CONTEXT_MESSAGE_LIMIT FIRESTORE_DATABASE_ID CORS_ALLOWED_ORIGINS FRONTEND_APP_BASE_URL ENABLE_DEV_ENDPOINTS META_APP_ID META_APP_SECRET META_REDIRECT_URI META_WEBHOOK_VERIFY_TOKEN META_PHONE_REGISTRATION_PIN META_API_VERSION GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REDIRECT_URI GOOGLE_CLOUD_PROJECT GEMINI_LOCATION GEMINI_MODEL GEMINI_MAX_OUTPUT_TOKENS LANGSMITH_TRACING_ENABLED LANGSMITH_PROJECT LANGSMITH_API_KEY LANGSMITH_ENDPOINT LANGSMITH_WORKSPACE_ID LANGSMITH_ENVIRONMENT LANGSMITH_TAGS LOG_LEVEL LOG_INCLUDE_REQUEST_SUMMARY LANGCHAIN_API_KEY LANGCHAIN_ENDPOINT
 
 .PHONY: \
-	setup-master \
+	create-professional \
+	delete-professional \
 	oauth-flow \
-	user-create \
-	user-delete \
-	delete-tenant \
 	save-api-base \
 	memory-reset \
 	chat-memory-reset \
@@ -96,39 +92,47 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 	simulate-whatsapp-message \
 	calendar-cleanup
 
-define require_master_email
-	@if [[ -z "$(MASTER_EMAIL)" ]]; then \
-		echo "Error: MASTER_EMAIL not found."; \
-		echo "Run first: make setup-master MASTER_EMAIL=you@example.com MASTER_PASSWORD=secret TENANT_NAME=MyTenant"; \
+create-professional:
+	@if [[ -z "$(EMAIL)" ]]; then \
+		echo "EMAIL is required. Example: make create-professional EMAIL=doc@acme.com PASSWORD=supersecret TENANT_NAME=DrAcme"; \
 		exit 1; \
 	fi
-endef
-
-setup-master:
-	@if [[ -z "$(MASTER_EMAIL)" ]]; then \
-		echo "MASTER_EMAIL is required. Example: make setup-master MASTER_EMAIL=you@example.com MASTER_PASSWORD=secret TENANT_NAME=MyTenant"; \
+	@if [[ -z "$(PASSWORD)" ]]; then \
+		echo "PASSWORD is required. Example: make create-professional EMAIL=doc@acme.com PASSWORD=supersecret TENANT_NAME=DrAcme"; \
 		exit 1; \
 	fi
-	@if [[ -z "$(MASTER_PASSWORD)" ]]; then \
-		echo "MASTER_PASSWORD is required. Example: make setup-master MASTER_EMAIL=you@example.com MASTER_PASSWORD=secret TENANT_NAME=MyTenant"; \
-		exit 1; \
-	fi
-	@uv run python -m src.entrypoints.local.user_admin_cli bootstrap-master \
+	@uv run python -m src.entrypoints.local.user_admin_cli create-professional \
 		--tenant-name "$(TENANT_NAME)" \
-		--master-email "$(MASTER_EMAIL)" \
-		--master-password "$(MASTER_PASSWORD)"
+		--email "$(EMAIL)" \
+		--password "$(PASSWORD)"
 	@mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"
-	@printf "MASTER_EMAIL=%s\nMASTER_PASSWORD=%s\n" "$(MASTER_EMAIL)" "$(MASTER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"
+	@printf "EMAIL=%s\nPASSWORD=%s\n" "$(EMAIL)" "$(PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"
 	@chmod 600 "$(MAKE_CREDENTIALS_FILE)"
 	@echo "Credentials saved to $(MAKE_CREDENTIALS_FILE)"
 
+delete-professional:
+	@if [[ -z "$(EMAIL)" ]]; then \
+		echo "EMAIL is required. Example: make delete-professional EMAIL=doc@acme.com"; \
+		exit 1; \
+	fi
+	@echo "This will DELETE the professional and ALL their data (conversations, patients, etc.)."
+	@echo "Press Ctrl+C to cancel, or Enter to continue..."
+	@read -r _
+	@uv run python -m src.entrypoints.local.user_admin_cli delete-professional \
+		--email "$(EMAIL)" \
+		--confirm
+
 oauth-flow:
-	$(require_master_email)
+	@if [[ -z "$(EMAIL)" || -z "$(PASSWORD)" ]]; then \
+		echo "Error: EMAIL/PASSWORD not found."; \
+		echo "Run first: make create-professional EMAIL=doc@acme.com PASSWORD=supersecret TENANT_NAME=DrAcme"; \
+		exit 1; \
+	fi
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@mkdir -p "$(FLOW_DIR)"
 	@login_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/login" \
 		-H "Content-Type: application/json" \
-		-d '{"email":"$(MASTER_EMAIL)","password":"$(MASTER_PASSWORD)"}'); \
+		-d '{"email":"$(EMAIL)","password":"$(PASSWORD)"}'); \
 	access_token=$$(echo "$$login_response" | jq -r '.access_token'); \
 	if [[ "$$access_token" == "null" || -z "$$access_token" ]]; then \
 		echo "Login failed:"; \
@@ -168,38 +172,6 @@ save-api-base:
 	@chmod 600 "$(MAKE_API_BASE_FILE)"
 	@echo "Saved API_BASE to $(MAKE_API_BASE_FILE)"
 
-user-create:
-	$(require_master_email)
-	@if [[ -z "$(USER_EMAIL)" ]]; then \
-		echo "USER_EMAIL is required. Example: make user-create USER_EMAIL=user@acme.com USER_PASSWORD=supersecret"; \
-		exit 1; \
-	fi
-	@if [[ -z "$(USER_PASSWORD)" ]]; then \
-		echo "USER_PASSWORD is required. Example: make user-create USER_EMAIL=user@acme.com USER_PASSWORD=supersecret"; \
-		exit 1; \
-	fi
-	@uv run python -m src.entrypoints.local.user_admin_cli create-user \
-		--tenant-email "$(MASTER_EMAIL)" \
-		--email "$(USER_EMAIL)" \
-		--password "$(USER_PASSWORD)"
-
-user-delete:
-	@if [[ -z "$(USER_EMAIL)" ]]; then \
-		echo "USER_EMAIL is required. Example: make user-delete USER_EMAIL=user@acme.com"; \
-		exit 1; \
-	fi
-	@uv run python -m src.entrypoints.local.user_admin_cli delete-user \
-		--email "$(USER_EMAIL)"
-
-delete-tenant:
-	$(require_master_email)
-	@echo "This will DELETE the tenant and ALL its data (users, conversations, patients, etc.)."
-	@echo "Press Ctrl+C to cancel, or Enter to continue..."
-	@read -r _
-	@uv run python -m src.entrypoints.local.user_admin_cli delete-tenant \
-		--email "$(MASTER_EMAIL)" \
-		--confirm
-
 memory-reset:
 	@if [[ -f "$(FLOW_DIR)/access_token" ]]; then \
 		access_token=$$(cat "$(FLOW_DIR)/access_token"); \
@@ -212,7 +184,7 @@ memory-reset:
 	@echo "Firestore reset endpoint finished. No local JSON snapshot cleanup is required."
 
 chat-memory-reset:
-	$(require_master_email)
+	
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@mkdir -p "$(FLOW_DIR)"
 	@live_reset_ok=0; \
@@ -246,7 +218,7 @@ chat-memory-reset:
 	if [[ $$live_reset_ok -eq 0 ]]; then \
 		login_response=$$(curl -sS -X POST "$$resolved_api_base/v1/auth/login" \
 			-H "Content-Type: application/json" \
-			-d '{"email":"$(MASTER_EMAIL)","password":"$(MASTER_PASSWORD)"}' || true); \
+			-d '{"email":"$(EMAIL)","password":"$(PASSWORD)"}' || true); \
 		login_access_token=$$(echo "$$login_response" | jq -r '.access_token // empty' 2>/dev/null); \
 		if [[ -n "$$login_access_token" ]]; then \
 			echo "$$login_access_token" > "$(FLOW_DIR)/access_token"; \
@@ -600,13 +572,13 @@ app-config-secret-sync-env:
 	fi
 
 simulate-whatsapp-message:
-	$(require_master_email)
+	
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
-	@echo "Using API_BASE=$(API_BASE) MASTER_EMAIL=$(MASTER_EMAIL)"
+	@echo "Using API_BASE=$(API_BASE) EMAIL=$(EMAIL)"
 	@mkdir -p "$(FLOW_DIR)"; \
 	login_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/login" \
 		-H "Content-Type: application/json" \
-		-d '{"email":"$(MASTER_EMAIL)","password":"$(MASTER_PASSWORD)"}'); \
+		-d '{"email":"$(EMAIL)","password":"$(PASSWORD)"}'); \
 	access_token=$$(echo "$$login_response" | jq -r '.access_token'); \
 	if [[ "$$access_token" == "null" || -z "$$access_token" ]]; then \
 		echo "Login failed (needed to run simulation). Response:"; \
@@ -623,7 +595,7 @@ simulate-whatsapp-message:
 		echo "WhatsApp connection is not ready. Response:"; \
 		echo "$$connection_response" | jq . 2>/dev/null || echo "$$connection_response"; \
 		echo ""; \
-		echo "Hint: you are logged into tenant=$$tenant_id with MASTER_EMAIL=$(MASTER_EMAIL)."; \
+		echo "Hint: you are logged into tenant=$$tenant_id with EMAIL=$(EMAIL)."; \
 		echo "If your UI shows another tenant as CONNECTED, you're using a different account or backend."; \
 		echo "Run OAuth for this same account:"; \
 		echo "make oauth-flow"; \
