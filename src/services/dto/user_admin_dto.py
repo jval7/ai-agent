@@ -30,6 +30,26 @@ class CreateProfessionalDTO(pydantic.BaseModel):
         return value
 
 
+class ResetPasswordDTO(pydantic.BaseModel):
+    email: str
+    new_password: str
+
+    @pydantic.field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        normalized_value = value.strip().lower()
+        if "@" not in normalized_value:
+            raise ValueError("email must contain @")
+        return normalized_value
+
+    @pydantic.field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("new_password must have at least 8 characters")
+        return value
+
+
 class DeleteProfessionalDTO(pydantic.BaseModel):
     email: str
 

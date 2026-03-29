@@ -114,6 +114,45 @@ def test_delete_professional_removes_tenant_and_user() -> None:
     assert agent_profile_repository.get_by_tenant_id("tenant-1") is None
 
 
+def test_reset_password_updates_password_hash() -> None:
+    service, _, user_repository, _ = build_user_admin_service(["tenant-1", "user-1"])
+
+    service.create_professional(
+        user_admin_dto.CreateProfessionalDTO(
+            tenant_name="Acme",
+            email="doc@acme.com",
+            password="supersecret",
+        )
+    )
+
+    user_before = user_repository.get_by_email("doc@acme.com")
+    assert user_before is not None
+    old_hash = user_before.password_hash
+
+    service.reset_password(
+        user_admin_dto.ResetPasswordDTO(
+            email="doc@acme.com",
+            new_password="newsecretpass",
+        )
+    )
+
+    user_after = user_repository.get_by_email("doc@acme.com")
+    assert user_after is not None
+    assert user_after.password_hash != old_hash
+
+
+def test_reset_password_fails_when_user_not_found() -> None:
+    service, _, _, _ = build_user_admin_service([])
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        service.reset_password(
+            user_admin_dto.ResetPasswordDTO(
+                email="nonexistent@acme.com",
+                new_password="newsecretpass",
+            )
+        )
+
+
 def test_delete_professional_fails_when_user_not_found() -> None:
     service, _, _, _ = build_user_admin_service([])
 

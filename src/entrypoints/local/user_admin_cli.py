@@ -29,6 +29,12 @@ def _build_parser() -> argparse.ArgumentParser:
     create_parser.add_argument("--tenant-name", required=True)
     create_parser.add_argument("--email", required=True)
 
+    reset_parser = subparsers.add_parser(
+        "reset-password",
+        help="Reset a professional's password",
+    )
+    reset_parser.add_argument("--email", required=True)
+
     delete_parser = subparsers.add_parser(
         "delete-professional",
         help="Delete a professional and all their data",
@@ -89,6 +95,21 @@ def main() -> int:
             )
             print("Professional created successfully.")
             print(f"  Tenant:   {args.tenant_name}")
+            print(f"  Email:    {args.email}")
+            print(f"  Password: {password}")
+            print(f"GENERATED_PASSWORD={password}")
+            return 0
+
+        if args.command == "reset-password":
+            alphabet = string.ascii_letters + string.digits
+            password = "".join(secrets.choice(alphabet) for _ in range(16))
+            service.reset_password(
+                user_admin_dto.ResetPasswordDTO(
+                    email=args.email,
+                    new_password=password,
+                )
+            )
+            print("Password reset successfully.")
             print(f"  Email:    {args.email}")
             print(f"  Password: {password}")
             print(f"GENERATED_PASSWORD={password}")

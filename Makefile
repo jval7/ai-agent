@@ -63,6 +63,7 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 .PHONY: \
 	create-professional \
 	delete-professional \
+	reset-password \
 	oauth-flow \
 	save-api-base \
 	memory-reset \
@@ -101,12 +102,32 @@ create-professional:
 		--tenant-name "$(TENANT_NAME)" \
 		--email "$(EMAIL)"); \
 	echo "$$output"; \
-	generated_password=$$(echo "$$output" | grep '^GENERATED_PASSWORD=' | cut -d '=' -f 2-); \
-	if [[ -n "$$generated_password" ]]; then \
-		mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
-		printf "EMAIL=%s\nPASSWORD=%s\n" "$(EMAIL)" "$$generated_password" > "$(MAKE_CREDENTIALS_FILE)"; \
-		chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
-		echo "Credentials saved to $(MAKE_CREDENTIALS_FILE)"; \
+	if [[ "$(ENV)" == "dev" ]]; then \
+		generated_password=$$(echo "$$output" | grep '^GENERATED_PASSWORD=' | cut -d '=' -f 2-); \
+		if [[ -n "$$generated_password" ]]; then \
+			mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
+			printf "EMAIL=%s\nPASSWORD=%s\n" "$(EMAIL)" "$$generated_password" > "$(MAKE_CREDENTIALS_FILE)"; \
+			chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
+			echo "Credentials saved to $(MAKE_CREDENTIALS_FILE)"; \
+		fi; \
+	fi
+
+reset-password:
+	@if [[ -z "$(EMAIL)" ]]; then \
+		echo "EMAIL is required. Example: make reset-password EMAIL=doc@acme.com"; \
+		exit 1; \
+	fi
+	@output=$$(uv run python -m src.entrypoints.local.user_admin_cli reset-password \
+		--email "$(EMAIL)"); \
+	echo "$$output"; \
+	if [[ "$(ENV)" == "dev" ]]; then \
+		generated_password=$$(echo "$$output" | grep '^GENERATED_PASSWORD=' | cut -d '=' -f 2-); \
+		if [[ -n "$$generated_password" ]]; then \
+			mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
+			printf "EMAIL=%s\nPASSWORD=%s\n" "$(EMAIL)" "$$generated_password" > "$(MAKE_CREDENTIALS_FILE)"; \
+			chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
+			echo "Credentials saved to $(MAKE_CREDENTIALS_FILE)"; \
+		fi; \
 	fi
 
 delete-professional:

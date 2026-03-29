@@ -63,6 +63,14 @@ class UserAdminService:
         self._user_repository.save(user)
         self._ensure_agent_profile(tenant_id=tenant_id, now_value=now_value)
 
+    def reset_password(self, request: user_admin_dto.ResetPasswordDTO) -> None:
+        user = self._user_repository.get_by_email(request.email)
+        if user is None:
+            raise service_exceptions.EntityNotFoundError("user not found")
+        updated_user = user.model_copy(deep=True)
+        updated_user.password_hash = self._password_hasher.hash_password(request.new_password)
+        self._user_repository.save(updated_user)
+
     def delete_professional(self, request: user_admin_dto.DeleteProfessionalDTO) -> None:
         user = self._user_repository.get_by_email(request.email)
         if user is None:
