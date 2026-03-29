@@ -117,12 +117,20 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     };
   }
 
-  async createEmbeddedSignupSession(): Promise<whatsappModel.EmbeddedSignupSession> {
+  async createEmbeddedSignupSession(
+    registrationPin?: string
+  ): Promise<whatsappModel.EmbeddedSignupSession> {
+    const bodyPayload: Record<string, string> = {};
+    if (registrationPin) {
+      bodyPayload["registration_pin"] = registrationPin;
+    }
+
     const payload = await this.request<httpTypes.EmbeddedSignupSessionApiResponse>(
       "/v1/whatsapp/embedded-signup/session",
       {
         method: "POST",
-        authRequired: true
+        authRequired: true,
+        body: JSON.stringify(bodyPayload)
       }
     );
 
