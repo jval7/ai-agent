@@ -674,6 +674,13 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return mapSchedulingRequestSummary(payload);
   }
 
+  async getDevFeatures(): Promise<{ enabled: boolean }> {
+    return this.request<{ enabled: boolean }>("/v1/settings/dev-features", {
+      method: "GET",
+      authRequired: true
+    });
+  }
+
   async getSandboxMode(): Promise<{ sandbox_enabled: boolean }> {
     return this.request<{ sandbox_enabled: boolean }>("/v1/settings/sandbox", {
       method: "GET",

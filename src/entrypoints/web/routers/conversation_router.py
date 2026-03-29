@@ -4,6 +4,7 @@ import src.entrypoints.web.dependencies as http_dependencies
 import src.infra.container as app_container
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.conversation_dto as conversation_dto
+import src.services.exceptions as service_exceptions
 
 router = fastapi.APIRouter(prefix="/v1/conversations", tags=["conversations"])
 
@@ -66,6 +67,10 @@ def reset_messages(
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> None:
+    if not container.settings.enable_dev_endpoints:
+        raise service_exceptions.AuthorizationError(
+            "chat reset is only available in dev environment"
+        )
     container.conversation_control_service.reset_messages(
         claims=claims,
         conversation_id=conversation_id,

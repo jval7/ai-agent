@@ -109,6 +109,7 @@ export interface BackendApiPort {
     input: schedulingModel.UpdateBookedSlotPaymentInput
   ): Promise<schedulingModel.SchedulingRequestSummary>;
 
+  getDevFeatures(): Promise<{ enabled: boolean }>;
   getSandboxMode(): Promise<{ sandbox_enabled: boolean }>;
   updateSandboxMode(enabled: boolean): Promise<{ sandbox_enabled: boolean }>;
 }

@@ -23,6 +23,10 @@ export class AgentUseCase {
     return this.api.updateAgentSettings(debounceDelay);
   }
 
+  async getDevFeatures() {
+    return this.api.getDevFeatures();
+  }
+
   async getSandboxMode() {
     return this.api.getSandboxMode();
   }

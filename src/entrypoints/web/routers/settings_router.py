@@ -10,12 +10,26 @@ import src.services.exceptions as service_exceptions
 router = fastapi.APIRouter(prefix="/v1/settings", tags=["settings"])
 
 
+class DevFeaturesResponse(pydantic.BaseModel):
+    enabled: bool
+
+
 class SandboxResponse(pydantic.BaseModel):
     sandbox_enabled: bool
 
 
 class SandboxUpdateRequest(pydantic.BaseModel):
     sandbox_enabled: bool
+
+
+@router.get("/dev-features", response_model=DevFeaturesResponse)
+def get_dev_features(
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> DevFeaturesResponse:
+    if claims.role != service_constants.DEFAULT_OWNER_ROLE:
+        raise service_exceptions.AuthorizationError("owner role required")
+    return DevFeaturesResponse(enabled=container.settings.enable_dev_endpoints)
 
 
 @router.get("/sandbox", response_model=SandboxResponse)
@@ -25,6 +39,8 @@ def get_sandbox_mode(
 ) -> SandboxResponse:
     if claims.role != service_constants.DEFAULT_OWNER_ROLE:
         raise service_exceptions.AuthorizationError("owner role required")
+    if not container.settings.enable_dev_endpoints:
+        raise service_exceptions.AuthorizationError("sandbox is only available in dev environment")
     return SandboxResponse(sandbox_enabled=container.settings.whatsapp_outbound_noop)
 
 
@@ -36,5 +52,7 @@ def update_sandbox_mode(
 ) -> SandboxResponse:
     if claims.role != service_constants.DEFAULT_OWNER_ROLE:
         raise service_exceptions.AuthorizationError("owner role required")
+    if not container.settings.enable_dev_endpoints:
+        raise service_exceptions.AuthorizationError("sandbox is only available in dev environment")
     container.settings.whatsapp_outbound_noop = body.sandbox_enabled
     return SandboxResponse(sandbox_enabled=container.settings.whatsapp_outbound_noop)
