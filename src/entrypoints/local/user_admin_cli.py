@@ -30,27 +30,23 @@ def _build_parser() -> argparse.ArgumentParser:
 
     create_parser = subparsers.add_parser(
         "create-user",
-        help="Create a regular user using master credentials",
+        help="Create a regular user in the same tenant",
     )
-    create_parser.add_argument("--master-email", required=True)
-    create_parser.add_argument("--master-password", required=True)
+    create_parser.add_argument("--tenant-email", required=True)
     create_parser.add_argument("--email", required=True)
     create_parser.add_argument("--password", required=True)
 
     delete_parser = subparsers.add_parser(
         "delete-user",
-        help="Delete a regular user using master credentials",
+        help="Delete a regular user by email",
     )
-    delete_parser.add_argument("--master-email", required=True)
-    delete_parser.add_argument("--master-password", required=True)
     delete_parser.add_argument("--email", required=True)
 
     delete_tenant_parser = subparsers.add_parser(
         "delete-tenant",
-        help="Delete the master's tenant and all its data",
+        help="Delete a tenant and all its data by email",
     )
-    delete_tenant_parser.add_argument("--master-email", required=True)
-    delete_tenant_parser.add_argument("--master-password", required=True)
+    delete_tenant_parser.add_argument("--email", required=True)
     delete_tenant_parser.add_argument(
         "--confirm",
         action="store_true",
@@ -95,40 +91,37 @@ def main() -> int:
     try:
         service = _build_service()
         if args.command == "bootstrap-master":
-            bootstrap_request = user_admin_dto.BootstrapMasterDTO(
-                tenant_name=args.tenant_name,
-                master_email=args.master_email,
-                master_password=args.master_password,
+            service.bootstrap_master(
+                user_admin_dto.BootstrapMasterDTO(
+                    tenant_name=args.tenant_name,
+                    master_email=args.master_email,
+                    master_password=args.master_password,
+                )
             )
-            service.bootstrap_master(bootstrap_request)
             print("Master user is ready.")
             return 0
+
         if args.command == "create-user":
-            create_request = user_admin_dto.CreateUserByMasterDTO(
-                master_email=args.master_email,
-                master_password=args.master_password,
-                email=args.email,
-                password=args.password,
+            service.create_user(
+                user_admin_dto.CreateUserDTO(
+                    tenant_email=args.tenant_email,
+                    email=args.email,
+                    password=args.password,
+                )
             )
-            service.create_user(create_request)
             print("User created successfully.")
             return 0
 
         if args.command == "delete-tenant":
-            delete_tenant_request = user_admin_dto.DeleteTenantByMasterDTO(
-                master_email=args.master_email,
-                master_password=args.master_password,
+            service.delete_tenant(
+                user_admin_dto.DeleteTenantDTO(email=args.email)
             )
-            service.delete_tenant(delete_tenant_request)
             print("Tenant and all its data deleted successfully.")
             return 0
 
-        delete_request = user_admin_dto.DeleteUserByMasterDTO(
-            master_email=args.master_email,
-            master_password=args.master_password,
-            email=args.email,
+        service.delete_user(
+            user_admin_dto.DeleteUserDTO(email=args.email)
         )
-        service.delete_user(delete_request)
         print("User deleted successfully.")
         return 0
     except pydantic.ValidationError as error:

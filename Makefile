@@ -96,9 +96,9 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 	simulate-whatsapp-message \
 	calendar-cleanup
 
-define require_master_credentials
-	@if [[ -z "$(MASTER_EMAIL)" || -z "$(MASTER_PASSWORD)" ]]; then \
-		echo "Error: Master credentials not found."; \
+define require_master_email
+	@if [[ -z "$(MASTER_EMAIL)" ]]; then \
+		echo "Error: MASTER_EMAIL not found."; \
 		echo "Run first: make setup-master MASTER_EMAIL=you@example.com MASTER_PASSWORD=secret TENANT_NAME=MyTenant"; \
 		exit 1; \
 	fi
@@ -123,7 +123,7 @@ setup-master:
 	@echo "Credentials saved to $(MAKE_CREDENTIALS_FILE)"
 
 oauth-flow:
-	$(require_master_credentials)
+	$(require_master_email)
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@mkdir -p "$(FLOW_DIR)"
 	@login_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/login" \
@@ -169,7 +169,7 @@ save-api-base:
 	@echo "Saved API_BASE to $(MAKE_API_BASE_FILE)"
 
 user-create:
-	$(require_master_credentials)
+	$(require_master_email)
 	@if [[ -z "$(USER_EMAIL)" ]]; then \
 		echo "USER_EMAIL is required. Example: make user-create USER_EMAIL=user@acme.com USER_PASSWORD=supersecret"; \
 		exit 1; \
@@ -179,30 +179,25 @@ user-create:
 		exit 1; \
 	fi
 	@uv run python -m src.entrypoints.local.user_admin_cli create-user \
-		--master-email "$(MASTER_EMAIL)" \
-		--master-password "$(MASTER_PASSWORD)" \
+		--tenant-email "$(MASTER_EMAIL)" \
 		--email "$(USER_EMAIL)" \
 		--password "$(USER_PASSWORD)"
 
 user-delete:
-	$(require_master_credentials)
 	@if [[ -z "$(USER_EMAIL)" ]]; then \
 		echo "USER_EMAIL is required. Example: make user-delete USER_EMAIL=user@acme.com"; \
 		exit 1; \
 	fi
 	@uv run python -m src.entrypoints.local.user_admin_cli delete-user \
-		--master-email "$(MASTER_EMAIL)" \
-		--master-password "$(MASTER_PASSWORD)" \
 		--email "$(USER_EMAIL)"
 
 delete-tenant:
-	$(require_master_credentials)
+	$(require_master_email)
 	@echo "This will DELETE the tenant and ALL its data (users, conversations, patients, etc.)."
 	@echo "Press Ctrl+C to cancel, or Enter to continue..."
 	@read -r _
 	@uv run python -m src.entrypoints.local.user_admin_cli delete-tenant \
-		--master-email "$(MASTER_EMAIL)" \
-		--master-password "$(MASTER_PASSWORD)" \
+		--email "$(MASTER_EMAIL)" \
 		--confirm
 
 memory-reset:
@@ -217,7 +212,7 @@ memory-reset:
 	@echo "Firestore reset endpoint finished. No local JSON snapshot cleanup is required."
 
 chat-memory-reset:
-	$(require_master_credentials)
+	$(require_master_email)
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@mkdir -p "$(FLOW_DIR)"
 	@live_reset_ok=0; \
@@ -605,7 +600,7 @@ app-config-secret-sync-env:
 	fi
 
 simulate-whatsapp-message:
-	$(require_master_credentials)
+	$(require_master_email)
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@echo "Using API_BASE=$(API_BASE) MASTER_EMAIL=$(MASTER_EMAIL)"
 	@mkdir -p "$(FLOW_DIR)"; \

@@ -111,7 +111,7 @@ def test_bootstrap_master_promotes_existing_user_when_credentials_are_valid() ->
     assert agent_profile is not None
 
 
-def test_create_user_requires_master_and_creates_professional_user() -> None:
+def test_create_user_creates_professional_user_in_same_tenant() -> None:
     service, _, user_repository, _, _ = build_user_admin_service(
         ["tenant-1", "user-master", "user-2"]
     )
@@ -124,9 +124,8 @@ def test_create_user_requires_master_and_creates_professional_user() -> None:
     )
 
     service.create_user(
-        user_admin_dto.CreateUserByMasterDTO(
-            master_email="master@acme.com",
-            master_password="supersecret",
+        user_admin_dto.CreateUserDTO(
+            tenant_email="master@acme.com",
             email="professional2@acme.com",
             password="supersecret2",
         )
@@ -138,35 +137,13 @@ def test_create_user_requires_master_and_creates_professional_user() -> None:
     assert created_user.is_master is False
 
 
-def test_create_user_fails_when_credentials_are_not_master() -> None:
-    service, tenant_repository, user_repository, _, password_hasher = build_user_admin_service([])
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-    tenant_repository.save(
-        tenant_entity.Tenant(
-            id="tenant-1",
-            name="Acme",
-            created_at=now_value,
-            updated_at=now_value,
-        )
-    )
-    user_repository.save(
-        user_entity.User(
-            id="user-1",
-            tenant_id="tenant-1",
-            email="professional@acme.com",
-            password_hash=password_hasher.hash_password("supersecret"),
-            role="professional",
-            is_active=True,
-            is_master=False,
-            created_at=now_value,
-        )
-    )
+def test_create_user_fails_when_tenant_email_not_found() -> None:
+    service, _, _, _, _ = build_user_admin_service([])
 
-    with pytest.raises(service_exceptions.AuthorizationError):
+    with pytest.raises(service_exceptions.EntityNotFoundError):
         service.create_user(
-            user_admin_dto.CreateUserByMasterDTO(
-                master_email="professional@acme.com",
-                master_password="supersecret",
+            user_admin_dto.CreateUserDTO(
+                tenant_email="nonexistent@acme.com",
                 email="other@acme.com",
                 password="supersecret2",
             )
@@ -185,9 +162,8 @@ def test_delete_user_hard_deletes_regular_user_and_blocks_master_delete() -> Non
         )
     )
     service.create_user(
-        user_admin_dto.CreateUserByMasterDTO(
-            master_email="master@acme.com",
-            master_password="supersecret",
+        user_admin_dto.CreateUserDTO(
+            tenant_email="master@acme.com",
             email="professional2@acme.com",
             password="supersecret2",
         )
@@ -196,22 +172,14 @@ def test_delete_user_hard_deletes_regular_user_and_blocks_master_delete() -> Non
     assert created_user is not None
 
     service.delete_user(
-        user_admin_dto.DeleteUserByMasterDTO(
-            master_email="master@acme.com",
-            master_password="supersecret",
-            email="professional2@acme.com",
-        )
+        user_admin_dto.DeleteUserDTO(email="professional2@acme.com")
     )
     assert user_repository.get_by_email("professional2@acme.com") is None
     assert user_repository.get_by_id(created_user.id) is None
 
     with pytest.raises(service_exceptions.InvalidStateError):
         service.delete_user(
-            user_admin_dto.DeleteUserByMasterDTO(
-                master_email="master@acme.com",
-                master_password="supersecret",
-                email="master@acme.com",
-            )
+            user_admin_dto.DeleteUserDTO(email="master@acme.com")
         )
 
 
@@ -227,9 +195,8 @@ def test_delete_tenant_removes_tenant_users_and_all_data() -> None:
         )
     )
     service.create_user(
-        user_admin_dto.CreateUserByMasterDTO(
-            master_email="master@acme.com",
-            master_password="supersecret",
+        user_admin_dto.CreateUserDTO(
+            tenant_email="master@acme.com",
             email="professional2@acme.com",
             password="supersecret2",
         )
@@ -241,10 +208,7 @@ def test_delete_tenant_removes_tenant_users_and_all_data() -> None:
     assert agent_profile_repository.get_by_tenant_id("tenant-1") is not None
 
     service.delete_tenant(
-        user_admin_dto.DeleteTenantByMasterDTO(
-            master_email="master@acme.com",
-            master_password="supersecret",
-        )
+        user_admin_dto.DeleteTenantDTO(email="master@acme.com")
     )
 
     assert tenant_repository.get_by_id("tenant-1") is None
@@ -253,36 +217,10 @@ def test_delete_tenant_removes_tenant_users_and_all_data() -> None:
     assert agent_profile_repository.get_by_tenant_id("tenant-1") is None
 
 
-def test_delete_tenant_rejects_non_master() -> None:
-    service, tenant_repository, user_repository, _, password_hasher = (
-        build_user_admin_service([])
-    )
-    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
-    tenant_repository.save(
-        tenant_entity.Tenant(
-            id="tenant-1",
-            name="Acme",
-            created_at=now_value,
-            updated_at=now_value,
-        )
-    )
-    user_repository.save(
-        user_entity.User(
-            id="user-1",
-            tenant_id="tenant-1",
-            email="regular@acme.com",
-            password_hash=password_hasher.hash_password("supersecret"),
-            role="professional",
-            is_active=True,
-            is_master=False,
-            created_at=now_value,
-        )
-    )
+def test_delete_tenant_fails_when_user_not_found() -> None:
+    service, _, _, _, _ = build_user_admin_service([])
 
-    with pytest.raises(service_exceptions.AuthorizationError):
+    with pytest.raises(service_exceptions.EntityNotFoundError):
         service.delete_tenant(
-            user_admin_dto.DeleteTenantByMasterDTO(
-                master_email="regular@acme.com",
-                master_password="supersecret",
-            )
+            user_admin_dto.DeleteTenantDTO(email="nonexistent@acme.com")
         )
