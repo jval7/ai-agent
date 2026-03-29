@@ -104,7 +104,9 @@ class WhatsappOnboardingService:
             raise service_exceptions.InvalidStateError("embedded signup state mismatch")
 
         credentials = self._whatsapp_provider.exchange_code_for_credentials(complete_dto.code)
-        return self._finalize_connection(connection, credentials)
+        return self._finalize_connection(
+            connection, credentials, registration_pin=complete_dto.registration_pin
+        )
 
     def complete_embedded_signup_by_state(
         self, code: str, state: str
@@ -126,12 +128,13 @@ class WhatsappOnboardingService:
             raise service_exceptions.EntityNotFoundError("embedded signup state not found")
 
         credentials = self._whatsapp_provider.exchange_code_for_credentials(code)
-        return self._finalize_connection(connection, credentials)
+        return self._finalize_connection(connection, credentials, registration_pin=None)
 
     def _finalize_connection(
         self,
         connection: whatsapp_connection_entity.WhatsappConnection,
         credentials: whatsapp_dto.EmbeddedSignupCredentialsDTO,
+        registration_pin: str | None = None,
     ) -> whatsapp_dto.WhatsappConnectionStatusDTO:
         logger.info(
             "whatsapp.onboarding.provisioning_started",
@@ -156,6 +159,7 @@ class WhatsappOnboardingService:
             self._whatsapp_provider.register_phone_number(
                 access_token=credentials.access_token,
                 phone_number_id=credentials.phone_number_id,
+                registration_pin=registration_pin,
             )
         except service_exceptions.ExternalProviderError as error:
             logger.error(

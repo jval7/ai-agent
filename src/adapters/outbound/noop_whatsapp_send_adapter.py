@@ -34,8 +34,10 @@ class NoopWhatsappSendAdapter(whatsapp_provider_port.WhatsappProviderPort):
     def subscribe_app_to_waba(self, access_token: str, business_account_id: str) -> None:
         self._delegate.subscribe_app_to_waba(access_token, business_account_id)
 
-    def register_phone_number(self, access_token: str, phone_number_id: str) -> None:
-        self._delegate.register_phone_number(access_token, phone_number_id)
+    def register_phone_number(
+        self, access_token: str, phone_number_id: str, registration_pin: str | None = None
+    ) -> None:
+        self._delegate.register_phone_number(access_token, phone_number_id, registration_pin)
 
     def send_text_message(
         self,

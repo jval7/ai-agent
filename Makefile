@@ -36,6 +36,7 @@ SIM_WA_USER_ID ?= 573001234567
 SIM_WA_USER_NAME ?= Cliente Demo
 MESSAGE ?= Hola desde WhatsApp
 SIM_PROVIDER_MESSAGE_ID ?=
+ENV ?= dev
 DEPLOY_PROJECT_ID ?=
 DEPLOY_REGION ?= us-central1
 DEPLOY_ARTIFACT_REPOSITORY ?= ai-agent-backend
@@ -48,9 +49,9 @@ DEPLOY_APP_CONFIG_SECRET_ID ?= AI_AGENT_APP_CONFIG_JSON
 DEPLOY_BASE_DIR ?= $(FLOW_DIR)/deploy
 DEPLOY_FRONT_TF_DIR ?= $(DEPLOY_BASE_DIR)/terraform/frontend_spa_cdn_local
 DEPLOY_BACK_TF_DIR ?= $(DEPLOY_BASE_DIR)/terraform/runtime_deploy_local
-DEPLOY_FRONT_ENV_FILE ?= $(DEPLOY_BASE_DIR)/dev-front.env
-DEPLOY_BACK_ENV_FILE ?= $(DEPLOY_BASE_DIR)/dev-back.env
-TF_STATE_BUCKET ?= ai-agent-calendar-dev-tf-state
+DEPLOY_FRONT_ENV_FILE ?= $(DEPLOY_BASE_DIR)/$(ENV)-front.env
+DEPLOY_BACK_ENV_FILE ?= $(DEPLOY_BASE_DIR)/$(ENV)-back.env
+TF_STATE_BUCKET ?=
 DEPLOY_BACK_ENVS_DIR ?= infra/terraform/runtime_deploy/envs
 DEPLOY_FRONT_ENVS_DIR ?= infra/terraform/frontend_spa_cdn/envs
 APP_CONFIG_KEY ?=
@@ -320,11 +321,11 @@ docker-logs:
 
 deploy-front-infra:
 	@command -v terraform >/dev/null 2>&1 || { echo "terraform is required."; exit 1; }
-	@if [[ ! -f "$(DEPLOY_FRONT_ENVS_DIR)/dev.tfvars" ]]; then \
-		echo "Environment file not found: $(DEPLOY_FRONT_ENVS_DIR)/dev.tfvars"; \
+	@if [[ ! -f "$(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars" ]]; then \
+		echo "Environment file not found: $(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars"; \
 		exit 1; \
 	fi
-	@echo "Deploying frontend infra [env=dev]"
+	@echo "Deploying frontend infra [env=$(ENV)]"
 	@mkdir -p "$(DEPLOY_FRONT_TF_DIR)"
 	@rsync -a \
 		--exclude='.terraform' \
@@ -332,13 +333,18 @@ deploy-front-infra:
 		--exclude='terraform.tfstate.backup' \
 		infra/terraform/frontend_spa_cdn/ \
 		"$(DEPLOY_FRONT_TF_DIR)/"
-	@cp "$(DEPLOY_FRONT_ENVS_DIR)/dev.tfvars" "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"
+	@cp "$(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars" "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"
 	@if [[ -n "$(DEPLOY_FRONTEND_BUCKET_NAME)" ]]; then \
 		printf '\nbucket_name = "%s"\n' "$(DEPLOY_FRONTEND_BUCKET_NAME)" >> "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"; \
 	fi
-	@terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" init -reconfigure \
-		-backend-config="bucket=$(TF_STATE_BUCKET)" \
-		-backend-config="prefix=dev/frontend-spa-cdn"
+	@tf_state_bucket="$(TF_STATE_BUCKET)"; \
+	if [[ -z "$$tf_state_bucket" ]]; then \
+		proj=$$(grep '^project_id' "$(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+		tf_state_bucket="$$proj-tf-state"; \
+	fi; \
+	terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" init -reconfigure \
+		-backend-config="bucket=$$tf_state_bucket" \
+		-backend-config="prefix=$(ENV)/frontend-spa-cdn"
 	@terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" apply -auto-approve -var-file=terraform.tfvars
 	@frontend_url=$$(terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" output -raw frontend_http_url 2>/dev/null || true); \
 	if [[ -z "$$frontend_url" || "$$frontend_url" == "null" ]]; then \
@@ -347,7 +353,7 @@ deploy-front-infra:
 	frontend_bucket=$$(terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" output -raw frontend_bucket_name); \
 	mkdir -p "$(DEPLOY_BASE_DIR)"; \
 	printf "DEPLOY_FRONTEND_URL=%s\nDEPLOY_FRONTEND_BUCKET=%s\n" "$$frontend_url" "$$frontend_bucket" > "$(DEPLOY_FRONT_ENV_FILE)"; \
-	echo "Frontend infra ready [dev]: $$frontend_url (bucket=$$frontend_bucket)"
+	echo "Frontend infra ready [$(ENV)]: $$frontend_url (bucket=$$frontend_bucket)"
 
 deploy-front-upload:
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
@@ -393,11 +399,11 @@ deploy-back:
 	@command -v terraform >/dev/null 2>&1 || { echo "terraform is required."; exit 1; }
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
 	@command -v docker >/dev/null 2>&1 || { echo "docker is required."; exit 1; }
-	@if [[ ! -f "$(DEPLOY_BACK_ENVS_DIR)/dev.tfvars" ]]; then \
-		echo "Environment file not found: $(DEPLOY_BACK_ENVS_DIR)/dev.tfvars"; \
+	@if [[ ! -f "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" ]]; then \
+		echo "Environment file not found: $(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars"; \
 		exit 1; \
 	fi
-	@echo "Deploying backend [env=dev]"
+	@echo "Deploying backend [env=$(ENV)]"
 	@mkdir -p "$(DEPLOY_BACK_TF_DIR)"
 	@rsync -a \
 		--exclude='.terraform' \
@@ -408,7 +414,11 @@ deploy-back:
 	@set -euo pipefail; \
 	project_id="$(DEPLOY_PROJECT_ID)"; \
 	if [[ -z "$$project_id" ]]; then \
-		project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/dev.tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+		project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+	fi; \
+	tf_state_bucket="$(TF_STATE_BUCKET)"; \
+	if [[ -z "$$tf_state_bucket" ]]; then \
+		tf_state_bucket="$$project_id-tf-state"; \
 	fi; \
 	region="$(DEPLOY_REGION)"; \
 	artifact_repo="$(DEPLOY_ARTIFACT_REPOSITORY)"; \
@@ -423,7 +433,7 @@ deploy-back:
 		image_tag=$$(date +%Y%m%d-%H%M%S)-amd64; \
 	fi; \
 	image_uri="$$region-docker.pkg.dev/$$project_id/$$artifact_repo/backend:$$image_tag"; \
-	cp "$(DEPLOY_BACK_ENVS_DIR)/dev.tfvars" "$(DEPLOY_BACK_TF_DIR)/terraform.tfvars"; \
+	cp "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" "$(DEPLOY_BACK_TF_DIR)/terraform.tfvars"; \
 	printf '\n%s\n%s\n%s\n%s\n' \
 		"runtime_service_account_email = \"$$runtime_sa_email\"" \
 		"container_image               = \"$$image_uri\"" \
@@ -431,8 +441,8 @@ deploy-back:
 		'manage_app_config_secret = true' \
 		>> "$(DEPLOY_BACK_TF_DIR)/terraform.tfvars"; \
 	terraform -chdir="$(DEPLOY_BACK_TF_DIR)" init -reconfigure \
-		-backend-config="bucket=$(TF_STATE_BUCKET)" \
-		-backend-config="prefix=dev/runtime-deploy"; \
+		-backend-config="bucket=$$tf_state_bucket" \
+		-backend-config="prefix=$(ENV)/runtime-deploy"; \
 	if ! terraform -chdir="$(DEPLOY_BACK_TF_DIR)" state show 'google_artifact_registry_repository.backend' >/dev/null 2>&1; then \
 		terraform -chdir="$(DEPLOY_BACK_TF_DIR)" import -var-file=terraform.tfvars \
 			'google_artifact_registry_repository.backend' \
@@ -463,18 +473,22 @@ deploy-back:
 	backend_url=$$(terraform -chdir="$(DEPLOY_BACK_TF_DIR)" output -raw cloud_run_service_url); \
 	mkdir -p "$(DEPLOY_BASE_DIR)"; \
 	printf "DEPLOY_BACKEND_URL=%s\nDEPLOY_BACKEND_IMAGE_URI=%s\nDEPLOY_RUNTIME_SERVICE_ACCOUNT_EMAIL=%s\n" "$$backend_url" "$$image_uri" "$$runtime_sa_email" > "$(DEPLOY_BACK_ENV_FILE)"; \
-	echo "Backend deployed [dev]: $$backend_url"
+	echo "Backend deployed [$(ENV)]: $$backend_url"
 
 deploy-all:
-	@$(MAKE) deploy-front-infra
-	@$(MAKE) deploy-back
-	@$(MAKE) deploy-front-upload
+	@$(MAKE) deploy-front-infra ENV=$(ENV)
+	@$(MAKE) deploy-back ENV=$(ENV)
+	@$(MAKE) deploy-front-upload ENV=$(ENV)
 
 app-config-secret-upsert:
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required."; exit 1; }
-	@current_json=$$(gcloud secrets versions access latest \
-		--project "$(DEPLOY_PROJECT_ID)" \
+	@project_id="$(DEPLOY_PROJECT_ID)"; \
+	if [[ -z "$$project_id" ]]; then \
+		project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+	fi; \
+	current_json=$$(gcloud secrets versions access latest \
+		--project "$$project_id" \
 		--secret "$(DEPLOY_APP_CONFIG_SECRET_ID)" 2>/dev/null || echo "{}"); \
 	if ! printf '%s' "$$current_json" | jq -e 'type=="object"' >/dev/null; then \
 		echo "Current secret payload is not a JSON object."; \
@@ -517,9 +531,9 @@ app-config-secret-upsert:
 			| jq --arg key "$${resolved_key}" --arg value "$${resolved_value}" '.[$$key] = $$value'); \
 	fi; \
 	printf '%s' "$$updated_json" | gcloud secrets versions add "$(DEPLOY_APP_CONFIG_SECRET_ID)" \
-		--project "$(DEPLOY_PROJECT_ID)" \
+		--project "$$project_id" \
 		--data-file=- >/dev/null; \
-	echo "Upserted key '$${resolved_key}' in secret $(DEPLOY_APP_CONFIG_SECRET_ID)."
+	echo "Upserted key '$${resolved_key}' in secret $(DEPLOY_APP_CONFIG_SECRET_ID) [$(ENV)]."
 
 app-config-secret-sync-env:
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
@@ -528,8 +542,12 @@ app-config-secret-sync-env:
 		echo "Env file not found: $(APP_CONFIG_ENV_FILE)"; \
 		exit 1; \
 	fi
-	@current_json=$$(gcloud secrets versions access latest \
-		--project "$(DEPLOY_PROJECT_ID)" \
+	@project_id="$(DEPLOY_PROJECT_ID)"; \
+	if [[ -z "$$project_id" ]]; then \
+		project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+	fi; \
+	current_json=$$(gcloud secrets versions access latest \
+		--project "$$project_id" \
 		--secret "$(DEPLOY_APP_CONFIG_SECRET_ID)" 2>/dev/null || echo "{}"); \
 	if ! printf '%s' "$$current_json" | jq -e 'type=="object"' >/dev/null; then \
 		echo "Current secret payload is not a JSON object."; \
@@ -570,9 +588,9 @@ app-config-secret-sync-env:
 		exit 1; \
 	fi; \
 	printf '%s' "$$updated_json" | gcloud secrets versions add "$(DEPLOY_APP_CONFIG_SECRET_ID)" \
-		--project "$(DEPLOY_PROJECT_ID)" \
+		--project "$$project_id" \
 		--data-file=- >/dev/null; \
-	echo "Synced $$synced_count keys from $(APP_CONFIG_ENV_FILE) to secret $(DEPLOY_APP_CONFIG_SECRET_ID)."; \
+	echo "Synced $$synced_count keys from $(APP_CONFIG_ENV_FILE) to secret $(DEPLOY_APP_CONFIG_SECRET_ID) [$(ENV)]."; \
 	if [[ "$(APP_CONFIG_PRUNE_ENV)" == "true" ]]; then \
 		tmp_env_file=$$(mktemp); \
 		keys_regex=$$(printf '%s' "$(APP_CONFIG_SYNC_KEYS)" | tr ' ' '|'); \

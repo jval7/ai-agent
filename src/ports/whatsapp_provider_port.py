@@ -19,7 +19,9 @@ class WhatsappProviderPort(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def register_phone_number(self, access_token: str, phone_number_id: str) -> None:
+    def register_phone_number(
+        self, access_token: str, phone_number_id: str, registration_pin: str | None = None
+    ) -> None:
         raise NotImplementedError
 
     @abc.abstractmethod
