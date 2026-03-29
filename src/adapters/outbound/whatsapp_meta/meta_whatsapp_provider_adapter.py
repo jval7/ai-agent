@@ -56,19 +56,17 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
         )
         self._assert_success_flag(response_payload, "subscribing app to waba")
 
-    def register_phone_number(self, access_token: str, phone_number_id: str) -> None:
-        registration_pin = self._settings.meta_phone_registration_pin.strip()
-        if registration_pin == "":
-            raise service_exceptions.ExternalProviderError(
-                "META_PHONE_REGISTRATION_PIN is required"
-            )
+    def register_phone_number(
+        self, access_token: str, phone_number_id: str, registration_pin: str | None = None
+    ) -> None:
+        pin = (registration_pin or "").strip()
 
         register_url = f"https://graph.facebook.com/{self._settings.meta_api_version}/{phone_number_id}/register"
         headers = {"Authorization": f"Bearer {access_token}"}
-        body = {
-            "messaging_product": "whatsapp",
-            "pin": registration_pin,
-        }
+        body: dict[str, str] = {"messaging_product": "whatsapp"}
+        if pin:
+            body["pin"] = pin
+
         response_payload = self._post_json(
             url=register_url,
             operation_label="registering phone number",

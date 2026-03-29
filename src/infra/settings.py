@@ -21,7 +21,6 @@ class Settings(pydantic.BaseModel):
     meta_app_secret: str
     meta_redirect_uri: str
     meta_webhook_verify_token: str
-    meta_phone_registration_pin: str
     meta_api_version: str
     google_oauth_client_id: str
     google_oauth_client_secret: str
@@ -88,7 +87,6 @@ class Settings(pydantic.BaseModel):
                 "META_WEBHOOK_VERIFY_TOKEN",
                 "dev-meta-webhook-verify-token",
             ),
-            meta_phone_registration_pin=app_config_overrides.get("META_PHONE_REGISTRATION_PIN", ""),
             meta_api_version=app_config_overrides.get("META_API_VERSION", "v23.0"),
             google_oauth_client_id=app_config_overrides.get("GOOGLE_OAUTH_CLIENT_ID", ""),
             google_oauth_client_secret=app_config_overrides.get("GOOGLE_OAUTH_CLIENT_SECRET", ""),

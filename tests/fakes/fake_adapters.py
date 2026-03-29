@@ -91,7 +91,9 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
         }
         self.waba_subscriptions.append(payload)
 
-    def register_phone_number(self, access_token: str, phone_number_id: str) -> None:
+    def register_phone_number(
+        self, access_token: str, phone_number_id: str, registration_pin: str | None = None
+    ) -> None:
         if self.should_fail_phone_registration:
             raise service_exceptions.ExternalProviderError("simulated phone register failure")
 
