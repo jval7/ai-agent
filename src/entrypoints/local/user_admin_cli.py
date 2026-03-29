@@ -1,4 +1,6 @@
 import argparse
+import secrets
+import string
 import sys
 
 import pydantic
@@ -26,7 +28,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     create_parser.add_argument("--tenant-name", required=True)
     create_parser.add_argument("--email", required=True)
-    create_parser.add_argument("--password", required=True)
 
     delete_parser = subparsers.add_parser(
         "delete-professional",
@@ -77,14 +78,20 @@ def main() -> int:
     try:
         service = _build_service()
         if args.command == "create-professional":
+            alphabet = string.ascii_letters + string.digits
+            password = "".join(secrets.choice(alphabet) for _ in range(16))
             service.create_professional(
                 user_admin_dto.CreateProfessionalDTO(
                     tenant_name=args.tenant_name,
                     email=args.email,
-                    password=args.password,
+                    password=password,
                 )
             )
             print("Professional created successfully.")
+            print(f"  Tenant:   {args.tenant_name}")
+            print(f"  Email:    {args.email}")
+            print(f"  Password: {password}")
+            print(f"GENERATED_PASSWORD={password}")
             return 0
 
         service.delete_professional(

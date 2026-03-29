@@ -40,10 +40,12 @@ make fe-dev
 Each professional is an independent tenant. Management is local-only through Make commands (requires GCP access):
 
 ```bash
-make create-professional EMAIL=doc@acme.com PASSWORD=supersecret TENANT_NAME=DrAcme
+make create-professional EMAIL=doc@acme.com TENANT_NAME=DrAcme
 make delete-professional EMAIL=doc@acme.com
 make oauth-flow
 ```
+
+`create-professional` generates a random password and prints it. Credentials are saved to `.secrets/` for use by other commands.
 
 ## Run with Docker
 
