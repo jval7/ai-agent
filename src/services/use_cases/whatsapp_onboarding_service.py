@@ -163,18 +163,13 @@ class WhatsappOnboardingService:
                 access_token=credentials.access_token,
                 business_account_id=credentials.business_account_id,
             )
-            self._whatsapp_provider.register_phone_number(
-                access_token=credentials.access_token,
-                phone_number_id=credentials.phone_number_id,
-                registration_pin=registration_pin,
-            )
         except service_exceptions.ExternalProviderError as error:
             logger.error(
                 "whatsapp.onboarding.provisioning_failed",
                 extra={
                     "event_data": app_logs.build_log_event(
                         event_name="whatsapp.onboarding.provisioning_failed",
-                        message="whatsapp cloud provisioning failed",
+                        message="whatsapp cloud provisioning failed at subscribe",
                         data={
                             "tenant_id": connection.tenant_id,
                             "reason": str(error),
@@ -183,6 +178,41 @@ class WhatsappOnboardingService:
                 },
             )
             raise
+
+        try:
+            self._whatsapp_provider.register_phone_number(
+                access_token=credentials.access_token,
+                phone_number_id=credentials.phone_number_id,
+                registration_pin=registration_pin,
+            )
+        except service_exceptions.ExternalProviderError as error:
+            is_smb_error = "not available for SMB" in str(error)
+            if is_smb_error:
+                logger.info(
+                    "whatsapp.onboarding.register_skipped_smb",
+                    extra={
+                        "event_data": app_logs.build_log_event(
+                            event_name="whatsapp.onboarding.register_skipped_smb",
+                            message="phone registration skipped for SMB business",
+                            data={"tenant_id": connection.tenant_id},
+                        )
+                    },
+                )
+            else:
+                logger.error(
+                    "whatsapp.onboarding.provisioning_failed",
+                    extra={
+                        "event_data": app_logs.build_log_event(
+                            event_name="whatsapp.onboarding.provisioning_failed",
+                            message="whatsapp cloud provisioning failed at register",
+                            data={
+                                "tenant_id": connection.tenant_id,
+                                "reason": str(error),
+                            },
+                        )
+                    },
+                )
+                raise
 
         logger.info(
             "whatsapp.onboarding.provisioning_completed",
