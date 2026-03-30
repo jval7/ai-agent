@@ -27,9 +27,11 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
         encoded_query = urllib.parse.urlencode(query_params)
         return f"https://www.facebook.com/{self._settings.meta_api_version}/dialog/oauth?{encoded_query}"
 
-    def exchange_code_for_credentials(self, code: str) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
+    def exchange_code_for_credentials(
+        self, code: str, *, from_js_sdk: bool = False
+    ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
         self._validate_embedded_signup_settings()
-        access_token = self._exchange_code_for_access_token(code)
+        access_token = self._exchange_code_for_access_token(code, from_js_sdk=from_js_sdk)
 
         business_id = self._resolve_business_id(access_token)
         debug_target_ids = self._fetch_debug_target_ids(access_token)
@@ -255,19 +257,21 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
         if not self._settings.meta_redirect_uri:
             raise service_exceptions.ExternalProviderError("META_REDIRECT_URI is required")
 
-    def _exchange_code_for_access_token(self, code: str) -> str:
+    def _exchange_code_for_access_token(self, code: str, *, from_js_sdk: bool = False) -> str:
         token_url = (
             f"https://graph.facebook.com/{self._settings.meta_api_version}/oauth/access_token"
         )
+        params: dict[str, str] = {
+            "client_id": self._settings.meta_app_id,
+            "client_secret": self._settings.meta_app_secret,
+            "code": code,
+        }
+        if not from_js_sdk:
+            params["redirect_uri"] = self._settings.meta_redirect_uri
         token_payload = self._get_json(
             url=token_url,
             operation_label="exchanging embedded signup code",
-            params={
-                "client_id": self._settings.meta_app_id,
-                "client_secret": self._settings.meta_app_secret,
-                "redirect_uri": self._settings.meta_redirect_uri,
-                "code": code,
-            },
+            params=params,
         )
 
         access_token = token_payload.get("access_token")

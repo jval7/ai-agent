@@ -28,8 +28,10 @@ class NoopWhatsappSendAdapter(whatsapp_provider_port.WhatsappProviderPort):
     def build_embedded_signup_url(self, state: str) -> str:
         return self._delegate.build_embedded_signup_url(state)
 
-    def exchange_code_for_credentials(self, code: str) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
-        return self._delegate.exchange_code_for_credentials(code)
+    def exchange_code_for_credentials(
+        self, code: str, *, from_js_sdk: bool = False
+    ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
+        return self._delegate.exchange_code_for_credentials(code, from_js_sdk=from_js_sdk)
 
     def subscribe_app_to_waba(self, access_token: str, business_account_id: str) -> None:
         self._delegate.subscribe_app_to_waba(access_token, business_account_id)

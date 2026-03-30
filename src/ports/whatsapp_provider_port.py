@@ -11,7 +11,9 @@ class WhatsappProviderPort(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def exchange_code_for_credentials(self, code: str) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
+    def exchange_code_for_credentials(
+        self, code: str, *, from_js_sdk: bool = False
+    ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
         raise NotImplementedError
 
     @abc.abstractmethod
