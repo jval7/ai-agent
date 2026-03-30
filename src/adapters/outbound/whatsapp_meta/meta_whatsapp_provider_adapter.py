@@ -463,8 +463,9 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
                 f"network error while {operation_label}"
             ) from error
         except httpx.HTTPStatusError as error:
+            response_body = error.response.text[:500] if error.response else "no response"
             raise service_exceptions.ExternalProviderError(
-                f"meta rejected request while {operation_label}"
+                f"meta rejected request while {operation_label}: {response_body}"
             ) from error
         except json.JSONDecodeError as error:
             raise service_exceptions.ExternalProviderError(
