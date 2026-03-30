@@ -6,6 +6,7 @@ import * as manualAppointmentUseCaseModule from "@application/use_cases/manual_a
 import * as onboardingUseCaseModule from "@application/use_cases/onboarding_use_case";
 import * as patientUseCaseModule from "@application/use_cases/patient_use_case";
 import * as schedulingUseCaseModule from "@application/use_cases/scheduling_use_case";
+import * as whatsappOnboardingUseCaseModule from "@application/use_cases/whatsapp_onboarding_use_case";
 import * as backendApiAdapterModule from "@adapters/outbound/http/backend_api_adapter";
 import * as browserTokenSessionAdapterModule from "@adapters/outbound/storage/browser_token_session_adapter";
 import * as envModule from "@infrastructure/config/env";
@@ -13,6 +14,7 @@ import * as envModule from "@infrastructure/config/env";
 export interface AppContainer {
   authUseCase: authUseCaseModule.AuthUseCase;
   onboardingUseCase: onboardingUseCaseModule.OnboardingUseCase;
+  whatsappOnboardingUseCase: whatsappOnboardingUseCaseModule.WhatsappOnboardingUseCase;
   conversationUseCase: conversationUseCaseModule.ConversationUseCase;
   patientUseCase: patientUseCaseModule.PatientUseCase;
   manualAppointmentUseCase: manualAppointmentUseCaseModule.ManualAppointmentUseCase;
@@ -31,6 +33,9 @@ export function createAppContainer(): AppContainer {
   return {
     authUseCase: new authUseCaseModule.AuthUseCase(backendApi, tokenSession),
     onboardingUseCase: new onboardingUseCaseModule.OnboardingUseCase(backendApi),
+    whatsappOnboardingUseCase: new whatsappOnboardingUseCaseModule.WhatsappOnboardingUseCase(
+      backendApi
+    ),
     conversationUseCase: new conversationUseCaseModule.ConversationUseCase(backendApi),
     patientUseCase: new patientUseCaseModule.PatientUseCase(backendApi),
     manualAppointmentUseCase: new manualAppointmentUseCaseModule.ManualAppointmentUseCase(

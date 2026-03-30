@@ -8,6 +8,7 @@ import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBann
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
 import * as uiErrorModule from "@shared/http/ui_error";
+import * as fbSdkModule from "@shared/facebook/fb_sdk";
 import * as dateUtilsModule from "@shared/utils/date";
 
 const whatsappConnectionQueryKey = ["whatsapp-connection"] as const;
@@ -69,10 +70,20 @@ export function ConfiguracionesPage() {
 
   const queryClient = reactQueryModule.useQueryClient();
   const whatsappSessionMutation = reactQueryModule.useMutation({
-    mutationFn: () =>
-      appContainer.onboardingUseCase.createWhatsappSession(registrationPin.trim() || undefined),
-    onSuccess: (session) => {
-      window.location.assign(session.connectUrl);
+    mutationFn: async () => {
+      const session = await appContainer.whatsappOnboardingUseCase.createEmbeddedSignupSession(
+        registrationPin.trim() || undefined
+      );
+      await fbSdkModule.loadFacebookSdk(session.appId);
+      const code = await fbSdkModule.launchEmbeddedSignup(session.configId);
+      const pin = registrationPin.trim();
+      return appContainer.whatsappOnboardingUseCase.completeEmbeddedSignup(
+        pin ? { code, state: session.state, registrationPin: pin } : { code, state: session.state }
+      );
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: whatsappConnectionQueryKey });
+      void queryClient.invalidateQueries({ queryKey: onboardingStatusQueryKey });
     }
   });
   const googleSessionMutation = reactQueryModule.useMutation({
@@ -246,7 +257,7 @@ export function ConfiguracionesPage() {
                 />
               </div>
 
-              <div className="mt-4">
+              <div className="mt-4 space-y-3">
                 <button
                   className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={whatsappSessionMutation.isPending}
@@ -255,8 +266,11 @@ export function ConfiguracionesPage() {
                   }}
                   type="button"
                 >
-                  {whatsappSessionMutation.isPending ? "Abriendo Meta..." : "Conectar con Meta"}
+                  {whatsappSessionMutation.isPending ? "Conectando..." : "Conectar con Meta"}
                 </button>
+                {whatsappSessionMutation.isSuccess ? (
+                  <p className="text-sm text-emerald-600">WhatsApp conectado correctamente.</p>
+                ) : null}
               </div>
             </article>
 

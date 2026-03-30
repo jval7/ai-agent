@@ -3,6 +3,14 @@ export type WhatsappConnectionStatus = "DISCONNECTED" | "PENDING" | "CONNECTED";
 export interface EmbeddedSignupSession {
   state: string;
   connectUrl: string;
+  appId: string;
+  configId: string;
+}
+
+export interface EmbeddedSignupCompleteRequest {
+  code: string;
+  state: string;
+  registrationPin?: string;
 }
 
 export interface WhatsappConnection {

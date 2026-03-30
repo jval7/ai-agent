@@ -22,6 +22,9 @@ export interface BackendApiPort {
   createEmbeddedSignupSession(
     registrationPin?: string
   ): Promise<whatsappModel.EmbeddedSignupSession>;
+  completeEmbeddedSignup(
+    request: whatsappModel.EmbeddedSignupCompleteRequest
+  ): Promise<whatsappModel.WhatsappConnection>;
   getWhatsappConnection(): Promise<whatsappModel.WhatsappConnection>;
   createGoogleOauthSession(): Promise<googleCalendarModel.GoogleOauthSession>;
   getGoogleCalendarConnection(): Promise<googleCalendarModel.GoogleCalendarConnection>;

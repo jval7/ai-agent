@@ -38,6 +38,8 @@ def build_onboarding_service(
         id_generator=id_generator,
         clock=clock,
         webhook_verify_token=resolved_webhook_verify_token,
+        meta_app_id="test-app-id",
+        meta_config_id="test-config-id",
     )
     return service, provider
 

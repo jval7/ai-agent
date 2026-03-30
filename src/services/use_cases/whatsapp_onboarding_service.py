@@ -19,12 +19,16 @@ class WhatsappOnboardingService:
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
         webhook_verify_token: str,
+        meta_app_id: str,
+        meta_config_id: str,
     ) -> None:
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._whatsapp_provider = whatsapp_provider
         self._id_generator = id_generator
         self._clock = clock
         self._webhook_verify_token = webhook_verify_token
+        self._meta_app_id = meta_app_id
+        self._meta_config_id = meta_config_id
 
     def create_embedded_signup_session(
         self,
@@ -68,6 +72,8 @@ class WhatsappOnboardingService:
         return whatsapp_dto.EmbeddedSignupSessionResponseDTO(
             state=state_token,
             connect_url=connect_url,
+            app_id=self._meta_app_id,
+            config_id=self._meta_config_id,
         )
 
     def complete_embedded_signup(

@@ -200,6 +200,8 @@ class AppContainer:
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
             webhook_verify_token=self.settings.meta_webhook_verify_token,
+            meta_app_id=self.settings.meta_app_id,
+            meta_config_id=self.settings.meta_config_id,
         )
         self.google_calendar_onboarding_service = (
             google_calendar_onboarding_service.GoogleCalendarOnboardingService(

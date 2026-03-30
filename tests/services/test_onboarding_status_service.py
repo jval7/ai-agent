@@ -30,6 +30,8 @@ def build_service() -> onboarding_status_service.OnboardingStatusService:
         id_generator=id_generator,
         clock=clock,
         webhook_verify_token="verify-token",
+        meta_app_id="test-app-id",
+        meta_config_id="test-config-id",
     )
     google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
         google_calendar_connection_repository=google_connection_repository,

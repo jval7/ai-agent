@@ -93,6 +93,12 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async completeEmbeddedSignup(
+    _request: whatsappModel.EmbeddedSignupCompleteRequest
+  ): Promise<whatsappModel.WhatsappConnection> {
+    throw new Error("not used");
+  }
+
   async getWhatsappConnection(): Promise<whatsappModel.WhatsappConnection> {
     throw new Error("not used");
   }
