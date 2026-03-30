@@ -8,6 +8,8 @@ class EmbeddedSignupSessionRequestDTO(pydantic.BaseModel):
 class EmbeddedSignupSessionResponseDTO(pydantic.BaseModel):
     state: str
     connect_url: str
+    app_id: str
+    config_id: str
 
 
 class EmbeddedSignupCompleteDTO(pydantic.BaseModel):

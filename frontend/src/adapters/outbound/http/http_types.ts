@@ -18,6 +18,8 @@ export interface AgentSettingsApiResponse {
 export interface EmbeddedSignupSessionApiResponse {
   state: string;
   connect_url: string;
+  app_id: string;
+  config_id: string;
 }
 
 export interface GoogleOauthSessionApiResponse {

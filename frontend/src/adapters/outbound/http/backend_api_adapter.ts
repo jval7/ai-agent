@@ -136,7 +136,32 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
 
     return {
       state: payload.state,
-      connectUrl: payload.connect_url
+      connectUrl: payload.connect_url,
+      appId: payload.app_id,
+      configId: payload.config_id
+    };
+  }
+
+  async completeEmbeddedSignup(
+    request: whatsappModel.EmbeddedSignupCompleteRequest
+  ): Promise<whatsappModel.WhatsappConnection> {
+    const payload = await this.request<httpTypes.WhatsappConnectionApiResponse>(
+      "/v1/whatsapp/embedded-signup/complete",
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          code: request.code,
+          state: request.state,
+          registration_pin: request.registrationPin ?? null
+        })
+      }
+    );
+    return {
+      tenantId: payload.tenant_id,
+      status: payload.status,
+      phoneNumberId: payload.phone_number_id,
+      businessAccountId: payload.business_account_id
     };
   }
 
