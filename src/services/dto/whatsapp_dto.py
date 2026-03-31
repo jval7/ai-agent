@@ -18,6 +18,8 @@ class EmbeddedSignupCompleteDTO(pydantic.BaseModel):
     registration_pin: str | None = None
     origin_url: str | None = None
     access_token: str | None = None
+    phone_number_id: str | None = None
+    waba_id: str | None = None
 
 
 class EmbeddedSignupCredentialsDTO(pydantic.BaseModel):

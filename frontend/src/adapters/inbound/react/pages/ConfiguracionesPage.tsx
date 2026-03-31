@@ -80,7 +80,10 @@ export function ConfiguracionesPage() {
       const base = {
         code: result.code,
         state: session.state,
-        ...(result.redirectUri ? { originUrl: result.redirectUri } : {})
+        ...(result.sessionInfo.phoneNumberId
+          ? { phoneNumberId: result.sessionInfo.phoneNumberId }
+          : {}),
+        ...(result.sessionInfo.wabaId ? { wabaId: result.sessionInfo.wabaId } : {})
       };
       return appContainer.whatsappOnboardingUseCase.completeEmbeddedSignup(
         pin ? { ...base, registrationPin: pin } : base

@@ -125,6 +125,8 @@ class WhatsappOnboardingService:
                         "has_code": complete_dto.code is not None,
                         "access_token_prefix": (complete_dto.access_token or "")[:20],
                         "code_prefix": (complete_dto.code or "")[:20],
+                        "session_phone_number_id": complete_dto.phone_number_id,
+                        "session_waba_id": complete_dto.waba_id,
                     },
                 )
             },

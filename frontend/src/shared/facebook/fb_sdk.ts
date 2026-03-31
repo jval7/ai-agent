@@ -56,34 +56,50 @@ export function loadFacebookSdk(appId: string): Promise<void> {
   });
 }
 
+export interface SessionInfo {
+  phoneNumberId?: string;
+  wabaId?: string;
+  businessId?: string;
+}
+
 export interface EmbeddedSignupResult {
   code: string;
-  redirectUri: string | null;
+  sessionInfo: SessionInfo;
 }
 
 export function launchEmbeddedSignup(configId: string): Promise<EmbeddedSignupResult> {
   return new Promise((resolve, reject) => {
-    let capturedRedirectUri: string | null = null;
+    const sessionInfo: SessionInfo = {};
 
-    const originalOpen = window.open;
-    window.open = function (...args: Parameters<typeof window.open>) {
-      const url = args[0];
-      if (typeof url === "string" && url.includes("facebook.com")) {
-        try {
-          const parsed = new URL(url);
-          capturedRedirectUri = parsed.searchParams.get("redirect_uri");
-        } catch {
-          /* ignore parse errors */
+    interface EmbeddedSignupEvent {
+      type?: string;
+      data?: {
+        phone_number_id?: string;
+        waba_id?: string;
+        business_id?: string;
+      };
+    }
+
+    const messageHandler = (event: MessageEvent) => {
+      if (!event.origin?.endsWith("facebook.com")) return;
+      try {
+        const parsed = JSON.parse(String(event.data)) as EmbeddedSignupEvent;
+        if (parsed.type === "WA_EMBEDDED_SIGNUP" && parsed.data) {
+          if (parsed.data.phone_number_id) sessionInfo.phoneNumberId = parsed.data.phone_number_id;
+          if (parsed.data.waba_id) sessionInfo.wabaId = parsed.data.waba_id;
+          if (parsed.data.business_id) sessionInfo.businessId = parsed.data.business_id;
         }
+      } catch {
+        /* non-JSON message, ignore */
       }
-      return originalOpen.apply(window, args);
     };
+    window.addEventListener("message", messageHandler);
 
     window.FB.login(
       (response: FBLoginResponse) => {
-        window.open = originalOpen;
+        window.removeEventListener("message", messageHandler);
         if (response.authResponse?.code) {
-          resolve({ code: response.authResponse.code, redirectUri: capturedRedirectUri });
+          resolve({ code: response.authResponse.code, sessionInfo });
         } else {
           reject(new Error("Facebook login cancelled or failed"));
         }

@@ -155,7 +155,9 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
           state: request.state,
           registration_pin: request.registrationPin ?? null,
           origin_url: request.originUrl ?? null,
-          access_token: request.accessToken ?? null
+          access_token: request.accessToken ?? null,
+          phone_number_id: request.phoneNumberId ?? null,
+          waba_id: request.wabaId ?? null
         })
       }
     );

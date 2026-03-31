@@ -13,6 +13,8 @@ export interface EmbeddedSignupCompleteRequest {
   registrationPin?: string;
   originUrl?: string;
   accessToken?: string;
+  phoneNumberId?: string;
+  wabaId?: string;
 }
 
 export interface WhatsappConnection {
