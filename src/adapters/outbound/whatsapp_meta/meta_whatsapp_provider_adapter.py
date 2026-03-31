@@ -312,11 +312,26 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
                 }
             },
         )
-        token_payload = self._get_json(
-            url=token_url,
-            operation_label="exchanging embedded signup code",
-            params=params,
-        )
+        if from_js_sdk:
+            try:
+                response = self._client.post(token_url, data=params)
+                response.raise_for_status()
+                token_payload = response.json()
+            except httpx.HTTPStatusError as error:
+                response_body = error.response.text[:500] if error.response else "no response"
+                raise service_exceptions.ExternalProviderError(
+                    f"meta rejected request while exchanging embedded signup code: {response_body}"
+                ) from error
+            except (httpx.TimeoutException, httpx.RequestError, json.JSONDecodeError) as error:
+                raise service_exceptions.ExternalProviderError(
+                    f"error while exchanging embedded signup code: {error}"
+                ) from error
+        else:
+            token_payload = self._get_json(
+                url=token_url,
+                operation_label="exchanging embedded signup code",
+                params=params,
+            )
 
         access_token = token_payload.get("access_token")
         if not isinstance(access_token, str) or not access_token:
