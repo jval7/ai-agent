@@ -39,6 +39,11 @@ class NoopWhatsappSendAdapter(whatsapp_provider_port.WhatsappProviderPort):
             code, from_js_sdk=from_js_sdk, js_sdk_origin_url=js_sdk_origin_url
         )
 
+    def resolve_credentials_from_token(
+        self, access_token: str
+    ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
+        return self._delegate.resolve_credentials_from_token(access_token)
+
     def subscribe_app_to_waba(self, access_token: str, business_account_id: str) -> None:
         self._delegate.subscribe_app_to_waba(access_token, business_account_id)
 

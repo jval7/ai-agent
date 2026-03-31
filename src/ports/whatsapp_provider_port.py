@@ -21,6 +21,12 @@ class WhatsappProviderPort(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def resolve_credentials_from_token(
+        self, access_token: str
+    ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def subscribe_app_to_waba(self, access_token: str, business_account_id: str) -> None:
         raise NotImplementedError
 

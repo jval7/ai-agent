@@ -13,10 +13,11 @@ class EmbeddedSignupSessionResponseDTO(pydantic.BaseModel):
 
 
 class EmbeddedSignupCompleteDTO(pydantic.BaseModel):
-    code: str
+    code: str | None = None
     state: str
     registration_pin: str | None = None
     origin_url: str | None = None
+    access_token: str | None = None
 
 
 class EmbeddedSignupCredentialsDTO(pydantic.BaseModel):

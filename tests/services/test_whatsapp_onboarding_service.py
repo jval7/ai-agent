@@ -192,6 +192,43 @@ def test_create_session_logs_session_created(caplog: pytest.LogCaptureFixture) -
     assert "whatsapp.onboarding.session_created" in events
 
 
+def test_complete_embedded_signup_with_direct_access_token() -> None:
+    service, provider = build_onboarding_service(["state-1"])
+    provider.credential_by_code["code-1"] = whatsapp_dto.EmbeddedSignupCredentialsDTO(
+        phone_number_id="phone-1",
+        business_account_id="business-1",
+        access_token="token-direct",
+    )
+
+    session_response = service.create_embedded_signup_session("tenant-1")
+    complete_response = service.complete_embedded_signup(
+        "tenant-1",
+        whatsapp_dto.EmbeddedSignupCompleteDTO(
+            access_token="token-direct", state=session_response.state
+        ),
+    )
+
+    assert complete_response.status == "CONNECTED"
+    assert complete_response.phone_number_id == "phone-1"
+    assert provider.waba_subscriptions == [
+        {"access_token": "token-direct", "business_account_id": "business-1"}
+    ]
+    assert provider.phone_registrations == [
+        {"access_token": "token-direct", "phone_number_id": "phone-1"}
+    ]
+
+
+def test_complete_embedded_signup_fails_when_neither_code_nor_token() -> None:
+    service, _ = build_onboarding_service(["state-1"])
+    session_response = service.create_embedded_signup_session("tenant-1")
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.complete_embedded_signup(
+            "tenant-1",
+            whatsapp_dto.EmbeddedSignupCompleteDTO(state=session_response.state),
+        )
+
+
 def test_complete_state_mismatch_logs_failure(caplog: pytest.LogCaptureFixture) -> None:
     service, provider = build_onboarding_service(["state-1"])
     provider.credential_by_code["code-1"] = whatsapp_dto.EmbeddedSignupCredentialsDTO(

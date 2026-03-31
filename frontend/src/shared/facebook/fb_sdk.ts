@@ -16,14 +16,17 @@ declare global {
 interface FBLoginResponse {
   status: string;
   authResponse?: {
-    code: string;
+    code?: string;
+    accessToken?: string;
+    userID?: string;
+    expiresIn?: number;
   };
 }
 
 interface FBLoginOptions {
   config_id: string;
-  response_type: string;
-  override_default_response_type: boolean;
+  response_type?: string;
+  override_default_response_type?: boolean;
   extras: {
     setup: Record<string, never>;
     featureType: string;
@@ -57,16 +60,14 @@ export function launchEmbeddedSignup(configId: string): Promise<string> {
   return new Promise((resolve, reject) => {
     window.FB.login(
       (response: FBLoginResponse) => {
-        if (response.authResponse?.code) {
-          resolve(response.authResponse.code);
+        if (response.authResponse?.accessToken) {
+          resolve(response.authResponse.accessToken);
         } else {
           reject(new Error("Facebook login cancelled or failed"));
         }
       },
       {
         config_id: configId,
-        response_type: "code",
-        override_default_response_type: true,
         extras: {
           setup: {},
           featureType: "whatsapp_business_app_onboarding",

@@ -87,6 +87,14 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
             raise service_exceptions.ExternalProviderError("code not configured in fake provider")
         return credentials
 
+    def resolve_credentials_from_token(
+        self, access_token: str
+    ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
+        for cred in self.credential_by_code.values():
+            if cred.access_token == access_token:
+                return cred
+        raise service_exceptions.ExternalProviderError("token not configured in fake provider")
+
     def subscribe_app_to_waba(self, access_token: str, business_account_id: str) -> None:
         if self.should_fail_subscription:
             raise service_exceptions.ExternalProviderError("simulated subscribe failure")

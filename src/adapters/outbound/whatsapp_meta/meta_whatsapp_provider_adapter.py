@@ -56,6 +56,22 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
             access_token=access_token,
         )
 
+    def resolve_credentials_from_token(
+        self, access_token: str
+    ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
+        business_id = self._resolve_business_id(access_token)
+        debug_target_ids = self._fetch_debug_target_ids(access_token)
+        waba_id, phone_number_id = self._resolve_waba_and_phone_number_id(
+            access_token=access_token,
+            business_id=business_id,
+            debug_target_ids=debug_target_ids,
+        )
+        return whatsapp_dto.EmbeddedSignupCredentialsDTO(
+            phone_number_id=phone_number_id,
+            business_account_id=waba_id,
+            access_token=access_token,
+        )
+
     def subscribe_app_to_waba(self, access_token: str, business_account_id: str) -> None:
         subscribed_apps_url = f"https://graph.facebook.com/{self._settings.meta_api_version}/{business_account_id}/subscribed_apps"
         headers = {"Authorization": f"Bearer {access_token}"}

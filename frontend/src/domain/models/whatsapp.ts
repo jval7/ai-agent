@@ -8,10 +8,11 @@ export interface EmbeddedSignupSession {
 }
 
 export interface EmbeddedSignupCompleteRequest {
-  code: string;
+  code?: string;
   state: string;
   registrationPin?: string;
   originUrl?: string;
+  accessToken?: string;
 }
 
 export interface WhatsappConnection {
