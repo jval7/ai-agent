@@ -77,8 +77,11 @@ export function ConfiguracionesPage() {
       await fbSdkModule.loadFacebookSdk(session.appId);
       const code = await fbSdkModule.launchEmbeddedSignup(session.configId);
       const pin = registrationPin.trim();
+      const currentUrl = window.location.href.split("?")[0] ?? window.location.origin;
       return appContainer.whatsappOnboardingUseCase.completeEmbeddedSignup(
-        pin ? { code, state: session.state, registrationPin: pin } : { code, state: session.state }
+        pin
+          ? { code, state: session.state, registrationPin: pin, originUrl: currentUrl }
+          : { code, state: session.state, originUrl: currentUrl }
       );
     },
     onSuccess: () => {

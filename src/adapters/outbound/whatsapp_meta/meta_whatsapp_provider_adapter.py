@@ -296,8 +296,10 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
             "client_secret": self._settings.meta_app_secret,
             "code": code,
         }
-        if from_js_sdk:
-            params["redirect_uri"] = "https://staticxx.facebook.com/x/connect/xd_arbiter/"
+        if from_js_sdk and js_sdk_origin_url:
+            params["redirect_uri"] = js_sdk_origin_url
+        elif from_js_sdk:
+            params["redirect_uri"] = self._settings.frontend_app_base_url + "/configuraciones"
         else:
             params["redirect_uri"] = self._settings.meta_redirect_uri
         logger.info(
