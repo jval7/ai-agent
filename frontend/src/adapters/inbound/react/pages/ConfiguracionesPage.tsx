@@ -91,6 +91,14 @@ export function ConfiguracionesPage() {
       void queryClient.invalidateQueries({ queryKey: onboardingStatusQueryKey });
     }
   });
+  const whatsappOAuthMutation = reactQueryModule.useMutation({
+    mutationFn: async () => {
+      const session = await appContainer.whatsappOnboardingUseCase.createEmbeddedSignupSession(
+        registrationPin.trim() || undefined
+      );
+      window.location.assign(session.connectUrl);
+    }
+  });
   const googleSessionMutation = reactQueryModule.useMutation({
     mutationFn: () => appContainer.onboardingUseCase.createGoogleSession(),
     onSuccess: (session) => {
@@ -272,6 +280,18 @@ export function ConfiguracionesPage() {
                   type="button"
                 >
                   {whatsappSessionMutation.isPending ? "Conectando..." : "Conectar con Meta"}
+                </button>
+                <button
+                  className="text-sm text-slate-500 underline hover:text-slate-700"
+                  disabled={whatsappOAuthMutation.isPending}
+                  onClick={() => {
+                    whatsappOAuthMutation.mutate();
+                  }}
+                  type="button"
+                >
+                  {whatsappOAuthMutation.isPending
+                    ? "Redirigiendo..."
+                    : "Conectar via redirect (sin coexistencia)"}
                 </button>
                 {whatsappSessionMutation.isSuccess ? (
                   <p className="text-sm text-emerald-600">WhatsApp conectado correctamente.</p>
