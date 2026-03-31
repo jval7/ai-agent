@@ -114,6 +114,21 @@ class WhatsappOnboardingService:
             )
             raise service_exceptions.InvalidStateError("embedded signup state mismatch")
 
+        logger.info(
+            "whatsapp.onboarding.complete_debug",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="whatsapp.onboarding.complete_debug",
+                    message="complete dto received",
+                    data={
+                        "has_access_token": complete_dto.access_token is not None,
+                        "has_code": complete_dto.code is not None,
+                        "access_token_prefix": (complete_dto.access_token or "")[:20],
+                        "code_prefix": (complete_dto.code or "")[:20],
+                    },
+                )
+            },
+        )
         if complete_dto.access_token:
             credentials = self._whatsapp_provider.resolve_credentials_from_token(
                 complete_dto.access_token
