@@ -1,4 +1,5 @@
 import json
+import logging
 import typing
 import urllib.parse
 
@@ -9,6 +10,8 @@ import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.dto.whatsapp_dto as whatsapp_dto
 import src.services.exceptions as service_exceptions
+
+logger = logging.getLogger(__name__)
 
 
 class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
@@ -280,6 +283,20 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
         }
         if not from_js_sdk:
             params["redirect_uri"] = self._settings.meta_redirect_uri
+        logger.info(
+            "whatsapp.exchange.debug",
+            extra={
+                "event_data": {
+                    "event": "whatsapp.exchange.debug",
+                    "from_js_sdk": from_js_sdk,
+                    "has_redirect_uri": "redirect_uri" in params,
+                    "token_url": token_url,
+                    "client_id": params.get("client_id", "")[:10] + "...",
+                    "code_prefix": code[:20] + "...",
+                    "params_keys": list(params.keys()),
+                }
+            },
+        )
         token_payload = self._get_json(
             url=token_url,
             operation_label="exchanging embedded signup code",
