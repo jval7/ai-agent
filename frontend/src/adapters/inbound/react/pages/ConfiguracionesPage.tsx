@@ -75,13 +75,15 @@ export function ConfiguracionesPage() {
         registrationPin.trim() || undefined
       );
       await fbSdkModule.loadFacebookSdk(session.appId);
-      const code = await fbSdkModule.launchEmbeddedSignup(session.configId);
+      const result = await fbSdkModule.launchEmbeddedSignup(session.configId);
       const pin = registrationPin.trim();
-      const currentUrl = window.location.href.split("?")[0] ?? window.location.origin;
+      const base = {
+        code: result.code,
+        state: session.state,
+        ...(result.redirectUri ? { originUrl: result.redirectUri } : {})
+      };
       return appContainer.whatsappOnboardingUseCase.completeEmbeddedSignup(
-        pin
-          ? { code, state: session.state, registrationPin: pin, originUrl: currentUrl }
-          : { code, state: session.state, originUrl: currentUrl }
+        pin ? { ...base, registrationPin: pin } : base
       );
     },
     onSuccess: () => {

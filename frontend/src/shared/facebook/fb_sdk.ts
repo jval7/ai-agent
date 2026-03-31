@@ -56,12 +56,34 @@ export function loadFacebookSdk(appId: string): Promise<void> {
   });
 }
 
-export function launchEmbeddedSignup(configId: string): Promise<string> {
+export interface EmbeddedSignupResult {
+  code: string;
+  redirectUri: string | null;
+}
+
+export function launchEmbeddedSignup(configId: string): Promise<EmbeddedSignupResult> {
   return new Promise((resolve, reject) => {
+    let capturedRedirectUri: string | null = null;
+
+    const originalOpen = window.open;
+    window.open = function (...args: Parameters<typeof window.open>) {
+      const url = args[0];
+      if (typeof url === "string" && url.includes("facebook.com")) {
+        try {
+          const parsed = new URL(url);
+          capturedRedirectUri = parsed.searchParams.get("redirect_uri");
+        } catch {
+          /* ignore parse errors */
+        }
+      }
+      return originalOpen.apply(window, args);
+    };
+
     window.FB.login(
       (response: FBLoginResponse) => {
+        window.open = originalOpen;
         if (response.authResponse?.code) {
-          resolve(response.authResponse.code);
+          resolve({ code: response.authResponse.code, redirectUri: capturedRedirectUri });
         } else {
           reject(new Error("Facebook login cancelled or failed"));
         }

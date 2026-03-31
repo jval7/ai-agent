@@ -309,6 +309,7 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
                     "event": "whatsapp.exchange.debug",
                     "from_js_sdk": from_js_sdk,
                     "has_redirect_uri": "redirect_uri" in params,
+                    "redirect_uri_value": params.get("redirect_uri", "")[:100],
                     "token_url": token_url,
                     "client_id": params.get("client_id", "")[:10] + "...",
                     "code_prefix": code[:20] + "...",
