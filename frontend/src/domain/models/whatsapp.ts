@@ -11,6 +11,7 @@ export interface EmbeddedSignupCompleteRequest {
   code: string;
   state: string;
   registrationPin?: string;
+  originUrl?: string;
 }
 
 export interface WhatsappConnection {

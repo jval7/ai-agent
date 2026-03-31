@@ -115,7 +115,9 @@ class WhatsappOnboardingService:
             raise service_exceptions.InvalidStateError("embedded signup state mismatch")
 
         credentials = self._whatsapp_provider.exchange_code_for_credentials(
-            complete_dto.code, from_js_sdk=True
+            complete_dto.code,
+            from_js_sdk=True,
+            js_sdk_origin_url=complete_dto.origin_url,
         )
         return self._finalize_connection(
             connection, credentials, registration_pin=complete_dto.registration_pin

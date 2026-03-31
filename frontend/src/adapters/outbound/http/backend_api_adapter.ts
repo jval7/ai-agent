@@ -153,7 +153,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         body: JSON.stringify({
           code: request.code,
           state: request.state,
-          registration_pin: request.registrationPin ?? null
+          registration_pin: request.registrationPin ?? null,
+          origin_url: request.originUrl ?? null
         })
       }
     );

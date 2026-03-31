@@ -76,7 +76,11 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
         return f"https://example.test/embedded?state={state}"
 
     def exchange_code_for_credentials(
-        self, code: str, *, from_js_sdk: bool = False
+        self,
+        code: str,
+        *,
+        from_js_sdk: bool = False,
+        js_sdk_origin_url: str | None = None,
     ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
         credentials = self.credential_by_code.get(code)
         if credentials is None:
