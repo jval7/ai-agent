@@ -296,11 +296,7 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
             "client_secret": self._settings.meta_app_secret,
             "code": code,
         }
-        if from_js_sdk:
-            params["redirect_uri"] = (
-                "https://staticxx.facebook.com/x/connect/xd_arbiter/?version=46"
-            )
-        else:
+        if not from_js_sdk:
             params["redirect_uri"] = self._settings.meta_redirect_uri
         logger.info(
             "whatsapp.exchange.debug",
