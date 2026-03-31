@@ -289,9 +289,8 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
         from_js_sdk: bool = False,
         js_sdk_origin_url: str | None = None,
     ) -> str:
-        token_url = (
-            f"https://graph.facebook.com/{self._settings.meta_api_version}/oauth/access_token"
-        )
+        api_version = "v21.0" if from_js_sdk else self._settings.meta_api_version
+        token_url = f"https://graph.facebook.com/{api_version}/oauth/access_token"
         params: dict[str, str] = {
             "client_id": self._settings.meta_app_id,
             "client_secret": self._settings.meta_app_secret,

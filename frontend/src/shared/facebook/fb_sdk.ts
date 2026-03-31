@@ -60,14 +60,16 @@ export function launchEmbeddedSignup(configId: string): Promise<string> {
   return new Promise((resolve, reject) => {
     window.FB.login(
       (response: FBLoginResponse) => {
-        if (response.authResponse?.accessToken) {
-          resolve(response.authResponse.accessToken);
+        if (response.authResponse?.code) {
+          resolve(response.authResponse.code);
         } else {
           reject(new Error("Facebook login cancelled or failed"));
         }
       },
       {
         config_id: configId,
+        response_type: "code",
+        override_default_response_type: true,
         extras: {
           setup: {},
           featureType: "whatsapp_business_app_onboarding",

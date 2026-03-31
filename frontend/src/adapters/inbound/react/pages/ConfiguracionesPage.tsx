@@ -75,12 +75,10 @@ export function ConfiguracionesPage() {
         registrationPin.trim() || undefined
       );
       await fbSdkModule.loadFacebookSdk(session.appId);
-      const accessToken = await fbSdkModule.launchEmbeddedSignup(session.configId);
+      const code = await fbSdkModule.launchEmbeddedSignup(session.configId);
       const pin = registrationPin.trim();
       return appContainer.whatsappOnboardingUseCase.completeEmbeddedSignup(
-        pin
-          ? { state: session.state, registrationPin: pin, accessToken }
-          : { state: session.state, accessToken }
+        pin ? { code, state: session.state, registrationPin: pin } : { code, state: session.state }
       );
     },
     onSuccess: () => {
