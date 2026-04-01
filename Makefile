@@ -89,9 +89,47 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 	deploy-back \
 	deploy-all \
 	app-config-secret-upsert \
+	app-config-secret-upsert-many \
 	app-config-secret-sync-env \
 	simulate-whatsapp-message \
-	calendar-cleanup
+	calendar-cleanup \
+	help
+
+help:
+	@echo ""
+	@echo "=== Usuarios ==="
+	@echo "  create-professional    Crear profesional (EMAIL, TENANT_NAME)"
+	@echo "  delete-professional    Eliminar profesional (EMAIL)"
+	@echo "  reset-password         Resetear password (EMAIL)"
+	@echo ""
+	@echo "=== Desarrollo ==="
+	@echo "  static-checks          Linters y formatters backend"
+	@echo "  fe-dev                  Dev server frontend"
+	@echo "  fe-checks              Lint + format + typecheck + test frontend"
+	@echo "  checks                 Backend + frontend checks"
+	@echo "  docker-up              Levantar servicios con docker-compose"
+	@echo "  docker-down            Bajar servicios"
+	@echo ""
+	@echo "=== Deploy (ENV=dev|prod, default: dev) ==="
+	@echo "  deploy-back            Deploy backend a Cloud Run"
+	@echo "  deploy-front           Deploy frontend infra + upload"
+	@echo "  deploy-front-upload    Solo subir assets al bucket"
+	@echo "  deploy-all             Deploy backend + frontend"
+	@echo ""
+	@echo "=== Secrets (ENV=dev|prod, default: dev) ==="
+	@echo "  app-config-secret-upsert        Actualizar 1 key (APP_CONFIG_PAIR='KEY:VAL')"
+	@echo "  app-config-secret-upsert-many   Actualizar N keys (APP_CONFIG_PAIRS='K1:V1 K2:V2')"
+	@echo "  app-config-secret-sync-env      Sincronizar desde .env"
+	@echo ""
+	@echo "=== Testing ==="
+	@echo "  simulate-whatsapp-message   Simular mensaje WhatsApp entrante"
+	@echo "  oauth-flow                  Flujo OAuth completo"
+	@echo ""
+	@echo "=== Otros ==="
+	@echo "  memory-reset           Reset memoria del agente"
+	@echo "  chat-memory-reset      Reset memoria de chat"
+	@echo "  calendar-cleanup       Limpiar eventos de calendario"
+	@echo ""
 
 create-professional:
 	@if [[ -z "$(EMAIL)" ]]; then \
@@ -204,7 +242,7 @@ memory-reset:
 	@echo "Firestore reset endpoint finished. No local JSON snapshot cleanup is required."
 
 chat-memory-reset:
-	
+
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@mkdir -p "$(FLOW_DIR)"
 	@live_reset_ok=0; \
@@ -522,6 +560,45 @@ app-config-secret-upsert:
 		--data-file=- >/dev/null; \
 	echo "Upserted key '$${resolved_key}' in secret $(DEPLOY_APP_CONFIG_SECRET_ID) [$(ENV)]."
 
+app-config-secret-upsert-many:
+	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
+	@command -v jq >/dev/null 2>&1 || { echo "jq is required."; exit 1; }
+	@pairs="$(APP_CONFIG_PAIRS)"; \
+	if [[ -z "$$pairs" ]]; then \
+		echo "APP_CONFIG_PAIRS is required. Format: 'KEY1:VAL1 KEY2:VAL2 KEY3:VAL3'"; \
+		echo "Example: make app-config-secret-upsert-many APP_CONFIG_PAIRS='META_APP_ID:123 META_APP_SECRET:abc' ENV=prod"; \
+		exit 1; \
+	fi; \
+	project_id="$(DEPLOY_PROJECT_ID)"; \
+	if [[ -z "$$project_id" ]]; then \
+		project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+	fi; \
+	current_json=$$(gcloud secrets versions access latest \
+		--project "$$project_id" \
+		--secret "$(DEPLOY_APP_CONFIG_SECRET_ID)" 2>/dev/null || echo "{}"); \
+	if ! printf '%s' "$$current_json" | jq -e 'type=="object"' >/dev/null; then \
+		echo "Current secret payload is not a JSON object."; \
+		exit 1; \
+	fi; \
+	updated_json="$$current_json"; \
+	count=0; \
+	for pair in $$pairs; do \
+		if [[ "$$pair" != *:* ]]; then \
+			echo "Invalid pair '$$pair'. Format: KEY:VALUE"; \
+			exit 1; \
+		fi; \
+		key="$${pair%%:*}"; \
+		value="$${pair#*:}"; \
+		updated_json=$$(printf '%s' "$$updated_json" \
+			| jq --arg k "$$key" --arg v "$$value" '.[$$k] = $$v'); \
+		count=$$((count + 1)); \
+		echo "  $$key = $${value:0:10}..."; \
+	done; \
+	printf '%s' "$$updated_json" | gcloud secrets versions add "$(DEPLOY_APP_CONFIG_SECRET_ID)" \
+		--project "$$project_id" \
+		--data-file=- >/dev/null; \
+	echo "Upserted $$count keys in secret $(DEPLOY_APP_CONFIG_SECRET_ID) [$(ENV)]."
+
 app-config-secret-sync-env:
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required."; exit 1; }
@@ -592,7 +669,7 @@ app-config-secret-sync-env:
 	fi
 
 simulate-whatsapp-message:
-	
+
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@echo "Using API_BASE=$(API_BASE) EMAIL=$(EMAIL)"
 	@mkdir -p "$(FLOW_DIR)"; \
