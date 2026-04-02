@@ -222,15 +222,18 @@ class WhatsappOnboardingService:
                 registration_pin=registration_pin,
             )
         except service_exceptions.ExternalProviderError as error:
-            is_smb_error = "not available for SMB" in str(error)
-            if is_smb_error:
+            error_msg = str(error)
+            is_smb_error = "not available for SMB" in error_msg
+            is_pin_required = "pin is required" in error_msg.lower()
+            if is_smb_error or is_pin_required:
+                skip_reason = "smb_account" if is_smb_error else "pin_required"
                 logger.info(
-                    "whatsapp.onboarding.register_skipped_smb",
+                    "whatsapp.onboarding.register_skipped",
                     extra={
                         "event_data": app_logs.build_log_event(
-                            event_name="whatsapp.onboarding.register_skipped_smb",
-                            message="phone registration skipped for SMB business",
-                            data={"tenant_id": connection.tenant_id},
+                            event_name="whatsapp.onboarding.register_skipped",
+                            message=f"phone registration skipped: {skip_reason}",
+                            data={"tenant_id": connection.tenant_id, "reason": skip_reason},
                         )
                     },
                 )

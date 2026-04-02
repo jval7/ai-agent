@@ -74,11 +74,13 @@ export function ConfiguracionesPage() {
       const session = await appContainer.whatsappOnboardingUseCase.createEmbeddedSignupSession(
         registrationPin.trim() || undefined
       );
-      await fbSdkModule.loadFacebookSdk(session.appId);
-      const result = await fbSdkModule.launchEmbeddedSignup(session.configId);
+      await fbSdkModule.loadFacebookSdk();
+      const result = await fbSdkModule.launchEmbeddedSignup(session.configId, session.appId);
+      if (!result.code && !result.accessToken) throw new Error("No code or token received");
       const pin = registrationPin.trim();
       const base = {
-        code: result.code,
+        ...(result.code ? { code: result.code } : {}),
+        ...(result.accessToken ? { accessToken: result.accessToken } : {}),
         state: session.state,
         ...(result.sessionInfo.phoneNumberId
           ? { phoneNumberId: result.sessionInfo.phoneNumberId }

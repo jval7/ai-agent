@@ -34,17 +34,19 @@ interface FBLoginOptions {
   };
 }
 
-export function loadFacebookSdk(appId: string): Promise<void> {
-  if (window.FB) return Promise.resolve();
+let sdkReady = false;
+
+export function loadFacebookSdk(): Promise<void> {
+  if (sdkReady) return Promise.resolve();
+
+  if (document.querySelector('script[src*="connect.facebook.net"]')) {
+    sdkReady = true;
+    return Promise.resolve();
+  }
 
   return new Promise((resolve) => {
     window.fbAsyncInit = function () {
-      window.FB.init({
-        appId,
-        autoLogAppEvents: true,
-        xfbml: true,
-        version: "v22.0"
-      });
+      sdkReady = true;
       resolve();
     };
     const script = document.createElement("script");
@@ -63,11 +65,15 @@ export interface SessionInfo {
 }
 
 export interface EmbeddedSignupResult {
-  code: string;
+  code?: string;
+  accessToken?: string;
   sessionInfo: SessionInfo;
 }
 
-export function launchEmbeddedSignup(configId: string): Promise<EmbeddedSignupResult> {
+export function launchEmbeddedSignup(
+  configId: string,
+  appId: string
+): Promise<EmbeddedSignupResult> {
   return new Promise((resolve, reject) => {
     const sessionInfo: SessionInfo = {};
 
@@ -95,11 +101,17 @@ export function launchEmbeddedSignup(configId: string): Promise<EmbeddedSignupRe
     };
     window.addEventListener("message", messageHandler);
 
+    window.FB.init({ appId, autoLogAppEvents: true, xfbml: true, version: "v22.0" });
     window.FB.login(
       (response: FBLoginResponse) => {
         window.removeEventListener("message", messageHandler);
-        if (response.authResponse?.code) {
-          resolve({ code: response.authResponse.code, sessionInfo });
+        const auth = response.authResponse;
+        if (auth?.code || auth?.accessToken) {
+          resolve({
+            ...(auth.code ? { code: auth.code } : {}),
+            ...(auth.accessToken ? { accessToken: auth.accessToken } : {}),
+            sessionInfo
+          });
         } else {
           reject(new Error("Facebook login cancelled or failed"));
         }

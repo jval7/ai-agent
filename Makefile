@@ -561,43 +561,17 @@ app-config-secret-upsert:
 	echo "Upserted key '$${resolved_key}' in secret $(DEPLOY_APP_CONFIG_SECRET_ID) [$(ENV)]."
 
 app-config-secret-upsert-many:
-	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
-	@command -v jq >/dev/null 2>&1 || { echo "jq is required."; exit 1; }
-	@pairs="$(APP_CONFIG_PAIRS)"; \
-	if [[ -z "$$pairs" ]]; then \
+	@if [[ -z "$(APP_CONFIG_PAIRS)" ]]; then \
 		echo "APP_CONFIG_PAIRS is required. Format: 'KEY1:VAL1 KEY2:VAL2 KEY3:VAL3'"; \
 		echo "Example: make app-config-secret-upsert-many APP_CONFIG_PAIRS='META_APP_ID:123 META_APP_SECRET:abc' ENV=prod"; \
 		exit 1; \
-	fi; \
-	project_id="$(DEPLOY_PROJECT_ID)"; \
-	if [[ -z "$$project_id" ]]; then \
-		project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
-	fi; \
-	current_json=$$(gcloud secrets versions access latest \
-		--project "$$project_id" \
-		--secret "$(DEPLOY_APP_CONFIG_SECRET_ID)" 2>/dev/null || echo "{}"); \
-	if ! printf '%s' "$$current_json" | jq -e 'type=="object"' >/dev/null; then \
-		echo "Current secret payload is not a JSON object."; \
-		exit 1; \
-	fi; \
-	updated_json="$$current_json"; \
-	count=0; \
-	for pair in $$pairs; do \
-		if [[ "$$pair" != *:* ]]; then \
-			echo "Invalid pair '$$pair'. Format: KEY:VALUE"; \
-			exit 1; \
-		fi; \
-		key="$${pair%%:*}"; \
-		value="$${pair#*:}"; \
-		updated_json=$$(printf '%s' "$$updated_json" \
-			| jq --arg k "$$key" --arg v "$$value" '.[$$k] = $$v'); \
+	fi
+	@count=0; \
+	for pair in $(APP_CONFIG_PAIRS); do \
+		$(MAKE) app-config-secret-upsert APP_CONFIG_PAIR="$$pair" ENV=$(ENV); \
 		count=$$((count + 1)); \
-		echo "  $$key = $${value:0:10}..."; \
 	done; \
-	printf '%s' "$$updated_json" | gcloud secrets versions add "$(DEPLOY_APP_CONFIG_SECRET_ID)" \
-		--project "$$project_id" \
-		--data-file=- >/dev/null; \
-	echo "Upserted $$count keys in secret $(DEPLOY_APP_CONFIG_SECRET_ID) [$(ENV)]."
+	echo "Upserted $$count keys [$(ENV)]."
 
 app-config-secret-sync-env:
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
