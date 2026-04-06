@@ -8,6 +8,7 @@ import type * as onboardingModel from "@domain/models/onboarding";
 import type * as patientModel from "@domain/models/patient";
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
+import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 import type * as backendApiPort from "@ports/backend_api_port";
 import type * as tokenSessionPort from "@ports/token_session_port";
 import * as apiErrorModule from "@shared/http/api_error";
@@ -726,6 +727,49 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     });
   }
 
+  async listWhatsappTemplates(): Promise<whatsappTemplateModel.WhatsappTemplate[]> {
+    const payload = await this.request<httpTypes.TemplateListApiResponse>(
+      "/v1/whatsapp/templates",
+      {
+        method: "GET",
+        authRequired: true
+      }
+    );
+    return payload.templates.map(mapWhatsappTemplate);
+  }
+
+  async createWhatsappTemplate(
+    request: whatsappTemplateModel.CreateTemplateRequest
+  ): Promise<whatsappTemplateModel.WhatsappTemplate> {
+    const payload = await this.request<httpTypes.WhatsappTemplateApiResponse>(
+      "/v1/whatsapp/templates",
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          name: request.name,
+          category: request.category,
+          language: request.language,
+          components: request.components.map((c) => ({
+            type: c.type,
+            text: c.text,
+            ...(c.exampleValues && c.exampleValues.length > 0
+              ? { example_values: c.exampleValues }
+              : {})
+          }))
+        } satisfies httpTypes.CreateTemplateApiRequest)
+      }
+    );
+    return mapWhatsappTemplate(payload);
+  }
+
+  async deleteWhatsappTemplate(name: string): Promise<void> {
+    await this.request<void>(`/v1/whatsapp/templates/${name}`, {
+      method: "DELETE",
+      authRequired: true
+    });
+  }
+
   private async request<T>(path: string, options: RequestOptions): Promise<T> {
     const retryOnUnauthorized = options.retryOnUnauthorized ?? true;
     const requestId = options.requestId ?? requestIdModule.createRequestId();
@@ -921,6 +965,23 @@ function mapManualAppointment(
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
     cancelledAt: payload.cancelled_at
+  };
+}
+
+function mapWhatsappTemplate(
+  payload: httpTypes.WhatsappTemplateApiResponse
+): whatsappTemplateModel.WhatsappTemplate {
+  return {
+    id: payload.id,
+    name: payload.name,
+    category: payload.category,
+    language: payload.language,
+    status: payload.status,
+    components: payload.components.map((c) => ({
+      type: c.type,
+      text: c.text,
+      ...(c.example_values ? { exampleValues: c.example_values } : {})
+    }))
   };
 }
 

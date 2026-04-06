@@ -57,6 +57,7 @@ import src.services.use_cases.scheduling_inbox_service as scheduling_inbox_servi
 import src.services.use_cases.scheduling_service as scheduling_service
 import src.services.use_cases.webhook_service as webhook_service
 import src.services.use_cases.whatsapp_onboarding_service as whatsapp_onboarding_service
+import src.services.use_cases.whatsapp_template_service as whatsapp_template_service
 
 
 class AppContainer:
@@ -202,6 +203,10 @@ class AppContainer:
             webhook_verify_token=self.settings.meta_webhook_verify_token,
             meta_app_id=self.settings.meta_app_id,
             meta_config_id=self.settings.meta_config_id,
+        )
+        self.whatsapp_template_service = whatsapp_template_service.WhatsappTemplateService(
+            whatsapp_provider=self.whatsapp_provider_adapter,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
         )
         self.google_calendar_onboarding_service = (
             google_calendar_onboarding_service.GoogleCalendarOnboardingService(

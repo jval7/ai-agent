@@ -6,6 +6,7 @@ import * as configuracionesPageModule from "@adapters/inbound/react/pages/Config
 import * as inboxPageModule from "@adapters/inbound/react/pages/InboxPage";
 import * as landingPageModule from "@adapters/inbound/react/pages/LandingPage";
 import * as loginPageModule from "@adapters/inbound/react/pages/LoginPage";
+import * as plantillasPageModule from "@adapters/inbound/react/pages/PlantillasPage";
 
 import * as onboardingReadyRouteModule from "./OnboardingReadyRoute";
 import * as protectedRouteModule from "./ProtectedRoute";
@@ -77,6 +78,16 @@ export function AppRouter() {
             </protectedRouteModule.ProtectedRoute>
           }
           path="/clientes"
+        />
+        <reactRouterDomModule.Route
+          element={
+            <protectedRouteModule.ProtectedRoute>
+              <onboardingReadyRouteModule.OnboardingReadyRoute>
+                <plantillasPageModule.PlantillasPage />
+              </onboardingReadyRouteModule.OnboardingReadyRoute>
+            </protectedRouteModule.ProtectedRoute>
+          }
+          path="/plantillas"
         />
 
         <reactRouterDomModule.Route

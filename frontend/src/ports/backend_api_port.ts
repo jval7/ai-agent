@@ -8,6 +8,7 @@ import type * as onboardingModel from "@domain/models/onboarding";
 import type * as patientModel from "@domain/models/patient";
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
+import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 
 export interface BackendApiPort {
   login(input: authModel.LoginInput): Promise<authModel.AuthTokens>;
@@ -116,4 +117,10 @@ export interface BackendApiPort {
 
   getSandboxMode(): Promise<{ sandbox_enabled: boolean }>;
   updateSandboxMode(enabled: boolean): Promise<{ sandbox_enabled: boolean }>;
+
+  listWhatsappTemplates(): Promise<whatsappTemplateModel.WhatsappTemplate[]>;
+  createWhatsappTemplate(
+    request: whatsappTemplateModel.CreateTemplateRequest
+  ): Promise<whatsappTemplateModel.WhatsappTemplate>;
+  deleteWhatsappTemplate(name: string): Promise<void>;
 }

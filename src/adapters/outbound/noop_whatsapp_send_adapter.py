@@ -12,6 +12,7 @@ import src.infra.settings as app_settings
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.dto.whatsapp_dto as whatsapp_dto
+import src.services.dto.whatsapp_template_dto as whatsapp_template_dto
 
 logger = logging.getLogger(__name__)
 
@@ -78,3 +79,19 @@ class NoopWhatsappSendAdapter(whatsapp_provider_port.WhatsappProviderPort):
         self, payload: dict[str, typing.Any]
     ) -> list[webhook_dto.IncomingMessageEventDTO]:
         return self._delegate.parse_incoming_message_events(payload)
+
+    def list_message_templates(
+        self, access_token: str, waba_id: str
+    ) -> list[whatsapp_template_dto.TemplateDTO]:
+        return self._delegate.list_message_templates(access_token, waba_id)
+
+    def create_message_template(
+        self,
+        access_token: str,
+        waba_id: str,
+        template: whatsapp_template_dto.CreateTemplateRequestDTO,
+    ) -> whatsapp_template_dto.TemplateDTO:
+        return self._delegate.create_message_template(access_token, waba_id, template)
+
+    def delete_message_template(self, access_token: str, waba_id: str, template_name: str) -> None:
+        self._delegate.delete_message_template(access_token, waba_id, template_name)

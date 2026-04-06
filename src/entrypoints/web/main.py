@@ -18,6 +18,7 @@ import src.entrypoints.web.routers.scheduling_router as scheduling_router
 import src.entrypoints.web.routers.settings_router as settings_router
 import src.entrypoints.web.routers.webhook_router as webhook_router
 import src.entrypoints.web.routers.whatsapp_router as whatsapp_router
+import src.entrypoints.web.routers.whatsapp_template_router as whatsapp_template_router
 import src.infra.container as app_container
 import src.infra.logs as app_logs
 
@@ -43,6 +44,7 @@ def create_app() -> fastapi.FastAPI:
     app.include_router(agent_router.router)
     app.include_router(blacklist_router.router)
     app.include_router(whatsapp_router.router)
+    app.include_router(whatsapp_template_router.router)
     app.include_router(google_calendar_router.router)
     app.include_router(onboarding_router.router)
     app.include_router(webhook_router.router)
