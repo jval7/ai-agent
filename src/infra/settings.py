@@ -39,6 +39,10 @@ class Settings(pydantic.BaseModel):
     langsmith_tags: list[str]
     log_level: str
     log_include_request_summary: bool
+    cloud_tasks_location: str
+    cloud_tasks_queue_id: str
+    cloud_run_base_url: str
+    auto_close_delay_seconds: int
     rate_limit_enabled: bool
     whatsapp_outbound_noop: bool
 
@@ -136,6 +140,17 @@ class Settings(pydantic.BaseModel):
                 "false",
             ).lower()
             == "true",
+            cloud_tasks_location=app_config_overrides.get(
+                "CLOUD_TASKS_LOCATION",
+                app_config_overrides.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+            ),
+            cloud_tasks_queue_id=app_config_overrides.get(
+                "CLOUD_TASKS_QUEUE_ID", "auto-close-booked-sessions"
+            ),
+            cloud_run_base_url=app_config_overrides.get("CLOUD_RUN_BASE_URL", ""),
+            auto_close_delay_seconds=int(
+                app_config_overrides.get("AUTO_CLOSE_DELAY_SECONDS", "3600")
+            ),
             rate_limit_enabled=app_config_overrides.get(
                 "RATE_LIMIT_ENABLED",
                 "true",

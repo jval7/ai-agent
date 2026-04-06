@@ -1,5 +1,6 @@
 import time
 
+import src.adapters.outbound.cloud_tasks.cloud_tasks_adapter as cloud_tasks_adapter
 import src.adapters.outbound.firestore.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.firestore.blacklist_repository_adapter as blacklist_repository_adapter
 import src.adapters.outbound.firestore.client_factory as firestore_client_factory
@@ -17,6 +18,7 @@ import src.adapters.outbound.firestore.user_repository_adapter as user_repositor
 import src.adapters.outbound.firestore.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.adapters.outbound.google_calendar.google_calendar_provider_adapter as google_calendar_provider_adapter
 import src.adapters.outbound.llm_gemini.gemini_llm_provider_adapter as gemini_llm_provider_adapter
+import src.adapters.outbound.noop_task_scheduler_adapter as noop_task_scheduler_adapter
 import src.adapters.outbound.noop_whatsapp_send_adapter as noop_whatsapp_send_adapter
 import src.adapters.outbound.secret_manager.app_config_secret_loader_adapter as app_config_secret_loader_adapter
 import src.adapters.outbound.security.jwt_provider_adapter as jwt_provider_adapter
@@ -25,6 +27,7 @@ import src.adapters.outbound.whatsapp_meta.meta_whatsapp_provider_adapter as met
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
+import src.ports.task_scheduler_port as task_scheduler_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
 import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard
@@ -216,12 +219,24 @@ class AppContainer:
                 clock=self.clock_adapter,
             )
         )
+        self.task_scheduler: task_scheduler_port.TaskSchedulerPort
+        if self.settings.cloud_run_base_url:
+            self.task_scheduler = cloud_tasks_adapter.CloudTasksSchedulerAdapter(
+                project_id=self.settings.google_cloud_project_id,
+                location=self.settings.cloud_tasks_location,
+                queue_id=self.settings.cloud_tasks_queue_id,
+                cloud_run_base_url=self.settings.cloud_run_base_url,
+            )
+        else:
+            self.task_scheduler = noop_task_scheduler_adapter.NoopTaskSchedulerAdapter()
         self.scheduling_service = scheduling_service.SchedulingService(
             scheduling_repository=self.scheduling_repository,
             conversation_repository=self.conversation_repository,
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
+            task_scheduler=self.task_scheduler,
+            auto_close_delay_seconds=self.settings.auto_close_delay_seconds,
             agent_workflow=self.agent_workflow_engine,
         )
         self.scheduling_inbox_service = scheduling_inbox_service.SchedulingInboxService(

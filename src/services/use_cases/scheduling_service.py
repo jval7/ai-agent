@@ -9,6 +9,7 @@ import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
+import src.ports.task_scheduler_port as task_scheduler_port
 import src.services.agentic.workflow_engine as workflow_engine
 import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.scheduling_dto as scheduling_dto
@@ -75,6 +76,8 @@ class SchedulingService:
         ),
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
+        task_scheduler: task_scheduler_port.TaskSchedulerPort,
+        auto_close_delay_seconds: int = 3600,
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
@@ -82,6 +85,8 @@ class SchedulingService:
         self._google_calendar_onboarding_service = google_calendar_onboarding_service
         self._id_generator = id_generator
         self._clock = clock
+        self._task_scheduler = task_scheduler
+        self._auto_close_delay_seconds = auto_close_delay_seconds
         self._agent_workflow: agent_workflow_port.AgentWorkflowPort
         if agent_workflow is None:
             self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
@@ -663,6 +668,7 @@ class SchedulingService:
         request.calendar_event_id = event.event_id
         request.set_status("BOOKED", now_value)
         self._scheduling_repository.save_request(request)
+        self._schedule_auto_close_task(tenant_id, request.id)
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="BOOKED",
             request_id=request.id,
@@ -1037,10 +1043,6 @@ class SchedulingService:
             now_value=now_value,
         )
 
-        # TODO: Implementar cronjob/endpoint que cierre sesiones BOOKED automaticamente
-        #       tras 5 min de inactividad. Actualmente SESSION_CLOSED solo se ejecuta
-        #       cuando el paciente responde al "algo mas?" post-booking. Si el paciente
-        #       no responde, la sesion queda en BOOKED indefinidamente.
         booked_request.set_status("SESSION_CLOSED", now_value)
         self._scheduling_repository.save_request(booked_request)
 
@@ -1061,6 +1063,73 @@ class SchedulingService:
         return {
             "status": "SESSION_CLOSED",
         }
+
+    def auto_close_booked_request(
+        self,
+        tenant_id: str,
+        scheduling_request_id: str,
+    ) -> dict[str, str]:
+        request = self._scheduling_repository.get_request_by_id(tenant_id, scheduling_request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+
+        if request.status != "BOOKED":
+            logger.info(
+                "scheduling.auto_close_skipped",
+                extra={
+                    "request_id": scheduling_request_id,
+                    "current_status": request.status,
+                },
+            )
+            return {"status": request.status, "action": "skipped"}
+
+        now_value = self._clock.now()
+        self._archive_conversation_subsession_after_booking(
+            tenant_id=tenant_id,
+            conversation_id=request.conversation_id,
+            scheduling_request_id=request.id,
+            calendar_event_id=request.calendar_event_id or "",
+            now_value=now_value,
+        )
+        request.set_status("SESSION_CLOSED", now_value)
+        self._scheduling_repository.save_request(request)
+
+        logger.info(
+            "scheduling.auto_close_completed",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.auto_close_completed",
+                    message="session auto-closed after timeout",
+                    data={
+                        "tenant_id": tenant_id,
+                        "request_id": scheduling_request_id,
+                    },
+                )
+            },
+        )
+        return {"status": "SESSION_CLOSED", "action": "closed"}
+
+    def _schedule_auto_close_task(self, tenant_id: str, scheduling_request_id: str) -> None:
+        try:
+            task_name = self._task_scheduler.schedule_auto_close(
+                tenant_id=tenant_id,
+                scheduling_request_id=scheduling_request_id,
+                delay_seconds=self._auto_close_delay_seconds,
+            )
+            logger.info(
+                "scheduling.auto_close_task_enqueued",
+                extra={
+                    "task_name": task_name,
+                    "scheduling_request_id": scheduling_request_id,
+                    "delay_seconds": self._auto_close_delay_seconds,
+                },
+            )
+        except service_exceptions.ExternalProviderError:
+            logger.warning(
+                "scheduling.auto_close_task_failed",
+                extra={"scheduling_request_id": scheduling_request_id},
+                exc_info=True,
+            )
 
     def _escalate_patient_slot_rejection_impl(
         self,
