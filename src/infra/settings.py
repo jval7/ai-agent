@@ -43,6 +43,7 @@ class Settings(pydantic.BaseModel):
     cloud_tasks_queue_id: str
     cloud_run_base_url: str
     auto_close_delay_seconds: int
+    rate_limit_enabled: bool
     whatsapp_outbound_noop: bool
 
     @classmethod
@@ -150,6 +151,11 @@ class Settings(pydantic.BaseModel):
             auto_close_delay_seconds=int(
                 app_config_overrides.get("AUTO_CLOSE_DELAY_SECONDS", "3600")
             ),
+            rate_limit_enabled=app_config_overrides.get(
+                "RATE_LIMIT_ENABLED",
+                "true",
+            ).lower()
+            == "true",
             whatsapp_outbound_noop=app_config_overrides.get(
                 "WHATSAPP_OUTBOUND_NOOP",
                 "false",
