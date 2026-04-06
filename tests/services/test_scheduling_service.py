@@ -7,6 +7,7 @@ import src.adapters.outbound.inmemory.conversation_repository_adapter as convers
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
+import src.adapters.outbound.inmemory.task_scheduler_adapter as task_scheduler_adapter
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.domain.entities.message as message_entity
@@ -25,6 +26,7 @@ def build_service(
     scheduling_service.SchedulingService,
     scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
     fake_adapters.FakeGoogleCalendarProvider,
+    task_scheduler_adapter.InMemoryTaskSchedulerAdapter,
 ]:
     store = in_memory_store.InMemoryStore()
     conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
@@ -73,14 +75,16 @@ def build_service(
         )
     )
 
+    task_sched = task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
     service = scheduling_service.SchedulingService(
         scheduling_repository=scheduling_repository,
         conversation_repository=conversation_repository,
         google_calendar_onboarding_service=google_service,
         id_generator=id_generator,
         clock=clock,
+        task_scheduler=task_sched,
     )
-    return service, scheduling_repository, provider
+    return service, scheduling_repository, provider, task_sched
 
 
 def create_awaiting_review_request(
@@ -98,8 +102,40 @@ def create_awaiting_review_request(
     )
 
 
+def _book_request(
+    service: scheduling_service.SchedulingService,
+    repository: scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
+    provider: fake_adapters.FakeGoogleCalendarProvider,
+) -> str:
+    """Helper: creates a request, moves to AWAITING_PATIENT_CHOICE, and books it. Returns request_id."""
+    request = create_awaiting_review_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "AWAITING_PATIENT_CHOICE"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="PROPOSED",
+        )
+    ]
+    repository.save_request(stored)
+    service.confirm_selected_slot_and_create_event(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
+            request_id=request.request_id,
+            slot_id="slot-1",
+            event_summary="Test Booking",
+        ),
+    )
+    return request.request_id
+
+
 def test_submit_consultation_reason_rejects_when_slots_already_proposed() -> None:
-    service, repository, _ = build_service(["req-1"])
+    service, repository, _, _ = build_service(["req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -130,7 +166,7 @@ def test_submit_consultation_reason_rejects_when_slots_already_proposed() -> Non
 
 
 def test_submit_consultation_reason_allows_resubmission_after_more_info_request() -> None:
-    service, repository, _ = build_service(["req-1"])
+    service, repository, _, _ = build_service(["req-1"])
     submitted_request = service.submit_consultation_reason_for_review(
         tenant_id="tenant-1",
         conversation_id="conv-1",
@@ -167,7 +203,7 @@ def test_submit_consultation_reason_allows_resubmission_after_more_info_request(
 
 
 def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
-    service, repository, provider = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1"])
     provider.busy_intervals = [
         google_calendar_dto.GoogleCalendarBusyIntervalDTO(
             start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
@@ -206,7 +242,7 @@ def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
 
 
 def test_confirm_selected_slot_creates_event_when_available() -> None:
-    service, repository, provider = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -238,7 +274,7 @@ def test_confirm_selected_slot_creates_event_when_available() -> None:
 
 
 def test_confirm_selected_slot_archives_active_chat_messages_into_subsession() -> None:
-    service, repository, _ = build_service(["req-1"])
+    service, repository, _, _ = build_service(["req-1"])
     conversation_repository = service._conversation_repository
     conversation_repository.save_message(
         message_entity.Message(
@@ -316,7 +352,7 @@ def test_confirm_selected_slot_archives_active_chat_messages_into_subsession() -
 
 
 def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None:
-    service, repository, provider = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1"])
     provider.create_event_errors = [
         service_exceptions.ExternalProviderError(
             "google calendar create event failed (status=409, detail=conflict)"
@@ -351,7 +387,7 @@ def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None
 
 
 def test_select_slot_for_confirmation_persists_selected_slot() -> None:
-    service, repository, _ = build_service(["req-1"])
+    service, repository, _, _ = build_service(["req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -390,7 +426,7 @@ def test_select_slot_for_confirmation_persists_selected_slot() -> None:
 
 
 def test_select_slot_for_confirmation_switches_selected_slot() -> None:
-    service, repository, _ = build_service(["req-1"])
+    service, repository, _, _ = build_service(["req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -430,7 +466,7 @@ def test_select_slot_for_confirmation_switches_selected_slot() -> None:
 
 
 def test_confirm_selected_slot_accepts_selected_slot_status() -> None:
-    service, repository, provider = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -462,7 +498,7 @@ def test_confirm_selected_slot_accepts_selected_slot_status() -> None:
 
 
 def test_reschedule_booked_slot_updates_booked_request() -> None:
-    service, repository, provider = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -499,7 +535,7 @@ def test_reschedule_booked_slot_updates_booked_request() -> None:
 
 
 def test_cancel_booked_slot_sets_cancelled_and_clears_calendar_event() -> None:
-    service, repository, provider = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -533,7 +569,7 @@ def test_cancel_booked_slot_sets_cancelled_and_clears_calendar_event() -> None:
 
 
 def test_cancel_booked_slot_tolerates_google_not_found() -> None:
-    service, repository, provider = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1"])
     provider.delete_event_errors = [
         service_exceptions.ExternalProviderError(
             "google calendar delete event failed (status=404, detail=not found)"
@@ -569,7 +605,7 @@ def test_cancel_booked_slot_tolerates_google_not_found() -> None:
 
 
 def test_update_booked_payment_updates_request() -> None:
-    service, repository, _ = build_service(["req-1"])
+    service, repository, _, _ = build_service(["req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -608,7 +644,7 @@ def test_update_booked_payment_updates_request() -> None:
 
 
 def test_update_booked_payment_rejects_non_booked_request() -> None:
-    service, repository, _ = build_service(["req-1"])
+    service, repository, _, _ = build_service(["req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -634,3 +670,80 @@ def test_update_booked_payment_dto_rejects_non_positive_amount() -> None:
             payment_method="TRANSFER",
             payment_status="PENDING",
         )
+
+
+# ── Auto-close BOOKED tests ─────────────────────────────────────────
+
+
+def test_auto_close_task_scheduled_on_booking() -> None:
+    service, repository, provider, task_sched = build_service(["req-1"])
+    request_id = _book_request(service, repository, provider)
+    assert len(task_sched.scheduled_tasks) == 1
+    task = task_sched.scheduled_tasks[0]
+    assert task["tenant_id"] == "tenant-1"
+    assert task["scheduling_request_id"] == request_id
+    assert task["delay_seconds"] == 3600
+
+
+def test_auto_close_closes_booked_request() -> None:
+    service, repository, provider, _ = build_service(["req-1"])
+    request_id = _book_request(service, repository, provider)
+    result = service.auto_close_booked_request("tenant-1", request_id)
+    assert result == {"status": "SESSION_CLOSED", "action": "closed"}
+    stored = repository.get_request_by_id("tenant-1", request_id)
+    assert stored is not None
+    assert stored.status == "SESSION_CLOSED"
+
+
+def test_auto_close_skips_non_booked_request() -> None:
+    service, repository, provider, _ = build_service(["req-1"])
+    request_id = _book_request(service, repository, provider)
+    stored = repository.get_request_by_id("tenant-1", request_id)
+    assert stored is not None
+    stored.status = "SESSION_CLOSED"
+    repository.save_request(stored)
+    result = service.auto_close_booked_request("tenant-1", request_id)
+    assert result == {"status": "SESSION_CLOSED", "action": "skipped"}
+
+
+def test_auto_close_raises_for_missing_request() -> None:
+    service, _, _, _ = build_service(["req-1"])
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        service.auto_close_booked_request("tenant-1", "nonexistent-id")
+
+
+def test_auto_close_task_failure_does_not_break_booking() -> None:
+    service, repository, _provider, task_sched = build_service(["req-1"])
+    request = create_awaiting_review_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "AWAITING_PATIENT_CHOICE"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="PROPOSED",
+        )
+    ]
+    repository.save_request(stored)
+
+    def failing_schedule(tenant_id: str, scheduling_request_id: str, delay_seconds: int) -> str:
+        raise service_exceptions.ExternalProviderError("Cloud Tasks unavailable")
+
+    task_sched.schedule_auto_close = failing_schedule  # type: ignore[method-assign]
+
+    result = service.confirm_selected_slot_and_create_event(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
+            request_id=request.request_id,
+            slot_id="slot-1",
+            event_summary="Test Booking",
+        ),
+    )
+    assert result.status == "BOOKED"
+    reloaded = repository.get_request_by_id("tenant-1", request.request_id)
+    assert reloaded is not None
+    assert reloaded.status == "BOOKED"

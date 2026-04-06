@@ -106,6 +106,44 @@ resource "google_secret_manager_secret_iam_member" "runtime_secret_accessor" {
   member    = "serviceAccount:${var.runtime_service_account_email}"
 }
 
+# ── Cloud Tasks queue for auto-close booked sessions ─────────────────
+
+resource "google_cloud_tasks_queue" "auto_close_booked" {
+  project  = var.project_id
+  location = var.region
+  name     = var.cloud_tasks_queue_name
+
+  rate_limits {
+    max_dispatches_per_second = 5
+    max_concurrent_dispatches = 5
+  }
+
+  retry_config {
+    max_attempts       = 5
+    min_backoff        = "10s"
+    max_backoff        = "300s"
+    max_retry_duration = "3600s"
+  }
+
+  depends_on = [
+    google_project_service.apis,
+  ]
+}
+
+resource "google_cloud_tasks_queue_iam_member" "runtime_enqueuer" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_tasks_queue.auto_close_booked.name
+  role     = "roles/cloudtasks.enqueuer"
+  member   = "serviceAccount:${var.runtime_service_account_email}"
+}
+
+resource "google_service_account_iam_member" "runtime_self_token_creator" {
+  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.runtime_service_account_email}"
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${var.runtime_service_account_email}"
+}
+
 resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
   count = var.allow_unauthenticated ? 1 : 0
 
