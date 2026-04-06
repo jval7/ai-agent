@@ -3,6 +3,7 @@ import fastapi.middleware.cors as fastapi_cors
 
 import src.entrypoints.web.exceptions.http_exception_handlers as http_exception_handlers
 import src.entrypoints.web.middleware.request_context_middleware as request_context_middleware
+import src.entrypoints.web.rate_limiter as rate_limiter
 import src.entrypoints.web.routers.agent_router as agent_router
 import src.entrypoints.web.routers.auth_router as auth_router
 import src.entrypoints.web.routers.blacklist_router as blacklist_router
@@ -38,6 +39,9 @@ def create_app() -> fastapi.FastAPI:
         request_context_middleware.RequestContextMiddleware,
         include_request_summary=app.state.container.settings.log_include_request_summary,
     )
+
+    if app.state.container.settings.rate_limit_enabled:
+        rate_limiter.configure_rate_limiter(app)
 
     app.include_router(health_router.router)
     app.include_router(auth_router.router)

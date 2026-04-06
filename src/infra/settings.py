@@ -39,6 +39,7 @@ class Settings(pydantic.BaseModel):
     langsmith_tags: list[str]
     log_level: str
     log_include_request_summary: bool
+    rate_limit_enabled: bool
     whatsapp_outbound_noop: bool
 
     @classmethod
@@ -133,6 +134,11 @@ class Settings(pydantic.BaseModel):
             log_include_request_summary=app_config_overrides.get(
                 "LOG_INCLUDE_REQUEST_SUMMARY",
                 "false",
+            ).lower()
+            == "true",
+            rate_limit_enabled=app_config_overrides.get(
+                "RATE_LIMIT_ENABLED",
+                "true",
             ).lower()
             == "true",
             whatsapp_outbound_noop=app_config_overrides.get(
