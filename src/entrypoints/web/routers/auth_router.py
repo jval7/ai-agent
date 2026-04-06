@@ -1,6 +1,7 @@
 import fastapi
 
 import src.entrypoints.web.dependencies as http_dependencies
+import src.entrypoints.web.rate_limiter as rate_limiter
 import src.infra.container as app_container
 import src.services.dto.auth_dto as auth_dto
 
@@ -8,7 +9,9 @@ router = fastapi.APIRouter(prefix="/v1/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=auth_dto.AuthTokensDTO)
+@rate_limiter.limiter.limit("5/minute")  # type: ignore[misc]
 def login(
+    request: fastapi.Request,
     login_dto: auth_dto.LoginDTO,
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> auth_dto.AuthTokensDTO:
@@ -16,7 +19,9 @@ def login(
 
 
 @router.post("/refresh", response_model=auth_dto.AuthTokensDTO)
+@rate_limiter.limiter.limit("10/minute")  # type: ignore[misc]
 def refresh(
+    request: fastapi.Request,
     refresh_dto: auth_dto.RefreshTokenDTO,
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> auth_dto.AuthTokensDTO:
@@ -24,7 +29,9 @@ def refresh(
 
 
 @router.post("/logout", status_code=204)
+@rate_limiter.limiter.limit("10/minute")  # type: ignore[misc]
 def logout(
+    request: fastapi.Request,
     logout_dto: auth_dto.LogoutDTO,
     _: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
