@@ -43,7 +43,6 @@ class Settings(pydantic.BaseModel):
     cloud_tasks_queue_id: str
     cloud_run_base_url: str
     auto_close_delay_seconds: int
-    cloud_tasks_service_account_email: str
     whatsapp_outbound_noop: bool
 
     @classmethod
@@ -150,9 +149,6 @@ class Settings(pydantic.BaseModel):
             cloud_run_base_url=app_config_overrides.get("CLOUD_RUN_BASE_URL", ""),
             auto_close_delay_seconds=int(
                 app_config_overrides.get("AUTO_CLOSE_DELAY_SECONDS", "3600")
-            ),
-            cloud_tasks_service_account_email=app_config_overrides.get(
-                "CLOUD_TASKS_SERVICE_ACCOUNT_EMAIL", ""
             ),
             whatsapp_outbound_noop=app_config_overrides.get(
                 "WHATSAPP_OUTBOUND_NOOP",

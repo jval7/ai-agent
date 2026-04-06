@@ -226,7 +226,6 @@ class AppContainer:
                 location=self.settings.cloud_tasks_location,
                 queue_id=self.settings.cloud_tasks_queue_id,
                 cloud_run_base_url=self.settings.cloud_run_base_url,
-                service_account_email=self.settings.cloud_tasks_service_account_email,
             )
         else:
             self.task_scheduler = noop_task_scheduler_adapter.NoopTaskSchedulerAdapter()

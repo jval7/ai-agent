@@ -138,12 +138,6 @@ resource "google_cloud_tasks_queue_iam_member" "runtime_enqueuer" {
   member   = "serviceAccount:${var.runtime_service_account_email}"
 }
 
-resource "google_service_account_iam_member" "runtime_self_token_creator" {
-  service_account_id = "projects/${var.project_id}/serviceAccounts/${var.runtime_service_account_email}"
-  role               = "roles/iam.serviceAccountUser"
-  member             = "serviceAccount:${var.runtime_service_account_email}"
-}
-
 resource "google_cloud_run_v2_service_iam_member" "public_invoker" {
   count = var.allow_unauthenticated ? 1 : 0
 

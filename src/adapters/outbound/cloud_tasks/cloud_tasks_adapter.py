@@ -18,12 +18,10 @@ class CloudTasksSchedulerAdapter(task_scheduler_port.TaskSchedulerPort):
         location: str,
         queue_id: str,
         cloud_run_base_url: str,
-        service_account_email: str,
     ) -> None:
         self._client = cloud_tasks_v2.CloudTasksClient()
         self._queue_path = self._client.queue_path(project_id, location, queue_id)
         self._cloud_run_base_url = cloud_run_base_url.rstrip("/")
-        self._service_account_email = service_account_email
 
     def schedule_auto_close(
         self,
@@ -48,10 +46,7 @@ class CloudTasksSchedulerAdapter(task_scheduler_port.TaskSchedulerPort):
                 url=url,
                 headers={"Content-Type": "application/json"},
                 body=payload,
-                oidc_token=cloud_tasks_v2.OidcToken(
-                    service_account_email=self._service_account_email,
-                    audience=self._cloud_run_base_url,
-                ),
+                # TODO: agregar oidc_token cuando se implemente validación OIDC en el endpoint
             ),
             schedule_time=schedule_time,
         )
