@@ -93,7 +93,7 @@ def test_create_manual_appointment_requires_existing_patient() -> None:
 
     with pytest.raises(service_exceptions.EntityNotFoundError):
         service.create_appointment(
-            claims=build_claims("owner"),
+            claims=build_claims("professional"),
             create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
                 patient_whatsapp_user_id="wa-1",
                 start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
@@ -122,7 +122,7 @@ def test_create_and_reschedule_manual_appointment() -> None:
     )
 
     created = service.create_appointment(
-        claims=build_claims("owner"),
+        claims=build_claims("professional"),
         create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
             patient_whatsapp_user_id="wa-1",
             start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
@@ -136,7 +136,7 @@ def test_create_and_reschedule_manual_appointment() -> None:
     assert google_provider.created_event_summaries == ["Cita - Jane Doe"]
 
     rescheduled = service.reschedule_appointment(
-        claims=build_claims("owner"),
+        claims=build_claims("professional"),
         appointment_id=created.appointment_id,
         input_dto=manual_appointment_dto.RescheduleManualAppointmentDTO(
             start_at=datetime.datetime(2026, 1, 16, 10, 0, tzinfo=datetime.UTC),
@@ -170,7 +170,7 @@ def test_cancel_manual_appointment_marks_cancelled() -> None:
         )
     )
     created = service.create_appointment(
-        claims=build_claims("owner"),
+        claims=build_claims("professional"),
         create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
             patient_whatsapp_user_id="wa-1",
             start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
@@ -181,7 +181,7 @@ def test_cancel_manual_appointment_marks_cancelled() -> None:
     )
 
     cancelled = service.cancel_appointment(
-        claims=build_claims("owner"),
+        claims=build_claims("professional"),
         appointment_id=created.appointment_id,
         input_dto=manual_appointment_dto.CancelManualAppointmentDTO(reason="Paciente cancela"),
     )
@@ -211,7 +211,7 @@ def test_cancel_manual_appointment_keeps_consistency_on_google_error() -> None:
         )
     )
     created = service.create_appointment(
-        claims=build_claims("owner"),
+        claims=build_claims("professional"),
         create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
             patient_whatsapp_user_id="wa-1",
             start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
@@ -226,7 +226,7 @@ def test_cancel_manual_appointment_keeps_consistency_on_google_error() -> None:
 
     with pytest.raises(service_exceptions.ExternalProviderError):
         service.cancel_appointment(
-            claims=build_claims("owner"),
+            claims=build_claims("professional"),
             appointment_id=created.appointment_id,
             input_dto=manual_appointment_dto.CancelManualAppointmentDTO(reason=None),
         )
@@ -249,7 +249,7 @@ def test_update_payment_updates_manual_scheduled_appointment() -> None:
         )
     )
     created = service.create_appointment(
-        claims=build_claims("owner"),
+        claims=build_claims("professional"),
         create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
             patient_whatsapp_user_id="wa-1",
             start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
@@ -260,7 +260,7 @@ def test_update_payment_updates_manual_scheduled_appointment() -> None:
     )
 
     updated = service.update_payment(
-        claims=build_claims("owner"),
+        claims=build_claims("professional"),
         appointment_id=created.appointment_id,
         input_dto=manual_appointment_dto.UpdateManualAppointmentPaymentDTO(
             payment_amount_cop=120000,
@@ -296,7 +296,7 @@ def test_update_payment_rejects_cancelled_manual_appointment() -> None:
         )
     )
     created = service.create_appointment(
-        claims=build_claims("owner"),
+        claims=build_claims("professional"),
         create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
             patient_whatsapp_user_id="wa-1",
             start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
@@ -306,14 +306,14 @@ def test_update_payment_rejects_cancelled_manual_appointment() -> None:
         ),
     )
     service.cancel_appointment(
-        claims=build_claims("owner"),
+        claims=build_claims("professional"),
         appointment_id=created.appointment_id,
         input_dto=manual_appointment_dto.CancelManualAppointmentDTO(reason="cancelada"),
     )
 
     with pytest.raises(service_exceptions.InvalidStateError):
         service.update_payment(
-            claims=build_claims("owner"),
+            claims=build_claims("professional"),
             appointment_id=created.appointment_id,
             input_dto=manual_appointment_dto.UpdateManualAppointmentPaymentDTO(
                 payment_amount_cop=120000,

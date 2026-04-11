@@ -19,19 +19,27 @@ class WhatsappOnboardingService:
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
         webhook_verify_token: str,
+        meta_app_id: str,
+        meta_config_id: str,
     ) -> None:
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._whatsapp_provider = whatsapp_provider
         self._id_generator = id_generator
         self._clock = clock
         self._webhook_verify_token = webhook_verify_token
+        self._meta_app_id = meta_app_id
+        self._meta_config_id = meta_config_id
 
     def create_embedded_signup_session(
-        self, tenant_id: str
+        self,
+        tenant_id: str,
+        session_request: whatsapp_dto.EmbeddedSignupSessionRequestDTO | None = None,
     ) -> whatsapp_dto.EmbeddedSignupSessionResponseDTO:
         now_value = self._clock.now()
         state_token = self._id_generator.new_token()
         existing_connection = self._whatsapp_connection_repository.get_by_tenant_id(tenant_id)
+
+        registration_pin = session_request.registration_pin if session_request else None
 
         connection = whatsapp_connection_entity.WhatsappConnection(
             tenant_id=tenant_id,
@@ -42,6 +50,7 @@ class WhatsappOnboardingService:
             access_token=existing_connection.access_token if existing_connection else None,
             status="PENDING",
             embedded_signup_state=state_token,
+            registration_pin=registration_pin,
             updated_at=now_value,
         )
         self._whatsapp_connection_repository.save(connection)
@@ -63,6 +72,8 @@ class WhatsappOnboardingService:
         return whatsapp_dto.EmbeddedSignupSessionResponseDTO(
             state=state_token,
             connect_url=connect_url,
+            app_id=self._meta_app_id,
+            config_id=self._meta_config_id,
         )
 
     def complete_embedded_signup(
@@ -103,8 +114,40 @@ class WhatsappOnboardingService:
             )
             raise service_exceptions.InvalidStateError("embedded signup state mismatch")
 
-        credentials = self._whatsapp_provider.exchange_code_for_credentials(complete_dto.code)
-        return self._finalize_connection(connection, credentials)
+        logger.info(
+            "whatsapp.onboarding.complete_debug",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="whatsapp.onboarding.complete_debug",
+                    message="complete dto received",
+                    data={
+                        "has_access_token": complete_dto.access_token is not None,
+                        "has_code": complete_dto.code is not None,
+                        "access_token_prefix": (complete_dto.access_token or "")[:20],
+                        "code_prefix": (complete_dto.code or "")[:20],
+                        "session_phone_number_id": complete_dto.phone_number_id,
+                        "session_waba_id": complete_dto.waba_id,
+                    },
+                )
+            },
+        )
+        if complete_dto.access_token:
+            credentials = self._whatsapp_provider.resolve_credentials_from_token(
+                complete_dto.access_token
+            )
+        else:
+            if complete_dto.code is None:
+                raise service_exceptions.InvalidStateError(
+                    "either code or access_token must be provided"
+                )
+            credentials = self._whatsapp_provider.exchange_code_for_credentials(
+                complete_dto.code,
+                from_js_sdk=True,
+                js_sdk_origin_url=complete_dto.origin_url,
+            )
+        return self._finalize_connection(
+            connection, credentials, registration_pin=complete_dto.registration_pin
+        )
 
     def complete_embedded_signup_by_state(
         self, code: str, state: str
@@ -126,12 +169,15 @@ class WhatsappOnboardingService:
             raise service_exceptions.EntityNotFoundError("embedded signup state not found")
 
         credentials = self._whatsapp_provider.exchange_code_for_credentials(code)
-        return self._finalize_connection(connection, credentials)
+        return self._finalize_connection(
+            connection, credentials, registration_pin=connection.registration_pin
+        )
 
     def _finalize_connection(
         self,
         connection: whatsapp_connection_entity.WhatsappConnection,
         credentials: whatsapp_dto.EmbeddedSignupCredentialsDTO,
+        registration_pin: str | None = None,
     ) -> whatsapp_dto.WhatsappConnectionStatusDTO:
         logger.info(
             "whatsapp.onboarding.provisioning_started",
@@ -153,17 +199,13 @@ class WhatsappOnboardingService:
                 access_token=credentials.access_token,
                 business_account_id=credentials.business_account_id,
             )
-            self._whatsapp_provider.register_phone_number(
-                access_token=credentials.access_token,
-                phone_number_id=credentials.phone_number_id,
-            )
         except service_exceptions.ExternalProviderError as error:
             logger.error(
                 "whatsapp.onboarding.provisioning_failed",
                 extra={
                     "event_data": app_logs.build_log_event(
                         event_name="whatsapp.onboarding.provisioning_failed",
-                        message="whatsapp cloud provisioning failed",
+                        message="whatsapp cloud provisioning failed at subscribe",
                         data={
                             "tenant_id": connection.tenant_id,
                             "reason": str(error),
@@ -172,6 +214,44 @@ class WhatsappOnboardingService:
                 },
             )
             raise
+
+        try:
+            self._whatsapp_provider.register_phone_number(
+                access_token=credentials.access_token,
+                phone_number_id=credentials.phone_number_id,
+                registration_pin=registration_pin,
+            )
+        except service_exceptions.ExternalProviderError as error:
+            error_msg = str(error)
+            is_smb_error = "not available for SMB" in error_msg
+            is_pin_required = "pin is required" in error_msg.lower()
+            if is_smb_error or is_pin_required:
+                skip_reason = "smb_account" if is_smb_error else "pin_required"
+                logger.info(
+                    "whatsapp.onboarding.register_skipped",
+                    extra={
+                        "event_data": app_logs.build_log_event(
+                            event_name="whatsapp.onboarding.register_skipped",
+                            message=f"phone registration skipped: {skip_reason}",
+                            data={"tenant_id": connection.tenant_id, "reason": skip_reason},
+                        )
+                    },
+                )
+            else:
+                logger.error(
+                    "whatsapp.onboarding.provisioning_failed",
+                    extra={
+                        "event_data": app_logs.build_log_event(
+                            event_name="whatsapp.onboarding.provisioning_failed",
+                            message="whatsapp cloud provisioning failed at register",
+                            data={
+                                "tenant_id": connection.tenant_id,
+                                "reason": str(error),
+                            },
+                        )
+                    },
+                )
+                raise
 
         logger.info(
             "whatsapp.onboarding.provisioning_completed",

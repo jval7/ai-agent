@@ -28,9 +28,9 @@ def test_chat_reset_clears_operational_data_but_keeps_integrations() -> None:
     user = user_entity.User(
         id="user-1",
         tenant_id="tenant-1",
-        email="owner@acme.com",
+        email="professional@acme.com",
         password_hash="hash",
-        role="owner",
+        role="professional",
         is_active=True,
         created_at=now_value,
     )
@@ -178,7 +178,7 @@ def test_chat_reset_clears_operational_data_but_keeps_integrations() -> None:
 
     assert "tenant-1" in store.tenants_by_id
     assert "user-1" in store.users_by_id
-    assert "owner@acme.com" in store.users_by_email
+    assert "professional@acme.com" in store.users_by_email
     assert "tenant-1" in store.agent_profile_by_tenant
     assert "tenant-1" in store.wa_connection_by_tenant
     assert "state-1" in store.connection_by_embedded_signup_state

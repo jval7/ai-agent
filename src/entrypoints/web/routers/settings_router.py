@@ -27,8 +27,8 @@ def get_dev_features(
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> DevFeaturesResponse:
-    if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-        raise service_exceptions.AuthorizationError("owner role required")
+    if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+        raise service_exceptions.AuthorizationError("professional role required")
     return DevFeaturesResponse(enabled=container.settings.enable_dev_endpoints)
 
 
@@ -37,8 +37,8 @@ def get_sandbox_mode(
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> SandboxResponse:
-    if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-        raise service_exceptions.AuthorizationError("owner role required")
+    if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+        raise service_exceptions.AuthorizationError("professional role required")
     if not container.settings.enable_dev_endpoints:
         raise service_exceptions.AuthorizationError("sandbox is only available in dev environment")
     return SandboxResponse(sandbox_enabled=container.settings.whatsapp_outbound_noop)
@@ -50,8 +50,8 @@ def update_sandbox_mode(
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> SandboxResponse:
-    if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-        raise service_exceptions.AuthorizationError("owner role required")
+    if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+        raise service_exceptions.AuthorizationError("professional role required")
     if not container.settings.enable_dev_endpoints:
         raise service_exceptions.AuthorizationError("sandbox is only available in dev environment")
     container.settings.whatsapp_outbound_noop = body.sandbox_enabled

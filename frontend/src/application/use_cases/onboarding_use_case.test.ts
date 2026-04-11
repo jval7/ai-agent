@@ -15,7 +15,9 @@ vitestModule.describe("OnboardingUseCase", () => {
       })),
       createEmbeddedSignupSession: vitestModule.vi.fn(async () => ({
         state: "meta-state",
-        connectUrl: "https://meta.test/connect"
+        connectUrl: "https://meta.test/connect",
+        appId: "app-123",
+        configId: "config-123"
       })),
       getGoogleCalendarConnection: vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",

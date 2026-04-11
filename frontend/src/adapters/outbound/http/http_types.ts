@@ -18,6 +18,8 @@ export interface AgentSettingsApiResponse {
 export interface EmbeddedSignupSessionApiResponse {
   state: string;
   connect_url: string;
+  app_id: string;
+  config_id: string;
 }
 
 export interface GoogleOauthSessionApiResponse {
@@ -326,4 +328,30 @@ export interface MessageSentApiResponse {
 export interface ApiErrorResponse {
   detail: string;
   request_id?: string;
+}
+
+export interface TemplateComponentApiResponse {
+  type: string;
+  text: string;
+  example_values?: string[];
+}
+
+export interface WhatsappTemplateApiResponse {
+  id: string;
+  name: string;
+  category: string;
+  language: string;
+  status: string;
+  components: TemplateComponentApiResponse[];
+}
+
+export interface TemplateListApiResponse {
+  templates: WhatsappTemplateApiResponse[];
+}
+
+export interface CreateTemplateApiRequest {
+  name: string;
+  category: string;
+  language: string;
+  components: TemplateComponentApiResponse[];
 }

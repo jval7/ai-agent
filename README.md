@@ -35,21 +35,17 @@ make fe-install
 make fe-dev
 ```
 
-## Local auth bootstrap
+## Professional management
 
-Public signup (`POST /v1/auth/register`) is disabled. User management is local-only through Make commands:
-
-```bash
-make user-bootstrap-master TENANT_NAME=Acme MASTER_EMAIL=owner@acme.com MASTER_PASSWORD=supersecret
-make user-create MASTER_EMAIL=owner@acme.com MASTER_PASSWORD=supersecret USER_EMAIL=user@acme.com USER_PASSWORD=supersecret
-make user-delete MASTER_EMAIL=owner@acme.com MASTER_PASSWORD=supersecret USER_EMAIL=user@acme.com
-```
-
-After bootstrapping master, run OAuth flow with login:
+Each professional is an independent tenant. Management is local-only through Make commands (requires GCP access):
 
 ```bash
-make oauth-flow OWNER_EMAIL=owner@acme.com OWNER_PASSWORD=supersecret
+make create-professional EMAIL=doc@acme.com TENANT_NAME=DrAcme
+make delete-professional EMAIL=doc@acme.com
+make oauth-flow
 ```
+
+`create-professional` generates a random password and prints it. Credentials are saved to `.secrets/` for use by other commands.
 
 ## Run with Docker
 

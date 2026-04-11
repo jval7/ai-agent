@@ -1,4 +1,5 @@
 import json
+import logging
 import typing
 import urllib.parse
 
@@ -8,7 +9,10 @@ import src.infra.settings as app_settings
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.dto.whatsapp_dto as whatsapp_dto
+import src.services.dto.whatsapp_template_dto as whatsapp_template_dto
 import src.services.exceptions as service_exceptions
+
+logger = logging.getLogger(__name__)
 
 
 class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
@@ -27,9 +31,17 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
         encoded_query = urllib.parse.urlencode(query_params)
         return f"https://www.facebook.com/{self._settings.meta_api_version}/dialog/oauth?{encoded_query}"
 
-    def exchange_code_for_credentials(self, code: str) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
+    def exchange_code_for_credentials(
+        self,
+        code: str,
+        *,
+        from_js_sdk: bool = False,
+        js_sdk_origin_url: str | None = None,
+    ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
         self._validate_embedded_signup_settings()
-        access_token = self._exchange_code_for_access_token(code)
+        access_token = self._exchange_code_for_access_token(
+            code, from_js_sdk=from_js_sdk, js_sdk_origin_url=js_sdk_origin_url
+        )
 
         business_id = self._resolve_business_id(access_token)
         debug_target_ids = self._fetch_debug_target_ids(access_token)
@@ -39,6 +51,22 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
             debug_target_ids=debug_target_ids,
         )
 
+        return whatsapp_dto.EmbeddedSignupCredentialsDTO(
+            phone_number_id=phone_number_id,
+            business_account_id=waba_id,
+            access_token=access_token,
+        )
+
+    def resolve_credentials_from_token(
+        self, access_token: str
+    ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
+        business_id = self._resolve_business_id(access_token)
+        debug_target_ids = self._fetch_debug_target_ids(access_token)
+        waba_id, phone_number_id = self._resolve_waba_and_phone_number_id(
+            access_token=access_token,
+            business_id=business_id,
+            debug_target_ids=debug_target_ids,
+        )
         return whatsapp_dto.EmbeddedSignupCredentialsDTO(
             phone_number_id=phone_number_id,
             business_account_id=waba_id,
@@ -56,19 +84,17 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
         )
         self._assert_success_flag(response_payload, "subscribing app to waba")
 
-    def register_phone_number(self, access_token: str, phone_number_id: str) -> None:
-        registration_pin = self._settings.meta_phone_registration_pin.strip()
-        if registration_pin == "":
-            raise service_exceptions.ExternalProviderError(
-                "META_PHONE_REGISTRATION_PIN is required"
-            )
+    def register_phone_number(
+        self, access_token: str, phone_number_id: str, registration_pin: str | None = None
+    ) -> None:
+        pin = (registration_pin or "").strip()
 
         register_url = f"https://graph.facebook.com/{self._settings.meta_api_version}/{phone_number_id}/register"
         headers = {"Authorization": f"Bearer {access_token}"}
-        body = {
-            "messaging_product": "whatsapp",
-            "pin": registration_pin,
-        }
+        body: dict[str, str] = {"messaging_product": "whatsapp"}
+        if pin:
+            body["pin"] = pin
+
         response_payload = self._post_json(
             url=register_url,
             operation_label="registering phone number",
@@ -225,7 +251,7 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
                     if not isinstance(message_type, str) or not message_type:
                         continue
 
-                    message_text = f"[owner_app_non_text:{message_type}]"
+                    message_text = f"[professional_app_non_text:{message_type}]"
                     if message_type == "text":
                         text_payload = message_echo.get("text")
                         if not isinstance(text_payload, dict):
@@ -242,12 +268,130 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
                         whatsapp_user_name=None,
                         message_id=message_id,
                         message_type=message_type,
-                        source="OWNER_APP",
+                        source="PROFESSIONAL_APP",
                         message_text=message_text,
                     )
                     events.append(event)
 
         return events
+
+    def list_message_templates(
+        self, access_token: str, waba_id: str
+    ) -> list[whatsapp_template_dto.TemplateDTO]:
+        url = f"https://graph.facebook.com/{self._settings.meta_api_version}/{waba_id}/message_templates"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        response_payload = self._get_json(
+            url=url,
+            operation_label="listing message templates",
+            headers=headers,
+        )
+        raw_data = response_payload.get("data")
+        if not isinstance(raw_data, list):
+            raise service_exceptions.ExternalProviderError(
+                "meta did not return templates data array"
+            )
+        templates: list[whatsapp_template_dto.TemplateDTO] = []
+        for item in raw_data:
+            if not isinstance(item, dict):
+                continue
+            template_id = item.get("id")
+            name = item.get("name")
+            category = item.get("category")
+            language = item.get("language")
+            status = item.get("status")
+            if not isinstance(template_id, str) or not template_id:
+                continue
+            if not isinstance(name, str) or not name:
+                continue
+            if not isinstance(category, str) or not category:
+                continue
+            if not isinstance(language, str) or not language:
+                continue
+            if not isinstance(status, str) or not status:
+                continue
+            raw_components = item.get("components")
+            components: list[whatsapp_template_dto.TemplateComponentDTO] = []
+            if isinstance(raw_components, list):
+                for raw_comp in raw_components:
+                    if not isinstance(raw_comp, dict):
+                        continue
+                    comp_type = raw_comp.get("type")
+                    comp_text = raw_comp.get("text", "")
+                    if isinstance(comp_type, str) and comp_type:
+                        components.append(
+                            whatsapp_template_dto.TemplateComponentDTO(
+                                type=comp_type,
+                                text=comp_text if isinstance(comp_text, str) else "",
+                            )
+                        )
+            templates.append(
+                whatsapp_template_dto.TemplateDTO(
+                    id=template_id,
+                    name=name,
+                    category=category,
+                    language=language,
+                    status=status,
+                    components=components,
+                )
+            )
+        return templates
+
+    def create_message_template(
+        self,
+        access_token: str,
+        waba_id: str,
+        template: whatsapp_template_dto.CreateTemplateRequestDTO,
+    ) -> whatsapp_template_dto.TemplateDTO:
+        url = f"https://graph.facebook.com/{self._settings.meta_api_version}/{waba_id}/message_templates"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        body: dict[str, typing.Any] = {
+            "name": template.name,
+            "category": template.category,
+            "language": template.language,
+            "components": [
+                {
+                    "type": comp.type,
+                    "text": comp.text,
+                    **(
+                        {"example": {"body_text": [comp.example_values]}}
+                        if comp.type == "BODY" and comp.example_values
+                        else {}
+                    ),
+                }
+                for comp in template.components
+            ],
+        }
+        response_payload = self._post_json(
+            url=url,
+            operation_label="creating message template",
+            headers=headers,
+            body=body,
+        )
+        template_id = response_payload.get("id")
+        if not isinstance(template_id, str) or not template_id:
+            raise service_exceptions.ExternalProviderError(
+                "meta did not return template id after creation"
+            )
+        status = response_payload.get("status", "PENDING")
+        return whatsapp_template_dto.TemplateDTO(
+            id=template_id,
+            name=template.name,
+            category=template.category,
+            language=template.language,
+            status=status if isinstance(status, str) else "PENDING",
+            components=list(template.components),
+        )
+
+    def delete_message_template(self, access_token: str, waba_id: str, template_name: str) -> None:
+        url = f"https://graph.facebook.com/{self._settings.meta_api_version}/{waba_id}/message_templates"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        params = {"name": template_name}
+        self._delete_json(
+            url=url,
+            operation_label="deleting message template",
+            headers=headers,
+            params=params,
+        )
 
     def _validate_embedded_signup_settings(self) -> None:
         if not self._settings.meta_app_id:
@@ -257,20 +401,57 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
         if not self._settings.meta_redirect_uri:
             raise service_exceptions.ExternalProviderError("META_REDIRECT_URI is required")
 
-    def _exchange_code_for_access_token(self, code: str) -> str:
-        token_url = (
-            f"https://graph.facebook.com/{self._settings.meta_api_version}/oauth/access_token"
-        )
-        token_payload = self._get_json(
-            url=token_url,
-            operation_label="exchanging embedded signup code",
-            params={
-                "client_id": self._settings.meta_app_id,
-                "client_secret": self._settings.meta_app_secret,
-                "redirect_uri": self._settings.meta_redirect_uri,
-                "code": code,
+    def _exchange_code_for_access_token(
+        self,
+        code: str,
+        *,
+        from_js_sdk: bool = False,
+        js_sdk_origin_url: str | None = None,
+    ) -> str:
+        api_version = "v21.0" if from_js_sdk else self._settings.meta_api_version
+        token_url = f"https://graph.facebook.com/{api_version}/oauth/access_token"
+        params: dict[str, str] = {
+            "client_id": self._settings.meta_app_id,
+            "client_secret": self._settings.meta_app_secret,
+            "code": code,
+        }
+        if not from_js_sdk:
+            params["redirect_uri"] = self._settings.meta_redirect_uri
+        logger.info(
+            "whatsapp.exchange.debug",
+            extra={
+                "event_data": {
+                    "event": "whatsapp.exchange.debug",
+                    "from_js_sdk": from_js_sdk,
+                    "has_redirect_uri": "redirect_uri" in params,
+                    "redirect_uri_value": params.get("redirect_uri", "")[:100],
+                    "token_url": token_url,
+                    "client_id": params.get("client_id", "")[:10] + "...",
+                    "code_prefix": code[:20] + "...",
+                    "params_keys": list(params.keys()),
+                }
             },
         )
+        if from_js_sdk:
+            try:
+                response = self._client.post(token_url, data=params)
+                response.raise_for_status()
+                token_payload = response.json()
+            except httpx.HTTPStatusError as error:
+                response_body = error.response.text[:500] if error.response else "no response"
+                raise service_exceptions.ExternalProviderError(
+                    f"meta rejected request while exchanging embedded signup code: {response_body}"
+                ) from error
+            except (httpx.TimeoutException, httpx.RequestError, json.JSONDecodeError) as error:
+                raise service_exceptions.ExternalProviderError(
+                    f"error while exchanging embedded signup code: {error}"
+                ) from error
+        else:
+            token_payload = self._get_json(
+                url=token_url,
+                operation_label="exchanging embedded signup code",
+                params=params,
+            )
 
         access_token = token_payload.get("access_token")
         if not isinstance(access_token, str) or not access_token:
@@ -461,8 +642,9 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
                 f"network error while {operation_label}"
             ) from error
         except httpx.HTTPStatusError as error:
+            response_body = error.response.text[:500] if error.response else "no response"
             raise service_exceptions.ExternalProviderError(
-                f"meta rejected request while {operation_label}"
+                f"meta rejected request while {operation_label}: {response_body}"
             ) from error
         except json.JSONDecodeError as error:
             raise service_exceptions.ExternalProviderError(
@@ -502,6 +684,46 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
     ) -> dict[str, typing.Any]:
         try:
             response = self._client.post(url, headers=headers, json=body)
+            response.raise_for_status()
+            payload = response.json()
+        except httpx.TimeoutException as error:
+            raise service_exceptions.ExternalProviderError(
+                f"timeout while {operation_label}"
+            ) from error
+        except httpx.RequestError as error:
+            raise service_exceptions.ExternalProviderError(
+                f"network error while {operation_label}"
+            ) from error
+        except httpx.HTTPStatusError as error:
+            response_text = error.response.text.strip()
+            if response_text:
+                raise service_exceptions.ExternalProviderError(
+                    f"meta rejected request while {operation_label}: {response_text}"
+                ) from error
+            raise service_exceptions.ExternalProviderError(
+                f"meta rejected request while {operation_label}"
+            ) from error
+        except json.JSONDecodeError as error:
+            raise service_exceptions.ExternalProviderError(
+                f"invalid response while {operation_label}"
+            ) from error
+
+        if not isinstance(payload, dict):
+            raise service_exceptions.ExternalProviderError(
+                f"invalid payload format while {operation_label}"
+            )
+
+        return payload
+
+    def _delete_json(
+        self,
+        url: str,
+        operation_label: str,
+        headers: dict[str, str],
+        params: dict[str, str] | None = None,
+    ) -> dict[str, typing.Any]:
+        try:
+            response = self._client.delete(url, headers=headers, params=params)
             response.raise_for_status()
             payload = response.json()
         except httpx.TimeoutException as error:

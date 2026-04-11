@@ -33,11 +33,10 @@ class UserAdminService:
         self._clock = clock
         self._default_system_prompt = default_system_prompt
 
-    def bootstrap_master(self, request: user_admin_dto.BootstrapMasterDTO) -> None:
-        existing_user = self._user_repository.get_by_email(request.master_email)
+    def create_professional(self, request: user_admin_dto.CreateProfessionalDTO) -> None:
+        existing_user = self._user_repository.get_by_email(request.email)
         if existing_user is not None:
-            self._promote_existing_user_to_master(existing_user, request.master_password)
-            return
+            raise service_exceptions.InvalidStateError("email is already registered")
 
         now_value = self._clock.now()
         tenant_id = self._id_generator.new_id()
@@ -51,94 +50,37 @@ class UserAdminService:
         )
         self._tenant_repository.save(tenant)
 
-        password_hash = self._password_hasher.hash_password(request.master_password)
-        master_user = user_entity.User(
+        password_hash = self._password_hasher.hash_password(request.password)
+        user = user_entity.User(
             id=user_id,
             tenant_id=tenant_id,
-            email=request.master_email,
-            password_hash=password_hash,
-            role=service_constants.DEFAULT_OWNER_ROLE,
-            is_active=True,
-            is_master=True,
-            created_at=now_value,
-        )
-        self._user_repository.save(master_user)
-        self._ensure_agent_profile(tenant_id=tenant_id, now_value=now_value)
-
-    def create_user(self, request: user_admin_dto.CreateUserByMasterDTO) -> None:
-        master_user = self._authenticate_master(
-            master_email=request.master_email,
-            master_password=request.master_password,
-        )
-        existing_user = self._user_repository.get_by_email(request.email)
-        if existing_user is not None:
-            raise service_exceptions.InvalidStateError("email is already registered")
-
-        now_value = self._clock.now()
-        user = user_entity.User(
-            id=self._id_generator.new_id(),
-            tenant_id=master_user.tenant_id,
             email=request.email,
-            password_hash=self._password_hasher.hash_password(request.password),
-            role=service_constants.DEFAULT_OWNER_ROLE,
+            password_hash=password_hash,
+            role=service_constants.DEFAULT_PROFESSIONAL_ROLE,
             is_active=True,
-            is_master=False,
             created_at=now_value,
         )
         self._user_repository.save(user)
+        self._ensure_agent_profile(tenant_id=tenant_id, now_value=now_value)
 
-    def delete_user(self, request: user_admin_dto.DeleteUserByMasterDTO) -> None:
-        master_user = self._authenticate_master(
-            master_email=request.master_email,
-            master_password=request.master_password,
-        )
-        target_user = self._user_repository.get_by_email(request.email)
-        if target_user is None:
+    def reset_password(self, request: user_admin_dto.ResetPasswordDTO) -> None:
+        user = self._user_repository.get_by_email(request.email)
+        if user is None:
             raise service_exceptions.EntityNotFoundError("user not found")
-        if target_user.id == master_user.id:
-            raise service_exceptions.InvalidStateError("master user cannot delete itself")
-        if target_user.is_master:
-            raise service_exceptions.InvalidStateError("master user cannot be deleted")
-        delete_ok = self._user_repository.delete_by_id(target_user.id)
-        if not delete_ok:
-            raise service_exceptions.EntityNotFoundError("user not found")
-
-    def _promote_existing_user_to_master(
-        self,
-        existing_user: user_entity.User,
-        master_password: str,
-    ) -> None:
-        if not existing_user.is_active:
-            raise service_exceptions.AuthenticationError("master user is inactive")
-        is_password_valid = self._password_hasher.verify_password(
-            master_password,
-            existing_user.password_hash,
-        )
-        if not is_password_valid:
-            raise service_exceptions.AuthenticationError("invalid master credentials")
-
-        updated_user = existing_user.model_copy(deep=True)
-        updated_user.role = service_constants.DEFAULT_OWNER_ROLE
-        updated_user.is_master = True
+        updated_user = user.model_copy(deep=True)
+        updated_user.password_hash = self._password_hasher.hash_password(request.new_password)
         self._user_repository.save(updated_user)
-        self._ensure_agent_profile(existing_user.tenant_id, self._clock.now())
 
-    def _authenticate_master(self, master_email: str, master_password: str) -> user_entity.User:
-        master_user = self._user_repository.get_by_email(master_email)
-        if master_user is None:
-            raise service_exceptions.AuthenticationError("invalid master credentials")
-        if not master_user.is_active:
-            raise service_exceptions.AuthenticationError("master user is inactive")
-
-        is_password_valid = self._password_hasher.verify_password(
-            master_password,
-            master_user.password_hash,
-        )
-        if not is_password_valid:
-            raise service_exceptions.AuthenticationError("invalid master credentials")
-        if not master_user.is_master:
-            raise service_exceptions.AuthorizationError("master privileges required")
-        return master_user
+    def delete_professional(self, request: user_admin_dto.DeleteProfessionalDTO) -> None:
+        user = self._user_repository.get_by_email(request.email)
+        if user is None:
+            raise service_exceptions.EntityNotFoundError("user not found")
+        tenant = self._tenant_repository.get_by_id(user.tenant_id)
+        if tenant is None:
+            raise service_exceptions.EntityNotFoundError("tenant not found")
+        deleted = self._tenant_repository.delete_with_data(user.tenant_id)
+        if not deleted:
+            raise service_exceptions.EntityNotFoundError("tenant not found")
 
     def _ensure_agent_profile(self, tenant_id: str, now_value: datetime.datetime) -> None:
         existing_agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)

@@ -169,11 +169,11 @@ def build_customer_text_event(
     )
 
 
-def build_owner_echo_event(
+def build_professional_echo_event(
     provider_event_id: str = "echo-1",
     message_id: str = "wamid-out-1",
     message_type: str = "text",
-    message_text: str = "owner reply",
+    message_text: str = "professional reply",
 ) -> webhook_dto.IncomingMessageEventDTO:
     return webhook_dto.IncomingMessageEventDTO(
         provider_event_id=provider_event_id,
@@ -182,7 +182,7 @@ def build_owner_echo_event(
         whatsapp_user_name=None,
         message_id=message_id,
         message_type=message_type,
-        source="OWNER_APP",
+        source="PROFESSIONAL_APP",
         message_text=message_text,
     )
 
@@ -299,9 +299,9 @@ def test_process_payload_skips_blacklisted_contact_without_creating_conversation
 
 
 def test_process_payload_customer_message_in_human_mode_only_persists_inbound() -> None:
-    ctx = build_webhook_service(["conversation-1", "in-msg-1", "owner-msg-1"])
+    ctx = build_webhook_service(["conversation-1", "in-msg-1", "professional-msg-1"])
     ctx.provider.events = [
-        build_owner_echo_event(provider_event_id="evt-owner", message_id="wamid-owner-1"),
+        build_professional_echo_event(provider_event_id="evt-professional", message_id="wamid-professional-1"),
         build_customer_text_event(provider_event_id="evt-customer", message_id="wamid-in-1"),
     ]
 
@@ -318,14 +318,14 @@ def test_process_payload_customer_message_in_human_mode_only_persists_inbound() 
     assert len(messages) == 2
     assert messages[0].role == "human_agent"
     assert messages[1].role == "user"
-    assert ctx.processed_repository.exists("tenant-1", "evt-owner")
+    assert ctx.processed_repository.exists("tenant-1", "evt-professional")
     assert ctx.processed_repository.exists("tenant-1", "evt-customer")
 
 
-def test_process_payload_owner_echo_creates_conversation_and_sets_human_mode() -> None:
-    ctx = build_webhook_service(["conversation-1", "owner-msg-1"])
+def test_process_payload_professional_echo_creates_conversation_and_sets_human_mode() -> None:
+    ctx = build_webhook_service(["conversation-1", "professional-msg-1"])
     ctx.provider.events = [
-        build_owner_echo_event(provider_event_id="evt-owner", message_id="wamid-owner-1")
+        build_professional_echo_event(provider_event_id="evt-professional", message_id="wamid-professional-1")
     ]
 
     ctx.service.process_payload({})
@@ -339,18 +339,18 @@ def test_process_payload_owner_echo_creates_conversation_and_sets_human_mode() -
     assert len(messages) == 1
     assert messages[0].direction == "OUTBOUND"
     assert messages[0].role == "human_agent"
-    assert messages[0].content == "owner reply"
-    assert ctx.processed_repository.exists("tenant-1", "evt-owner")
+    assert messages[0].content == "professional reply"
+    assert ctx.processed_repository.exists("tenant-1", "evt-professional")
 
 
-def test_process_payload_owner_non_text_echo_persists_marker_and_sets_human_mode() -> None:
-    ctx = build_webhook_service(["conversation-1", "owner-msg-1"])
+def test_process_payload_professional_non_text_echo_persists_marker_and_sets_human_mode() -> None:
+    ctx = build_webhook_service(["conversation-1", "professional-msg-1"])
     ctx.provider.events = [
-        build_owner_echo_event(
-            provider_event_id="evt-owner-img",
-            message_id="wamid-owner-img-1",
+        build_professional_echo_event(
+            provider_event_id="evt-professional-img",
+            message_id="wamid-professional-img-1",
             message_type="image",
-            message_text="[owner_app_non_text:image]",
+            message_text="[professional_app_non_text:image]",
         )
     ]
 
@@ -364,16 +364,16 @@ def test_process_payload_owner_non_text_echo_persists_marker_and_sets_human_mode
     messages = ctx.conversation_repository.list_messages("tenant-1", conversation.id)
     assert len(messages) == 1
     assert messages[0].role == "human_agent"
-    assert messages[0].content == "[owner_app_non_text:image]"
-    assert ctx.processed_repository.exists("tenant-1", "evt-owner-img")
+    assert messages[0].content == "[professional_app_non_text:image]"
+    assert ctx.processed_repository.exists("tenant-1", "evt-professional-img")
 
 
 def test_process_payload_resumes_ai_after_manual_mode_switch_back_to_ai() -> None:
     ctx = build_webhook_service(
-        ["conversation-1", "owner-msg-1", "in-msg-1", "in-msg-2", "out-msg-1"]
+        ["conversation-1", "professional-msg-1", "in-msg-1", "in-msg-2", "out-msg-1"]
     )
     ctx.provider.events = [
-        build_owner_echo_event(provider_event_id="evt-owner", message_id="wamid-owner-1"),
+        build_professional_echo_event(provider_event_id="evt-professional", message_id="wamid-professional-1"),
         build_customer_text_event(provider_event_id="evt-customer-1", message_id="wamid-in-1"),
     ]
 

@@ -3,6 +3,7 @@ import fastapi.middleware.cors as fastapi_cors
 
 import src.entrypoints.web.exceptions.http_exception_handlers as http_exception_handlers
 import src.entrypoints.web.middleware.request_context_middleware as request_context_middleware
+import src.entrypoints.web.rate_limiter as rate_limiter
 import src.entrypoints.web.routers.agent_router as agent_router
 import src.entrypoints.web.routers.auth_router as auth_router
 import src.entrypoints.web.routers.blacklist_router as blacklist_router
@@ -10,6 +11,7 @@ import src.entrypoints.web.routers.conversation_router as conversation_router
 import src.entrypoints.web.routers.dev_router as dev_router
 import src.entrypoints.web.routers.google_calendar_router as google_calendar_router
 import src.entrypoints.web.routers.health_router as health_router
+import src.entrypoints.web.routers.internal_router as internal_router
 import src.entrypoints.web.routers.manual_appointment_router as manual_appointment_router
 import src.entrypoints.web.routers.oauth_router as oauth_router
 import src.entrypoints.web.routers.onboarding_router as onboarding_router
@@ -18,6 +20,7 @@ import src.entrypoints.web.routers.scheduling_router as scheduling_router
 import src.entrypoints.web.routers.settings_router as settings_router
 import src.entrypoints.web.routers.webhook_router as webhook_router
 import src.entrypoints.web.routers.whatsapp_router as whatsapp_router
+import src.entrypoints.web.routers.whatsapp_template_router as whatsapp_template_router
 import src.infra.container as app_container
 import src.infra.logs as app_logs
 
@@ -38,11 +41,15 @@ def create_app() -> fastapi.FastAPI:
         include_request_summary=app.state.container.settings.log_include_request_summary,
     )
 
+    if app.state.container.settings.rate_limit_enabled:
+        rate_limiter.configure_rate_limiter(app)
+
     app.include_router(health_router.router)
     app.include_router(auth_router.router)
     app.include_router(agent_router.router)
     app.include_router(blacklist_router.router)
     app.include_router(whatsapp_router.router)
+    app.include_router(whatsapp_template_router.router)
     app.include_router(google_calendar_router.router)
     app.include_router(onboarding_router.router)
     app.include_router(webhook_router.router)
@@ -50,6 +57,7 @@ def create_app() -> fastapi.FastAPI:
     app.include_router(patient_router.router)
     app.include_router(manual_appointment_router.router)
     app.include_router(scheduling_router.router)
+    app.include_router(internal_router.router)
     app.include_router(settings_router.router)
     app.include_router(oauth_router.router)
     if app.state.container.settings.enable_dev_endpoints:

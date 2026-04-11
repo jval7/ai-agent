@@ -44,7 +44,7 @@ Referencia completa de endpoints con schemas: ver `docs/API_ENDPOINTS.md`.
 
 Dominios funcionales: Auth, Agent (prompt + settings), WhatsApp Onboarding, Google Calendar, Webhooks, Conversations (mensajes + control mode), Patients (CRUD), Blacklist, Manual Appointments, Scheduling Requests, Onboarding status, Dev tools.
 
-User admin local (sin endpoint HTTP): `make user-bootstrap-master`, `make user-create`, `make user-delete`.
+Admin local (sin endpoint HTTP): `make create-professional`, `make delete-professional`.
 
 ## Lógica clave en webhook
 - `webhook_service.py` (~733 líneas): orquestación HTTP — resolve tenant, dedup, upsert conversation, debounce, fallback.
@@ -118,7 +118,7 @@ Nodos: 5 (`validate_transition`, `apply_transition`, `execute_side_effects`, `pe
 Ver sección "Comandos útiles" en `CLAUDE.md` (fuente canónica).
 
 Comandos específicos de flujo OAuth local:
-- `make user-bootstrap-master` (solo primera vez)
+- `make create-professional` (solo primera vez)
 - `make oauth-flow`
 - `make memory-reset`
 - `make chat-memory-reset`

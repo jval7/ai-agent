@@ -8,6 +8,7 @@ import type * as onboardingModel from "@domain/models/onboarding";
 import type * as patientModel from "@domain/models/patient";
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
+import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 import type * as backendApiPort from "@ports/backend_api_port";
 import type * as tokenSessionPort from "@ports/token_session_port";
 import * as apiErrorModule from "@shared/http/api_error";
@@ -117,18 +118,55 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     };
   }
 
-  async createEmbeddedSignupSession(): Promise<whatsappModel.EmbeddedSignupSession> {
+  async createEmbeddedSignupSession(
+    registrationPin?: string
+  ): Promise<whatsappModel.EmbeddedSignupSession> {
+    const bodyPayload: Record<string, string> = {};
+    if (registrationPin) {
+      bodyPayload["registration_pin"] = registrationPin;
+    }
+
     const payload = await this.request<httpTypes.EmbeddedSignupSessionApiResponse>(
       "/v1/whatsapp/embedded-signup/session",
       {
         method: "POST",
-        authRequired: true
+        authRequired: true,
+        body: JSON.stringify(bodyPayload)
       }
     );
 
     return {
       state: payload.state,
-      connectUrl: payload.connect_url
+      connectUrl: payload.connect_url,
+      appId: payload.app_id,
+      configId: payload.config_id
+    };
+  }
+
+  async completeEmbeddedSignup(
+    request: whatsappModel.EmbeddedSignupCompleteRequest
+  ): Promise<whatsappModel.WhatsappConnection> {
+    const payload = await this.request<httpTypes.WhatsappConnectionApiResponse>(
+      "/v1/whatsapp/embedded-signup/complete",
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          code: request.code ?? null,
+          state: request.state,
+          registration_pin: request.registrationPin ?? null,
+          origin_url: request.originUrl ?? null,
+          access_token: request.accessToken ?? null,
+          phone_number_id: request.phoneNumberId ?? null,
+          waba_id: request.wabaId ?? null
+        })
+      }
+    );
+    return {
+      tenantId: payload.tenant_id,
+      status: payload.status,
+      phoneNumberId: payload.phone_number_id,
+      businessAccountId: payload.business_account_id
     };
   }
 
@@ -696,6 +734,49 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     });
   }
 
+  async listWhatsappTemplates(): Promise<whatsappTemplateModel.WhatsappTemplate[]> {
+    const payload = await this.request<httpTypes.TemplateListApiResponse>(
+      "/v1/whatsapp/templates",
+      {
+        method: "GET",
+        authRequired: true
+      }
+    );
+    return payload.templates.map(mapWhatsappTemplate);
+  }
+
+  async createWhatsappTemplate(
+    request: whatsappTemplateModel.CreateTemplateRequest
+  ): Promise<whatsappTemplateModel.WhatsappTemplate> {
+    const payload = await this.request<httpTypes.WhatsappTemplateApiResponse>(
+      "/v1/whatsapp/templates",
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          name: request.name,
+          category: request.category,
+          language: request.language,
+          components: request.components.map((c) => ({
+            type: c.type,
+            text: c.text,
+            ...(c.exampleValues && c.exampleValues.length > 0
+              ? { example_values: c.exampleValues }
+              : {})
+          }))
+        } satisfies httpTypes.CreateTemplateApiRequest)
+      }
+    );
+    return mapWhatsappTemplate(payload);
+  }
+
+  async deleteWhatsappTemplate(name: string): Promise<void> {
+    await this.request<void>(`/v1/whatsapp/templates/${name}`, {
+      method: "DELETE",
+      authRequired: true
+    });
+  }
+
   private async request<T>(path: string, options: RequestOptions): Promise<T> {
     const retryOnUnauthorized = options.retryOnUnauthorized ?? true;
     const requestId = options.requestId ?? requestIdModule.createRequestId();
@@ -891,6 +972,23 @@ function mapManualAppointment(
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
     cancelledAt: payload.cancelled_at
+  };
+}
+
+function mapWhatsappTemplate(
+  payload: httpTypes.WhatsappTemplateApiResponse
+): whatsappTemplateModel.WhatsappTemplate {
+  return {
+    id: payload.id,
+    name: payload.name,
+    category: payload.category,
+    language: payload.language,
+    status: payload.status,
+    components: payload.components.map((c) => ({
+      type: c.type,
+      text: c.text,
+      ...(c.example_values ? { exampleValues: c.example_values } : {})
+    }))
   };
 }
 

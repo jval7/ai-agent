@@ -26,20 +26,15 @@ endif
 
 API_BASE ?= http://localhost:8000
 TENANT_NAME ?= Acme
-OWNER_EMAIL ?= owner@acme.com
-OWNER_PASSWORD ?= supersecret
-MASTER_EMAIL ?= $(OWNER_EMAIL)
-MASTER_PASSWORD ?= $(OWNER_PASSWORD)
-USER_EMAIL ?=
-USER_PASSWORD ?=
-OWNER_EMAIL_ORIGIN := $(origin OWNER_EMAIL)
-OWNER_PASSWORD_ORIGIN := $(origin OWNER_PASSWORD)
+EMAIL ?=
+PASSWORD ?=
 FLOW_DIR ?= .make-flow
 FRONTEND_DIR ?= frontend
 SIM_WA_USER_ID ?= 573001234567
 SIM_WA_USER_NAME ?= Cliente Demo
 MESSAGE ?= Hola desde WhatsApp
 SIM_PROVIDER_MESSAGE_ID ?=
+ENV ?= dev
 DEPLOY_PROJECT_ID ?=
 DEPLOY_REGION ?= us-central1
 DEPLOY_ARTIFACT_REPOSITORY ?= ai-agent-backend
@@ -52,9 +47,9 @@ DEPLOY_APP_CONFIG_SECRET_ID ?= AI_AGENT_APP_CONFIG_JSON
 DEPLOY_BASE_DIR ?= $(FLOW_DIR)/deploy
 DEPLOY_FRONT_TF_DIR ?= $(DEPLOY_BASE_DIR)/terraform/frontend_spa_cdn_local
 DEPLOY_BACK_TF_DIR ?= $(DEPLOY_BASE_DIR)/terraform/runtime_deploy_local
-DEPLOY_FRONT_ENV_FILE ?= $(DEPLOY_BASE_DIR)/dev-front.env
-DEPLOY_BACK_ENV_FILE ?= $(DEPLOY_BASE_DIR)/dev-back.env
-TF_STATE_BUCKET ?= ai-agent-calendar-dev-tf-state
+DEPLOY_FRONT_ENV_FILE ?= $(DEPLOY_BASE_DIR)/$(ENV)-front.env
+DEPLOY_BACK_ENV_FILE ?= $(DEPLOY_BASE_DIR)/$(ENV)-back.env
+TF_STATE_BUCKET ?=
 DEPLOY_BACK_ENVS_DIR ?= infra/terraform/runtime_deploy/envs
 DEPLOY_FRONT_ENVS_DIR ?= infra/terraform/frontend_spa_cdn/envs
 APP_CONFIG_KEY ?=
@@ -66,12 +61,11 @@ APP_CONFIG_PRUNE_ENV ?= false
 APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECONDS DEFAULT_SYSTEM_PROMPT CONTEXT_MESSAGE_LIMIT FIRESTORE_DATABASE_ID CORS_ALLOWED_ORIGINS FRONTEND_APP_BASE_URL ENABLE_DEV_ENDPOINTS META_APP_ID META_APP_SECRET META_REDIRECT_URI META_WEBHOOK_VERIFY_TOKEN META_PHONE_REGISTRATION_PIN META_API_VERSION GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REDIRECT_URI GOOGLE_CLOUD_PROJECT GEMINI_LOCATION GEMINI_MODEL GEMINI_MAX_OUTPUT_TOKENS LANGSMITH_TRACING_ENABLED LANGSMITH_PROJECT LANGSMITH_API_KEY LANGSMITH_ENDPOINT LANGSMITH_WORKSPACE_ID LANGSMITH_ENVIRONMENT LANGSMITH_TAGS LOG_LEVEL LOG_INCLUDE_REQUEST_SUMMARY LANGCHAIN_API_KEY LANGCHAIN_ENDPOINT
 
 .PHONY: \
+	create-professional \
+	delete-professional \
+	reset-password \
 	oauth-flow \
-	user-bootstrap-master \
-	user-create \
-	user-delete \
 	save-api-base \
-	save-credentials \
 	memory-reset \
 	chat-memory-reset \
 	static-checks \
@@ -95,23 +89,112 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 	deploy-back \
 	deploy-all \
 	app-config-secret-upsert \
+	app-config-secret-upsert-many \
 	app-config-secret-sync-env \
 	simulate-whatsapp-message \
-	calendar-cleanup
+	calendar-cleanup \
+	help
+
+help:
+	@echo ""
+	@echo "=== Usuarios ==="
+	@echo "  create-professional    Crear profesional (EMAIL, TENANT_NAME)"
+	@echo "  delete-professional    Eliminar profesional (EMAIL)"
+	@echo "  reset-password         Resetear password (EMAIL)"
+	@echo ""
+	@echo "=== Desarrollo ==="
+	@echo "  static-checks          Linters y formatters backend"
+	@echo "  fe-dev                  Dev server frontend"
+	@echo "  fe-checks              Lint + format + typecheck + test frontend"
+	@echo "  checks                 Backend + frontend checks"
+	@echo "  docker-up              Levantar servicios con docker-compose"
+	@echo "  docker-down            Bajar servicios"
+	@echo ""
+	@echo "=== Deploy (ENV=dev|prod, default: dev) ==="
+	@echo "  deploy-back            Deploy backend a Cloud Run"
+	@echo "  deploy-front           Deploy frontend infra + upload"
+	@echo "  deploy-front-upload    Solo subir assets al bucket"
+	@echo "  deploy-all             Deploy backend + frontend"
+	@echo ""
+	@echo "=== Secrets (ENV=dev|prod, default: dev) ==="
+	@echo "  app-config-secret-upsert        Actualizar 1 key (APP_CONFIG_PAIR='KEY:VAL')"
+	@echo "  app-config-secret-upsert-many   Actualizar N keys (APP_CONFIG_PAIRS='K1:V1 K2:V2')"
+	@echo "  app-config-secret-sync-env      Sincronizar desde .env"
+	@echo ""
+	@echo "=== Testing ==="
+	@echo "  simulate-whatsapp-message   Simular mensaje WhatsApp entrante"
+	@echo "  oauth-flow                  Flujo OAuth completo"
+	@echo ""
+	@echo "=== Otros ==="
+	@echo "  memory-reset           Reset memoria del agente"
+	@echo "  chat-memory-reset      Reset memoria de chat"
+	@echo "  calendar-cleanup       Limpiar eventos de calendario"
+	@echo ""
+
+create-professional:
+	@if [[ -z "$(EMAIL)" ]]; then \
+		echo "EMAIL is required. Example: make create-professional EMAIL=doc@acme.com TENANT_NAME=DrAcme"; \
+		exit 1; \
+	fi
+	@output=$$(uv run python -m src.entrypoints.local.user_admin_cli create-professional \
+		--tenant-name "$(TENANT_NAME)" \
+		--email "$(EMAIL)"); \
+	echo "$$output"; \
+	if [[ "$(ENV)" == "dev" ]]; then \
+		generated_password=$$(echo "$$output" | grep '^GENERATED_PASSWORD=' | cut -d '=' -f 2-); \
+		if [[ -n "$$generated_password" ]]; then \
+			mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
+			printf "EMAIL=%s\nPASSWORD=%s\n" "$(EMAIL)" "$$generated_password" > "$(MAKE_CREDENTIALS_FILE)"; \
+			chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
+			echo "Credentials saved to $(MAKE_CREDENTIALS_FILE)"; \
+		fi; \
+	fi
+
+reset-password:
+	@if [[ -z "$(EMAIL)" ]]; then \
+		echo "EMAIL is required. Example: make reset-password EMAIL=doc@acme.com"; \
+		exit 1; \
+	fi
+	@output=$$(uv run python -m src.entrypoints.local.user_admin_cli reset-password \
+		--email "$(EMAIL)"); \
+	echo "$$output"; \
+	if [[ "$(ENV)" == "dev" ]]; then \
+		generated_password=$$(echo "$$output" | grep '^GENERATED_PASSWORD=' | cut -d '=' -f 2-); \
+		if [[ -n "$$generated_password" ]]; then \
+			mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
+			printf "EMAIL=%s\nPASSWORD=%s\n" "$(EMAIL)" "$$generated_password" > "$(MAKE_CREDENTIALS_FILE)"; \
+			chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
+			echo "Credentials saved to $(MAKE_CREDENTIALS_FILE)"; \
+		fi; \
+	fi
+
+delete-professional:
+	@if [[ -z "$(EMAIL)" ]]; then \
+		echo "EMAIL is required. Example: make delete-professional EMAIL=doc@acme.com"; \
+		exit 1; \
+	fi
+	@echo "This will DELETE the professional and ALL their data (conversations, patients, etc.)."
+	@echo "Press Ctrl+C to cancel, or Enter to continue..."
+	@read -r _
+	@uv run python -m src.entrypoints.local.user_admin_cli delete-professional \
+		--email "$(EMAIL)" \
+		--confirm
 
 oauth-flow:
+	@if [[ -z "$(EMAIL)" || -z "$(PASSWORD)" ]]; then \
+		echo "Error: EMAIL/PASSWORD not found."; \
+		echo "Run first: make create-professional EMAIL=doc@acme.com PASSWORD=supersecret TENANT_NAME=DrAcme"; \
+		exit 1; \
+	fi
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@mkdir -p "$(FLOW_DIR)"
 	@login_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/login" \
 		-H "Content-Type: application/json" \
-		-d '{"email":"$(OWNER_EMAIL)","password":"$(OWNER_PASSWORD)"}'); \
+		-d '{"email":"$(EMAIL)","password":"$(PASSWORD)"}'); \
 	access_token=$$(echo "$$login_response" | jq -r '.access_token'); \
 	if [[ "$$access_token" == "null" || -z "$$access_token" ]]; then \
 		echo "Login failed:"; \
 		echo "$$login_response" | jq . 2>/dev/null || echo "$$login_response"; \
-		echo ""; \
-		echo "Si es la primera vez en este ambiente, bootstrap del master:"; \
-		echo "make user-bootstrap-master TENANT_NAME='$(TENANT_NAME)' MASTER_EMAIL='$(MASTER_EMAIL)' MASTER_PASSWORD='$(MASTER_PASSWORD)'"; \
 		exit 1; \
 	fi; \
 	echo "$$access_token" > "$(FLOW_DIR)/access_token"; \
@@ -147,43 +230,6 @@ save-api-base:
 	@chmod 600 "$(MAKE_API_BASE_FILE)"
 	@echo "Saved API_BASE to $(MAKE_API_BASE_FILE)"
 
-save-credentials:
-	@mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"
-	@printf "OWNER_EMAIL=%s\nOWNER_PASSWORD=%s\n" "$(OWNER_EMAIL)" "$(OWNER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"
-	@chmod 600 "$(MAKE_CREDENTIALS_FILE)"
-	@echo "Saved OWNER_EMAIL/OWNER_PASSWORD to $(MAKE_CREDENTIALS_FILE)"
-
-user-bootstrap-master:
-	@uv run python -m src.entrypoints.local.user_admin_cli bootstrap-master \
-		--tenant-name "$(TENANT_NAME)" \
-		--master-email "$(MASTER_EMAIL)" \
-		--master-password "$(MASTER_PASSWORD)"
-
-user-create:
-	@if [[ -z "$(USER_EMAIL)" ]]; then \
-		echo "USER_EMAIL is required. Example: make user-create USER_EMAIL=user@acme.com USER_PASSWORD=supersecret"; \
-		exit 1; \
-	fi
-	@if [[ -z "$(USER_PASSWORD)" ]]; then \
-		echo "USER_PASSWORD is required. Example: make user-create USER_EMAIL=user@acme.com USER_PASSWORD=supersecret"; \
-		exit 1; \
-	fi
-	@uv run python -m src.entrypoints.local.user_admin_cli create-user \
-		--master-email "$(MASTER_EMAIL)" \
-		--master-password "$(MASTER_PASSWORD)" \
-		--email "$(USER_EMAIL)" \
-		--password "$(USER_PASSWORD)"
-
-user-delete:
-	@if [[ -z "$(USER_EMAIL)" ]]; then \
-		echo "USER_EMAIL is required. Example: make user-delete USER_EMAIL=user@acme.com"; \
-		exit 1; \
-	fi
-	@uv run python -m src.entrypoints.local.user_admin_cli delete-user \
-		--master-email "$(MASTER_EMAIL)" \
-		--master-password "$(MASTER_PASSWORD)" \
-		--email "$(USER_EMAIL)"
-
 memory-reset:
 	@if [[ -f "$(FLOW_DIR)/access_token" ]]; then \
 		access_token=$$(cat "$(FLOW_DIR)/access_token"); \
@@ -196,6 +242,7 @@ memory-reset:
 	@echo "Firestore reset endpoint finished. No local JSON snapshot cleanup is required."
 
 chat-memory-reset:
+
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
 	@mkdir -p "$(FLOW_DIR)"
 	@live_reset_ok=0; \
@@ -211,12 +258,6 @@ chat-memory-reset:
 		fi; \
 	fi; \
 	echo "Using API_BASE=$$resolved_api_base"; \
-	if [[ "$(OWNER_EMAIL_ORIGIN)" == "command line" || "$(OWNER_PASSWORD_ORIGIN)" == "command line" ]]; then \
-		mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
-		printf "OWNER_EMAIL=%s\nOWNER_PASSWORD=%s\n" "$(OWNER_EMAIL)" "$(OWNER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"; \
-		chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
-		echo "Saved credentials to $(MAKE_CREDENTIALS_FILE)"; \
-	fi; \
 	resolved_access_token=""; \
 	if [[ -f "$(FLOW_DIR)/access_token" ]]; then \
 		resolved_access_token=$$(cat "$(FLOW_DIR)/access_token"); \
@@ -235,7 +276,7 @@ chat-memory-reset:
 	if [[ $$live_reset_ok -eq 0 ]]; then \
 		login_response=$$(curl -sS -X POST "$$resolved_api_base/v1/auth/login" \
 			-H "Content-Type: application/json" \
-			-d '{"email":"$(OWNER_EMAIL)","password":"$(OWNER_PASSWORD)"}' || true); \
+			-d '{"email":"$(EMAIL)","password":"$(PASSWORD)"}' || true); \
 		login_access_token=$$(echo "$$login_response" | jq -r '.access_token // empty' 2>/dev/null); \
 		if [[ -n "$$login_access_token" ]]; then \
 			echo "$$login_access_token" > "$(FLOW_DIR)/access_token"; \
@@ -245,10 +286,6 @@ chat-memory-reset:
 			if [[ "$$live_chat_reset_status" == "chat_reset" ]]; then \
 				live_reset_ok=1; \
 				echo "Live chat reset response: $$live_chat_reset_response"; \
-				mkdir -p "$(dir $(MAKE_CREDENTIALS_FILE))"; \
-				printf "OWNER_EMAIL=%s\nOWNER_PASSWORD=%s\n" "$(OWNER_EMAIL)" "$(OWNER_PASSWORD)" > "$(MAKE_CREDENTIALS_FILE)"; \
-				chmod 600 "$(MAKE_CREDENTIALS_FILE)"; \
-				echo "Saved credentials to $(MAKE_CREDENTIALS_FILE)"; \
 			else \
 				echo "Live chat reset failed after login: $$live_chat_reset_response"; \
 			fi; \
@@ -309,11 +346,11 @@ docker-logs:
 
 deploy-front-infra:
 	@command -v terraform >/dev/null 2>&1 || { echo "terraform is required."; exit 1; }
-	@if [[ ! -f "$(DEPLOY_FRONT_ENVS_DIR)/dev.tfvars" ]]; then \
-		echo "Environment file not found: $(DEPLOY_FRONT_ENVS_DIR)/dev.tfvars"; \
+	@if [[ ! -f "$(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars" ]]; then \
+		echo "Environment file not found: $(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars"; \
 		exit 1; \
 	fi
-	@echo "Deploying frontend infra [env=dev]"
+	@echo "Deploying frontend infra [env=$(ENV)]"
 	@mkdir -p "$(DEPLOY_FRONT_TF_DIR)"
 	@rsync -a \
 		--exclude='.terraform' \
@@ -321,13 +358,18 @@ deploy-front-infra:
 		--exclude='terraform.tfstate.backup' \
 		infra/terraform/frontend_spa_cdn/ \
 		"$(DEPLOY_FRONT_TF_DIR)/"
-	@cp "$(DEPLOY_FRONT_ENVS_DIR)/dev.tfvars" "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"
+	@cp "$(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars" "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"
 	@if [[ -n "$(DEPLOY_FRONTEND_BUCKET_NAME)" ]]; then \
 		printf '\nbucket_name = "%s"\n' "$(DEPLOY_FRONTEND_BUCKET_NAME)" >> "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"; \
 	fi
-	@terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" init -reconfigure \
-		-backend-config="bucket=$(TF_STATE_BUCKET)" \
-		-backend-config="prefix=dev/frontend-spa-cdn"
+	@tf_state_bucket="$(TF_STATE_BUCKET)"; \
+	if [[ -z "$$tf_state_bucket" ]]; then \
+		proj=$$(grep '^project_id' "$(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+		tf_state_bucket="$$proj-tf-state"; \
+	fi; \
+	terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" init -reconfigure \
+		-backend-config="bucket=$$tf_state_bucket" \
+		-backend-config="prefix=$(ENV)/frontend-spa-cdn"
 	@terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" apply -auto-approve -var-file=terraform.tfvars
 	@frontend_url=$$(terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" output -raw frontend_http_url 2>/dev/null || true); \
 	if [[ -z "$$frontend_url" || "$$frontend_url" == "null" ]]; then \
@@ -336,7 +378,7 @@ deploy-front-infra:
 	frontend_bucket=$$(terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" output -raw frontend_bucket_name); \
 	mkdir -p "$(DEPLOY_BASE_DIR)"; \
 	printf "DEPLOY_FRONTEND_URL=%s\nDEPLOY_FRONTEND_BUCKET=%s\n" "$$frontend_url" "$$frontend_bucket" > "$(DEPLOY_FRONT_ENV_FILE)"; \
-	echo "Frontend infra ready [dev]: $$frontend_url (bucket=$$frontend_bucket)"
+	echo "Frontend infra ready [$(ENV)]: $$frontend_url (bucket=$$frontend_bucket)"
 
 deploy-front-upload:
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
@@ -382,11 +424,11 @@ deploy-back:
 	@command -v terraform >/dev/null 2>&1 || { echo "terraform is required."; exit 1; }
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
 	@command -v docker >/dev/null 2>&1 || { echo "docker is required."; exit 1; }
-	@if [[ ! -f "$(DEPLOY_BACK_ENVS_DIR)/dev.tfvars" ]]; then \
-		echo "Environment file not found: $(DEPLOY_BACK_ENVS_DIR)/dev.tfvars"; \
+	@if [[ ! -f "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" ]]; then \
+		echo "Environment file not found: $(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars"; \
 		exit 1; \
 	fi
-	@echo "Deploying backend [env=dev]"
+	@echo "Deploying backend [env=$(ENV)]"
 	@mkdir -p "$(DEPLOY_BACK_TF_DIR)"
 	@rsync -a \
 		--exclude='.terraform' \
@@ -397,7 +439,11 @@ deploy-back:
 	@set -euo pipefail; \
 	project_id="$(DEPLOY_PROJECT_ID)"; \
 	if [[ -z "$$project_id" ]]; then \
-		project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/dev.tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+		project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+	fi; \
+	tf_state_bucket="$(TF_STATE_BUCKET)"; \
+	if [[ -z "$$tf_state_bucket" ]]; then \
+		tf_state_bucket="$$project_id-tf-state"; \
 	fi; \
 	region="$(DEPLOY_REGION)"; \
 	artifact_repo="$(DEPLOY_ARTIFACT_REPOSITORY)"; \
@@ -412,7 +458,7 @@ deploy-back:
 		image_tag=$$(date +%Y%m%d-%H%M%S)-amd64; \
 	fi; \
 	image_uri="$$region-docker.pkg.dev/$$project_id/$$artifact_repo/backend:$$image_tag"; \
-	cp "$(DEPLOY_BACK_ENVS_DIR)/dev.tfvars" "$(DEPLOY_BACK_TF_DIR)/terraform.tfvars"; \
+	cp "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" "$(DEPLOY_BACK_TF_DIR)/terraform.tfvars"; \
 	printf '\n%s\n%s\n%s\n%s\n' \
 		"runtime_service_account_email = \"$$runtime_sa_email\"" \
 		"container_image               = \"$$image_uri\"" \
@@ -420,8 +466,8 @@ deploy-back:
 		'manage_app_config_secret = true' \
 		>> "$(DEPLOY_BACK_TF_DIR)/terraform.tfvars"; \
 	terraform -chdir="$(DEPLOY_BACK_TF_DIR)" init -reconfigure \
-		-backend-config="bucket=$(TF_STATE_BUCKET)" \
-		-backend-config="prefix=dev/runtime-deploy"; \
+		-backend-config="bucket=$$tf_state_bucket" \
+		-backend-config="prefix=$(ENV)/runtime-deploy"; \
 	if ! terraform -chdir="$(DEPLOY_BACK_TF_DIR)" state show 'google_artifact_registry_repository.backend' >/dev/null 2>&1; then \
 		terraform -chdir="$(DEPLOY_BACK_TF_DIR)" import -var-file=terraform.tfvars \
 			'google_artifact_registry_repository.backend' \
@@ -452,18 +498,22 @@ deploy-back:
 	backend_url=$$(terraform -chdir="$(DEPLOY_BACK_TF_DIR)" output -raw cloud_run_service_url); \
 	mkdir -p "$(DEPLOY_BASE_DIR)"; \
 	printf "DEPLOY_BACKEND_URL=%s\nDEPLOY_BACKEND_IMAGE_URI=%s\nDEPLOY_RUNTIME_SERVICE_ACCOUNT_EMAIL=%s\n" "$$backend_url" "$$image_uri" "$$runtime_sa_email" > "$(DEPLOY_BACK_ENV_FILE)"; \
-	echo "Backend deployed [dev]: $$backend_url"
+	echo "Backend deployed [$(ENV)]: $$backend_url"
 
 deploy-all:
-	@$(MAKE) deploy-front-infra
-	@$(MAKE) deploy-back
-	@$(MAKE) deploy-front-upload
+	@$(MAKE) deploy-front-infra ENV=$(ENV)
+	@$(MAKE) deploy-back ENV=$(ENV)
+	@$(MAKE) deploy-front-upload ENV=$(ENV)
 
 app-config-secret-upsert:
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required."; exit 1; }
-	@current_json=$$(gcloud secrets versions access latest \
-		--project "$(DEPLOY_PROJECT_ID)" \
+	@project_id="$(DEPLOY_PROJECT_ID)"; \
+	if [[ -z "$$project_id" ]]; then \
+		project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+	fi; \
+	current_json=$$(gcloud secrets versions access latest \
+		--project "$$project_id" \
 		--secret "$(DEPLOY_APP_CONFIG_SECRET_ID)" 2>/dev/null || echo "{}"); \
 	if ! printf '%s' "$$current_json" | jq -e 'type=="object"' >/dev/null; then \
 		echo "Current secret payload is not a JSON object."; \
@@ -506,9 +556,22 @@ app-config-secret-upsert:
 			| jq --arg key "$${resolved_key}" --arg value "$${resolved_value}" '.[$$key] = $$value'); \
 	fi; \
 	printf '%s' "$$updated_json" | gcloud secrets versions add "$(DEPLOY_APP_CONFIG_SECRET_ID)" \
-		--project "$(DEPLOY_PROJECT_ID)" \
+		--project "$$project_id" \
 		--data-file=- >/dev/null; \
-	echo "Upserted key '$${resolved_key}' in secret $(DEPLOY_APP_CONFIG_SECRET_ID)."
+	echo "Upserted key '$${resolved_key}' in secret $(DEPLOY_APP_CONFIG_SECRET_ID) [$(ENV)]."
+
+app-config-secret-upsert-many:
+	@if [[ -z "$(APP_CONFIG_PAIRS)" ]]; then \
+		echo "APP_CONFIG_PAIRS is required. Format: 'KEY1:VAL1 KEY2:VAL2 KEY3:VAL3'"; \
+		echo "Example: make app-config-secret-upsert-many APP_CONFIG_PAIRS='META_APP_ID:123 META_APP_SECRET:abc' ENV=prod"; \
+		exit 1; \
+	fi
+	@count=0; \
+	for pair in $(APP_CONFIG_PAIRS); do \
+		$(MAKE) app-config-secret-upsert APP_CONFIG_PAIR="$$pair" ENV=$(ENV); \
+		count=$$((count + 1)); \
+	done; \
+	echo "Upserted $$count keys [$(ENV)]."
 
 app-config-secret-sync-env:
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
@@ -517,8 +580,12 @@ app-config-secret-sync-env:
 		echo "Env file not found: $(APP_CONFIG_ENV_FILE)"; \
 		exit 1; \
 	fi
-	@current_json=$$(gcloud secrets versions access latest \
-		--project "$(DEPLOY_PROJECT_ID)" \
+	@project_id="$(DEPLOY_PROJECT_ID)"; \
+	if [[ -z "$$project_id" ]]; then \
+		project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+	fi; \
+	current_json=$$(gcloud secrets versions access latest \
+		--project "$$project_id" \
 		--secret "$(DEPLOY_APP_CONFIG_SECRET_ID)" 2>/dev/null || echo "{}"); \
 	if ! printf '%s' "$$current_json" | jq -e 'type=="object"' >/dev/null; then \
 		echo "Current secret payload is not a JSON object."; \
@@ -559,9 +626,9 @@ app-config-secret-sync-env:
 		exit 1; \
 	fi; \
 	printf '%s' "$$updated_json" | gcloud secrets versions add "$(DEPLOY_APP_CONFIG_SECRET_ID)" \
-		--project "$(DEPLOY_PROJECT_ID)" \
+		--project "$$project_id" \
 		--data-file=- >/dev/null; \
-	echo "Synced $$synced_count keys from $(APP_CONFIG_ENV_FILE) to secret $(DEPLOY_APP_CONFIG_SECRET_ID)."; \
+	echo "Synced $$synced_count keys from $(APP_CONFIG_ENV_FILE) to secret $(DEPLOY_APP_CONFIG_SECRET_ID) [$(ENV)]."; \
 	if [[ "$(APP_CONFIG_PRUNE_ENV)" == "true" ]]; then \
 		tmp_env_file=$$(mktemp); \
 		keys_regex=$$(printf '%s' "$(APP_CONFIG_SYNC_KEYS)" | tr ' ' '|'); \
@@ -576,12 +643,13 @@ app-config-secret-sync-env:
 	fi
 
 simulate-whatsapp-message:
+
 	@command -v jq >/dev/null 2>&1 || { echo "jq is required. Install with: brew install jq"; exit 1; }
-	@echo "Using API_BASE=$(API_BASE) OWNER_EMAIL=$(OWNER_EMAIL)"
+	@echo "Using API_BASE=$(API_BASE) EMAIL=$(EMAIL)"
 	@mkdir -p "$(FLOW_DIR)"; \
 	login_response=$$(curl -sS -X POST "$(API_BASE)/v1/auth/login" \
 		-H "Content-Type: application/json" \
-		-d '{"email":"$(OWNER_EMAIL)","password":"$(OWNER_PASSWORD)"}'); \
+		-d '{"email":"$(EMAIL)","password":"$(PASSWORD)"}'); \
 	access_token=$$(echo "$$login_response" | jq -r '.access_token'); \
 	if [[ "$$access_token" == "null" || -z "$$access_token" ]]; then \
 		echo "Login failed (needed to run simulation). Response:"; \
@@ -598,10 +666,10 @@ simulate-whatsapp-message:
 		echo "WhatsApp connection is not ready. Response:"; \
 		echo "$$connection_response" | jq . 2>/dev/null || echo "$$connection_response"; \
 		echo ""; \
-		echo "Hint: you are logged into tenant=$$tenant_id with OWNER_EMAIL=$(OWNER_EMAIL)."; \
+		echo "Hint: you are logged into tenant=$$tenant_id with EMAIL=$(EMAIL)."; \
 		echo "If your UI shows another tenant as CONNECTED, you're using a different account or backend."; \
 		echo "Run OAuth for this same account:"; \
-		echo "make oauth-flow OWNER_EMAIL='$(OWNER_EMAIL)' OWNER_PASSWORD='$(OWNER_PASSWORD)' API_BASE='$(API_BASE)'"; \
+		echo "make oauth-flow"; \
 		exit 1; \
 	fi; \
 	provider_message_id="$(SIM_PROVIDER_MESSAGE_ID)"; \

@@ -244,8 +244,8 @@ class WebhookService:
             )
             return
 
-        if event.source == "OWNER_APP":
-            owner_message = message_entity.Message(
+        if event.source == "PROFESSIONAL_APP":
+            professional_message = message_entity.Message(
                 id=self._id_generator.new_id(),
                 conversation_id=conversation.id,
                 tenant_id=tenant_id,
@@ -255,21 +255,21 @@ class WebhookService:
                 provider_message_id=event.message_id,
                 created_at=now_value,
             )
-            self._conversation_repository.save_message(owner_message)
+            self._conversation_repository.save_message(professional_message)
             conversation.append_message(
-                owner_message.id,
-                owner_message.content,
-                owner_message.created_at,
+                professional_message.id,
+                professional_message.content,
+                professional_message.created_at,
             )
-            conversation.set_control_mode("HUMAN", owner_message.created_at)
+            conversation.set_control_mode("HUMAN", professional_message.created_at)
             self._conversation_repository.save_conversation(conversation)
             self._mark_event_processed(tenant_id, event.provider_event_id)
             logger.info(
-                "webhook.owner_handoff_human",
+                "webhook.professional_handoff_human",
                 extra={
                     "event_data": app_logs.build_log_event(
-                        event_name="webhook.owner_handoff_human",
-                        message="owner app message moved conversation to HUMAN mode",
+                        event_name="webhook.professional_handoff_human",
+                        message="professional app message moved conversation to HUMAN mode",
                         data={
                             "tenant_id": tenant_id,
                             "conversation_id": conversation.id,

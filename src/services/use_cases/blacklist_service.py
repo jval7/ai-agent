@@ -22,7 +22,7 @@ class BlacklistService:
     def list_entries(
         self, claims: auth_dto.TokenClaimsDTO
     ) -> blacklist_dto.BlacklistListResponseDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         entries = self._blacklist_repository.list_by_tenant(claims.tenant_id)
         sorted_entries = sorted(entries, key=lambda item: item.created_at)
 
@@ -43,7 +43,7 @@ class BlacklistService:
         claims: auth_dto.TokenClaimsDTO,
         upsert_dto: blacklist_dto.UpsertBlacklistEntryDTO,
     ) -> blacklist_dto.BlacklistEntryDTO:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         existing_entries = self._blacklist_repository.list_by_tenant(claims.tenant_id)
         for existing_entry in existing_entries:
             if existing_entry.whatsapp_user_id == upsert_dto.whatsapp_user_id:
@@ -94,7 +94,7 @@ class BlacklistService:
         )
 
     def delete_entry(self, claims: auth_dto.TokenClaimsDTO, whatsapp_user_id: str) -> None:
-        self._ensure_owner(claims)
+        self._ensure_professional(claims)
         self._blacklist_repository.delete(claims.tenant_id, whatsapp_user_id)
         logger.info(
             "blacklist.entry_deleted",
@@ -110,6 +110,6 @@ class BlacklistService:
             },
         )
 
-    def _ensure_owner(self, claims: auth_dto.TokenClaimsDTO) -> None:
-        if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-            raise service_exceptions.AuthorizationError("owner role required")
+    def _ensure_professional(self, claims: auth_dto.TokenClaimsDTO) -> None:
+        if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+            raise service_exceptions.AuthorizationError("professional role required")

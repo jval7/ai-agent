@@ -18,8 +18,8 @@ def list_scheduling_requests(
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> scheduling_dto.SchedulingRequestListResponseDTO:
-    if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-        raise service_exceptions.AuthorizationError("owner role required")
+    if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+        raise service_exceptions.AuthorizationError("professional role required")
     return container.scheduling_inbox_service.list_requests(
         tenant_id=claims.tenant_id,
         status=status,
@@ -35,8 +35,8 @@ def list_conversation_scheduling_requests(
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> scheduling_dto.SchedulingRequestListResponseDTO:
-    if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-        raise service_exceptions.AuthorizationError("owner role required")
+    if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+        raise service_exceptions.AuthorizationError("professional role required")
     return container.scheduling_service.list_requests_by_conversation(
         tenant_id=claims.tenant_id,
         conversation_id=conversation_id,
@@ -110,8 +110,8 @@ def reschedule_booked_slot(
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> scheduling_dto.SchedulingRequestSummaryDTO:
-    if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-        raise service_exceptions.AuthorizationError("owner role required")
+    if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+        raise service_exceptions.AuthorizationError("professional role required")
     return container.scheduling_service.reschedule_booked_slot(
         tenant_id=claims.tenant_id,
         request_id=request_id,
@@ -129,8 +129,8 @@ def cancel_booked_slot(
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> scheduling_dto.SchedulingRequestSummaryDTO:
-    if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-        raise service_exceptions.AuthorizationError("owner role required")
+    if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+        raise service_exceptions.AuthorizationError("professional role required")
     resolved_input_dto = (
         input_dto if input_dto is not None else scheduling_dto.CancelBookedSlotInputDTO(reason=None)
     )
@@ -151,8 +151,8 @@ def update_booked_slot_payment(
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> scheduling_dto.SchedulingRequestSummaryDTO:
-    if claims.role != service_constants.DEFAULT_OWNER_ROLE:
-        raise service_exceptions.AuthorizationError("owner role required")
+    if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+        raise service_exceptions.AuthorizationError("professional role required")
     return container.scheduling_service.update_booked_payment(
         tenant_id=claims.tenant_id,
         request_id=request_id,

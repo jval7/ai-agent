@@ -75,6 +75,8 @@ def build_services(
         id_generator=id_generator,
         clock=clock,
         webhook_verify_token=resolved_webhook_verify_token,
+        meta_app_id="test-app-id",
+        meta_config_id="test-config-id",
     )
 
     return auth, onboarding, jwt_provider
@@ -98,7 +100,7 @@ def test_domain_state_persists_across_restart_with_json_memory() -> None:
         register_result = auth_first_boot.register(
             auth_dto.RegisterUserDTO(
                 tenant_name="Acme",
-                email="owner@acme.com",
+                email="professional@acme.com",
                 password="supersecret",
             )
         )
@@ -122,7 +124,7 @@ def test_domain_state_persists_across_restart_with_json_memory() -> None:
 
         login_result = auth_second_boot.login(
             auth_dto.LoginDTO(
-                email="owner@acme.com",
+                email="professional@acme.com",
                 password="supersecret",
             )
         )

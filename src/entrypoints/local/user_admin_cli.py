@@ -1,4 +1,6 @@
 import argparse
+import secrets
+import string
 import sys
 
 import pydantic
@@ -17,33 +19,33 @@ import src.services.use_cases.user_admin_service as user_admin_service
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Local user administration commands")
+    parser = argparse.ArgumentParser(description="Professional administration commands")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    bootstrap_parser = subparsers.add_parser(
-        "bootstrap-master",
-        help="Create or promote a local master user",
-    )
-    bootstrap_parser.add_argument("--tenant-name", required=True)
-    bootstrap_parser.add_argument("--master-email", required=True)
-    bootstrap_parser.add_argument("--master-password", required=True)
-
     create_parser = subparsers.add_parser(
-        "create-user",
-        help="Create a regular user using master credentials",
+        "create-professional",
+        help="Create a new professional (tenant + user + agent profile)",
     )
-    create_parser.add_argument("--master-email", required=True)
-    create_parser.add_argument("--master-password", required=True)
+    create_parser.add_argument("--tenant-name", required=True)
     create_parser.add_argument("--email", required=True)
-    create_parser.add_argument("--password", required=True)
+
+    reset_parser = subparsers.add_parser(
+        "reset-password",
+        help="Reset a professional's password",
+    )
+    reset_parser.add_argument("--email", required=True)
 
     delete_parser = subparsers.add_parser(
-        "delete-user",
-        help="Delete a regular user using master credentials",
+        "delete-professional",
+        help="Delete a professional and all their data",
     )
-    delete_parser.add_argument("--master-email", required=True)
-    delete_parser.add_argument("--master-password", required=True)
     delete_parser.add_argument("--email", required=True)
+    delete_parser.add_argument(
+        "--confirm",
+        action="store_true",
+        required=True,
+        help="Required flag to confirm destructive operation",
+    )
 
     return parser
 
@@ -81,33 +83,42 @@ def main() -> int:
 
     try:
         service = _build_service()
-        if args.command == "bootstrap-master":
-            bootstrap_request = user_admin_dto.BootstrapMasterDTO(
-                tenant_name=args.tenant_name,
-                master_email=args.master_email,
-                master_password=args.master_password,
+        if args.command == "create-professional":
+            alphabet = string.ascii_letters + string.digits
+            password = "".join(secrets.choice(alphabet) for _ in range(16))
+            service.create_professional(
+                user_admin_dto.CreateProfessionalDTO(
+                    tenant_name=args.tenant_name,
+                    email=args.email,
+                    password=password,
+                )
             )
-            service.bootstrap_master(bootstrap_request)
-            print("Master user is ready.")
-            return 0
-        if args.command == "create-user":
-            create_request = user_admin_dto.CreateUserByMasterDTO(
-                master_email=args.master_email,
-                master_password=args.master_password,
-                email=args.email,
-                password=args.password,
-            )
-            service.create_user(create_request)
-            print("User created successfully.")
+            print("Professional created successfully.")
+            print(f"  Tenant:   {args.tenant_name}")
+            print(f"  Email:    {args.email}")
+            print(f"  Password: {password}")
+            print(f"GENERATED_PASSWORD={password}")
             return 0
 
-        delete_request = user_admin_dto.DeleteUserByMasterDTO(
-            master_email=args.master_email,
-            master_password=args.master_password,
-            email=args.email,
+        if args.command == "reset-password":
+            alphabet = string.ascii_letters + string.digits
+            password = "".join(secrets.choice(alphabet) for _ in range(16))
+            service.reset_password(
+                user_admin_dto.ResetPasswordDTO(
+                    email=args.email,
+                    new_password=password,
+                )
+            )
+            print("Password reset successfully.")
+            print(f"  Email:    {args.email}")
+            print(f"  Password: {password}")
+            print(f"GENERATED_PASSWORD={password}")
+            return 0
+
+        service.delete_professional(
+            user_admin_dto.DeleteProfessionalDTO(email=args.email)
         )
-        service.delete_user(delete_request)
-        print("User deleted successfully.")
+        print("Professional and all their data deleted successfully.")
         return 0
     except pydantic.ValidationError as error:
         print(f"Validation error: {error}", file=sys.stderr)

@@ -4,7 +4,9 @@ import * as agendaPageModule from "@adapters/inbound/react/pages/AgendaPage";
 import * as clientsPageModule from "@adapters/inbound/react/pages/ClientsPage";
 import * as configuracionesPageModule from "@adapters/inbound/react/pages/ConfiguracionesPage";
 import * as inboxPageModule from "@adapters/inbound/react/pages/InboxPage";
+import * as landingPageModule from "@adapters/inbound/react/pages/LandingPage";
 import * as loginPageModule from "@adapters/inbound/react/pages/LoginPage";
+import * as plantillasPageModule from "@adapters/inbound/react/pages/PlantillasPage";
 
 import * as onboardingReadyRouteModule from "./OnboardingReadyRoute";
 import * as protectedRouteModule from "./ProtectedRoute";
@@ -77,9 +79,23 @@ export function AppRouter() {
           }
           path="/clientes"
         />
+        <reactRouterDomModule.Route
+          element={
+            <protectedRouteModule.ProtectedRoute>
+              <onboardingReadyRouteModule.OnboardingReadyRoute>
+                <plantillasPageModule.PlantillasPage />
+              </onboardingReadyRouteModule.OnboardingReadyRoute>
+            </protectedRouteModule.ProtectedRoute>
+          }
+          path="/plantillas"
+        />
 
         <reactRouterDomModule.Route
-          element={<reactRouterDomModule.Navigate replace to="/configuraciones" />}
+          element={
+            <publicOnlyRouteModule.PublicOnlyRoute>
+              <landingPageModule.LandingPage />
+            </publicOnlyRouteModule.PublicOnlyRoute>
+          }
           path="/"
         />
         <reactRouterDomModule.Route

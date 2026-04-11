@@ -1,14 +1,25 @@
 import pydantic
 
 
+class EmbeddedSignupSessionRequestDTO(pydantic.BaseModel):
+    registration_pin: str | None = None
+
+
 class EmbeddedSignupSessionResponseDTO(pydantic.BaseModel):
     state: str
     connect_url: str
+    app_id: str
+    config_id: str
 
 
 class EmbeddedSignupCompleteDTO(pydantic.BaseModel):
-    code: str
+    code: str | None = None
     state: str
+    registration_pin: str | None = None
+    origin_url: str | None = None
+    access_token: str | None = None
+    phone_number_id: str | None = None
+    waba_id: str | None = None
 
 
 class EmbeddedSignupCredentialsDTO(pydantic.BaseModel):

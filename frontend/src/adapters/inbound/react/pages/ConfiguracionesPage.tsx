@@ -8,6 +8,7 @@ import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBann
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
 import * as uiErrorModule from "@shared/http/ui_error";
+import * as fbSdkModule from "@shared/facebook/fb_sdk";
 import * as dateUtilsModule from "@shared/utils/date";
 
 const whatsappConnectionQueryKey = ["whatsapp-connection"] as const;
@@ -65,10 +66,41 @@ export function ConfiguracionesPage() {
     queryFn: () => appContainer.onboardingUseCase.getOnboardingStatus()
   });
 
+  const [registrationPin, setRegistrationPin] = reactModule.useState("");
+
   const queryClient = reactQueryModule.useQueryClient();
   const whatsappSessionMutation = reactQueryModule.useMutation({
-    mutationFn: () => appContainer.onboardingUseCase.createWhatsappSession(),
-    onSuccess: (session) => {
+    mutationFn: async () => {
+      const session = await appContainer.whatsappOnboardingUseCase.createEmbeddedSignupSession(
+        registrationPin.trim() || undefined
+      );
+      await fbSdkModule.loadFacebookSdk();
+      const result = await fbSdkModule.launchEmbeddedSignup(session.configId, session.appId);
+      if (!result.code && !result.accessToken) throw new Error("No code or token received");
+      const pin = registrationPin.trim();
+      const base = {
+        ...(result.code ? { code: result.code } : {}),
+        ...(result.accessToken ? { accessToken: result.accessToken } : {}),
+        state: session.state,
+        ...(result.sessionInfo.phoneNumberId
+          ? { phoneNumberId: result.sessionInfo.phoneNumberId }
+          : {}),
+        ...(result.sessionInfo.wabaId ? { wabaId: result.sessionInfo.wabaId } : {})
+      };
+      return appContainer.whatsappOnboardingUseCase.completeEmbeddedSignup(
+        pin ? { ...base, registrationPin: pin } : base
+      );
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: whatsappConnectionQueryKey });
+      void queryClient.invalidateQueries({ queryKey: onboardingStatusQueryKey });
+    }
+  });
+  const whatsappOAuthMutation = reactQueryModule.useMutation({
+    mutationFn: async () => {
+      const session = await appContainer.whatsappOnboardingUseCase.createEmbeddedSignupSession(
+        registrationPin.trim() || undefined
+      );
       window.location.assign(session.connectUrl);
     }
   });
@@ -223,7 +255,27 @@ export function ConfiguracionesPage() {
                 </div>
               ) : null}
 
-              <div className="mt-6">
+              <div className="mt-4">
+                <label
+                  className="block text-sm font-medium text-slate-700"
+                  htmlFor="registration-pin"
+                >
+                  PIN de registro (solo si tienes 2FA)
+                </label>
+                <input
+                  className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal"
+                  id="registration-pin"
+                  maxLength={6}
+                  onChange={(e) => {
+                    setRegistrationPin(e.target.value);
+                  }}
+                  placeholder="6 dígitos (opcional)"
+                  type="password"
+                  value={registrationPin}
+                />
+              </div>
+
+              <div className="mt-4 space-y-3">
                 <button
                   className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={whatsappSessionMutation.isPending}
@@ -232,8 +284,23 @@ export function ConfiguracionesPage() {
                   }}
                   type="button"
                 >
-                  {whatsappSessionMutation.isPending ? "Abriendo Meta..." : "Conectar con Meta"}
+                  {whatsappSessionMutation.isPending ? "Conectando..." : "Conectar con Meta"}
                 </button>
+                <button
+                  className="text-sm text-slate-500 underline hover:text-slate-700"
+                  disabled={whatsappOAuthMutation.isPending}
+                  onClick={() => {
+                    whatsappOAuthMutation.mutate();
+                  }}
+                  type="button"
+                >
+                  {whatsappOAuthMutation.isPending
+                    ? "Redirigiendo..."
+                    : "Conectar via redirect (sin coexistencia)"}
+                </button>
+                {whatsappSessionMutation.isSuccess ? (
+                  <p className="text-sm text-emerald-600">WhatsApp conectado correctamente.</p>
+                ) : null}
               </div>
             </article>
 

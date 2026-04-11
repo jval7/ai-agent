@@ -66,13 +66,13 @@ def test_register_creates_tenant_user_and_default_prompt() -> None:
     result = service.register(
         auth_dto.RegisterUserDTO(
             tenant_name="Acme",
-            email="owner@acme.com",
+            email="professional@acme.com",
             password="supersecret",
         )
     )
 
     tenant = tenant_repository.get_by_id("tenant-1")
-    user = user_repository.get_by_email("owner@acme.com")
+    user = user_repository.get_by_email("professional@acme.com")
     agent_profile = agent_profile_repository.get_by_tenant_id("tenant-1")
     access_claims = jwt_provider.decode(result.access_token)
     refresh_claims = jwt_provider.decode(result.refresh_token)
@@ -99,13 +99,13 @@ def test_login_rejects_invalid_password() -> None:
     service.register(
         auth_dto.RegisterUserDTO(
             tenant_name="Acme",
-            email="owner@acme.com",
+            email="professional@acme.com",
             password="supersecret",
         )
     )
 
     with pytest.raises(service_exceptions.AuthenticationError):
-        service.login(auth_dto.LoginDTO(email="owner@acme.com", password="wrongpassword"))
+        service.login(auth_dto.LoginDTO(email="professional@acme.com", password="wrongpassword"))
 
 
 def test_login_returns_tokens_for_valid_credentials() -> None:
@@ -122,12 +122,12 @@ def test_login_returns_tokens_for_valid_credentials() -> None:
     service.register(
         auth_dto.RegisterUserDTO(
             tenant_name="Acme",
-            email="owner@acme.com",
+            email="professional@acme.com",
             password="supersecret",
         )
     )
 
-    result = service.login(auth_dto.LoginDTO(email="owner@acme.com", password="supersecret"))
+    result = service.login(auth_dto.LoginDTO(email="professional@acme.com", password="supersecret"))
     access_claims = jwt_provider.decode(result.access_token)
     refresh_claims = jwt_provider.decode(result.refresh_token)
 
@@ -150,7 +150,7 @@ def test_refresh_rotates_refresh_token_and_revokes_previous() -> None:
     register_result = service.register(
         auth_dto.RegisterUserDTO(
             tenant_name="Acme",
-            email="owner@acme.com",
+            email="professional@acme.com",
             password="supersecret",
         )
     )
@@ -178,7 +178,7 @@ def test_logout_revokes_refresh_token() -> None:
     register_result = service.register(
         auth_dto.RegisterUserDTO(
             tenant_name="Acme",
-            email="owner@acme.com",
+            email="professional@acme.com",
             password="supersecret",
         )
     )
@@ -200,7 +200,7 @@ def test_register_emits_success_log_without_sensitive_fields(
     service.register(
         auth_dto.RegisterUserDTO(
             tenant_name="Acme",
-            email="owner@acme.com",
+            email="professional@acme.com",
             password="supersecret",
         )
     )
@@ -235,14 +235,14 @@ def test_login_failure_emits_failed_log(caplog: pytest.LogCaptureFixture) -> Non
     service.register(
         auth_dto.RegisterUserDTO(
             tenant_name="Acme",
-            email="owner@acme.com",
+            email="professional@acme.com",
             password="supersecret",
         )
     )
     caplog.set_level(logging.WARNING, logger=LOGGER_NAME)
 
     with pytest.raises(service_exceptions.AuthenticationError):
-        service.login(auth_dto.LoginDTO(email="owner@acme.com", password="wrongpassword"))
+        service.login(auth_dto.LoginDTO(email="professional@acme.com", password="wrongpassword"))
 
     failure_events = [
         record.__dict__.get("event_data", {}).get("event")

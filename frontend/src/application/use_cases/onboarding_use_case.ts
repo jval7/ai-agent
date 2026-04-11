@@ -11,8 +11,8 @@ export class OnboardingUseCase {
     return this.api.getWhatsappConnection();
   }
 
-  async createWhatsappSession() {
-    return this.api.createEmbeddedSignupSession();
+  async createWhatsappSession(registrationPin?: string) {
+    return this.api.createEmbeddedSignupSession(registrationPin);
   }
 
   async getGoogleCalendarConnectionStatus() {

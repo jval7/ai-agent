@@ -16,7 +16,7 @@ class IncomingMessageEventDTO(pydantic.BaseModel):
     whatsapp_user_name: str | None
     message_id: str
     message_type: str
-    source: typing.Literal["CUSTOMER", "OWNER_APP"]
+    source: typing.Literal["CUSTOMER", "PROFESSIONAL_APP"]
     message_text: str
 
 

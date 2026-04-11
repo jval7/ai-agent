@@ -11,6 +11,7 @@ import type * as patientModel from "@domain/models/patient";
 import type * as backendApiPort from "@ports/backend_api_port";
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
+import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 
 import * as authUseCaseModule from "./auth_use_case";
 
@@ -90,6 +91,12 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
   }
 
   async createEmbeddedSignupSession(): Promise<whatsappModel.EmbeddedSignupSession> {
+    throw new Error("not used");
+  }
+
+  async completeEmbeddedSignup(
+    _request: whatsappModel.EmbeddedSignupCompleteRequest
+  ): Promise<whatsappModel.WhatsappConnection> {
     throw new Error("not used");
   }
 
@@ -279,6 +286,20 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
 
   async updateSandboxMode(_enabled: boolean): Promise<{ sandbox_enabled: boolean }> {
     throw new Error("not used");
+  }
+
+  async listWhatsappTemplates(): Promise<whatsappTemplateModel.WhatsappTemplate[]> {
+    throw new Error("not used");
+  }
+
+  async createWhatsappTemplate(
+    _request: whatsappTemplateModel.CreateTemplateRequest
+  ): Promise<whatsappTemplateModel.WhatsappTemplate> {
+    throw new Error("not used");
+  }
+
+  async deleteWhatsappTemplate(_name: string): Promise<void> {
+    return;
   }
 }
 

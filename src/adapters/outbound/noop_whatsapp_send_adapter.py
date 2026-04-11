@@ -12,6 +12,7 @@ import src.infra.settings as app_settings
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.dto.whatsapp_dto as whatsapp_dto
+import src.services.dto.whatsapp_template_dto as whatsapp_template_dto
 
 logger = logging.getLogger(__name__)
 
@@ -28,14 +29,29 @@ class NoopWhatsappSendAdapter(whatsapp_provider_port.WhatsappProviderPort):
     def build_embedded_signup_url(self, state: str) -> str:
         return self._delegate.build_embedded_signup_url(state)
 
-    def exchange_code_for_credentials(self, code: str) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
-        return self._delegate.exchange_code_for_credentials(code)
+    def exchange_code_for_credentials(
+        self,
+        code: str,
+        *,
+        from_js_sdk: bool = False,
+        js_sdk_origin_url: str | None = None,
+    ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
+        return self._delegate.exchange_code_for_credentials(
+            code, from_js_sdk=from_js_sdk, js_sdk_origin_url=js_sdk_origin_url
+        )
+
+    def resolve_credentials_from_token(
+        self, access_token: str
+    ) -> whatsapp_dto.EmbeddedSignupCredentialsDTO:
+        return self._delegate.resolve_credentials_from_token(access_token)
 
     def subscribe_app_to_waba(self, access_token: str, business_account_id: str) -> None:
         self._delegate.subscribe_app_to_waba(access_token, business_account_id)
 
-    def register_phone_number(self, access_token: str, phone_number_id: str) -> None:
-        self._delegate.register_phone_number(access_token, phone_number_id)
+    def register_phone_number(
+        self, access_token: str, phone_number_id: str, registration_pin: str | None = None
+    ) -> None:
+        self._delegate.register_phone_number(access_token, phone_number_id, registration_pin)
 
     def send_text_message(
         self,
@@ -63,3 +79,19 @@ class NoopWhatsappSendAdapter(whatsapp_provider_port.WhatsappProviderPort):
         self, payload: dict[str, typing.Any]
     ) -> list[webhook_dto.IncomingMessageEventDTO]:
         return self._delegate.parse_incoming_message_events(payload)
+
+    def list_message_templates(
+        self, access_token: str, waba_id: str
+    ) -> list[whatsapp_template_dto.TemplateDTO]:
+        return self._delegate.list_message_templates(access_token, waba_id)
+
+    def create_message_template(
+        self,
+        access_token: str,
+        waba_id: str,
+        template: whatsapp_template_dto.CreateTemplateRequestDTO,
+    ) -> whatsapp_template_dto.TemplateDTO:
+        return self._delegate.create_message_template(access_token, waba_id, template)
+
+    def delete_message_template(self, access_token: str, waba_id: str, template_name: str) -> None:
+        self._delegate.delete_message_template(access_token, waba_id, template_name)

@@ -8,6 +8,7 @@ import type * as onboardingModel from "@domain/models/onboarding";
 import type * as patientModel from "@domain/models/patient";
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
+import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 
 export interface BackendApiPort {
   login(input: authModel.LoginInput): Promise<authModel.AuthTokens>;
@@ -19,7 +20,12 @@ export interface BackendApiPort {
   getAgentSettings(): Promise<agentModel.AgentSettings>;
   updateAgentSettings(debounceDelay: number): Promise<agentModel.AgentSettings>;
 
-  createEmbeddedSignupSession(): Promise<whatsappModel.EmbeddedSignupSession>;
+  createEmbeddedSignupSession(
+    registrationPin?: string
+  ): Promise<whatsappModel.EmbeddedSignupSession>;
+  completeEmbeddedSignup(
+    request: whatsappModel.EmbeddedSignupCompleteRequest
+  ): Promise<whatsappModel.WhatsappConnection>;
   getWhatsappConnection(): Promise<whatsappModel.WhatsappConnection>;
   createGoogleOauthSession(): Promise<googleCalendarModel.GoogleOauthSession>;
   getGoogleCalendarConnection(): Promise<googleCalendarModel.GoogleCalendarConnection>;
@@ -112,4 +118,10 @@ export interface BackendApiPort {
   getDevFeatures(): Promise<{ enabled: boolean }>;
   getSandboxMode(): Promise<{ sandbox_enabled: boolean }>;
   updateSandboxMode(enabled: boolean): Promise<{ sandbox_enabled: boolean }>;
+
+  listWhatsappTemplates(): Promise<whatsappTemplateModel.WhatsappTemplate[]>;
+  createWhatsappTemplate(
+    request: whatsappTemplateModel.CreateTemplateRequest
+  ): Promise<whatsappTemplateModel.WhatsappTemplate>;
+  deleteWhatsappTemplate(name: string): Promise<void>;
 }
