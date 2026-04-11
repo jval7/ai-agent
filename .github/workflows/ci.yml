@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-checks:
+    name: Backend (ruff, mypy, bandit, pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python 3.11
+        run: uv python install 3.11
+
+      - name: Sync dev dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy src tests
+
+      - name: Bandit
+        run: uv run bandit -c pyproject.toml -r src
+
+      - name: Pytest
+        run: uv run pytest tests/services -q
+
+  frontend-checks:
+    name: Frontend (lint, format, typecheck, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+  terraform-validate:
+    name: Terraform validate (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Only the modules applied by deploy-main.yml are validated here.
+        # project_bootstrap and github_wif are one-shot bootstrap modules
+        # that run manually, so they are intentionally kept out of CI.
+        module:
+          - infra/terraform/runtime_deploy
+          - infra/terraform/frontend_spa_cdn
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform fmt check
+        run: terraform -chdir=${{ matrix.module }} fmt -check -recursive
+
+      - name: Terraform init (no backend)
+        run: terraform -chdir=${{ matrix.module }} init -backend=false
+
+      - name: Terraform validate
+        run: terraform -chdir=${{ matrix.module }} validate
