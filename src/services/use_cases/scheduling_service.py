@@ -15,6 +15,7 @@ import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
+import src.services.use_cases.tag_service as tag_service_module
 
 logger = app_logs.get_logger(__name__)
 
@@ -79,6 +80,7 @@ class SchedulingService:
         task_scheduler: task_scheduler_port.TaskSchedulerPort,
         auto_close_delay_seconds: int = 3600,
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
+        tag_service: tag_service_module.TagService | None = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
         self._conversation_repository = conversation_repository
@@ -87,11 +89,26 @@ class SchedulingService:
         self._clock = clock
         self._task_scheduler = task_scheduler
         self._auto_close_delay_seconds = auto_close_delay_seconds
+        self._tag_service = tag_service
         self._agent_workflow: agent_workflow_port.AgentWorkflowPort
         if agent_workflow is None:
             self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
         else:
             self._agent_workflow = agent_workflow
+
+    def _sync_tags_after_status_change(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        new_status: str,
+    ) -> None:
+        if self._tag_service is None:
+            return
+        self._tag_service.sync_scheduling_tags(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=new_status,
+        )
 
     def list_requests_by_tenant(
         self,
@@ -494,6 +511,11 @@ class SchedulingService:
         request.rejection_summary = None
         request.set_status("AWAITING_CONSULTATION_REVIEW", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=request.status,
+        )
         logger.info(
             "scheduling.consultation_review_requested",
             extra={
@@ -545,6 +567,11 @@ class SchedulingService:
             request.set_status("CONSULTATION_REJECTED", now_value)
 
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=request.status,
+        )
         logger.info(
             "scheduling.consultation_review_resolved",
             extra={
@@ -597,6 +624,11 @@ class SchedulingService:
         if cancellation_reason is not None:
             open_request.professional_note = cancellation_reason
         self._scheduling_repository.save_request(open_request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=open_request.status,
+        )
         logger.info(
             "scheduling.request_cancelled",
             extra={
@@ -668,6 +700,11 @@ class SchedulingService:
         request.calendar_event_id = event.event_id
         request.set_status("BOOKED", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=request.status,
+        )
         self._schedule_auto_close_task(tenant_id, request.id)
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="BOOKED",
@@ -756,6 +793,11 @@ class SchedulingService:
         request.selected_slot_id = selected_slot.id
         request.set_status("AWAITING_PAYMENT_CONFIRMATION", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=request.status,
+        )
         logger.info(
             "scheduling.slot_selected",
             extra={
@@ -804,6 +846,12 @@ class SchedulingService:
 
         request.updated_at = now_value
         self._scheduling_repository.save_request(request)
+        if input_dto.decision == "APPROVE":
+            self._sync_tags_after_status_change(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                new_status=request.status,
+            )
         logger.info(
             "scheduling.payment_review_resolved",
             extra={
@@ -912,6 +960,11 @@ class SchedulingService:
             request.professional_note = normalized_reason
         request.set_status("CANCELLED", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=request.conversation_id,
+            new_status=request.status,
+        )
         logger.info(
             "scheduling.booked_slot_cancelled",
             extra={
@@ -995,6 +1048,11 @@ class SchedulingService:
             request.professional_note = input_dto.summary_for_professional
             self._scheduling_repository.save_request(request)
 
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status="HUMAN_HANDOFF",
+        )
         logger.info(
             "scheduling.handoff_to_human",
             extra={
@@ -1045,6 +1103,11 @@ class SchedulingService:
 
         booked_request.set_status("SESSION_CLOSED", now_value)
         self._scheduling_repository.save_request(booked_request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=booked_request.status,
+        )
 
         logger.info(
             "scheduling.session_closed",
@@ -1093,6 +1156,11 @@ class SchedulingService:
         )
         request.set_status("SESSION_CLOSED", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=request.conversation_id,
+            new_status=request.status,
+        )
 
         logger.info(
             "scheduling.auto_close_completed",
@@ -1151,6 +1219,11 @@ class SchedulingService:
         request.selected_slot_id = None
         request.set_status("AWAITING_CONSULTATION_REVIEW", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=request.conversation_id,
+            new_status=request.status,
+        )
 
         logger.info(
             "scheduling.patient_slot_rejection_escalated",
@@ -1261,6 +1334,11 @@ class SchedulingService:
         else:
             request.set_status("AWAITING_CONSULTATION_REVIEW", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=request.tenant_id,
+            conversation_id=request.conversation_id,
+            new_status=request.status,
+        )
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="SLOT_CONFLICT",
             request_id=request.id,

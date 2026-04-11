@@ -13,6 +13,7 @@ import src.adapters.outbound.firestore.patient_repository_adapter as patient_rep
 import src.adapters.outbound.firestore.processed_webhook_event_repository_adapter as processed_webhook_event_repository_adapter
 import src.adapters.outbound.firestore.refresh_token_repository_adapter as refresh_token_repository_adapter
 import src.adapters.outbound.firestore.scheduling_repository_adapter as scheduling_repository_adapter
+import src.adapters.outbound.firestore.tag_repository_adapter as tag_repository_adapter
 import src.adapters.outbound.firestore.tenant_repository_adapter as tenant_repository_adapter
 import src.adapters.outbound.firestore.user_repository_adapter as user_repository_adapter
 import src.adapters.outbound.firestore.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
@@ -58,6 +59,7 @@ import src.services.use_cases.onboarding_status_service as onboarding_status_ser
 import src.services.use_cases.patient_query_service as patient_query_service
 import src.services.use_cases.scheduling_inbox_service as scheduling_inbox_service
 import src.services.use_cases.scheduling_service as scheduling_service
+import src.services.use_cases.tag_service as tag_service
 import src.services.use_cases.webhook_service as webhook_service
 import src.services.use_cases.whatsapp_onboarding_service as whatsapp_onboarding_service
 import src.services.use_cases.whatsapp_template_service as whatsapp_template_service
@@ -138,6 +140,9 @@ class AppContainer:
             refresh_token_repository_adapter.FirestoreRefreshTokenRepositoryAdapter(
                 self.firestore_client
             )
+        )
+        self.tag_repository = tag_repository_adapter.FirestoreTagRepositoryAdapter(
+            self.firestore_client
         )
 
         self.password_hasher_adapter = password_hasher_adapter.Pbkdf2PasswordHasherAdapter()
@@ -229,6 +234,12 @@ class AppContainer:
             )
         else:
             self.task_scheduler = noop_task_scheduler_adapter.NoopTaskSchedulerAdapter()
+        self.tag_service = tag_service.TagService(
+            tag_repository=self.tag_repository,
+            conversation_repository=self.conversation_repository,
+            id_generator=self.id_generator_adapter,
+            clock=self.clock_adapter,
+        )
         self.scheduling_service = scheduling_service.SchedulingService(
             scheduling_repository=self.scheduling_repository,
             conversation_repository=self.conversation_repository,
@@ -238,6 +249,7 @@ class AppContainer:
             task_scheduler=self.task_scheduler,
             auto_close_delay_seconds=self.settings.auto_close_delay_seconds,
             agent_workflow=self.agent_workflow_engine,
+            tag_service=self.tag_service,
         )
         self.scheduling_inbox_service = scheduling_inbox_service.SchedulingInboxService(
             scheduling_repository=self.scheduling_repository,
@@ -345,6 +357,7 @@ class AppContainer:
 
         self.conversation_query_service = conversation_query_service.ConversationQueryService(
             conversation_repository=self.conversation_repository,
+            tag_repository=self.tag_repository,
         )
         self.conversation_control_service = conversation_control_service.ConversationControlService(
             conversation_repository=self.conversation_repository,

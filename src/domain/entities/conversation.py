@@ -25,6 +25,7 @@ class Conversation(pydantic.BaseModel):
     messages: list[message_entity.Message] = pydantic.Field(default_factory=list)
     control_mode: typing.Literal["AI", "HUMAN"] = "AI"
     subsessions: list[ConversationSubsession] = pydantic.Field(default_factory=list)
+    tag_ids: list[str] = pydantic.Field(default_factory=list)
 
     def append_message(self, message_id: str, preview: str, now: datetime.datetime) -> None:
         self.message_ids.append(message_id)
@@ -38,6 +39,16 @@ class Conversation(pydantic.BaseModel):
     ) -> None:
         self.control_mode = control_mode
         self.updated_at = now
+
+    def add_tag(self, tag_id: str, now: datetime.datetime) -> None:
+        if tag_id not in self.tag_ids:
+            self.tag_ids.append(tag_id)
+            self.updated_at = now
+
+    def remove_tag(self, tag_id: str, now: datetime.datetime) -> None:
+        if tag_id in self.tag_ids:
+            self.tag_ids.remove(tag_id)
+            self.updated_at = now
 
     def archive_current_session(
         self,
