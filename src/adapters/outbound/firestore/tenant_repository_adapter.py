@@ -89,26 +89,18 @@ class FirestoreTenantRepositoryAdapter(tenant_repository_port.TenantRepositoryPo
             if user_data is not None:
                 email = user_data.get("email")
                 if isinstance(email, str):
-                    firestore_paths.user_email_index_document(
-                        self._client, email.lower()
-                    ).delete()
-            firestore_paths.user_id_index_document(
-                self._client, user_snapshot.id
-            ).delete()
+                    firestore_paths.user_email_index_document(self._client, email.lower()).delete()
+            firestore_paths.user_id_index_document(self._client, user_snapshot.id).delete()
             logger.info("deleted user indexes for user_id=%s", user_snapshot.id)
 
-        wa_conn_ref = firestore_paths.tenant_whatsapp_connection_document(
-            self._client, tenant_id
-        )
+        wa_conn_ref = firestore_paths.tenant_whatsapp_connection_document(self._client, tenant_id)
         wa_snap = wa_conn_ref.get()
         if wa_snap.exists:
             wa_data = wa_snap.to_dict()
             if wa_data is not None:
                 phone_id = wa_data.get("phone_number_id")
                 if isinstance(phone_id, str):
-                    firestore_paths.whatsapp_phone_index_document(
-                        self._client, phone_id
-                    ).delete()
+                    firestore_paths.whatsapp_phone_index_document(self._client, phone_id).delete()
                 signup_state = wa_data.get("embedded_signup_state")
                 if isinstance(signup_state, str):
                     firestore_paths.whatsapp_signup_state_index_document(

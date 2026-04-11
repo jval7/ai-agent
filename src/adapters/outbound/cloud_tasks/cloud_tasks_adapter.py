@@ -3,7 +3,7 @@ import json
 import logging
 
 import google.cloud.tasks_v2 as cloud_tasks_v2
-import google.protobuf.timestamp_pb2 as timestamp_pb2
+import google.protobuf.timestamp_pb2 as timestamp_pb2  # type: ignore[import-untyped]
 
 import src.ports.task_scheduler_port as task_scheduler_port
 import src.services.exceptions as service_exceptions

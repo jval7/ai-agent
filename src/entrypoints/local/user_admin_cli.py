@@ -115,9 +115,7 @@ def main() -> int:
             print(f"GENERATED_PASSWORD={password}")
             return 0
 
-        service.delete_professional(
-            user_admin_dto.DeleteProfessionalDTO(email=args.email)
-        )
+        service.delete_professional(user_admin_dto.DeleteProfessionalDTO(email=args.email))
         print("Professional and all their data deleted successfully.")
         return 0
     except pydantic.ValidationError as error:

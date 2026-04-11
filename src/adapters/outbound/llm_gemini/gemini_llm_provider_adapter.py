@@ -160,7 +160,7 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
                 function_calls=function_calls,
             )
 
-    @tenacity.retry(  # type: ignore[misc]
+    @tenacity.retry(
         retry=tenacity.retry_if_exception(_is_retryable_error),
         wait=tenacity.wait_exponential(multiplier=1, min=2, max=30),
         stop=tenacity.stop_after_attempt(4),
