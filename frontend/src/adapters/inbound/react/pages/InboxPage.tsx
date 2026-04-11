@@ -19,7 +19,7 @@ const blacklistQueryKey = ["blacklist"] as const;
 const patientsQueryKey = ["patients"] as const;
 const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
 const promptQueryKey = ["system-prompt"] as const;
-const sandboxQueryKey = ["sandbox-mode"] as const;
+const devFeaturesQueryKey = ["dev-features"] as const;
 
 type AppointmentDisplayStatus =
   | "PENDIENTE_REVISION"
@@ -330,19 +330,21 @@ export function InboxPage() {
     }
   });
 
-  const sandboxQuery = reactQueryModule.useQuery({
-    queryKey: sandboxQueryKey,
-    queryFn: () => appContainer.agentUseCase.getSandboxMode()
+  const devFeaturesQuery = reactQueryModule.useQuery({
+    queryKey: devFeaturesQueryKey,
+    queryFn: () => appContainer.agentUseCase.getDevFeatures(),
+    staleTime: Infinity
   });
+
+  const devFeaturesEnabled = devFeaturesQuery.data?.enabled ?? false;
+  const sandboxEnabled = devFeaturesQuery.data?.sandbox_enabled ?? false;
 
   const sandboxMutation = reactQueryModule.useMutation({
     mutationFn: (enabled: boolean) => appContainer.agentUseCase.updateSandboxMode(enabled),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: sandboxQueryKey });
+      await queryClient.invalidateQueries({ queryKey: devFeaturesQueryKey });
     }
   });
-
-  const sandboxEnabled = sandboxQuery.data?.sandbox_enabled ?? false;
 
   const selectedWhatsappUserId = selectedConversation?.whatsappUserId ?? null;
   const isBlocked =
@@ -447,36 +449,38 @@ export function InboxPage() {
       <div className="lg:hidden">
         {inboxMobileStep === "LIST" ? (
           <div className="space-y-2">
-            <div
-              className={[
-                "mb-2 flex items-center justify-between rounded-lg border px-3 py-2",
-                sandboxEnabled ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
-              ].join(" ")}
-            >
-              <div className="min-w-0 flex-1">
-                <p
-                  className={[
-                    "text-xs font-semibold",
-                    sandboxEnabled ? "text-amber-800" : "text-slate-500"
-                  ].join(" ")}
-                >
-                  Sandbox
-                </p>
-                {sandboxEnabled ? (
-                  <p className="text-[11px] text-amber-700">WhatsApp no envía mensajes reales</p>
-                ) : null}
-              </div>
-              <radixSwitchModule.Root
-                checked={sandboxEnabled}
-                className="relative h-6 w-11 rounded-full bg-slate-300 data-[state=checked]:bg-amber-500"
-                disabled={sandboxMutation.isPending}
-                onCheckedChange={(checked) => {
-                  sandboxMutation.mutate(checked);
-                }}
+            {devFeaturesEnabled ? (
+              <div
+                className={[
+                  "mb-2 flex items-center justify-between rounded-lg border px-3 py-2",
+                  sandboxEnabled ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
+                ].join(" ")}
               >
-                <radixSwitchModule.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform data-[state=checked]:translate-x-5" />
-              </radixSwitchModule.Root>
-            </div>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={[
+                      "text-xs font-semibold",
+                      sandboxEnabled ? "text-amber-800" : "text-slate-500"
+                    ].join(" ")}
+                  >
+                    Sandbox
+                  </p>
+                  {sandboxEnabled ? (
+                    <p className="text-[11px] text-amber-700">WhatsApp no envía mensajes reales</p>
+                  ) : null}
+                </div>
+                <radixSwitchModule.Root
+                  checked={sandboxEnabled}
+                  className="relative h-6 w-11 rounded-full bg-slate-300 data-[state=checked]:bg-amber-500"
+                  disabled={sandboxMutation.isPending}
+                  onCheckedChange={(checked) => {
+                    sandboxMutation.mutate(checked);
+                  }}
+                >
+                  <radixSwitchModule.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform data-[state=checked]:translate-x-5" />
+                </radixSwitchModule.Root>
+              </div>
+            ) : null}
             <header className="mb-3">
               <h2 className="text-base font-semibold text-brand-ink">Conversaciones</h2>
               <p className="text-[11px] text-slate-500">
@@ -675,25 +679,27 @@ export function InboxPage() {
             >
               {fabOpen ? (
                 <div className="pointer-events-auto flex flex-col gap-2">
-                  <button
-                    className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
-                    onClick={() => {
-                      if (selectedConversationId === null) {
-                        return;
-                      }
-                      const isConfirmed = window.confirm(
-                        "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
-                      );
-                      if (!isConfirmed) {
-                        return;
-                      }
-                      resetMessagesMutation.mutate(selectedConversationId);
-                      setFabOpen(false);
-                    }}
-                    type="button"
-                  >
-                    Resetear
-                  </button>
+                  {devFeaturesEnabled ? (
+                    <button
+                      className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+                      onClick={() => {
+                        if (selectedConversationId === null) {
+                          return;
+                        }
+                        const isConfirmed = window.confirm(
+                          "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
+                        );
+                        if (!isConfirmed) {
+                          return;
+                        }
+                        resetMessagesMutation.mutate(selectedConversationId);
+                        setFabOpen(false);
+                      }}
+                      type="button"
+                    >
+                      Resetear
+                    </button>
+                  ) : null}
                   <button
                     className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
                     onClick={() => {
@@ -850,36 +856,38 @@ export function InboxPage() {
       {/* ===== DESKTOP: 3-column layout (unchanged) ===== */}
       <section className="hidden gap-4 lg:grid lg:grid-cols-[280px_minmax(0,1fr)_320px]">
         <article className="rounded-xl border border-border-subtle bg-white shadow-card">
-          <div
-            className={[
-              "flex items-center justify-between border-b px-4 py-2",
-              sandboxEnabled ? "border-amber-200 bg-amber-50" : "border-slate-100 bg-slate-50"
-            ].join(" ")}
-          >
-            <div className="min-w-0 flex-1">
-              <p
-                className={[
-                  "text-xs font-semibold",
-                  sandboxEnabled ? "text-amber-800" : "text-slate-500"
-                ].join(" ")}
-              >
-                Sandbox
-              </p>
-              {sandboxEnabled ? (
-                <p className="text-[11px] text-amber-700">WhatsApp no envía mensajes reales</p>
-              ) : null}
-            </div>
-            <radixSwitchModule.Root
-              checked={sandboxEnabled}
-              className="relative h-6 w-11 rounded-full bg-slate-300 data-[state=checked]:bg-amber-500"
-              disabled={sandboxMutation.isPending}
-              onCheckedChange={(checked) => {
-                sandboxMutation.mutate(checked);
-              }}
+          {devFeaturesEnabled ? (
+            <div
+              className={[
+                "flex items-center justify-between border-b px-4 py-2",
+                sandboxEnabled ? "border-amber-200 bg-amber-50" : "border-slate-100 bg-slate-50"
+              ].join(" ")}
             >
-              <radixSwitchModule.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform data-[state=checked]:translate-x-5" />
-            </radixSwitchModule.Root>
-          </div>
+              <div className="min-w-0 flex-1">
+                <p
+                  className={[
+                    "text-xs font-semibold",
+                    sandboxEnabled ? "text-amber-800" : "text-slate-500"
+                  ].join(" ")}
+                >
+                  Sandbox
+                </p>
+                {sandboxEnabled ? (
+                  <p className="text-[11px] text-amber-700">WhatsApp no envía mensajes reales</p>
+                ) : null}
+              </div>
+              <radixSwitchModule.Root
+                checked={sandboxEnabled}
+                className="relative h-6 w-11 rounded-full bg-slate-300 data-[state=checked]:bg-amber-500"
+                disabled={sandboxMutation.isPending}
+                onCheckedChange={(checked) => {
+                  sandboxMutation.mutate(checked);
+                }}
+              >
+                <radixSwitchModule.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform data-[state=checked]:translate-x-5" />
+              </radixSwitchModule.Root>
+            </div>
+          ) : null}
           <header className="border-b border-border-subtle px-5 py-4">
             <h2 className="text-base font-semibold">Conversaciones</h2>
             <p className="text-xs text-slate-500">Selecciona una conversación para ver detalle.</p>
@@ -945,22 +953,24 @@ export function InboxPage() {
                     </div>
                   </button>
 
-                  <button
-                    className="mt-3 w-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={resetMessagesMutation.isPending}
-                    onClick={() => {
-                      const isConfirmed = window.confirm(
-                        "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
-                      );
-                      if (!isConfirmed) {
-                        return;
-                      }
-                      resetMessagesMutation.mutate(conversation.conversationId);
-                    }}
-                    type="button"
-                  >
-                    {isResettingConversation ? "Reseteando..." : "Resetear chat"}
-                  </button>
+                  {devFeaturesEnabled ? (
+                    <button
+                      className="mt-3 w-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={resetMessagesMutation.isPending}
+                      onClick={() => {
+                        const isConfirmed = window.confirm(
+                          "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
+                        );
+                        if (!isConfirmed) {
+                          return;
+                        }
+                        resetMessagesMutation.mutate(conversation.conversationId);
+                      }}
+                      type="button"
+                    >
+                      {isResettingConversation ? "Reseteando..." : "Resetear chat"}
+                    </button>
+                  ) : null}
                 </article>
               );
             })}

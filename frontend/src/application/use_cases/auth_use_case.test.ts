@@ -276,7 +276,7 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
-  async getSandboxMode(): Promise<{ sandbox_enabled: boolean }> {
+  async getDevFeatures(): Promise<{ enabled: boolean; sandbox_enabled: boolean | null }> {
     throw new Error("not used");
   }
 

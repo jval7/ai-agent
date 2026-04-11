@@ -60,7 +60,11 @@ def send_message(
     )
 
 
-@router.delete("/{conversation_id}/messages", status_code=fastapi.status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{conversation_id}/messages",
+    status_code=fastapi.status.HTTP_204_NO_CONTENT,
+    dependencies=[fastapi.Depends(http_dependencies.require_dev_endpoints)],
+)
 def reset_messages(
     conversation_id: str,
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
