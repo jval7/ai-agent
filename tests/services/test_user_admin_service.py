@@ -105,9 +105,7 @@ def test_delete_professional_removes_tenant_and_user() -> None:
     assert user_repository.get_by_email("doc@acme.com") is not None
     assert agent_profile_repository.get_by_tenant_id("tenant-1") is not None
 
-    service.delete_professional(
-        user_admin_dto.DeleteProfessionalDTO(email="doc@acme.com")
-    )
+    service.delete_professional(user_admin_dto.DeleteProfessionalDTO(email="doc@acme.com"))
 
     assert tenant_repository.get_by_id("tenant-1") is None
     assert user_repository.get_by_email("doc@acme.com") is None

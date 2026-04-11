@@ -48,15 +48,11 @@ class InMemoryTenantRepositoryAdapter(tenant_repository_port.TenantRepositoryPor
                 if v != tenant_id
             }
             self._store.tenant_by_phone_number_id = {
-                k: v
-                for k, v in self._store.tenant_by_phone_number_id.items()
-                if v != tenant_id
+                k: v for k, v in self._store.tenant_by_phone_number_id.items() if v != tenant_id
             }
 
             conversation_ids_to_delete = [
-                c.id
-                for c in self._store.conversation_by_id.values()
-                if c.tenant_id == tenant_id
+                c.id for c in self._store.conversation_by_id.values() if c.tenant_id == tenant_id
             ]
             for conv_id in conversation_ids_to_delete:
                 self._store.conversation_by_id.pop(conv_id, None)
