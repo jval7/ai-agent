@@ -19,7 +19,6 @@ const blacklistQueryKey = ["blacklist"] as const;
 const patientsQueryKey = ["patients"] as const;
 const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
 const promptQueryKey = ["system-prompt"] as const;
-const sandboxQueryKey = ["sandbox-mode"] as const;
 const devFeaturesQueryKey = ["dev-features"] as const;
 
 type AppointmentDisplayStatus =
@@ -333,25 +332,19 @@ export function InboxPage() {
 
   const devFeaturesQuery = reactQueryModule.useQuery({
     queryKey: devFeaturesQueryKey,
-    queryFn: () => appContainer.agentUseCase.getDevFeatures()
+    queryFn: () => appContainer.agentUseCase.getDevFeatures(),
+    staleTime: Infinity
   });
 
   const devFeaturesEnabled = devFeaturesQuery.data?.enabled ?? false;
-
-  const sandboxQuery = reactQueryModule.useQuery({
-    queryKey: sandboxQueryKey,
-    queryFn: () => appContainer.agentUseCase.getSandboxMode(),
-    enabled: devFeaturesEnabled
-  });
+  const sandboxEnabled = devFeaturesQuery.data?.sandbox_enabled ?? false;
 
   const sandboxMutation = reactQueryModule.useMutation({
     mutationFn: (enabled: boolean) => appContainer.agentUseCase.updateSandboxMode(enabled),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: sandboxQueryKey });
+      await queryClient.invalidateQueries({ queryKey: devFeaturesQueryKey });
     }
   });
-
-  const sandboxEnabled = sandboxQuery.data?.sandbox_enabled ?? false;
 
   const selectedWhatsappUserId = selectedConversation?.whatsappUserId ?? null;
   const isBlocked =

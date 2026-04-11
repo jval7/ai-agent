@@ -27,10 +27,6 @@ export class AgentUseCase {
     return this.api.getDevFeatures();
   }
 
-  async getSandboxMode() {
-    return this.api.getSandboxMode();
-  }
-
   async updateSandboxMode(enabled: boolean) {
     return this.api.updateSandboxMode(enabled);
   }

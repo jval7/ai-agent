@@ -115,8 +115,7 @@ export interface BackendApiPort {
     input: schedulingModel.UpdateBookedSlotPaymentInput
   ): Promise<schedulingModel.SchedulingRequestSummary>;
 
-  getDevFeatures(): Promise<{ enabled: boolean }>;
-  getSandboxMode(): Promise<{ sandbox_enabled: boolean }>;
+  getDevFeatures(): Promise<{ enabled: boolean; sandbox_enabled: boolean | null }>;
   updateSandboxMode(enabled: boolean): Promise<{ sandbox_enabled: boolean }>;
 
   listWhatsappTemplates(): Promise<whatsappTemplateModel.WhatsappTemplate[]>;
