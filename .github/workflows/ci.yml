@@ -84,11 +84,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Only the modules applied by deploy-main.yml are validated here.
+        # project_bootstrap and github_wif are one-shot bootstrap modules
+        # that run manually, so they are intentionally kept out of CI.
         module:
           - infra/terraform/runtime_deploy
           - infra/terraform/frontend_spa_cdn
-          - infra/terraform/project_bootstrap
-          - infra/terraform/github_wif
     steps:
       - uses: actions/checkout@v4
 
