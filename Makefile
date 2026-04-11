@@ -63,6 +63,7 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 .PHONY: \
 	create-professional \
 	delete-professional \
+	list-professionals \
 	reset-password \
 	oauth-flow \
 	save-api-base \
@@ -100,6 +101,7 @@ help:
 	@echo "=== Usuarios ==="
 	@echo "  create-professional    Crear profesional (EMAIL, TENANT_NAME)"
 	@echo "  delete-professional    Eliminar profesional (EMAIL)"
+	@echo "  list-professionals     Listar todos los profesionales"
 	@echo "  reset-password         Resetear password (EMAIL)"
 	@echo ""
 	@echo "=== Desarrollo ==="
@@ -179,6 +181,9 @@ delete-professional:
 	@uv run python -m src.entrypoints.local.user_admin_cli delete-professional \
 		--email "$(EMAIL)" \
 		--confirm
+
+list-professionals:
+	@uv run python -m src.entrypoints.local.user_admin_cli list-professionals
 
 oauth-flow:
 	@if [[ -z "$(EMAIL)" || -z "$(PASSWORD)" ]]; then \

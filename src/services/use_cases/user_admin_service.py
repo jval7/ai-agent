@@ -82,6 +82,30 @@ class UserAdminService:
         if not deleted:
             raise service_exceptions.EntityNotFoundError("tenant not found")
 
+    def list_professionals(self) -> list[user_admin_dto.ProfessionalSummaryDTO]:
+        users = self._user_repository.list_all()
+        tenant_name_by_id: dict[str, str] = {}
+        summaries: list[user_admin_dto.ProfessionalSummaryDTO] = []
+        for user in users:
+            tenant_name = tenant_name_by_id.get(user.tenant_id)
+            if tenant_name is None:
+                tenant = self._tenant_repository.get_by_id(user.tenant_id)
+                tenant_name = tenant.name if tenant is not None else ""
+                tenant_name_by_id[user.tenant_id] = tenant_name
+            summaries.append(
+                user_admin_dto.ProfessionalSummaryDTO(
+                    user_id=user.id,
+                    tenant_id=user.tenant_id,
+                    tenant_name=tenant_name,
+                    email=user.email,
+                    role=user.role,
+                    is_active=user.is_active,
+                    created_at=user.created_at,
+                )
+            )
+        summaries.sort(key=lambda summary: summary.email)
+        return summaries
+
     def _ensure_agent_profile(self, tenant_id: str, now_value: datetime.datetime) -> None:
         existing_agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
         if existing_agent_profile is not None:

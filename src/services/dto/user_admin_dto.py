@@ -1,3 +1,5 @@
+import datetime
+
 import pydantic
 
 
@@ -60,3 +62,13 @@ class DeleteProfessionalDTO(pydantic.BaseModel):
         if "@" not in normalized_value:
             raise ValueError("email must contain @")
         return normalized_value
+
+
+class ProfessionalSummaryDTO(pydantic.BaseModel):
+    user_id: str
+    tenant_id: str
+    tenant_name: str
+    email: str
+    role: str
+    is_active: bool
+    created_at: datetime.datetime

@@ -7,6 +7,7 @@ import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.tenant_repository_adapter as tenant_repository_adapter
 import src.adapters.outbound.inmemory.user_repository_adapter as user_repository_adapter
 import src.adapters.outbound.security.password_hasher_adapter as password_hasher_adapter
+import src.domain.entities.user as user_entity
 import src.services.dto.user_admin_dto as user_admin_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.user_admin_service as user_admin_service
@@ -158,3 +159,66 @@ def test_delete_professional_fails_when_user_not_found() -> None:
         service.delete_professional(
             user_admin_dto.DeleteProfessionalDTO(email="nonexistent@acme.com")
         )
+
+
+def test_list_professionals_returns_empty_when_no_users() -> None:
+    service, _, _, _ = build_user_admin_service([])
+
+    summaries = service.list_professionals()
+
+    assert summaries == []
+
+
+def test_list_professionals_returns_all_professionals_sorted_by_email() -> None:
+    service, _, _, _ = build_user_admin_service(["tenant-b", "user-b", "tenant-a", "user-a"])
+
+    service.create_professional(
+        user_admin_dto.CreateProfessionalDTO(
+            tenant_name="Bravo Clinic",
+            email="bravo@acme.com",
+            password="supersecret",
+        )
+    )
+    service.create_professional(
+        user_admin_dto.CreateProfessionalDTO(
+            tenant_name="Alpha Clinic",
+            email="alpha@acme.com",
+            password="supersecret",
+        )
+    )
+
+    summaries = service.list_professionals()
+
+    assert [summary.email for summary in summaries] == ["alpha@acme.com", "bravo@acme.com"]
+    alpha_summary = summaries[0]
+    assert alpha_summary.tenant_id == "tenant-a"
+    assert alpha_summary.tenant_name == "Alpha Clinic"
+    assert alpha_summary.user_id == "user-a"
+    assert alpha_summary.role == "professional"
+    assert alpha_summary.is_active is True
+    bravo_summary = summaries[1]
+    assert bravo_summary.tenant_id == "tenant-b"
+    assert bravo_summary.tenant_name == "Bravo Clinic"
+    assert bravo_summary.user_id == "user-b"
+
+
+def test_list_professionals_uses_empty_tenant_name_when_tenant_missing() -> None:
+    service, _, user_repository, _ = build_user_admin_service([])
+
+    orphan_user = user_entity.User(
+        id="user-orphan",
+        tenant_id="tenant-missing",
+        email="orphan@acme.com",
+        password_hash="hash",
+        role="professional",
+        is_active=True,
+        created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+    )
+    user_repository.save(orphan_user)
+
+    summaries = service.list_professionals()
+
+    assert len(summaries) == 1
+    assert summaries[0].email == "orphan@acme.com"
+    assert summaries[0].tenant_id == "tenant-missing"
+    assert summaries[0].tenant_name == ""
