@@ -47,7 +47,59 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Required flag to confirm destructive operation",
     )
 
+    subparsers.add_parser(
+        "list-professionals",
+        help="List all professionals (email, tenant, role, active, created_at)",
+    )
+
     return parser
+
+
+def _print_professionals_table(
+    summaries: list[user_admin_dto.ProfessionalSummaryDTO],
+) -> None:
+    if not summaries:
+        print("No professionals found.")
+        return
+
+    headers: list[str] = [
+        "EMAIL",
+        "TENANT",
+        "ROLE",
+        "ACTIVE",
+        "CREATED_AT",
+        "USER_ID",
+        "TENANT_ID",
+    ]
+    rows: list[list[str]] = []
+    for summary in summaries:
+        rows.append(
+            [
+                summary.email,
+                summary.tenant_name,
+                summary.role,
+                "yes" if summary.is_active else "no",
+                summary.created_at.isoformat(),
+                summary.user_id,
+                summary.tenant_id,
+            ]
+        )
+
+    widths = [len(header) for header in headers]
+    for row in rows:
+        for index, cell in enumerate(row):
+            if len(cell) > widths[index]:
+                widths[index] = len(cell)
+
+    def _format_row(row: list[str]) -> str:
+        return "  ".join(cell.ljust(widths[index]) for index, cell in enumerate(row))
+
+    separator = ["-" * width for width in widths]
+    print(_format_row(headers))
+    print(_format_row(separator))
+    for row in rows:
+        print(_format_row(row))
+    print(f"\nTotal: {len(rows)} professional(s)")
 
 
 def _build_service() -> user_admin_service.UserAdminService:
@@ -113,6 +165,11 @@ def main() -> int:
             print(f"  Email:    {args.email}")
             print(f"  Password: {password}")
             print(f"GENERATED_PASSWORD={password}")
+            return 0
+
+        if args.command == "list-professionals":
+            summaries = service.list_professionals()
+            _print_professionals_table(summaries)
             return 0
 
         service.delete_professional(user_admin_dto.DeleteProfessionalDTO(email=args.email))

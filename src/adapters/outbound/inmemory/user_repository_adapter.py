@@ -38,3 +38,7 @@ class InMemoryUserRepositoryAdapter(user_repository_port.UserRepositoryPort):
                 del self._store.users_by_email[user.email]
             self._store.flush()
             return True
+
+    def list_all(self) -> list[user_entity.User]:
+        with self._store.lock:
+            return [user.model_copy(deep=True) for user in self._store.users_by_id.values()]
