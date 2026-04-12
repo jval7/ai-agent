@@ -98,6 +98,7 @@ jobs:
             backend_prefix: dev/runtime-deploy
           - module: infra/terraform/frontend_spa_cdn
             backend_prefix: dev/frontend-spa-cdn
+    environment: dev
     steps:
       - uses: actions/checkout@v4
 
