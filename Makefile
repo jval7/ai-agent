@@ -183,7 +183,8 @@ delete-professional:
 		--confirm
 
 list-professionals:
-	@uv run python -m src.entrypoints.local.user_admin_cli list-professionals
+	@project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
+	GOOGLE_CLOUD_PROJECT="$$project_id" uv run python -m src.entrypoints.local.user_admin_cli list-professionals
 
 oauth-flow:
 	@if [[ -z "$(EMAIL)" || -z "$(PASSWORD)" ]]; then \
