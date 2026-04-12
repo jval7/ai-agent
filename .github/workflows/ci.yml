@@ -129,8 +129,6 @@ jobs:
             backend_prefix: dev/runtime-deploy
           - module: infra/terraform/frontend_spa_cdn
             backend_prefix: dev/frontend-spa-cdn
-    # A plan failure is informational — it must not block the PR
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -236,7 +234,7 @@ jobs:
               '',
               '</details>',
               '',
-              `> Plan is informational only and does not block this PR.`,
+              `> Plan errors will block this PR.`,
             ].join('\n');
 
             await github.rest.issues.createComment({
