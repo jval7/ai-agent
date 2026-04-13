@@ -51,6 +51,9 @@ DEPLOY_FRONT_ENV_FILE ?= $(DEPLOY_BASE_DIR)/$(ENV)-front.env
 DEPLOY_BACK_ENV_FILE ?= $(DEPLOY_BASE_DIR)/$(ENV)-back.env
 TF_STATE_BUCKET ?=
 DEPLOY_BACK_ENVS_DIR ?= infra/terraform/runtime_deploy/envs
+
+# Resolve GCP project from ENV-specific tfvars for local CLI commands
+CLI_PROJECT_ID = $(shell grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" 2>/dev/null | sed 's/.*= *"\(.*\)"/\1/')
 DEPLOY_FRONT_ENVS_DIR ?= infra/terraform/frontend_spa_cdn/envs
 APP_CONFIG_KEY ?=
 APP_CONFIG_VALUE ?=
@@ -138,7 +141,7 @@ create-professional:
 		echo "EMAIL is required. Example: make create-professional EMAIL=doc@acme.com TENANT_NAME=DrAcme"; \
 		exit 1; \
 	fi
-	@output=$$(uv run python -m src.entrypoints.local.user_admin_cli create-professional \
+	@output=$$(GOOGLE_CLOUD_PROJECT="$(CLI_PROJECT_ID)" uv run python -m src.entrypoints.local.user_admin_cli create-professional \
 		--tenant-name "$(TENANT_NAME)" \
 		--email "$(EMAIL)"); \
 	echo "$$output"; \
@@ -157,7 +160,7 @@ reset-password:
 		echo "EMAIL is required. Example: make reset-password EMAIL=doc@acme.com"; \
 		exit 1; \
 	fi
-	@output=$$(uv run python -m src.entrypoints.local.user_admin_cli reset-password \
+	@output=$$(GOOGLE_CLOUD_PROJECT="$(CLI_PROJECT_ID)" uv run python -m src.entrypoints.local.user_admin_cli reset-password \
 		--email "$(EMAIL)"); \
 	echo "$$output"; \
 	if [[ "$(ENV)" == "dev" ]]; then \
@@ -178,13 +181,12 @@ delete-professional:
 	@echo "This will DELETE the professional and ALL their data (conversations, patients, etc.)."
 	@echo "Press Ctrl+C to cancel, or Enter to continue..."
 	@read -r _
-	@uv run python -m src.entrypoints.local.user_admin_cli delete-professional \
+	@GOOGLE_CLOUD_PROJECT="$(CLI_PROJECT_ID)" uv run python -m src.entrypoints.local.user_admin_cli delete-professional \
 		--email "$(EMAIL)" \
 		--confirm
 
 list-professionals:
-	@project_id=$$(grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
-	GOOGLE_CLOUD_PROJECT="$$project_id" uv run python -m src.entrypoints.local.user_admin_cli list-professionals
+	@GOOGLE_CLOUD_PROJECT="$(CLI_PROJECT_ID)" uv run python -m src.entrypoints.local.user_admin_cli list-professionals
 
 oauth-flow:
 	@if [[ -z "$(EMAIL)" || -z "$(PASSWORD)" ]]; then \
