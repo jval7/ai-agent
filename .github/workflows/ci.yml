@@ -82,25 +82,9 @@ jobs:
       - name: Test
         run: npm run test
 
-  # ── Terraform: fmt + validate + plan (plan only on PRs) ─────────────
-  resolve-tf-env:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    outputs:
-      env: ${{ steps.env.outputs.env }}
-    steps:
-      - id: env
-        run: |
-          if [[ "${{ github.base_ref }}" == "main" ]]; then
-            echo "env=prod" >> "$GITHUB_OUTPUT"
-          else
-            echo "env=dev" >> "$GITHUB_OUTPUT"
-          fi
-
+  # ── Terraform: fmt + validate + plan (plan always against dev) ───────
   terraform:
     name: Terraform (${{ matrix.module }})
-    needs: [resolve-tf-env]
-    if: always()
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -111,12 +95,10 @@ jobs:
       matrix:
         include:
           - module: infra/terraform/runtime_deploy
-            backend_prefix_base: runtime-deploy
+            backend_prefix: dev/runtime-deploy
           - module: infra/terraform/frontend_spa_cdn
-            backend_prefix_base: frontend-spa-cdn
-    environment: ${{ needs.resolve-tf-env.outputs.env || 'dev' }}
-    env:
-      TF_ENV: ${{ needs.resolve-tf-env.outputs.env || 'dev' }}
+            backend_prefix: dev/frontend-spa-cdn
+    environment: dev
     steps:
       - uses: actions/checkout@v4
 
@@ -146,7 +128,7 @@ jobs:
         if: steps.filter.outputs.changed == 'true' && github.event_name != 'pull_request'
         run: terraform -chdir=${{ matrix.module }} validate
 
-      # ── plan (PRs only, targets dev or prod based on base branch) ──
+      # ── plan (PRs only, always against dev state) ──────────────────
       - name: Authenticate to GCP
         if: steps.filter.outputs.changed == 'true' && github.event_name == 'pull_request'
         uses: google-github-actions/auth@v2
@@ -159,7 +141,7 @@ jobs:
         run: |
           terraform -chdir=${{ matrix.module }} init \
             -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
-            -backend-config="prefix=${{ env.TF_ENV }}/${{ matrix.backend_prefix_base }}"
+            -backend-config="prefix=${{ matrix.backend_prefix }}"
 
       # runtime_deploy needs two vars that CD injects dynamically but have
       # no defaults: runtime_service_account_email and container_image.
@@ -170,7 +152,7 @@ jobs:
           github.event_name == 'pull_request' &&
           matrix.module == 'infra/terraform/runtime_deploy'
         run: |
-          cp ${{ matrix.module }}/envs/${{ env.TF_ENV }}.tfvars /tmp/plan.tfvars
+          cp ${{ matrix.module }}/envs/dev.tfvars /tmp/plan.tfvars
           cat >> /tmp/plan.tfvars <<'EOF'
           runtime_service_account_email = "ci-plan-dummy@ci-plan-dummy.iam.gserviceaccount.com"
           container_image               = "us-central1-docker.pkg.dev/ci-plan-dummy/ai-agent-backend/backend:ci-plan"
@@ -187,7 +169,7 @@ jobs:
           github.event_name == 'pull_request' &&
           matrix.module == 'infra/terraform/frontend_spa_cdn'
         run: |
-          cp ${{ matrix.module }}/envs/${{ env.TF_ENV }}.tfvars /tmp/plan.tfvars
+          cp ${{ matrix.module }}/envs/dev.tfvars /tmp/plan.tfvars
 
           terraform -chdir=${{ matrix.module }} plan \
             -var-file=/tmp/plan.tfvars \
@@ -218,9 +200,8 @@ jobs:
             }
 
             const module = process.env.MODULE;
-            const env = process.env.TF_ENV || 'dev';
             const body = [
-              `### Terraform Plan — \`${module}\` (${env})`,
+              `### Terraform Plan — \`${module}\` (dev)`,
               '',
               '<details><summary>Click to expand plan output</summary>',
               '',
