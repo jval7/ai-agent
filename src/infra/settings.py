@@ -105,7 +105,7 @@ class Settings(pydantic.BaseModel):
             ),
             gemini_model=app_config_overrides.get("GEMINI_MODEL", "gemini-2.5-flash"),
             gemini_max_output_tokens=int(
-                app_config_overrides.get("GEMINI_MAX_OUTPUT_TOKENS", "512")
+                app_config_overrides.get("GEMINI_MAX_OUTPUT_TOKENS", "2048")
             ),
             langsmith_tracing_enabled=app_config_overrides.get(
                 "LANGSMITH_TRACING_ENABLED",

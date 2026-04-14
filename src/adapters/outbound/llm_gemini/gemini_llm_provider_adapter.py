@@ -149,6 +149,8 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
                 trace_run.set_error(empty_content_error_message)
                 raise service_exceptions.ExternalProviderError(empty_content_error_message)
 
+            self._warn_if_truncated(response)
+
             trace_run.set_outputs(
                 {
                     "has_text_reply": reply_text is not None and reply_text != "",
@@ -411,6 +413,24 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
             error_parts.append(f"prompt_block_reason={prompt_feedback.block_reason!s}")
 
         return " (".join([error_parts[0], ", ".join(error_parts[1:]) + ")"])
+
+    def _warn_if_truncated(self, response: genai_types.GenerateContentResponse) -> None:
+        if not response.candidates:
+            return
+        first_candidate = response.candidates[0]
+        finish_reason = first_candidate.finish_reason
+        if finish_reason is None:
+            return
+        finish_reason_text = str(finish_reason)
+        if "MAX_TOKENS" not in finish_reason_text.upper():
+            return
+        logger.warning(
+            "gemini_response_truncated",
+            extra={
+                "finish_reason": finish_reason_text,
+                "max_output_tokens": self._max_output_tokens,
+            },
+        )
 
     def _normalize_thought_signature(self, raw_value: object) -> bytes | None:
         if isinstance(raw_value, bytes) and raw_value:
