@@ -301,7 +301,9 @@ def test_process_payload_skips_blacklisted_contact_without_creating_conversation
 def test_process_payload_customer_message_in_human_mode_only_persists_inbound() -> None:
     ctx = build_webhook_service(["conversation-1", "in-msg-1", "professional-msg-1"])
     ctx.provider.events = [
-        build_professional_echo_event(provider_event_id="evt-professional", message_id="wamid-professional-1"),
+        build_professional_echo_event(
+            provider_event_id="evt-professional", message_id="wamid-professional-1"
+        ),
         build_customer_text_event(provider_event_id="evt-customer", message_id="wamid-in-1"),
     ]
 
@@ -325,7 +327,9 @@ def test_process_payload_customer_message_in_human_mode_only_persists_inbound() 
 def test_process_payload_professional_echo_creates_conversation_and_sets_human_mode() -> None:
     ctx = build_webhook_service(["conversation-1", "professional-msg-1"])
     ctx.provider.events = [
-        build_professional_echo_event(provider_event_id="evt-professional", message_id="wamid-professional-1")
+        build_professional_echo_event(
+            provider_event_id="evt-professional", message_id="wamid-professional-1"
+        )
     ]
 
     ctx.service.process_payload({})
@@ -373,7 +377,9 @@ def test_process_payload_resumes_ai_after_manual_mode_switch_back_to_ai() -> Non
         ["conversation-1", "professional-msg-1", "in-msg-1", "in-msg-2", "out-msg-1"]
     )
     ctx.provider.events = [
-        build_professional_echo_event(provider_event_id="evt-professional", message_id="wamid-professional-1"),
+        build_professional_echo_event(
+            provider_event_id="evt-professional", message_id="wamid-professional-1"
+        ),
         build_customer_text_event(provider_event_id="evt-customer-1", message_id="wamid-in-1"),
     ]
 

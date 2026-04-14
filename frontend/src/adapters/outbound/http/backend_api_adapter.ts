@@ -6,6 +6,7 @@ import type * as googleCalendarModel from "@domain/models/google_calendar";
 import type * as manualAppointmentModel from "@domain/models/manual_appointment";
 import type * as onboardingModel from "@domain/models/onboarding";
 import type * as patientModel from "@domain/models/patient";
+import type * as scheduledReminderModel from "@domain/models/scheduled_reminder";
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
 import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
@@ -94,27 +95,84 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
   }
 
   async getAgentSettings(): Promise<agentModel.AgentSettings> {
-    const payload = await this.request<httpTypes.AgentSettingsApiResponse>("/v1/agent/settings", {
-      method: "GET",
-      authRequired: true
-    });
+    const raw = await this.request<{
+      tenant_id: string;
+      message_debounce_delay_seconds: number;
+      appointment_reminder_enabled: boolean;
+      appointment_reminder_days_before: number | null;
+      appointment_reminder_template_name: string | null;
+      appointment_reminder_template_language: string;
+    }>("/v1/agent/settings", { method: "GET", authRequired: true });
     return {
-      tenantId: payload.tenant_id,
-      messageDebounceDelaySeconds: payload.message_debounce_delay_seconds
+      tenantId: raw.tenant_id,
+      messageDebounceDelaySeconds: raw.message_debounce_delay_seconds,
+      appointmentReminderEnabled: raw.appointment_reminder_enabled,
+      appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
+      appointmentReminderTemplateName: raw.appointment_reminder_template_name,
+      appointmentReminderTemplateLanguage: raw.appointment_reminder_template_language
     };
   }
 
-  async updateAgentSettings(debounceDelay: number): Promise<agentModel.AgentSettings> {
-    const payload = await this.request<httpTypes.AgentSettingsApiResponse>("/v1/agent/settings", {
+  async updateAgentSettings(
+    input: agentModel.UpdateAgentSettingsInput
+  ): Promise<agentModel.AgentSettings> {
+    const raw = await this.request<{
+      tenant_id: string;
+      message_debounce_delay_seconds: number;
+      appointment_reminder_enabled: boolean;
+      appointment_reminder_days_before: number | null;
+      appointment_reminder_template_name: string | null;
+      appointment_reminder_template_language: string;
+    }>("/v1/agent/settings", {
       method: "PUT",
       authRequired: true,
       body: JSON.stringify({
-        message_debounce_delay_seconds: debounceDelay
+        message_debounce_delay_seconds: input.messageDebounceDelaySeconds,
+        appointment_reminder_enabled: input.appointmentReminderEnabled,
+        appointment_reminder_days_before: input.appointmentReminderDaysBefore,
+        appointment_reminder_template_name: input.appointmentReminderTemplateName,
+        appointment_reminder_template_language: input.appointmentReminderTemplateLanguage
       })
     });
     return {
-      tenantId: payload.tenant_id,
-      messageDebounceDelaySeconds: payload.message_debounce_delay_seconds
+      tenantId: raw.tenant_id,
+      messageDebounceDelaySeconds: raw.message_debounce_delay_seconds,
+      appointmentReminderEnabled: raw.appointment_reminder_enabled,
+      appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
+      appointmentReminderTemplateName: raw.appointment_reminder_template_name,
+      appointmentReminderTemplateLanguage: raw.appointment_reminder_template_language
+    };
+  }
+
+  async listReminders(status?: string): Promise<scheduledReminderModel.ScheduledReminderList> {
+    const params = status !== undefined ? `?status=${status}` : "";
+    const raw = await this.request<{
+      items: {
+        reminder_id: string;
+        source_type: string;
+        source_id: string;
+        patient_whatsapp_user_id: string;
+        patient_name: string;
+        appointment_start_at: string;
+        reminder_scheduled_for: string;
+        template_name: string;
+        status: string;
+        created_at: string;
+      }[];
+    }>(`/v1/reminders${params}`, { method: "GET", authRequired: true });
+    return {
+      items: raw.items.map((item) => ({
+        reminderId: item.reminder_id,
+        sourceType: item.source_type as "SCHEDULING_REQUEST" | "MANUAL_APPOINTMENT",
+        sourceId: item.source_id,
+        patientWhatsappUserId: item.patient_whatsapp_user_id,
+        patientName: item.patient_name,
+        appointmentStartAt: item.appointment_start_at,
+        reminderScheduledFor: item.reminder_scheduled_for,
+        templateName: item.template_name,
+        status: item.status as "PENDING" | "SENT" | "FAILED" | "CANCELLED",
+        createdAt: item.created_at
+      }))
     };
   }
 
@@ -712,11 +770,24 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return mapSchedulingRequestSummary(payload);
   }
 
-  async getSandboxMode(): Promise<{ sandbox_enabled: boolean }> {
-    return this.request<{ sandbox_enabled: boolean }>("/v1/settings/sandbox", {
-      method: "GET",
-      authRequired: true
-    });
+  async closeSession(conversationId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(
+      `/v1/conversations/${conversationId}/scheduling/close-session`,
+      {
+        method: "POST",
+        authRequired: true
+      }
+    );
+  }
+
+  async getDevFeatures(): Promise<{ enabled: boolean; sandbox_enabled: boolean | null }> {
+    return this.request<{ enabled: boolean; sandbox_enabled: boolean | null }>(
+      "/v1/settings/dev-features",
+      {
+        method: "GET",
+        authRequired: true
+      }
+    );
   }
 
   async updateSandboxMode(enabled: boolean): Promise<{ sandbox_enabled: boolean }> {

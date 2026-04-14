@@ -335,8 +335,7 @@ function resolveBookedSlot(
     return bookedSlot;
   }
 
-  const firstSlot = request.slots[0];
-  return firstSlot ?? null;
+  return null;
 }
 
 export function AgendaPage() {

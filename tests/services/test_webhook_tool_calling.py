@@ -10,6 +10,7 @@ import src.adapters.outbound.inmemory.patient_repository_adapter as patient_repo
 import src.adapters.outbound.inmemory.processed_webhook_event_repository_adapter as processed_webhook_event_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
+import src.adapters.outbound.inmemory.task_scheduler_adapter as inmemory_task_scheduler_adapter
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.conversation as conversation_entity
@@ -206,12 +207,14 @@ def build_tool_calling_context(
         id_generator=id_generator,
         clock=clock,
     )
+    task_sched = inmemory_task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
     scheduling_use_case = scheduling_service.SchedulingService(
         scheduling_repository=scheduling_repo,
         conversation_repository=conversation_repo,
         google_calendar_onboarding_service=google_service,
         id_generator=id_generator,
         clock=clock,
+        task_scheduler=task_sched,
     )
 
     service_kwargs: dict[str, typing.Any] = {}

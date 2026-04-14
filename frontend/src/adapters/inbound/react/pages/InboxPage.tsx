@@ -8,7 +8,6 @@ import * as appContainerContextModule from "@adapters/inbound/react/app/AppConta
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as slotPickerModule from "@adapters/inbound/react/components/SlotPicker";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
-import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
 import type * as conversationModel from "@domain/models/conversation";
 import type * as schedulingModel from "@domain/models/scheduling";
 import * as calendarUtilsModule from "@shared/utils/calendar";
@@ -18,8 +17,7 @@ const conversationsQueryKey = ["conversations"] as const;
 const blacklistQueryKey = ["blacklist"] as const;
 const patientsQueryKey = ["patients"] as const;
 const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
-const promptQueryKey = ["system-prompt"] as const;
-const sandboxQueryKey = ["sandbox-mode"] as const;
+const devFeaturesQueryKey = ["dev-features"] as const;
 
 type AppointmentDisplayStatus =
   | "PENDIENTE_REVISION"
@@ -28,6 +26,7 @@ type AppointmentDisplayStatus =
   | "PAGO_PENDIENTE"
   | "AGENDADA"
   | "TOMADA"
+  | "TERMINADA"
   | "RECHAZADA"
   | "CANCELADA"
   | "DERIVADA"
@@ -43,6 +42,7 @@ const appointmentDisplayConfig: Record<
   PAGO_PENDIENTE: { label: "Pago pendiente", tone: "warning" },
   AGENDADA: { label: "Agendada", tone: "success" },
   TOMADA: { label: "Tomada", tone: "neutral" },
+  TERMINADA: { label: "Sesión terminada", tone: "neutral" },
   RECHAZADA: { label: "Rechazada", tone: "danger" },
   CANCELADA: { label: "Cancelada", tone: "danger" },
   DERIVADA: { label: "Derivada", tone: "info" },
@@ -64,7 +64,7 @@ function resolveAppointmentDisplayStatus(
   if (request.status === "AWAITING_PAYMENT_CONFIRMATION") {
     return "PAGO_PENDIENTE";
   }
-  if (request.status === "BOOKED" || request.status === "SESSION_CLOSED") {
+  if (request.status === "BOOKED") {
     const bookedSlot = request.slots.find((slot) => slot.status === "BOOKED");
     if (bookedSlot !== undefined) {
       const slotEnd = new Date(bookedSlot.endAt);
@@ -73,6 +73,9 @@ function resolveAppointmentDisplayStatus(
       }
     }
     return "AGENDADA";
+  }
+  if (request.status === "SESSION_CLOSED") {
+    return "TERMINADA";
   }
   if (request.status === "CONSULTATION_REJECTED") {
     return "RECHAZADA";
@@ -161,7 +164,6 @@ export function InboxPage() {
   );
   const [inboxMobileStep, setInboxMobileStep] = reactModule.useState<"LIST" | "DETAIL">("LIST");
   const [fabOpen, setFabOpen] = reactModule.useState(false);
-  const [promptDrawerOpen, setPromptDrawerOpen] = reactModule.useState(false);
 
   reactModule.useEffect(() => {
     if (conversationsQuery.data === undefined || conversationsQuery.data.length === 0) {
@@ -309,40 +311,33 @@ export function InboxPage() {
     }
   });
 
-  const promptQuery = reactQueryModule.useQuery({
-    queryKey: promptQueryKey,
-    queryFn: () => appContainer.agentUseCase.getSystemPrompt()
-  });
-
-  const [systemPromptText, setSystemPromptText] = reactModule.useState("");
-
-  reactModule.useEffect(() => {
-    if (promptQuery.data !== undefined) {
-      setSystemPromptText(promptQuery.data.systemPrompt);
-    }
-  }, [promptQuery.data]);
-
-  const updatePromptMutation = reactQueryModule.useMutation({
-    mutationFn: () => appContainer.agentUseCase.updateSystemPrompt(systemPromptText),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: promptQueryKey });
-      setPromptDrawerOpen(false);
+  const closeSessionMutation = reactQueryModule.useMutation({
+    mutationFn: (conversationId: string) =>
+      appContainer.schedulingUseCase.closeSession(conversationId),
+    onSuccess: async (_data, conversationId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] })
+      ]);
     }
   });
 
-  const sandboxQuery = reactQueryModule.useQuery({
-    queryKey: sandboxQueryKey,
-    queryFn: () => appContainer.agentUseCase.getSandboxMode()
+  const devFeaturesQuery = reactQueryModule.useQuery({
+    queryKey: devFeaturesQueryKey,
+    queryFn: () => appContainer.agentUseCase.getDevFeatures(),
+    staleTime: Infinity
   });
+
+  const devFeaturesEnabled = devFeaturesQuery.data?.enabled ?? false;
+  const sandboxEnabled = devFeaturesQuery.data?.sandbox_enabled ?? false;
 
   const sandboxMutation = reactQueryModule.useMutation({
     mutationFn: (enabled: boolean) => appContainer.agentUseCase.updateSandboxMode(enabled),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: sandboxQueryKey });
+      await queryClient.invalidateQueries({ queryKey: devFeaturesQueryKey });
     }
   });
-
-  const sandboxEnabled = sandboxQuery.data?.sandbox_enabled ?? false;
 
   const selectedWhatsappUserId = selectedConversation?.whatsappUserId ?? null;
   const isBlocked =
@@ -447,36 +442,38 @@ export function InboxPage() {
       <div className="lg:hidden">
         {inboxMobileStep === "LIST" ? (
           <div className="space-y-2">
-            <div
-              className={[
-                "mb-2 flex items-center justify-between rounded-lg border px-3 py-2",
-                sandboxEnabled ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
-              ].join(" ")}
-            >
-              <div className="min-w-0 flex-1">
-                <p
-                  className={[
-                    "text-xs font-semibold",
-                    sandboxEnabled ? "text-amber-800" : "text-slate-500"
-                  ].join(" ")}
-                >
-                  Sandbox
-                </p>
-                {sandboxEnabled ? (
-                  <p className="text-[11px] text-amber-700">WhatsApp no envía mensajes reales</p>
-                ) : null}
-              </div>
-              <radixSwitchModule.Root
-                checked={sandboxEnabled}
-                className="relative h-6 w-11 rounded-full bg-slate-300 data-[state=checked]:bg-amber-500"
-                disabled={sandboxMutation.isPending}
-                onCheckedChange={(checked) => {
-                  sandboxMutation.mutate(checked);
-                }}
+            {devFeaturesEnabled ? (
+              <div
+                className={[
+                  "mb-2 flex items-center justify-between rounded-lg border px-3 py-2",
+                  sandboxEnabled ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"
+                ].join(" ")}
               >
-                <radixSwitchModule.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform data-[state=checked]:translate-x-5" />
-              </radixSwitchModule.Root>
-            </div>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={[
+                      "text-xs font-semibold",
+                      sandboxEnabled ? "text-amber-800" : "text-slate-500"
+                    ].join(" ")}
+                  >
+                    Sandbox
+                  </p>
+                  {sandboxEnabled ? (
+                    <p className="text-[11px] text-amber-700">WhatsApp no envía mensajes reales</p>
+                  ) : null}
+                </div>
+                <radixSwitchModule.Root
+                  checked={sandboxEnabled}
+                  className="relative h-6 w-11 rounded-full bg-slate-300 data-[state=checked]:bg-amber-500"
+                  disabled={sandboxMutation.isPending}
+                  onCheckedChange={(checked) => {
+                    sandboxMutation.mutate(checked);
+                  }}
+                >
+                  <radixSwitchModule.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform data-[state=checked]:translate-x-5" />
+                </radixSwitchModule.Root>
+              </div>
+            ) : null}
             <header className="mb-3">
               <h2 className="text-base font-semibold text-brand-ink">Conversaciones</h2>
               <p className="text-[11px] text-slate-500">
@@ -675,25 +672,27 @@ export function InboxPage() {
             >
               {fabOpen ? (
                 <div className="pointer-events-auto flex flex-col gap-2">
-                  <button
-                    className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
-                    onClick={() => {
-                      if (selectedConversationId === null) {
-                        return;
-                      }
-                      const isConfirmed = window.confirm(
-                        "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
-                      );
-                      if (!isConfirmed) {
-                        return;
-                      }
-                      resetMessagesMutation.mutate(selectedConversationId);
-                      setFabOpen(false);
-                    }}
-                    type="button"
-                  >
-                    Resetear
-                  </button>
+                  {devFeaturesEnabled ? (
+                    <button
+                      className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+                      onClick={() => {
+                        if (selectedConversationId === null) {
+                          return;
+                        }
+                        const isConfirmed = window.confirm(
+                          "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
+                        );
+                        if (!isConfirmed) {
+                          return;
+                        }
+                        resetMessagesMutation.mutate(selectedConversationId);
+                        setFabOpen(false);
+                      }}
+                      type="button"
+                    >
+                      Resetear
+                    </button>
+                  ) : null}
                   <button
                     className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
                     onClick={() => {
@@ -726,6 +725,26 @@ export function InboxPage() {
                     type="button"
                   >
                     {isBlocked ? "Quitar blacklist" : "Blacklist"}
+                  </button>
+                  <button
+                    className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+                    disabled={closeSessionMutation.isPending}
+                    onClick={() => {
+                      if (selectedConversationId === null) {
+                        return;
+                      }
+                      const isConfirmed = window.confirm(
+                        "¿Seguro que quieres cerrar la sesión de esta conversación?"
+                      );
+                      if (!isConfirmed) {
+                        return;
+                      }
+                      closeSessionMutation.mutate(selectedConversationId);
+                      setFabOpen(false);
+                    }}
+                    type="button"
+                  >
+                    {closeSessionMutation.isPending ? "Cerrando..." : "Cerrar sesión"}
                   </button>
                 </div>
               ) : null}
@@ -850,36 +869,38 @@ export function InboxPage() {
       {/* ===== DESKTOP: 3-column layout (unchanged) ===== */}
       <section className="hidden gap-4 lg:grid lg:grid-cols-[280px_minmax(0,1fr)_320px]">
         <article className="rounded-xl border border-border-subtle bg-white shadow-card">
-          <div
-            className={[
-              "flex items-center justify-between border-b px-4 py-2",
-              sandboxEnabled ? "border-amber-200 bg-amber-50" : "border-slate-100 bg-slate-50"
-            ].join(" ")}
-          >
-            <div className="min-w-0 flex-1">
-              <p
-                className={[
-                  "text-xs font-semibold",
-                  sandboxEnabled ? "text-amber-800" : "text-slate-500"
-                ].join(" ")}
-              >
-                Sandbox
-              </p>
-              {sandboxEnabled ? (
-                <p className="text-[11px] text-amber-700">WhatsApp no envía mensajes reales</p>
-              ) : null}
-            </div>
-            <radixSwitchModule.Root
-              checked={sandboxEnabled}
-              className="relative h-6 w-11 rounded-full bg-slate-300 data-[state=checked]:bg-amber-500"
-              disabled={sandboxMutation.isPending}
-              onCheckedChange={(checked) => {
-                sandboxMutation.mutate(checked);
-              }}
+          {devFeaturesEnabled ? (
+            <div
+              className={[
+                "flex items-center justify-between border-b px-4 py-2",
+                sandboxEnabled ? "border-amber-200 bg-amber-50" : "border-slate-100 bg-slate-50"
+              ].join(" ")}
             >
-              <radixSwitchModule.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform data-[state=checked]:translate-x-5" />
-            </radixSwitchModule.Root>
-          </div>
+              <div className="min-w-0 flex-1">
+                <p
+                  className={[
+                    "text-xs font-semibold",
+                    sandboxEnabled ? "text-amber-800" : "text-slate-500"
+                  ].join(" ")}
+                >
+                  Sandbox
+                </p>
+                {sandboxEnabled ? (
+                  <p className="text-[11px] text-amber-700">WhatsApp no envía mensajes reales</p>
+                ) : null}
+              </div>
+              <radixSwitchModule.Root
+                checked={sandboxEnabled}
+                className="relative h-6 w-11 rounded-full bg-slate-300 data-[state=checked]:bg-amber-500"
+                disabled={sandboxMutation.isPending}
+                onCheckedChange={(checked) => {
+                  sandboxMutation.mutate(checked);
+                }}
+              >
+                <radixSwitchModule.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform data-[state=checked]:translate-x-5" />
+              </radixSwitchModule.Root>
+            </div>
+          ) : null}
           <header className="border-b border-border-subtle px-5 py-4">
             <h2 className="text-base font-semibold">Conversaciones</h2>
             <p className="text-xs text-slate-500">Selecciona una conversación para ver detalle.</p>
@@ -945,22 +966,24 @@ export function InboxPage() {
                     </div>
                   </button>
 
-                  <button
-                    className="mt-3 w-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={resetMessagesMutation.isPending}
-                    onClick={() => {
-                      const isConfirmed = window.confirm(
-                        "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
-                      );
-                      if (!isConfirmed) {
-                        return;
-                      }
-                      resetMessagesMutation.mutate(conversation.conversationId);
-                    }}
-                    type="button"
-                  >
-                    {isResettingConversation ? "Reseteando..." : "Resetear chat"}
-                  </button>
+                  {devFeaturesEnabled ? (
+                    <button
+                      className="mt-3 w-full rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={resetMessagesMutation.isPending}
+                      onClick={() => {
+                        const isConfirmed = window.confirm(
+                          "¿Seguro que quieres resetear este chat? Se eliminará la conversación, el paciente y todos sus datos asociados."
+                        );
+                        if (!isConfirmed) {
+                          return;
+                        }
+                        resetMessagesMutation.mutate(conversation.conversationId);
+                      }}
+                      type="button"
+                    >
+                      {isResettingConversation ? "Reseteando..." : "Resetear chat"}
+                    </button>
+                  ) : null}
                 </article>
               );
             })}
@@ -1209,84 +1232,35 @@ export function InboxPage() {
                   Estado: {isBlocked ? "bloqueado" : "permitido"}
                 </p>
               </div>
+
+              <div className="rounded-lg border border-border-subtle p-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Sesión
+                </p>
+                <button
+                  className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                  disabled={closeSessionMutation.isPending}
+                  onClick={() => {
+                    if (selectedConversationId === null) {
+                      return;
+                    }
+                    const isConfirmed = window.confirm(
+                      "¿Seguro que quieres cerrar la sesión de esta conversación?"
+                    );
+                    if (!isConfirmed) {
+                      return;
+                    }
+                    closeSessionMutation.mutate(selectedConversationId);
+                  }}
+                  type="button"
+                >
+                  {closeSessionMutation.isPending ? "Cerrando..." : "Cerrar sesión"}
+                </button>
+              </div>
             </>
           )}
         </article>
       </section>
-
-      {/* System Prompt FAB */}
-      <button
-        className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-slate-700 text-white shadow-lg transition-transform hover:scale-105 hover:bg-slate-800"
-        onClick={() => setPromptDrawerOpen(true)}
-        title="System Prompt"
-        type="button"
-      >
-        <svg
-          className="h-5 w-5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
-          />
-        </svg>
-      </button>
-
-      {/* Prompt Drawer Overlay */}
-      {promptDrawerOpen ? (
-        <div className="fixed inset-0 z-50 flex">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setPromptDrawerOpen(false)}
-          />
-          {/* Drawer */}
-          <div className="relative ml-auto flex h-full w-full flex-col bg-white shadow-2xl lg:max-w-xl">
-            <header className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-              <h2 className="text-base font-semibold text-brand-ink">System Prompt</h2>
-              <div className="flex items-center gap-2">
-                <button
-                  className="rounded-lg bg-brand-teal px-4 py-1.5 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-60"
-                  disabled={updatePromptMutation.isPending}
-                  onClick={() => updatePromptMutation.mutate()}
-                  type="button"
-                >
-                  {updatePromptMutation.isPending ? "Guardando..." : "Guardar"}
-                </button>
-                <button
-                  className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
-                  onClick={() => setPromptDrawerOpen(false)}
-                  type="button"
-                >
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </header>
-            <div className="flex-1 overflow-auto p-4">
-              {promptQuery.isLoading ? (
-                <p className="text-sm text-slate-500">Cargando prompt...</p>
-              ) : (
-                <xmlTagEditorModule.XmlTagEditor
-                  onChange={setSystemPromptText}
-                  value={systemPromptText}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
     </appShellModule.AppShell>
   );
 }

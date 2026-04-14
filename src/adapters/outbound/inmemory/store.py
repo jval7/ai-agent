@@ -12,6 +12,7 @@ import src.domain.entities.manual_appointment as manual_appointment_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
+import src.domain.entities.tag as tag_entity
 import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.user as user_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
@@ -58,6 +59,7 @@ class InMemoryStore:
         self.blacklist_by_tenant_and_wa_user: dict[
             tuple[str, str], blacklist_entry_entity.BlacklistEntry
         ] = {}
+        self.tag_by_tenant_and_id: dict[tuple[str, str], tag_entity.Tag] = {}
 
         self._load_from_disk()
 
@@ -166,6 +168,7 @@ class InMemoryStore:
             blacklist_entries=[
                 item.model_copy(deep=True) for item in self.blacklist_by_tenant_and_wa_user.values()
             ],
+            tags=[item.model_copy(deep=True) for item in self.tag_by_tenant_and_id.values()],
         )
 
     def _restore_from_snapshot(self, snapshot: store_snapshot.InMemoryStoreSnapshot) -> None:
@@ -291,6 +294,11 @@ class InMemoryStore:
             )
             self.blacklist_by_tenant_and_wa_user[blacklist_key] = blacklist_entry_copy
 
+        for tag in snapshot.tags:
+            tag_copy = tag.model_copy(deep=True)
+            tag_key = (tag_copy.tenant_id, tag_copy.id)
+            self.tag_by_tenant_and_id[tag_key] = tag_copy
+
     def _clear_state(self) -> None:
         self.tenants_by_id = {}
         self.users_by_email = {}
@@ -308,6 +316,7 @@ class InMemoryStore:
         self.manual_appointment_ids_by_tenant = {}
         self.manual_appointment_ids_by_patient = {}
         self.blacklist_by_tenant_and_wa_user = {}
+        self.tag_by_tenant_and_id = {}
 
     def _clear_chat_state(self) -> None:
         self.conversation_by_tenant_and_wa_user = {}

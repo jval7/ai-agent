@@ -4,6 +4,7 @@ import pytest
 
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
+import src.adapters.outbound.inmemory.tag_repository_adapter as tag_repository_adapter
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
 import src.services.exceptions as service_exceptions
@@ -16,8 +17,10 @@ def build_query_service() -> tuple[
 ]:
     store = in_memory_store.InMemoryStore()
     repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(store)
+    tag_repository = tag_repository_adapter.InMemoryTagRepositoryAdapter(store)
     service = conversation_query_service.ConversationQueryService(
-        conversation_repository=repository
+        conversation_repository=repository,
+        tag_repository=tag_repository,
     )
     return service, repository
 

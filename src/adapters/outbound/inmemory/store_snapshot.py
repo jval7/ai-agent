@@ -8,6 +8,7 @@ import src.domain.entities.manual_appointment as manual_appointment_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
+import src.domain.entities.tag as tag_entity
 import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.user as user_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
@@ -43,3 +44,4 @@ class InMemoryStoreSnapshot(pydantic.BaseModel):
     blacklist_entries: list[blacklist_entry_entity.BlacklistEntry] = pydantic.Field(
         default_factory=list
     )
+    tags: list[tag_entity.Tag] = pydantic.Field(default_factory=list)

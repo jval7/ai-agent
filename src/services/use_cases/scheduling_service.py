@@ -9,11 +9,14 @@ import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
+import src.ports.task_scheduler_port as task_scheduler_port
 import src.services.agentic.workflow_engine as workflow_engine
 import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
+import src.services.use_cases.reminder_service as reminder_service_module
+import src.services.use_cases.tag_service as tag_service_module
 
 logger = app_logs.get_logger(__name__)
 
@@ -75,18 +78,40 @@ class SchedulingService:
         ),
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
+        task_scheduler: task_scheduler_port.TaskSchedulerPort,
+        auto_close_delay_seconds: int = 3600,
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
+        tag_service: tag_service_module.TagService | None = None,
+        reminder_service: reminder_service_module.ReminderService | None = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
         self._conversation_repository = conversation_repository
         self._google_calendar_onboarding_service = google_calendar_onboarding_service
         self._id_generator = id_generator
         self._clock = clock
+        self._task_scheduler = task_scheduler
+        self._auto_close_delay_seconds = auto_close_delay_seconds
+        self._tag_service = tag_service
+        self._reminder_service = reminder_service
         self._agent_workflow: agent_workflow_port.AgentWorkflowPort
         if agent_workflow is None:
             self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
         else:
             self._agent_workflow = agent_workflow
+
+    def _sync_tags_after_status_change(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        new_status: str,
+    ) -> None:
+        if self._tag_service is None:
+            return
+        self._tag_service.sync_scheduling_tags(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=new_status,
+        )
 
     def list_requests_by_tenant(
         self,
@@ -489,6 +514,11 @@ class SchedulingService:
         request.rejection_summary = None
         request.set_status("AWAITING_CONSULTATION_REVIEW", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=request.status,
+        )
         logger.info(
             "scheduling.consultation_review_requested",
             extra={
@@ -540,6 +570,11 @@ class SchedulingService:
             request.set_status("CONSULTATION_REJECTED", now_value)
 
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=request.status,
+        )
         logger.info(
             "scheduling.consultation_review_resolved",
             extra={
@@ -592,6 +627,11 @@ class SchedulingService:
         if cancellation_reason is not None:
             open_request.professional_note = cancellation_reason
         self._scheduling_repository.save_request(open_request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=open_request.status,
+        )
         logger.info(
             "scheduling.request_cancelled",
             extra={
@@ -663,6 +703,21 @@ class SchedulingService:
         request.calendar_event_id = event.event_id
         request.set_status("BOOKED", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=request.status,
+        )
+        self._schedule_auto_close_task(tenant_id, request.id)
+        if self._reminder_service is not None:
+            self._reminder_service.maybe_schedule_reminder(
+                tenant_id=tenant_id,
+                source_type="SCHEDULING_REQUEST",
+                source_id=request.id,
+                patient_whatsapp_user_id=request.whatsapp_user_id,
+                patient_name=request.patient_first_name or "Paciente",
+                appointment_start_at=selected_slot.start_at,
+            )
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="BOOKED",
             request_id=request.id,
@@ -717,6 +772,46 @@ class SchedulingService:
             },
         )
 
+    def _archive_conversation_subsession_manual_close(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        now_value: datetime.datetime,
+    ) -> None:
+        conversation = self._conversation_repository.get_conversation_by_id(
+            tenant_id,
+            conversation_id,
+        )
+        if conversation is None:
+            raise service_exceptions.EntityNotFoundError("conversation not found")
+
+        active_messages = self._conversation_repository.list_messages(
+            tenant_id,
+            conversation_id,
+        )
+        sorted_active_messages = sorted(active_messages, key=lambda item: item.created_at)
+        conversation.archive_manual_close(
+            messages=sorted_active_messages,
+            now=now_value,
+        )
+        self._conversation_repository.save_conversation(conversation)
+        self._conversation_repository.delete_messages(tenant_id, conversation_id)
+        logger.info(
+            "scheduling.subsession_archived_manual_close",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.subsession_archived_manual_close",
+                    message="conversation messages archived into subsession via manual close",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "archived_messages_count": len(sorted_active_messages),
+                        "subsessions_count": len(conversation.subsessions),
+                    },
+                )
+            },
+        )
+
     def _select_slot_for_confirmation_impl(
         self,
         tenant_id: str,
@@ -750,6 +845,11 @@ class SchedulingService:
         request.selected_slot_id = selected_slot.id
         request.set_status("AWAITING_PAYMENT_CONFIRMATION", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=request.status,
+        )
         logger.info(
             "scheduling.slot_selected",
             extra={
@@ -798,6 +898,12 @@ class SchedulingService:
 
         request.updated_at = now_value
         self._scheduling_repository.save_request(request)
+        if input_dto.decision == "APPROVE":
+            self._sync_tags_after_status_change(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                new_status=request.status,
+            )
         logger.info(
             "scheduling.payment_review_resolved",
             extra={
@@ -824,8 +930,6 @@ class SchedulingService:
         request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
         if request is None:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")
-        if request.status != "BOOKED":
-            raise service_exceptions.InvalidStateError("scheduling request is not booked")
         if request.calendar_event_id is None:
             raise service_exceptions.InvalidStateError(
                 "booked scheduling request has no calendar event"
@@ -850,12 +954,27 @@ class SchedulingService:
             summary=event_summary,
         )
 
+        if self._reminder_service is not None:
+            self._reminder_service.cancel_reminders_for_source(
+                tenant_id=tenant_id,
+                source_type="SCHEDULING_REQUEST",
+                source_id=request.id,
+            )
         booked_slot.start_at = updated_event.start_at
         booked_slot.end_at = updated_event.end_at
         booked_slot.timezone = input_dto.timezone
         now_value = self._clock.now()
         request.updated_at = now_value
         self._scheduling_repository.save_request(request)
+        if self._reminder_service is not None:
+            self._reminder_service.maybe_schedule_reminder(
+                tenant_id=tenant_id,
+                source_type="SCHEDULING_REQUEST",
+                source_id=request.id,
+                patient_whatsapp_user_id=request.whatsapp_user_id,
+                patient_name=request.patient_first_name or "Paciente",
+                appointment_start_at=input_dto.start_at,
+            )
         logger.info(
             "scheduling.booked_slot_rescheduled",
             extra={
@@ -881,8 +1000,6 @@ class SchedulingService:
         request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
         if request is None:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")
-        if request.status != "BOOKED":
-            raise service_exceptions.InvalidStateError("scheduling request is not booked")
 
         calendar_event_id = request.calendar_event_id
         if calendar_event_id is not None:
@@ -904,7 +1021,13 @@ class SchedulingService:
         normalized_reason = self._normalize_patient_text(input_dto.reason)
         if normalized_reason is not None:
             request.professional_note = normalized_reason
-        request.set_status("CANCELLED", now_value)
+        if self._reminder_service is not None:
+            self._reminder_service.cancel_reminders_for_source(
+                tenant_id=tenant_id,
+                source_type="SCHEDULING_REQUEST",
+                source_id=request.id,
+            )
+        request.updated_at = now_value
         self._scheduling_repository.save_request(request)
         logger.info(
             "scheduling.booked_slot_cancelled",
@@ -930,9 +1053,6 @@ class SchedulingService:
         request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
         if request is None:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")
-        if request.status != "BOOKED":
-            raise service_exceptions.InvalidStateError("scheduling request is not booked")
-
         now_value = self._clock.now()
         request.payment_amount_cop = input_dto.payment_amount_cop
         request.payment_method = input_dto.payment_method
@@ -989,6 +1109,11 @@ class SchedulingService:
             request.professional_note = input_dto.summary_for_professional
             self._scheduling_repository.save_request(request)
 
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status="HUMAN_HANDOFF",
+        )
         logger.info(
             "scheduling.handoff_to_human",
             extra={
@@ -1017,43 +1142,58 @@ class SchedulingService:
             tenant_id,
             conversation_id,
         )
+        terminal_statuses = {
+            "SESSION_CLOSED",
+            "CANCELLED",
+            "CONSULTATION_REJECTED",
+            "HUMAN_HANDOFF",
+        }
         booked_request = None
+        active_requests: list[scheduling_request_entity.SchedulingRequest] = []
         for request in request_list:
+            if request.status in terminal_statuses:
+                continue
+            active_requests.append(request)
             if request.status == "BOOKED":
                 booked_request = request
-                break
-
-        if booked_request is None:
-            raise service_exceptions.InvalidStateError(
-                "no booked scheduling request found for session close"
-            )
 
         now_value = self._clock.now()
-        self._archive_conversation_subsession_after_booking(
+
+        if booked_request is not None:
+            self._archive_conversation_subsession_after_booking(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                scheduling_request_id=booked_request.id,
+                calendar_event_id=booked_request.calendar_event_id or "",
+                now_value=now_value,
+            )
+        else:
+            self._archive_conversation_subsession_manual_close(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                now_value=now_value,
+            )
+
+        for request in active_requests:
+            request.set_status("SESSION_CLOSED", now_value)
+            self._scheduling_repository.save_request(request)
+
+        self._sync_tags_after_status_change(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
-            scheduling_request_id=booked_request.id,
-            calendar_event_id=booked_request.calendar_event_id or "",
-            now_value=now_value,
+            new_status="SESSION_CLOSED",
         )
-
-        # TODO: Implementar cronjob/endpoint que cierre sesiones BOOKED automaticamente
-        #       tras 5 min de inactividad. Actualmente SESSION_CLOSED solo se ejecuta
-        #       cuando el paciente responde al "algo mas?" post-booking. Si el paciente
-        #       no responde, la sesion queda en BOOKED indefinidamente.
-        booked_request.set_status("SESSION_CLOSED", now_value)
-        self._scheduling_repository.save_request(booked_request)
 
         logger.info(
             "scheduling.session_closed",
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="scheduling.session_closed",
-                    message="conversation session closed and archived after post-booking followup",
+                    message="conversation session closed and archived",
                     data={
                         "tenant_id": tenant_id,
                         "conversation_id": conversation_id,
-                        "request_id": booked_request.id,
+                        "closed_request_ids": [request.id for request in active_requests],
                     },
                 )
             },
@@ -1061,6 +1201,78 @@ class SchedulingService:
         return {
             "status": "SESSION_CLOSED",
         }
+
+    def auto_close_booked_request(
+        self,
+        tenant_id: str,
+        scheduling_request_id: str,
+    ) -> dict[str, str]:
+        request = self._scheduling_repository.get_request_by_id(tenant_id, scheduling_request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+
+        if request.status != "BOOKED":
+            logger.info(
+                "scheduling.auto_close_skipped",
+                extra={
+                    "request_id": scheduling_request_id,
+                    "current_status": request.status,
+                },
+            )
+            return {"status": request.status, "action": "skipped"}
+
+        now_value = self._clock.now()
+        self._archive_conversation_subsession_after_booking(
+            tenant_id=tenant_id,
+            conversation_id=request.conversation_id,
+            scheduling_request_id=request.id,
+            calendar_event_id=request.calendar_event_id or "",
+            now_value=now_value,
+        )
+        request.set_status("SESSION_CLOSED", now_value)
+        self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=request.conversation_id,
+            new_status=request.status,
+        )
+
+        logger.info(
+            "scheduling.auto_close_completed",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.auto_close_completed",
+                    message="session auto-closed after timeout",
+                    data={
+                        "tenant_id": tenant_id,
+                        "request_id": scheduling_request_id,
+                    },
+                )
+            },
+        )
+        return {"status": "SESSION_CLOSED", "action": "closed"}
+
+    def _schedule_auto_close_task(self, tenant_id: str, scheduling_request_id: str) -> None:
+        try:
+            task_name = self._task_scheduler.schedule_auto_close(
+                tenant_id=tenant_id,
+                scheduling_request_id=scheduling_request_id,
+                delay_seconds=self._auto_close_delay_seconds,
+            )
+            logger.info(
+                "scheduling.auto_close_task_enqueued",
+                extra={
+                    "task_name": task_name,
+                    "scheduling_request_id": scheduling_request_id,
+                    "delay_seconds": self._auto_close_delay_seconds,
+                },
+            )
+        except service_exceptions.ExternalProviderError:
+            logger.warning(
+                "scheduling.auto_close_task_failed",
+                extra={"scheduling_request_id": scheduling_request_id},
+                exc_info=True,
+            )
 
     def _escalate_patient_slot_rejection_impl(
         self,
@@ -1082,6 +1294,11 @@ class SchedulingService:
         request.selected_slot_id = None
         request.set_status("AWAITING_CONSULTATION_REVIEW", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=request.conversation_id,
+            new_status=request.status,
+        )
 
         logger.info(
             "scheduling.patient_slot_rejection_escalated",
@@ -1192,6 +1409,11 @@ class SchedulingService:
         else:
             request.set_status("AWAITING_CONSULTATION_REVIEW", now_value)
         self._scheduling_repository.save_request(request)
+        self._sync_tags_after_status_change(
+            tenant_id=request.tenant_id,
+            conversation_id=request.conversation_id,
+            new_status=request.status,
+        )
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="SLOT_CONFLICT",
             request_id=request.id,

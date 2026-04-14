@@ -7,6 +7,8 @@ import src.adapters.outbound.firestore.paths as firestore_paths
 import src.domain.entities.user as user_entity
 import src.ports.user_repository_port as user_repository_port
 
+_USERS_SUBCOLLECTION_ID = firestore_paths.USERS_COLLECTION
+
 
 class FirestoreUserRepositoryAdapter(user_repository_port.UserRepositoryPort):
     def __init__(self, client: google_cloud_firestore.Client) -> None:
@@ -219,3 +221,26 @@ class FirestoreUserRepositoryAdapter(user_repository_port.UserRepositoryPort):
                 "failed to delete user from firestore"
             ) from error
         return True
+
+    def list_all(self) -> list[user_entity.User]:
+        users_group = self._client.collection_group(_USERS_SUBCOLLECTION_ID)
+        try:
+            snapshots = list(users_group.stream())
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to list users from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to list users from firestore"
+            ) from error
+
+        users: list[user_entity.User] = []
+        for snapshot in snapshots:
+            user_raw_data = snapshot.to_dict()
+            if user_raw_data is None:
+                continue
+            users.append(
+                firestore_model_mapper.parse_document(user_raw_data, user_entity.User, "user")
+            )
+        return users

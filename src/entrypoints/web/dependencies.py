@@ -28,3 +28,10 @@ def get_current_claims(
     claims = container.auth_service.authenticate_access_token(access_token)
     app_logs.set_authenticated_context(tenant_id=claims.tenant_id, user_id=claims.sub)
     return claims
+
+
+def require_dev_endpoints(
+    container: app_container.AppContainer = fastapi.Depends(get_container),
+) -> None:
+    if not container.settings.enable_dev_endpoints:
+        raise service_exceptions.InvalidStateError("endpoint only available in dev environment")

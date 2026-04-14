@@ -58,4 +58,8 @@ export class SchedulingUseCase {
   ) {
     return this.api.updateBookedSlotPayment(requestId, input);
   }
+
+  async closeSession(conversationId: string) {
+    return this.api.closeSession(conversationId);
+  }
 }

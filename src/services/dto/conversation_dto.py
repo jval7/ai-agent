@@ -3,6 +3,8 @@ import typing
 
 import pydantic
 
+import src.services.dto.tag_dto as tag_dto
+
 
 class ConversationSummaryDTO(pydantic.BaseModel):
     conversation_id: str
@@ -11,6 +13,8 @@ class ConversationSummaryDTO(pydantic.BaseModel):
     last_message_preview: str | None
     updated_at: datetime.datetime
     control_mode: typing.Literal["AI", "HUMAN"]
+    tag_ids: list[str] = pydantic.Field(default_factory=list)
+    tags: list[tag_dto.TagDTO] = pydantic.Field(default_factory=list)
 
 
 class SetContactNameToolInputDTO(pydantic.BaseModel):

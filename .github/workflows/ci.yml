@@ -1,0 +1,220 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Shared env used by terraform-plan steps
+env:
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  backend-checks:
+    name: Backend (ruff, mypy, bandit, pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.8.17"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python 3.11
+        run: uv python install 3.11
+
+      - name: Sync dev dependencies
+        run: uv sync --group dev --frozen
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy src tests
+
+      - name: Bandit
+        run: uv run bandit -c pyproject.toml -r src
+
+      - name: Pytest
+        run: uv run pytest tests/services -q
+
+  frontend-checks:
+    name: Frontend (lint, format, typecheck, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+  # ── Terraform: fmt + validate + plan (plan always against dev) ───────
+  terraform:
+    name: Terraform (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write       # required for WIF token exchange
+      pull-requests: write  # required to post plan as PR comment
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - module: infra/terraform/runtime_deploy
+            backend_prefix: dev/runtime-deploy
+          - module: infra/terraform/frontend_spa_cdn
+            backend_prefix: dev/frontend-spa-cdn
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            changed:
+              - '${{ matrix.module }}/**'
+
+      - name: Setup Terraform
+        if: steps.filter.outputs.changed == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # ── fmt + validate (push to develop, no creds needed) ──────────
+      - name: Terraform fmt check
+        if: steps.filter.outputs.changed == 'true'
+        run: terraform -chdir=${{ matrix.module }} fmt -check -recursive
+
+      - name: Terraform init (validate only)
+        if: steps.filter.outputs.changed == 'true' && github.event_name != 'pull_request'
+        run: terraform -chdir=${{ matrix.module }} init -backend=false
+
+      - name: Terraform validate
+        if: steps.filter.outputs.changed == 'true' && github.event_name != 'pull_request'
+        run: terraform -chdir=${{ matrix.module }} validate
+
+      # ── plan (PRs only, always against dev state) ──────────────────
+      - name: Authenticate to GCP
+        if: steps.filter.outputs.changed == 'true' && github.event_name == 'pull_request'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+
+      - name: Terraform init
+        if: steps.filter.outputs.changed == 'true' && github.event_name == 'pull_request'
+        run: |
+          terraform -chdir=${{ matrix.module }} init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="prefix=${{ matrix.backend_prefix }}"
+
+      # runtime_deploy needs two vars that CD injects dynamically but have
+      # no defaults: runtime_service_account_email and container_image.
+      # We supply dummy values so `plan` can evaluate the full graph.
+      - name: Terraform plan (runtime_deploy)
+        if: >-
+          steps.filter.outputs.changed == 'true' &&
+          github.event_name == 'pull_request' &&
+          matrix.module == 'infra/terraform/runtime_deploy'
+        run: |
+          cp ${{ matrix.module }}/envs/dev.tfvars /tmp/plan.tfvars
+          cat >> /tmp/plan.tfvars <<'EOF'
+          runtime_service_account_email = "ci-plan-dummy@ci-plan-dummy.iam.gserviceaccount.com"
+          container_image               = "us-central1-docker.pkg.dev/ci-plan-dummy/ai-agent-backend/backend:ci-plan"
+          EOF
+
+          terraform -chdir=${{ matrix.module }} plan \
+            -var-file=/tmp/plan.tfvars \
+            -no-color \
+            -out=/tmp/tfplan 2>&1 | tee /tmp/plan-output.txt
+
+      - name: Terraform plan (frontend_spa_cdn)
+        if: >-
+          steps.filter.outputs.changed == 'true' &&
+          github.event_name == 'pull_request' &&
+          matrix.module == 'infra/terraform/frontend_spa_cdn'
+        run: |
+          cp ${{ matrix.module }}/envs/dev.tfvars /tmp/plan.tfvars
+
+          terraform -chdir=${{ matrix.module }} plan \
+            -var-file=/tmp/plan.tfvars \
+            -no-color \
+            -out=/tmp/tfplan 2>&1 | tee /tmp/plan-output.txt
+
+      - name: Post plan as PR comment
+        if: steps.filter.outputs.changed == 'true' && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          MODULE: ${{ matrix.module }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const planPath = '/tmp/plan-output.txt';
+
+            let planOutput = '';
+            try {
+              planOutput = fs.readFileSync(planPath, 'utf8');
+            } catch (e) {
+              planOutput = '(plan output not available)';
+            }
+
+            const MAX = 60000;
+            if (planOutput.length > MAX) {
+              planOutput = planOutput.slice(0, MAX) + '\n\n... (truncated — see job logs for full output)';
+            }
+
+            const module = process.env.MODULE;
+            const body = [
+              `### Terraform Plan — \`${module}\` (dev)`,
+              '',
+              '<details><summary>Click to expand plan output</summary>',
+              '',
+              '```hcl',
+              planOutput,
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

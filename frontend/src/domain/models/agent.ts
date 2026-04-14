@@ -6,4 +6,16 @@ export interface SystemPrompt {
 export interface AgentSettings {
   tenantId: string;
   messageDebounceDelaySeconds: number;
+  appointmentReminderEnabled: boolean;
+  appointmentReminderDaysBefore: number | null;
+  appointmentReminderTemplateName: string | null;
+  appointmentReminderTemplateLanguage: string;
+}
+
+export interface UpdateAgentSettingsInput {
+  messageDebounceDelaySeconds: number;
+  appointmentReminderEnabled: boolean;
+  appointmentReminderDaysBefore: number | null;
+  appointmentReminderTemplateName: string | null;
+  appointmentReminderTemplateLanguage: string;
 }

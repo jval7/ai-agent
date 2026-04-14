@@ -36,13 +36,34 @@ class AgentService:
     ) -> agent_dto.SystemPromptResponseDTO:
         now_value = self._clock.now()
         existing_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
-        debounce_delay = (
-            existing_profile.message_debounce_delay_seconds if existing_profile is not None else 0
-        )
         agent_profile = agent_profile_entity.AgentProfile(
             tenant_id=tenant_id,
             system_prompt=update_dto.system_prompt,
-            message_debounce_delay_seconds=debounce_delay,
+            message_debounce_delay_seconds=(
+                existing_profile.message_debounce_delay_seconds
+                if existing_profile is not None
+                else 0
+            ),
+            appointment_reminder_enabled=(
+                existing_profile.appointment_reminder_enabled
+                if existing_profile is not None
+                else False
+            ),
+            appointment_reminder_days_before=(
+                existing_profile.appointment_reminder_days_before
+                if existing_profile is not None
+                else None
+            ),
+            appointment_reminder_template_name=(
+                existing_profile.appointment_reminder_template_name
+                if existing_profile is not None
+                else None
+            ),
+            appointment_reminder_template_language=(
+                existing_profile.appointment_reminder_template_language
+                if existing_profile is not None
+                else "es"
+            ),
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
@@ -53,12 +74,22 @@ class AgentService:
 
     def get_agent_settings(self, tenant_id: str) -> agent_dto.AgentSettingsResponseDTO:
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
-        debounce_delay = (
-            agent_profile.message_debounce_delay_seconds if agent_profile is not None else 0
-        )
+        if agent_profile is None:
+            return agent_dto.AgentSettingsResponseDTO(
+                tenant_id=tenant_id,
+                message_debounce_delay_seconds=0,
+                appointment_reminder_enabled=False,
+                appointment_reminder_days_before=None,
+                appointment_reminder_template_name=None,
+                appointment_reminder_template_language="es",
+            )
         return agent_dto.AgentSettingsResponseDTO(
             tenant_id=tenant_id,
-            message_debounce_delay_seconds=debounce_delay,
+            message_debounce_delay_seconds=agent_profile.message_debounce_delay_seconds,
+            appointment_reminder_enabled=agent_profile.appointment_reminder_enabled,
+            appointment_reminder_days_before=agent_profile.appointment_reminder_days_before,
+            appointment_reminder_template_name=agent_profile.appointment_reminder_template_name,
+            appointment_reminder_template_language=agent_profile.appointment_reminder_template_language,
         )
 
     def update_agent_settings(
@@ -75,10 +106,18 @@ class AgentService:
             tenant_id=tenant_id,
             system_prompt=system_prompt,
             message_debounce_delay_seconds=update_dto.message_debounce_delay_seconds,
+            appointment_reminder_enabled=update_dto.appointment_reminder_enabled,
+            appointment_reminder_days_before=update_dto.appointment_reminder_days_before,
+            appointment_reminder_template_name=update_dto.appointment_reminder_template_name,
+            appointment_reminder_template_language=update_dto.appointment_reminder_template_language,
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
         return agent_dto.AgentSettingsResponseDTO(
             tenant_id=tenant_id,
             message_debounce_delay_seconds=agent_profile.message_debounce_delay_seconds,
+            appointment_reminder_enabled=agent_profile.appointment_reminder_enabled,
+            appointment_reminder_days_before=agent_profile.appointment_reminder_days_before,
+            appointment_reminder_template_name=agent_profile.appointment_reminder_template_name,
+            appointment_reminder_template_language=agent_profile.appointment_reminder_template_language,
         )

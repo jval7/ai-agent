@@ -6,6 +6,7 @@ import src.adapters.outbound.inmemory.conversation_repository_adapter as convers
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
+import src.adapters.outbound.inmemory.task_scheduler_adapter as inmemory_task_scheduler_adapter
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
@@ -59,12 +60,14 @@ def build_services() -> tuple[
         id_generator=id_generator,
         clock=clock,
     )
+    task_sched = inmemory_task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
     scheduling_core_service = scheduling_service.SchedulingService(
         scheduling_repository=scheduling_repository,
         conversation_repository=conversation_repository,
         google_calendar_onboarding_service=google_service,
         id_generator=id_generator,
         clock=clock,
+        task_scheduler=task_sched,
     )
     inbox_service = scheduling_inbox_service.SchedulingInboxService(
         scheduling_repository=scheduling_repository,

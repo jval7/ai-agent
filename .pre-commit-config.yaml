@@ -10,7 +10,7 @@ repos:
     rev: v1.15.0
     hooks:
       - id: mypy
-        additional_dependencies: ["pydantic>=2.10.0", "fastapi>=0.115.0", "httpx>=0.28.0"]
+        additional_dependencies: ["pydantic>=2.10.0", "fastapi>=0.115.0", "httpx>=0.28.0", "tenacity>=9.0.0", "types-protobuf>=5.0.0"]
 
   - repo: https://github.com/PyCQA/bandit
     rev: 1.8.3

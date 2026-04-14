@@ -39,6 +39,11 @@ class Settings(pydantic.BaseModel):
     langsmith_tags: list[str]
     log_level: str
     log_include_request_summary: bool
+    cloud_tasks_location: str
+    cloud_tasks_queue_id: str
+    cloud_run_base_url: str
+    auto_close_delay_seconds: int
+    rate_limit_enabled: bool
     whatsapp_outbound_noop: bool
 
     @classmethod
@@ -100,7 +105,7 @@ class Settings(pydantic.BaseModel):
             ),
             gemini_model=app_config_overrides.get("GEMINI_MODEL", "gemini-2.5-flash"),
             gemini_max_output_tokens=int(
-                app_config_overrides.get("GEMINI_MAX_OUTPUT_TOKENS", "512")
+                app_config_overrides.get("GEMINI_MAX_OUTPUT_TOKENS", "2048")
             ),
             langsmith_tracing_enabled=app_config_overrides.get(
                 "LANGSMITH_TRACING_ENABLED",
@@ -133,6 +138,22 @@ class Settings(pydantic.BaseModel):
             log_include_request_summary=app_config_overrides.get(
                 "LOG_INCLUDE_REQUEST_SUMMARY",
                 "false",
+            ).lower()
+            == "true",
+            cloud_tasks_location=app_config_overrides.get(
+                "CLOUD_TASKS_LOCATION",
+                app_config_overrides.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+            ),
+            cloud_tasks_queue_id=app_config_overrides.get(
+                "CLOUD_TASKS_QUEUE_ID", "scheduling-tasks"
+            ),
+            cloud_run_base_url=app_config_overrides.get("CLOUD_RUN_BASE_URL", ""),
+            auto_close_delay_seconds=int(
+                app_config_overrides.get("AUTO_CLOSE_DELAY_SECONDS", "3600")
+            ),
+            rate_limit_enabled=app_config_overrides.get(
+                "RATE_LIMIT_ENABLED",
+                "true",
             ).lower()
             == "true",
             whatsapp_outbound_noop=app_config_overrides.get(

@@ -121,11 +121,18 @@ variable "manage_app_config_secret" {
   default     = true
 }
 
+variable "cloud_tasks_queue_name" {
+  description = "Cloud Tasks queue name for scheduling tasks (reminders, auto-close)."
+  type        = string
+  default     = "scheduling-tasks"
+}
+
 variable "enable_apis" {
   description = "APIs required by runtime deployment."
   type        = set(string)
   default = [
     "artifactregistry.googleapis.com",
+    "cloudtasks.googleapis.com",
     "run.googleapis.com",
     "secretmanager.googleapis.com",
   ]

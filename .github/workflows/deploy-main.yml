@@ -2,7 +2,7 @@ name: Deploy to GCP
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
   workflow_dispatch:
     inputs:
       environment:
@@ -110,6 +110,7 @@ jobs:
           PROJECT_ID=$(grep '^project_id' "$envfile" | sed 's/.*= *"\(.*\)"/\1/')
           ARTIFACT_REPOSITORY=$(grep '^artifact_repository_id' "$envfile" | sed 's/.*= *"\(.*\)"/\1/' || echo "ai-agent-backend")
           CLOUD_RUN_SERVICE_NAME=$(grep '^cloud_run_service_name' "$envfile" | sed 's/.*= *"\(.*\)"/\1/' || echo "ai-agent-backend")
+          CLOUD_TASKS_QUEUE=$(grep '^cloud_tasks_queue_name' "$envfile" | sed 's/.*= *"\(.*\)"/\1/' || echo "auto-close-booked-sessions")
 
           # Resolve runtime service account
           runtime_sa="$RUNTIME_SA_EMAIL"
@@ -155,6 +156,14 @@ jobs:
           terraform import -var-file=terraform.tfvars \
             "google_secret_manager_secret_iam_member.runtime_secret_accessor[\"${APP_CONFIG_SECRET_ID}\"]" \
             "projects/${PROJECT_ID}/secrets/${APP_CONFIG_SECRET_ID}/roles/secretmanager.secretAccessor/serviceAccount:${runtime_sa}" 2>/dev/null || true
+
+          terraform import -var-file=terraform.tfvars \
+            'google_cloud_tasks_queue.auto_close_booked' \
+            "projects/${PROJECT_ID}/locations/${REGION}/queues/${CLOUD_TASKS_QUEUE}" 2>/dev/null || true
+
+          terraform import -var-file=terraform.tfvars \
+            'google_cloud_tasks_queue_iam_member.runtime_enqueuer' \
+            "projects/${PROJECT_ID}/locations/${REGION}/queues/${CLOUD_TASKS_QUEUE}/roles/cloudtasks.enqueuer/serviceAccount:${runtime_sa}" 2>/dev/null || true
 
           # First apply: APIs + Artifact Registry (needed before docker push)
           terraform apply -auto-approve -var-file=terraform.tfvars \
