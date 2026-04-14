@@ -1,3 +1,5 @@
+import typing
+
 import pydantic
 
 
@@ -20,15 +22,43 @@ class SystemPromptResponseDTO(pydantic.BaseModel):
 
 class UpdateAgentSettingsDTO(pydantic.BaseModel):
     message_debounce_delay_seconds: int
+    appointment_reminder_enabled: bool = False
+    appointment_reminder_days_before: int | None = None
+    appointment_reminder_template_name: str | None = None
+    appointment_reminder_template_language: str = "es"
 
     @pydantic.field_validator("message_debounce_delay_seconds")
     @classmethod
-    def validate_range(cls, value: int) -> int:
+    def validate_debounce_range(cls, value: int) -> int:
         if value < 0 or value > 30:
             raise ValueError("message_debounce_delay_seconds must be between 0 and 30")
         return value
+
+    @pydantic.field_validator("appointment_reminder_days_before")
+    @classmethod
+    def validate_days_before(cls, value: int | None) -> int | None:
+        if value is not None and (value < 1 or value > 7):
+            raise ValueError("appointment_reminder_days_before must be between 1 and 7")
+        return value
+
+    @pydantic.model_validator(mode="after")
+    def validate_reminder_fields_required_when_enabled(self) -> typing.Self:
+        if self.appointment_reminder_enabled:
+            if self.appointment_reminder_days_before is None:
+                raise ValueError(
+                    "appointment_reminder_days_before is required when appointment_reminder_enabled is True"
+                )
+            if self.appointment_reminder_template_name is None:
+                raise ValueError(
+                    "appointment_reminder_template_name is required when appointment_reminder_enabled is True"
+                )
+        return self
 
 
 class AgentSettingsResponseDTO(pydantic.BaseModel):
     tenant_id: str
     message_debounce_delay_seconds: int
+    appointment_reminder_enabled: bool
+    appointment_reminder_days_before: int | None
+    appointment_reminder_template_name: str | None
+    appointment_reminder_template_language: str

@@ -9,7 +9,7 @@ router = fastapi.APIRouter(prefix="/v1/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=auth_dto.AuthTokensDTO)
-@rate_limiter.limiter.limit("5/minute")
+@rate_limiter.limiter.limit("5/minute")  # type: ignore[misc,unused-ignore]
 def login(
     request: fastapi.Request,
     login_dto: auth_dto.LoginDTO,
@@ -19,7 +19,7 @@ def login(
 
 
 @router.post("/refresh", response_model=auth_dto.AuthTokensDTO)
-@rate_limiter.limiter.limit("10/minute")
+@rate_limiter.limiter.limit("10/minute")  # type: ignore[misc,unused-ignore]
 def refresh(
     request: fastapi.Request,
     refresh_dto: auth_dto.RefreshTokenDTO,
@@ -29,7 +29,7 @@ def refresh(
 
 
 @router.post("/logout", status_code=204)
-@rate_limiter.limiter.limit("10/minute")
+@rate_limiter.limiter.limit("10/minute")  # type: ignore[misc,unused-ignore]
 def logout(
     request: fastapi.Request,
     logout_dto: auth_dto.LogoutDTO,

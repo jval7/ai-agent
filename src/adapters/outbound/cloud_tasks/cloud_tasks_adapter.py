@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 
+import google.api_core.exceptions
 import google.cloud.tasks_v2 as cloud_tasks_v2
 import google.protobuf.timestamp_pb2 as timestamp_pb2
 
@@ -69,4 +70,59 @@ class CloudTasksSchedulerAdapter(task_scheduler_port.TaskSchedulerPort):
         except Exception as exc:
             raise service_exceptions.ExternalProviderError(
                 f"failed to create Cloud Task for auto-close: {exc}"
+            ) from exc
+
+    def schedule_appointment_reminder(
+        self,
+        tenant_id: str,
+        reminder_id: str,
+        delay_seconds: int,
+    ) -> str:
+        url = f"{self._cloud_run_base_url}/v1/internal/reminders/{reminder_id}/execute"
+        payload = json.dumps({"tenant_id": tenant_id}).encode()
+
+        schedule_time = timestamp_pb2.Timestamp()
+        schedule_time.FromDatetime(
+            datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(seconds=delay_seconds)
+        )
+
+        task = cloud_tasks_v2.Task(
+            http_request=cloud_tasks_v2.HttpRequest(
+                http_method=cloud_tasks_v2.HttpMethod.POST,
+                url=url,
+                headers={"Content-Type": "application/json"},
+                body=payload,
+            ),
+            schedule_time=schedule_time,
+        )
+
+        try:
+            created_task = self._client.create_task(
+                parent=self._queue_path,
+                task=task,
+            )
+            task_name: str = created_task.name
+            logger.info(
+                "cloud_tasks.appointment_reminder_scheduled",
+                extra={
+                    "task_name": task_name,
+                    "reminder_id": reminder_id,
+                    "delay_seconds": delay_seconds,
+                },
+            )
+            return task_name
+        except Exception as exc:
+            raise service_exceptions.ExternalProviderError(
+                f"failed to create Cloud Task for appointment reminder: {exc}"
+            ) from exc
+
+    def cancel_task(self, task_name: str) -> None:
+        try:
+            self._client.delete_task(name=task_name)
+            logger.info("cloud_tasks.task_cancelled", extra={"task_name": task_name})
+        except google.api_core.exceptions.NotFound:
+            logger.info("cloud_tasks.task_already_executed", extra={"task_name": task_name})
+        except Exception as exc:
+            raise service_exceptions.ExternalProviderError(
+                f"failed to cancel Cloud Task: {exc}"
             ) from exc

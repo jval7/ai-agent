@@ -1,3 +1,4 @@
+import type * as agentModel from "@domain/models/agent";
 import type * as backendApiPort from "@ports/backend_api_port";
 
 export class AgentUseCase {
@@ -19,8 +20,8 @@ export class AgentUseCase {
     return this.api.getAgentSettings();
   }
 
-  async updateAgentSettings(debounceDelay: number) {
-    return this.api.updateAgentSettings(debounceDelay);
+  async updateAgentSettings(input: agentModel.UpdateAgentSettingsInput) {
+    return this.api.updateAgentSettings(input);
   }
 
   async getDevFeatures() {

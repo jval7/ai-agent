@@ -5,6 +5,7 @@ import * as conversationUseCaseModule from "@application/use_cases/conversation_
 import * as manualAppointmentUseCaseModule from "@application/use_cases/manual_appointment_use_case";
 import * as onboardingUseCaseModule from "@application/use_cases/onboarding_use_case";
 import * as patientUseCaseModule from "@application/use_cases/patient_use_case";
+import * as reminderUseCaseModule from "@application/use_cases/reminder_use_case";
 import * as schedulingUseCaseModule from "@application/use_cases/scheduling_use_case";
 import * as whatsappOnboardingUseCaseModule from "@application/use_cases/whatsapp_onboarding_use_case";
 import * as whatsappTemplateUseCaseModule from "@application/use_cases/whatsapp_template_use_case";
@@ -23,6 +24,7 @@ export interface AppContainer {
   blacklistUseCase: blacklistUseCaseModule.BlacklistUseCase;
   agentUseCase: agentUseCaseModule.AgentUseCase;
   whatsappTemplateUseCase: whatsappTemplateUseCaseModule.WhatsappTemplateUseCase;
+  reminderUseCase: reminderUseCaseModule.ReminderUseCase;
 }
 
 export function createAppContainer(): AppContainer {
@@ -46,6 +48,7 @@ export function createAppContainer(): AppContainer {
     schedulingUseCase: new schedulingUseCaseModule.SchedulingUseCase(backendApi),
     blacklistUseCase: new blacklistUseCaseModule.BlacklistUseCase(backendApi),
     agentUseCase: new agentUseCaseModule.AgentUseCase(backendApi),
-    whatsappTemplateUseCase: new whatsappTemplateUseCaseModule.WhatsappTemplateUseCase(backendApi)
+    whatsappTemplateUseCase: new whatsappTemplateUseCaseModule.WhatsappTemplateUseCase(backendApi),
+    reminderUseCase: new reminderUseCaseModule.ReminderUseCase(backendApi)
   };
 }

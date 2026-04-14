@@ -10,6 +10,7 @@ import src.services.dto.auth_dto as auth_dto
 import src.services.dto.manual_appointment_dto as manual_appointment_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
+import src.services.use_cases.reminder_service as reminder_service_module
 
 logger = app_logs.get_logger(__name__)
 
@@ -26,12 +27,14 @@ class ManualAppointmentService:
         ),
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
+        reminder_service: reminder_service_module.ReminderService | None = None,
     ) -> None:
         self._manual_appointment_repository = manual_appointment_repository
         self._patient_repository = patient_repository
         self._google_calendar_onboarding_service = google_calendar_onboarding_service
         self._id_generator = id_generator
         self._clock = clock
+        self._reminder_service = reminder_service
 
     def list_appointments(
         self,
@@ -82,6 +85,15 @@ class ManualAppointmentService:
             cancelled_at=None,
         )
         self._manual_appointment_repository.save(appointment)
+        if self._reminder_service is not None:
+            self._reminder_service.maybe_schedule_reminder(
+                tenant_id=claims.tenant_id,
+                source_type="MANUAL_APPOINTMENT",
+                source_id=appointment.id,
+                patient_whatsapp_user_id=appointment.patient_whatsapp_user_id,
+                patient_name=patient.first_name,
+                appointment_start_at=appointment.start_at,
+            )
         logger.info(
             "manual_appointment.created",
             extra={
@@ -126,6 +138,12 @@ class ManualAppointmentService:
             timezone=input_dto.timezone,
             summary=resolved_summary,
         )
+        if self._reminder_service is not None:
+            self._reminder_service.cancel_reminders_for_source(
+                tenant_id=claims.tenant_id,
+                source_type="MANUAL_APPOINTMENT",
+                source_id=appointment.id,
+            )
         now_value = self._clock.now()
         appointment.start_at = input_dto.start_at
         appointment.end_at = input_dto.end_at
@@ -134,6 +152,19 @@ class ManualAppointmentService:
         appointment.calendar_event_id = updated_event.event_id
         appointment.updated_at = now_value
         self._manual_appointment_repository.save(appointment)
+        if self._reminder_service is not None:
+            patient = self._patient_repository.get_by_whatsapp_user(
+                claims.tenant_id, appointment.patient_whatsapp_user_id
+            )
+            patient_name = patient.first_name if patient is not None else "Paciente"
+            self._reminder_service.maybe_schedule_reminder(
+                tenant_id=claims.tenant_id,
+                source_type="MANUAL_APPOINTMENT",
+                source_id=appointment.id,
+                patient_whatsapp_user_id=appointment.patient_whatsapp_user_id,
+                patient_name=patient_name,
+                appointment_start_at=appointment.start_at,
+            )
         logger.info(
             "manual_appointment.rescheduled",
             extra={
@@ -177,6 +208,12 @@ class ManualAppointmentService:
                 if not self._is_google_not_found_error(str(error)):
                     raise
 
+        if self._reminder_service is not None:
+            self._reminder_service.cancel_reminders_for_source(
+                tenant_id=claims.tenant_id,
+                source_type="MANUAL_APPOINTMENT",
+                source_id=appointment.id,
+            )
         now_value = self._clock.now()
         appointment.status = "CANCELLED"
         appointment.calendar_event_id = None

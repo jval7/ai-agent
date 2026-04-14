@@ -71,3 +71,15 @@ class WhatsappProviderPort(abc.ABC):
     @abc.abstractmethod
     def delete_message_template(self, access_token: str, waba_id: str, template_name: str) -> None:
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def send_template_message(
+        self,
+        access_token: str,
+        phone_number_id: str,
+        whatsapp_user_id: str,
+        template_name: str,
+        language_code: str,
+        body_parameters: list[str],
+    ) -> str:
+        raise NotImplementedError
