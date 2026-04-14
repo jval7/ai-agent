@@ -1088,9 +1088,7 @@ class SchedulingService:
                 break
 
         if booked_request is None:
-            raise service_exceptions.InvalidStateError(
-                "no booked scheduling request found for session close"
-            )
+            return {"status": "SESSION_CLOSED", "action": "already_closed"}
 
         now_value = self._clock.now()
         self._archive_conversation_subsession_after_booking(
