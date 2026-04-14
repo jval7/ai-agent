@@ -403,8 +403,15 @@ export function InboxPage() {
     const patientName = patientNameByWhatsappId.get(conversation.whatsappUserId);
     const displayName = conversation.contactName ?? patientName ?? conversation.whatsappUserId;
     const request = latestRequestByConversationId.get(conversation.conversationId);
-    const displayStatus: AppointmentDisplayStatus =
-      request !== undefined ? resolveAppointmentDisplayStatus(request) : "SIN_CITA";
+    const hasSessionClosedTag = conversation.tags.some((tag) => tag.slug === "session-closed");
+    let displayStatus: AppointmentDisplayStatus;
+    if (request !== undefined) {
+      displayStatus = resolveAppointmentDisplayStatus(request);
+    } else if (hasSessionClosedTag) {
+      displayStatus = "TERMINADA";
+    } else {
+      displayStatus = "SIN_CITA";
+    }
     // eslint-disable-next-line security/detect-object-injection
     const config = appointmentDisplayConfig[displayStatus];
     return (
@@ -921,8 +928,17 @@ export function InboxPage() {
               const desktopDisplayName =
                 conversation.contactName ?? patientName ?? conversation.whatsappUserId;
               const request = latestRequestByConversationId.get(conversation.conversationId);
-              const displayStatus: AppointmentDisplayStatus =
-                request !== undefined ? resolveAppointmentDisplayStatus(request) : "SIN_CITA";
+              const hasSessionClosedTag = conversation.tags.some(
+                (tag) => tag.slug === "session-closed"
+              );
+              let displayStatus: AppointmentDisplayStatus;
+              if (request !== undefined) {
+                displayStatus = resolveAppointmentDisplayStatus(request);
+              } else if (hasSessionClosedTag) {
+                displayStatus = "TERMINADA";
+              } else {
+                displayStatus = "SIN_CITA";
+              }
               // eslint-disable-next-line security/detect-object-injection
               const config = appointmentDisplayConfig[displayStatus];
               return (

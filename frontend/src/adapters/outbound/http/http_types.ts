@@ -60,6 +60,14 @@ export interface GoogleCalendarAvailabilityApiResponse {
   busy_intervals: GoogleCalendarBusyIntervalApiResponse[];
 }
 
+export interface ConversationTagApiResponse {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+  tag_type: "SYSTEM" | "CUSTOM";
+}
+
 export interface ConversationSummaryApiResponse {
   conversation_id: string;
   whatsapp_user_id: string;
@@ -67,6 +75,7 @@ export interface ConversationSummaryApiResponse {
   last_message_preview: string | null;
   updated_at: string;
   control_mode: "AI" | "HUMAN";
+  tags?: ConversationTagApiResponse[];
 }
 
 export interface ConversationListApiResponse {

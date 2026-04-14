@@ -1,5 +1,13 @@
 export type ControlMode = "AI" | "HUMAN";
 
+export interface ConversationTag {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+  tagType: "SYSTEM" | "CUSTOM";
+}
+
 export interface ConversationSummary {
   conversationId: string;
   whatsappUserId: string;
@@ -7,6 +15,7 @@ export interface ConversationSummary {
   lastMessagePreview: string | null;
   updatedAt: string;
   controlMode: ControlMode;
+  tags: ConversationTag[];
 }
 
 export interface ConversationMessage {
