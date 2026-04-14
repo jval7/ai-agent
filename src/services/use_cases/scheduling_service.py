@@ -991,13 +991,8 @@ class SchedulingService:
                 source_type="SCHEDULING_REQUEST",
                 source_id=request.id,
             )
-        request.set_status("CANCELLED", now_value)
+        request.updated_at = now_value
         self._scheduling_repository.save_request(request)
-        self._sync_tags_after_status_change(
-            tenant_id=tenant_id,
-            conversation_id=request.conversation_id,
-            new_status=request.status,
-        )
         logger.info(
             "scheduling.booked_slot_cancelled",
             extra={

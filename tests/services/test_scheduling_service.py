@@ -534,7 +534,7 @@ def test_reschedule_booked_slot_updates_booked_request() -> None:
     assert provider.updated_event_summaries == ["Cita reprogramada"]
 
 
-def test_cancel_booked_slot_sets_cancelled_and_clears_calendar_event() -> None:
+def test_cancel_booked_slot_preserves_status_and_clears_calendar_event() -> None:
     service, repository, provider, _ = build_service(["req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
@@ -559,7 +559,7 @@ def test_cancel_booked_slot_sets_cancelled_and_clears_calendar_event() -> None:
         input_dto=scheduling_dto.CancelBookedSlotInputDTO(reason="No puede asistir"),
     )
 
-    assert cancelled_request.status == "CANCELLED"
+    assert cancelled_request.status == "BOOKED"
     assert provider.deleted_event_ids == ["event-1"]
     reloaded = repository.get_request_by_id("tenant-1", request.request_id)
     assert reloaded is not None
@@ -598,7 +598,7 @@ def test_cancel_booked_slot_tolerates_google_not_found() -> None:
         input_dto=scheduling_dto.CancelBookedSlotInputDTO(reason=None),
     )
 
-    assert cancelled_request.status == "CANCELLED"
+    assert cancelled_request.status == "BOOKED"
     reloaded = repository.get_request_by_id("tenant-1", request.request_id)
     assert reloaded is not None
     assert reloaded.calendar_event_id is None
