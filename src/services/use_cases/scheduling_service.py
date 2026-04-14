@@ -1146,11 +1146,20 @@ class SchedulingService:
             tenant_id,
             conversation_id,
         )
+        terminal_statuses = {
+            "SESSION_CLOSED",
+            "CANCELLED",
+            "CONSULTATION_REJECTED",
+            "HUMAN_HANDOFF",
+        }
         booked_request = None
+        active_requests: list[scheduling_request_entity.SchedulingRequest] = []
         for request in request_list:
+            if request.status in terminal_statuses:
+                continue
+            active_requests.append(request)
             if request.status == "BOOKED":
                 booked_request = request
-                break
 
         now_value = self._clock.now()
 
@@ -1162,24 +1171,22 @@ class SchedulingService:
                 calendar_event_id=booked_request.calendar_event_id or "",
                 now_value=now_value,
             )
-            booked_request.set_status("SESSION_CLOSED", now_value)
-            self._scheduling_repository.save_request(booked_request)
-            self._sync_tags_after_status_change(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                new_status=booked_request.status,
-            )
         else:
             self._archive_conversation_subsession_manual_close(
                 tenant_id=tenant_id,
                 conversation_id=conversation_id,
                 now_value=now_value,
             )
-            self._sync_tags_after_status_change(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                new_status="SESSION_CLOSED",
-            )
+
+        for request in active_requests:
+            request.set_status("SESSION_CLOSED", now_value)
+            self._scheduling_repository.save_request(request)
+
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status="SESSION_CLOSED",
+        )
 
         logger.info(
             "scheduling.session_closed",
@@ -1190,7 +1197,7 @@ class SchedulingService:
                     data={
                         "tenant_id": tenant_id,
                         "conversation_id": conversation_id,
-                        "request_id": booked_request.id if booked_request is not None else None,
+                        "closed_request_ids": [request.id for request in active_requests],
                     },
                 )
             },
