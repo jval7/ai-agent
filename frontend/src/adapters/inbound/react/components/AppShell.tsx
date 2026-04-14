@@ -158,7 +158,7 @@ function HamburgerIcon() {
 const navLinks = [
   { to: "/configuraciones", label: "Configuraciones", Icon: SettingsIcon },
   { to: "/agenda", label: "Agenda", Icon: CalendarIcon },
-  { to: "/inbox", label: "Mis clientes", Icon: InboxIcon },
+  { to: "/inbox", label: "Conversaciones", Icon: InboxIcon },
   { to: "/clientes", label: "Clientes", Icon: UsersIcon },
   { to: "/plantillas", label: "Plantillas", Icon: TemplatesIcon },
   { to: "/recordatorios", label: "Recordatorios", Icon: BellIcon }

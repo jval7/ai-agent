@@ -164,24 +164,105 @@ export function InboxPage() {
   );
   const [inboxMobileStep, setInboxMobileStep] = reactModule.useState<"LIST" | "DETAIL">("LIST");
   const [fabOpen, setFabOpen] = reactModule.useState(false);
+  const [conversationTab, setConversationTab] = reactModule.useState<"ACTIVE" | "ENDED">("ACTIVE");
+
+  const isConversationEnded = reactModule.useCallback(
+    (conversation: conversationModel.ConversationSummary): boolean => {
+      const hasSessionClosedTag = conversation.tags.some((tag) => tag.slug === "session-closed");
+      if (hasSessionClosedTag) {
+        return true;
+      }
+      const request = latestRequestByConversationId.get(conversation.conversationId);
+      if (request?.status === "SESSION_CLOSED") {
+        return true;
+      }
+      return false;
+    },
+    [latestRequestByConversationId]
+  );
+
+  const filteredConversations = reactModule.useMemo(() => {
+    if (conversationsQuery.data === undefined) {
+      return [];
+    }
+    if (conversationTab === "ACTIVE") {
+      return conversationsQuery.data.filter((conversation) => !isConversationEnded(conversation));
+    }
+    return conversationsQuery.data.filter((conversation) => isConversationEnded(conversation));
+  }, [conversationsQuery.data, conversationTab, isConversationEnded]);
+
+  const conversationCounts = reactModule.useMemo(() => {
+    if (conversationsQuery.data === undefined) {
+      return { active: 0, ended: 0 };
+    }
+    let active = 0;
+    let ended = 0;
+    for (const conversation of conversationsQuery.data) {
+      if (isConversationEnded(conversation)) {
+        ended += 1;
+      } else {
+        active += 1;
+      }
+    }
+    return { active, ended };
+  }, [conversationsQuery.data, isConversationEnded]);
+
+  const renderConversationTabs = (compact: boolean) => (
+    <nav
+      className={["mb-3 flex gap-1 rounded-lg bg-slate-100", compact ? "p-0.5" : "p-1"].join(" ")}
+    >
+      <button
+        aria-pressed={conversationTab === "ACTIVE"}
+        className={[
+          "flex-1 rounded-md text-xs font-semibold transition-colors",
+          compact ? "px-2 py-1.5" : "px-3 py-2",
+          conversationTab === "ACTIVE"
+            ? "bg-white text-brand-ink shadow-sm"
+            : "text-slate-500 hover:text-slate-700"
+        ].join(" ")}
+        onClick={() => {
+          setConversationTab("ACTIVE");
+        }}
+        type="button"
+      >
+        En curso ({conversationCounts.active})
+      </button>
+      <button
+        aria-pressed={conversationTab === "ENDED"}
+        className={[
+          "flex-1 rounded-md text-xs font-semibold transition-colors",
+          compact ? "px-2 py-1.5" : "px-3 py-2",
+          conversationTab === "ENDED"
+            ? "bg-white text-brand-ink shadow-sm"
+            : "text-slate-500 hover:text-slate-700"
+        ].join(" ")}
+        onClick={() => {
+          setConversationTab("ENDED");
+        }}
+        type="button"
+      >
+        Terminadas ({conversationCounts.ended})
+      </button>
+    </nav>
+  );
 
   reactModule.useEffect(() => {
-    if (conversationsQuery.data === undefined || conversationsQuery.data.length === 0) {
+    if (filteredConversations.length === 0) {
       setSelectedConversationId(null);
       return;
     }
 
-    const hasSelectedConversation = conversationsQuery.data.some(
+    const hasSelectedConversation = filteredConversations.some(
       (conversation) => conversation.conversationId === selectedConversationId
     );
 
     if (!hasSelectedConversation) {
-      const firstConversation = conversationsQuery.data[0];
+      const firstConversation = filteredConversations[0];
       if (firstConversation !== undefined) {
         setSelectedConversationId(firstConversation.conversationId);
       }
     }
-  }, [conversationsQuery.data, selectedConversationId]);
+  }, [filteredConversations, selectedConversationId]);
 
   const selectedConversation = conversationsQuery.data?.find(
     (conversation) => conversation.conversationId === selectedConversationId
@@ -403,8 +484,15 @@ export function InboxPage() {
     const patientName = patientNameByWhatsappId.get(conversation.whatsappUserId);
     const displayName = conversation.contactName ?? patientName ?? conversation.whatsappUserId;
     const request = latestRequestByConversationId.get(conversation.conversationId);
-    const displayStatus: AppointmentDisplayStatus =
-      request !== undefined ? resolveAppointmentDisplayStatus(request) : "SIN_CITA";
+    const hasSessionClosedTag = conversation.tags.some((tag) => tag.slug === "session-closed");
+    let displayStatus: AppointmentDisplayStatus;
+    if (request !== undefined) {
+      displayStatus = resolveAppointmentDisplayStatus(request);
+    } else if (hasSessionClosedTag) {
+      displayStatus = "TERMINADA";
+    } else {
+      displayStatus = "SIN_CITA";
+    }
     // eslint-disable-next-line security/detect-object-injection
     const config = appointmentDisplayConfig[displayStatus];
     return (
@@ -477,16 +565,22 @@ export function InboxPage() {
             <header className="mb-3">
               <h2 className="text-base font-semibold text-brand-ink">Conversaciones</h2>
               <p className="text-[11px] text-slate-500">
-                {conversationsQuery.data?.length ?? 0} conversaciones
+                {filteredConversations.length}{" "}
+                {conversationTab === "ACTIVE" ? "en curso" : "terminadas"}
               </p>
             </header>
+            {renderConversationTabs(true)}
             {conversationsQuery.isLoading ? (
               <p className="text-sm text-slate-500">Cargando...</p>
             ) : null}
-            {conversationsQuery.data?.length === 0 ? (
-              <p className="text-sm text-slate-500">No hay conversaciones aún.</p>
+            {!conversationsQuery.isLoading && filteredConversations.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                {conversationTab === "ACTIVE"
+                  ? "No hay conversaciones en curso."
+                  : "No hay conversaciones terminadas."}
+              </p>
             ) : null}
-            {conversationsQuery.data?.map((conversation) =>
+            {filteredConversations.map((conversation) =>
               renderConversationItem(conversation, {
                 onClick: () => {
                   setSelectedConversationId(conversation.conversationId);
@@ -905,14 +999,21 @@ export function InboxPage() {
             <h2 className="text-base font-semibold">Conversaciones</h2>
             <p className="text-xs text-slate-500">Selecciona una conversación para ver detalle.</p>
           </header>
-          <div className="max-h-[calc(100vh-10rem)] overflow-auto p-2">
+          <div className="border-b border-border-subtle px-3 pt-3">
+            {renderConversationTabs(false)}
+          </div>
+          <div className="max-h-[calc(100vh-14rem)] overflow-auto p-2">
             {conversationsQuery.isLoading ? (
               <p className="p-3 text-sm text-slate-500">Cargando...</p>
             ) : null}
-            {conversationsQuery.data?.length === 0 ? (
-              <p className="p-3 text-sm text-slate-500">No hay conversaciones aún.</p>
+            {!conversationsQuery.isLoading && filteredConversations.length === 0 ? (
+              <p className="p-3 text-sm text-slate-500">
+                {conversationTab === "ACTIVE"
+                  ? "No hay conversaciones en curso."
+                  : "No hay conversaciones terminadas."}
+              </p>
             ) : null}
-            {conversationsQuery.data?.map((conversation) => {
+            {filteredConversations.map((conversation) => {
               const isSelected = conversation.conversationId === selectedConversationId;
               const isResettingConversation =
                 resetMessagesMutation.isPending &&
@@ -921,8 +1022,17 @@ export function InboxPage() {
               const desktopDisplayName =
                 conversation.contactName ?? patientName ?? conversation.whatsappUserId;
               const request = latestRequestByConversationId.get(conversation.conversationId);
-              const displayStatus: AppointmentDisplayStatus =
-                request !== undefined ? resolveAppointmentDisplayStatus(request) : "SIN_CITA";
+              const hasSessionClosedTag = conversation.tags.some(
+                (tag) => tag.slug === "session-closed"
+              );
+              let displayStatus: AppointmentDisplayStatus;
+              if (request !== undefined) {
+                displayStatus = resolveAppointmentDisplayStatus(request);
+              } else if (hasSessionClosedTag) {
+                displayStatus = "TERMINADA";
+              } else {
+                displayStatus = "SIN_CITA";
+              }
               // eslint-disable-next-line security/detect-object-injection
               const config = appointmentDisplayConfig[displayStatus];
               return (

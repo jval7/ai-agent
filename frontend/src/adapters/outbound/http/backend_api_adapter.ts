@@ -333,7 +333,14 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       contactName: item.contact_name ?? null,
       lastMessagePreview: item.last_message_preview,
       updatedAt: item.updated_at,
-      controlMode: item.control_mode
+      controlMode: item.control_mode,
+      tags: (item.tags ?? []).map((tag) => ({
+        id: tag.id,
+        name: tag.name,
+        slug: tag.slug,
+        color: tag.color,
+        tagType: tag.tag_type
+      }))
     }));
   }
 
