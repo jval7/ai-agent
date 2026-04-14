@@ -83,8 +83,10 @@ def _instructions_for_state(
             "horarios, direccion, preparacion para la cita u otros datos generales.",
             "NO inicies un nuevo proceso de agendamiento. Si el paciente quiere agendar otra cita, "
             "usa handoff_to_human.",
-            "Cuando el paciente confirme que no necesita nada mas (ej: 'no gracias', 'eso es todo', "
-            "'ya estoy bien', 'listo'), llama close_session.",
+            "Cuando el paciente se despida o confirme que no necesita nada mas (ej: 'gracias', "
+            "'no gracias', 'eso es todo', 'ya estoy bien', 'listo', 'ok'), "
+            "DEBES llamar close_session obligatoriamente. No te despidas solo con texto; "
+            "tu respuesta de despedida DEBE incluir la llamada a close_session.",
             "IMPORTANTE: tu UNICO objetivo en este estado es responder preguntas generales y "
             "cerrar la sesion cuando el paciente termine. No debes salir de este estado por "
             "ningun otro motivo.",
