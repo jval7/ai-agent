@@ -26,6 +26,7 @@ type AppointmentDisplayStatus =
   | "PAGO_PENDIENTE"
   | "AGENDADA"
   | "TOMADA"
+  | "TERMINADA"
   | "RECHAZADA"
   | "CANCELADA"
   | "DERIVADA"
@@ -41,6 +42,7 @@ const appointmentDisplayConfig: Record<
   PAGO_PENDIENTE: { label: "Pago pendiente", tone: "warning" },
   AGENDADA: { label: "Agendada", tone: "success" },
   TOMADA: { label: "Tomada", tone: "neutral" },
+  TERMINADA: { label: "Sesión terminada", tone: "neutral" },
   RECHAZADA: { label: "Rechazada", tone: "danger" },
   CANCELADA: { label: "Cancelada", tone: "danger" },
   DERIVADA: { label: "Derivada", tone: "info" },
@@ -62,7 +64,7 @@ function resolveAppointmentDisplayStatus(
   if (request.status === "AWAITING_PAYMENT_CONFIRMATION") {
     return "PAGO_PENDIENTE";
   }
-  if (request.status === "BOOKED" || request.status === "SESSION_CLOSED") {
+  if (request.status === "BOOKED") {
     const bookedSlot = request.slots.find((slot) => slot.status === "BOOKED");
     if (bookedSlot !== undefined) {
       const slotEnd = new Date(bookedSlot.endAt);
@@ -71,6 +73,9 @@ function resolveAppointmentDisplayStatus(
       }
     }
     return "AGENDADA";
+  }
+  if (request.status === "SESSION_CLOSED") {
+    return "TERMINADA";
   }
   if (request.status === "CONSULTATION_REJECTED") {
     return "RECHAZADA";
@@ -309,10 +314,11 @@ export function InboxPage() {
   const closeSessionMutation = reactQueryModule.useMutation({
     mutationFn: (conversationId: string) =>
       appContainer.schedulingUseCase.closeSession(conversationId),
-    onSuccess: async () => {
+    onSuccess: async (_data, conversationId) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
-        queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey })
+        queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: ["conversation-messages", conversationId] })
       ]);
     }
   });
