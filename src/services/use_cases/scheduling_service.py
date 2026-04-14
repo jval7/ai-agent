@@ -1000,10 +1000,6 @@ class SchedulingService:
         request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
         if request is None:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")
-        if request.selected_slot_id is None and request.calendar_event_id is None:
-            raise service_exceptions.InvalidStateError(
-                "scheduling request has no active appointment to cancel"
-            )
 
         calendar_event_id = request.calendar_event_id
         if calendar_event_id is not None:
