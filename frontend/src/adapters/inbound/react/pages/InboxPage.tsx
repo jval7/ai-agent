@@ -720,26 +720,28 @@ export function InboxPage() {
                   >
                     {isBlocked ? "Quitar blacklist" : "Blacklist"}
                   </button>
-                  <button
-                    className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
-                    disabled={closeSessionMutation.isPending}
-                    onClick={() => {
-                      if (selectedConversationId === null) {
-                        return;
-                      }
-                      const isConfirmed = window.confirm(
-                        "¿Seguro que quieres cerrar la sesión de esta conversación?"
-                      );
-                      if (!isConfirmed) {
-                        return;
-                      }
-                      closeSessionMutation.mutate(selectedConversationId);
-                      setFabOpen(false);
-                    }}
-                    type="button"
-                  >
-                    {closeSessionMutation.isPending ? "Cerrando..." : "Cerrar sesión"}
-                  </button>
+                  {selectedConversationRequest?.status === "BOOKED" ? (
+                    <button
+                      className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+                      disabled={closeSessionMutation.isPending}
+                      onClick={() => {
+                        if (selectedConversationId === null) {
+                          return;
+                        }
+                        const isConfirmed = window.confirm(
+                          "¿Seguro que quieres cerrar la sesión de esta conversación?"
+                        );
+                        if (!isConfirmed) {
+                          return;
+                        }
+                        closeSessionMutation.mutate(selectedConversationId);
+                        setFabOpen(false);
+                      }}
+                      type="button"
+                    >
+                      {closeSessionMutation.isPending ? "Cerrando..." : "Cerrar sesión"}
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
               <button
@@ -1227,30 +1229,32 @@ export function InboxPage() {
                 </p>
               </div>
 
-              <div className="rounded-lg border border-border-subtle p-3">
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Sesión
-                </p>
-                <button
-                  className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
-                  disabled={closeSessionMutation.isPending}
-                  onClick={() => {
-                    if (selectedConversationId === null) {
-                      return;
-                    }
-                    const isConfirmed = window.confirm(
-                      "¿Seguro que quieres cerrar la sesión de esta conversación?"
-                    );
-                    if (!isConfirmed) {
-                      return;
-                    }
-                    closeSessionMutation.mutate(selectedConversationId);
-                  }}
-                  type="button"
-                >
-                  {closeSessionMutation.isPending ? "Cerrando..." : "Cerrar sesión"}
-                </button>
-              </div>
+              {selectedConversationRequest?.status === "BOOKED" ? (
+                <div className="rounded-lg border border-border-subtle p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Sesión
+                  </p>
+                  <button
+                    className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                    disabled={closeSessionMutation.isPending}
+                    onClick={() => {
+                      if (selectedConversationId === null) {
+                        return;
+                      }
+                      const isConfirmed = window.confirm(
+                        "¿Seguro que quieres cerrar la sesión de esta conversación?"
+                      );
+                      if (!isConfirmed) {
+                        return;
+                      }
+                      closeSessionMutation.mutate(selectedConversationId);
+                    }}
+                    type="button"
+                  >
+                    {closeSessionMutation.isPending ? "Cerrando..." : "Cerrar sesión"}
+                  </button>
+                </div>
+              ) : null}
             </>
           )}
         </article>
