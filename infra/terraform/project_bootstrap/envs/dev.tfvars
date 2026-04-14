@@ -8,6 +8,7 @@ folder_id = null
 labels = {}
 
 enable_apis = [
+  "aiplatform.googleapis.com",
   "calendar-json.googleapis.com",
   "secretmanager.googleapis.com",
 ]
