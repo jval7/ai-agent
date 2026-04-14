@@ -878,8 +878,6 @@ class SchedulingService:
         request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
         if request is None:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")
-        if request.status != "BOOKED":
-            raise service_exceptions.InvalidStateError("scheduling request is not booked")
         if request.calendar_event_id is None:
             raise service_exceptions.InvalidStateError(
                 "booked scheduling request has no calendar event"
@@ -935,8 +933,10 @@ class SchedulingService:
         request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
         if request is None:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")
-        if request.status != "BOOKED":
-            raise service_exceptions.InvalidStateError("scheduling request is not booked")
+        if request.selected_slot_id is None and request.calendar_event_id is None:
+            raise service_exceptions.InvalidStateError(
+                "scheduling request has no active appointment to cancel"
+            )
 
         calendar_event_id = request.calendar_event_id
         if calendar_event_id is not None:
@@ -989,9 +989,6 @@ class SchedulingService:
         request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
         if request is None:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")
-        if request.status != "BOOKED":
-            raise service_exceptions.InvalidStateError("scheduling request is not booked")
-
         now_value = self._clock.now()
         request.payment_amount_cop = input_dto.payment_amount_cop
         request.payment_method = input_dto.payment_method

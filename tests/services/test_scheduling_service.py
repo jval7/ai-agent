@@ -643,26 +643,6 @@ def test_update_booked_payment_updates_request() -> None:
     assert reloaded.payment_status == "PAID"
 
 
-def test_update_booked_payment_rejects_non_booked_request() -> None:
-    service, repository, _, _ = build_service(["req-1"])
-    request = create_awaiting_review_request(service)
-    stored = repository.get_request_by_id("tenant-1", request.request_id)
-    assert stored is not None
-    stored.status = "AWAITING_CONSULTATION_REVIEW"
-    repository.save_request(stored)
-
-    with pytest.raises(service_exceptions.InvalidStateError):
-        service.update_booked_payment(
-            tenant_id="tenant-1",
-            request_id=request.request_id,
-            input_dto=scheduling_dto.UpdateBookedSlotPaymentInputDTO(
-                payment_amount_cop=90000,
-                payment_method="TRANSFER",
-                payment_status="PENDING",
-            ),
-        )
-
-
 def test_update_booked_payment_dto_rejects_non_positive_amount() -> None:
     with pytest.raises(pydantic.ValidationError):
         scheduling_dto.UpdateBookedSlotPaymentInputDTO(
