@@ -772,6 +772,46 @@ class SchedulingService:
             },
         )
 
+    def _archive_conversation_subsession_manual_close(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        now_value: datetime.datetime,
+    ) -> None:
+        conversation = self._conversation_repository.get_conversation_by_id(
+            tenant_id,
+            conversation_id,
+        )
+        if conversation is None:
+            raise service_exceptions.EntityNotFoundError("conversation not found")
+
+        active_messages = self._conversation_repository.list_messages(
+            tenant_id,
+            conversation_id,
+        )
+        sorted_active_messages = sorted(active_messages, key=lambda item: item.created_at)
+        conversation.archive_manual_close(
+            messages=sorted_active_messages,
+            now=now_value,
+        )
+        self._conversation_repository.save_conversation(conversation)
+        self._conversation_repository.delete_messages(tenant_id, conversation_id)
+        logger.info(
+            "scheduling.subsession_archived_manual_close",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.subsession_archived_manual_close",
+                    message="conversation messages archived into subsession via manual close",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "archived_messages_count": len(sorted_active_messages),
+                        "subsessions_count": len(conversation.subsessions),
+                    },
+                )
+            },
+        )
+
     def _select_slot_for_confirmation_impl(
         self,
         tenant_id: str,
@@ -1112,36 +1152,45 @@ class SchedulingService:
                 booked_request = request
                 break
 
-        if booked_request is None:
-            return {"status": "SESSION_CLOSED", "action": "already_closed"}
-
         now_value = self._clock.now()
-        self._archive_conversation_subsession_after_booking(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            scheduling_request_id=booked_request.id,
-            calendar_event_id=booked_request.calendar_event_id or "",
-            now_value=now_value,
-        )
 
-        booked_request.set_status("SESSION_CLOSED", now_value)
-        self._scheduling_repository.save_request(booked_request)
-        self._sync_tags_after_status_change(
-            tenant_id=tenant_id,
-            conversation_id=conversation_id,
-            new_status=booked_request.status,
-        )
+        if booked_request is not None:
+            self._archive_conversation_subsession_after_booking(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                scheduling_request_id=booked_request.id,
+                calendar_event_id=booked_request.calendar_event_id or "",
+                now_value=now_value,
+            )
+            booked_request.set_status("SESSION_CLOSED", now_value)
+            self._scheduling_repository.save_request(booked_request)
+            self._sync_tags_after_status_change(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                new_status=booked_request.status,
+            )
+        else:
+            self._archive_conversation_subsession_manual_close(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                now_value=now_value,
+            )
+            self._sync_tags_after_status_change(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                new_status="SESSION_CLOSED",
+            )
 
         logger.info(
             "scheduling.session_closed",
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="scheduling.session_closed",
-                    message="conversation session closed and archived after post-booking followup",
+                    message="conversation session closed and archived",
                     data={
                         "tenant_id": tenant_id,
                         "conversation_id": conversation_id,
-                        "request_id": booked_request.id,
+                        "request_id": booked_request.id if booked_request is not None else None,
                     },
                 )
             },

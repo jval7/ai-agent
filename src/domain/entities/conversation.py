@@ -8,9 +8,9 @@ import src.domain.entities.message as message_entity
 
 class ConversationSubsession(pydantic.BaseModel):
     archived_at: datetime.datetime
-    archived_reason: typing.Literal["APPOINTMENT_BOOKED"]
-    scheduling_request_id: str
-    calendar_event_id: str
+    archived_reason: typing.Literal["APPOINTMENT_BOOKED", "MANUAL_CLOSE"]
+    scheduling_request_id: str | None = None
+    calendar_event_id: str | None = None
     messages: list[message_entity.Message]
 
 
@@ -57,6 +57,33 @@ class Conversation(pydantic.BaseModel):
         messages: list[message_entity.Message],
         now: datetime.datetime,
     ) -> None:
+        self._archive_messages(
+            messages=messages,
+            archived_reason="APPOINTMENT_BOOKED",
+            scheduling_request_id=scheduling_request_id,
+            calendar_event_id=calendar_event_id,
+            now=now,
+        )
+
+    def archive_manual_close(
+        self,
+        messages: list[message_entity.Message],
+        now: datetime.datetime,
+    ) -> None:
+        self._archive_messages(
+            messages=messages,
+            archived_reason="MANUAL_CLOSE",
+            now=now,
+        )
+
+    def _archive_messages(
+        self,
+        messages: list[message_entity.Message],
+        archived_reason: typing.Literal["APPOINTMENT_BOOKED", "MANUAL_CLOSE"],
+        now: datetime.datetime,
+        scheduling_request_id: str | None = None,
+        calendar_event_id: str | None = None,
+    ) -> None:
         active_messages = [message.model_copy(deep=True) for message in messages]
         if not active_messages:
             active_messages = [message.model_copy(deep=True) for message in self.messages]
@@ -70,7 +97,7 @@ class Conversation(pydantic.BaseModel):
 
         session_snapshot = ConversationSubsession(
             archived_at=now,
-            archived_reason="APPOINTMENT_BOOKED",
+            archived_reason=archived_reason,
             scheduling_request_id=scheduling_request_id,
             calendar_event_id=calendar_event_id,
             messages=active_messages,
