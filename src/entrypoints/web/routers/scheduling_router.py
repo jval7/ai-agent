@@ -141,6 +141,22 @@ def cancel_booked_slot(
     )
 
 
+@router.post(
+    "/v1/conversations/{conversation_id}/scheduling/close-session",
+)
+def close_scheduling_session(
+    conversation_id: str,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> dict[str, str]:
+    if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+        raise service_exceptions.AuthorizationError("professional role required")
+    return container.scheduling_service.close_session(
+        tenant_id=claims.tenant_id,
+        conversation_id=conversation_id,
+    )
+
+
 @router.put(
     "/v1/scheduling-requests/{request_id}/booked-slot/payment",
     response_model=scheduling_dto.SchedulingRequestSummaryDTO,

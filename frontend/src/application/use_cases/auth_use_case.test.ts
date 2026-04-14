@@ -276,6 +276,10 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async closeSession(_conversationId: string): Promise<{ status: string }> {
+    throw new Error("not used");
+  }
+
   async getDevFeatures(): Promise<{ enabled: boolean; sandbox_enabled: boolean | null }> {
     throw new Error("not used");
   }

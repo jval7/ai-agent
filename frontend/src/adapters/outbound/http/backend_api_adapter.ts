@@ -712,6 +712,16 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return mapSchedulingRequestSummary(payload);
   }
 
+  async closeSession(conversationId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(
+      `/v1/conversations/${conversationId}/scheduling/close-session`,
+      {
+        method: "POST",
+        authRequired: true
+      }
+    );
+  }
+
   async getDevFeatures(): Promise<{ enabled: boolean; sandbox_enabled: boolean | null }> {
     return this.request<{ enabled: boolean; sandbox_enabled: boolean | null }>(
       "/v1/settings/dev-features",

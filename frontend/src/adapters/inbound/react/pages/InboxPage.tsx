@@ -8,7 +8,6 @@ import * as appContainerContextModule from "@adapters/inbound/react/app/AppConta
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as slotPickerModule from "@adapters/inbound/react/components/SlotPicker";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
-import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
 import type * as conversationModel from "@domain/models/conversation";
 import type * as schedulingModel from "@domain/models/scheduling";
 import * as calendarUtilsModule from "@shared/utils/calendar";
@@ -18,7 +17,6 @@ const conversationsQueryKey = ["conversations"] as const;
 const blacklistQueryKey = ["blacklist"] as const;
 const patientsQueryKey = ["patients"] as const;
 const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
-const promptQueryKey = ["system-prompt"] as const;
 const devFeaturesQueryKey = ["dev-features"] as const;
 
 type AppointmentDisplayStatus =
@@ -161,7 +159,6 @@ export function InboxPage() {
   );
   const [inboxMobileStep, setInboxMobileStep] = reactModule.useState<"LIST" | "DETAIL">("LIST");
   const [fabOpen, setFabOpen] = reactModule.useState(false);
-  const [promptDrawerOpen, setPromptDrawerOpen] = reactModule.useState(false);
 
   reactModule.useEffect(() => {
     if (conversationsQuery.data === undefined || conversationsQuery.data.length === 0) {
@@ -309,24 +306,14 @@ export function InboxPage() {
     }
   });
 
-  const promptQuery = reactQueryModule.useQuery({
-    queryKey: promptQueryKey,
-    queryFn: () => appContainer.agentUseCase.getSystemPrompt()
-  });
-
-  const [systemPromptText, setSystemPromptText] = reactModule.useState("");
-
-  reactModule.useEffect(() => {
-    if (promptQuery.data !== undefined) {
-      setSystemPromptText(promptQuery.data.systemPrompt);
-    }
-  }, [promptQuery.data]);
-
-  const updatePromptMutation = reactQueryModule.useMutation({
-    mutationFn: () => appContainer.agentUseCase.updateSystemPrompt(systemPromptText),
+  const closeSessionMutation = reactQueryModule.useMutation({
+    mutationFn: (conversationId: string) =>
+      appContainer.schedulingUseCase.closeSession(conversationId),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: promptQueryKey });
-      setPromptDrawerOpen(false);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: conversationsQueryKey }),
+        queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey })
+      ]);
     }
   });
 
@@ -732,6 +719,26 @@ export function InboxPage() {
                     type="button"
                   >
                     {isBlocked ? "Quitar blacklist" : "Blacklist"}
+                  </button>
+                  <button
+                    className="rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+                    disabled={closeSessionMutation.isPending}
+                    onClick={() => {
+                      if (selectedConversationId === null) {
+                        return;
+                      }
+                      const isConfirmed = window.confirm(
+                        "¿Seguro que quieres cerrar la sesión de esta conversación?"
+                      );
+                      if (!isConfirmed) {
+                        return;
+                      }
+                      closeSessionMutation.mutate(selectedConversationId);
+                      setFabOpen(false);
+                    }}
+                    type="button"
+                  >
+                    {closeSessionMutation.isPending ? "Cerrando..." : "Cerrar sesión"}
                   </button>
                 </div>
               ) : null}
@@ -1223,80 +1230,6 @@ export function InboxPage() {
           )}
         </article>
       </section>
-
-      {/* System Prompt FAB */}
-      <button
-        className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-slate-700 text-white shadow-lg transition-transform hover:scale-105 hover:bg-slate-800"
-        onClick={() => setPromptDrawerOpen(true)}
-        title="System Prompt"
-        type="button"
-      >
-        <svg
-          className="h-5 w-5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
-          />
-        </svg>
-      </button>
-
-      {/* Prompt Drawer Overlay */}
-      {promptDrawerOpen ? (
-        <div className="fixed inset-0 z-50 flex">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/30"
-            onClick={() => setPromptDrawerOpen(false)}
-          />
-          {/* Drawer */}
-          <div className="relative ml-auto flex h-full w-full flex-col bg-white shadow-2xl lg:max-w-xl">
-            <header className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-              <h2 className="text-base font-semibold text-brand-ink">System Prompt</h2>
-              <div className="flex items-center gap-2">
-                <button
-                  className="rounded-lg bg-brand-teal px-4 py-1.5 text-sm font-semibold text-white hover:bg-brand-teal/90 disabled:opacity-60"
-                  disabled={updatePromptMutation.isPending}
-                  onClick={() => updatePromptMutation.mutate()}
-                  type="button"
-                >
-                  {updatePromptMutation.isPending ? "Guardando..." : "Guardar"}
-                </button>
-                <button
-                  className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"
-                  onClick={() => setPromptDrawerOpen(false)}
-                  type="button"
-                >
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={2}
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </header>
-            <div className="flex-1 overflow-auto p-4">
-              {promptQuery.isLoading ? (
-                <p className="text-sm text-slate-500">Cargando prompt...</p>
-              ) : (
-                <xmlTagEditorModule.XmlTagEditor
-                  onChange={setSystemPromptText}
-                  value={systemPromptText}
-                />
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
     </appShellModule.AppShell>
   );
 }
