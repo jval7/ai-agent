@@ -63,7 +63,7 @@ SYSTEM_TAG_DEFINITIONS: list[dict[str, str]] = [
     },
     {
         "slug": "session-closed",
-        "name": "Sesión cerrada",
+        "name": "Sesión terminada",
         "color": "#6B7280",
     },
     {
