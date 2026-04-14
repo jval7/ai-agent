@@ -145,7 +145,7 @@ class Settings(pydantic.BaseModel):
                 app_config_overrides.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
             ),
             cloud_tasks_queue_id=app_config_overrides.get(
-                "CLOUD_TASKS_QUEUE_ID", "auto-close-booked-sessions"
+                "CLOUD_TASKS_QUEUE_ID", "scheduling-tasks"
             ),
             cloud_run_base_url=app_config_overrides.get("CLOUD_RUN_BASE_URL", ""),
             auto_close_delay_seconds=int(

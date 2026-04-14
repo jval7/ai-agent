@@ -122,9 +122,9 @@ variable "manage_app_config_secret" {
 }
 
 variable "cloud_tasks_queue_name" {
-  description = "Cloud Tasks queue name for auto-close booked sessions."
+  description = "Cloud Tasks queue name for scheduling tasks (reminders, auto-close)."
   type        = string
-  default     = "auto-close-booked-sessions"
+  default     = "scheduling-tasks"
 }
 
 variable "enable_apis" {
