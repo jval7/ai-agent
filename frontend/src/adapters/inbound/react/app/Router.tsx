@@ -7,6 +7,7 @@ import * as inboxPageModule from "@adapters/inbound/react/pages/InboxPage";
 import * as landingPageModule from "@adapters/inbound/react/pages/LandingPage";
 import * as loginPageModule from "@adapters/inbound/react/pages/LoginPage";
 import * as plantillasPageModule from "@adapters/inbound/react/pages/PlantillasPage";
+import * as recordatoriosPageModule from "@adapters/inbound/react/pages/RecordatoriosPage";
 
 import * as onboardingReadyRouteModule from "./OnboardingReadyRoute";
 import * as protectedRouteModule from "./ProtectedRoute";
@@ -88,6 +89,16 @@ export function AppRouter() {
             </protectedRouteModule.ProtectedRoute>
           }
           path="/plantillas"
+        />
+        <reactRouterDomModule.Route
+          element={
+            <protectedRouteModule.ProtectedRoute>
+              <onboardingReadyRouteModule.OnboardingReadyRoute>
+                <recordatoriosPageModule.RecordatoriosPage />
+              </onboardingReadyRouteModule.OnboardingReadyRoute>
+            </protectedRouteModule.ProtectedRoute>
+          }
+          path="/recordatorios"
         />
 
         <reactRouterDomModule.Route

@@ -12,6 +12,7 @@ import src.adapters.outbound.firestore.memory_admin_adapter as memory_admin_adap
 import src.adapters.outbound.firestore.patient_repository_adapter as patient_repository_adapter
 import src.adapters.outbound.firestore.processed_webhook_event_repository_adapter as processed_webhook_event_repository_adapter
 import src.adapters.outbound.firestore.refresh_token_repository_adapter as refresh_token_repository_adapter
+import src.adapters.outbound.firestore.scheduled_reminder_repository_adapter as firestore_scheduled_reminder_adapter
 import src.adapters.outbound.firestore.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.firestore.tag_repository_adapter as tag_repository_adapter
 import src.adapters.outbound.firestore.tenant_repository_adapter as tenant_repository_adapter
@@ -28,6 +29,7 @@ import src.adapters.outbound.whatsapp_meta.meta_whatsapp_provider_adapter as met
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
+import src.ports.scheduled_reminder_repository_port as scheduled_reminder_repository_port
 import src.ports.task_scheduler_port as task_scheduler_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
@@ -57,6 +59,7 @@ import src.services.use_cases.manual_appointment_service as manual_appointment_s
 import src.services.use_cases.memory_admin_service as memory_admin_service
 import src.services.use_cases.onboarding_status_service as onboarding_status_service
 import src.services.use_cases.patient_query_service as patient_query_service
+import src.services.use_cases.reminder_service as reminder_service
 import src.services.use_cases.scheduling_inbox_service as scheduling_inbox_service
 import src.services.use_cases.scheduling_service as scheduling_service
 import src.services.use_cases.tag_service as tag_service
@@ -240,6 +243,18 @@ class AppContainer:
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
         )
+        self.scheduled_reminder_repository: scheduled_reminder_repository_port.ScheduledReminderRepositoryPort = firestore_scheduled_reminder_adapter.FirestoreScheduledReminderRepositoryAdapter(
+            client=self.firestore_client,
+        )
+        self.reminder_service = reminder_service.ReminderService(
+            scheduled_reminder_repository=self.scheduled_reminder_repository,
+            agent_profile_repository=self.agent_profile_repository,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
+            whatsapp_provider=self.whatsapp_provider_adapter,
+            task_scheduler=self.task_scheduler,
+            id_generator=self.id_generator_adapter,
+            clock=self.clock_adapter,
+        )
         self.scheduling_service = scheduling_service.SchedulingService(
             scheduling_repository=self.scheduling_repository,
             conversation_repository=self.conversation_repository,
@@ -250,6 +265,7 @@ class AppContainer:
             auto_close_delay_seconds=self.settings.auto_close_delay_seconds,
             agent_workflow=self.agent_workflow_engine,
             tag_service=self.tag_service,
+            reminder_service=self.reminder_service,
         )
         self.scheduling_inbox_service = scheduling_inbox_service.SchedulingInboxService(
             scheduling_repository=self.scheduling_repository,
@@ -270,6 +286,7 @@ class AppContainer:
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
+            reminder_service=self.reminder_service,
         )
 
         self.patient_profile_resolver = patient_profile_resolver.PatientProfileResolver(

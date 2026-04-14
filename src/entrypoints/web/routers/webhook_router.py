@@ -10,7 +10,7 @@ router = fastapi.APIRouter(prefix="/v1/webhooks", tags=["webhooks"])
 
 
 @router.get("/whatsapp", response_class=fastapi_responses.PlainTextResponse)
-@rate_limiter.limiter.limit("30/minute")
+@rate_limiter.limiter.limit("30/minute")  # type: ignore[misc]
 def verify_whatsapp_webhook(
     request: fastapi.Request,
     mode: str = fastapi.Query(alias="hub.mode"),
@@ -27,7 +27,7 @@ def verify_whatsapp_webhook(
 
 
 @router.post("/whatsapp", response_model=webhook_dto.WebhookEventResponseDTO)
-@rate_limiter.limiter.limit("120/minute")
+@rate_limiter.limiter.limit("120/minute")  # type: ignore[misc]
 def receive_whatsapp_webhook(
     request: fastapi.Request,
     payload: dict[str, object],

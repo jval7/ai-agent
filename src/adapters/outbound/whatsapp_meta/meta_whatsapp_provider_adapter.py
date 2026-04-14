@@ -142,6 +142,64 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
 
         return outbound_message_id
 
+    def send_template_message(
+        self,
+        access_token: str,
+        phone_number_id: str,
+        whatsapp_user_id: str,
+        template_name: str,
+        language_code: str,
+        body_parameters: list[str],
+    ) -> str:
+        messages_url = (
+            f"https://graph.facebook.com/{self._settings.meta_api_version}"
+            f"/{phone_number_id}/messages"
+        )
+        headers = {"Authorization": f"Bearer {access_token}"}
+        components: list[dict[str, object]] = (
+            [
+                {
+                    "type": "body",
+                    "parameters": [{"type": "text", "text": param} for param in body_parameters],
+                }
+            ]
+            if body_parameters
+            else []
+        )
+        body = {
+            "messaging_product": "whatsapp",
+            "to": whatsapp_user_id,
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": language_code},
+                "components": components,
+            },
+        }
+
+        response_payload = self._post_json(
+            url=messages_url,
+            operation_label="sending whatsapp template message",
+            headers=headers,
+            body=body,
+        )
+
+        messages = response_payload.get("messages")
+        if not isinstance(messages, list) or not messages:
+            raise service_exceptions.ExternalProviderError(
+                "meta did not return outbound message id"
+            )
+
+        first_message = messages[0]
+        if not isinstance(first_message, dict):
+            raise service_exceptions.ExternalProviderError("invalid outbound message payload")
+
+        outbound_message_id = first_message.get("id")
+        if not isinstance(outbound_message_id, str) or not outbound_message_id:
+            raise service_exceptions.ExternalProviderError("missing outbound message id")
+
+        return outbound_message_id
+
     def parse_incoming_message_events(
         self, payload: dict[str, typing.Any]
     ) -> list[webhook_dto.IncomingMessageEventDTO]:

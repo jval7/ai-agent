@@ -8,6 +8,7 @@ import type * as googleCalendarModel from "@domain/models/google_calendar";
 import type * as manualAppointmentModel from "@domain/models/manual_appointment";
 import type * as onboardingModel from "@domain/models/onboarding";
 import type * as patientModel from "@domain/models/patient";
+import type * as scheduledReminderModel from "@domain/models/scheduled_reminder";
 import type * as backendApiPort from "@ports/backend_api_port";
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as whatsappModel from "@domain/models/whatsapp";
@@ -86,7 +87,13 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
-  async updateAgentSettings(_debounceDelay: number): Promise<agentModel.AgentSettings> {
+  async updateAgentSettings(
+    _input: agentModel.UpdateAgentSettingsInput
+  ): Promise<agentModel.AgentSettings> {
+    throw new Error("not used");
+  }
+
+  async listReminders(_status?: string): Promise<scheduledReminderModel.ScheduledReminderList> {
     throw new Error("not used");
   }
 

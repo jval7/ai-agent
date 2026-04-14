@@ -22,3 +22,19 @@ def auto_close_booked_session(
         tenant_id=body.tenant_id,
         scheduling_request_id=scheduling_request_id,
     )
+
+
+class ExecuteReminderRequestBody(pydantic.BaseModel):
+    tenant_id: str
+
+
+@router.post("/reminders/{reminder_id}/execute")
+def execute_appointment_reminder(
+    reminder_id: str,
+    body: ExecuteReminderRequestBody,
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> dict[str, str]:
+    return container.reminder_service.execute_reminder(
+        tenant_id=body.tenant_id,
+        reminder_id=reminder_id,
+    )

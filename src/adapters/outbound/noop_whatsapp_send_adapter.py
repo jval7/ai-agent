@@ -95,3 +95,32 @@ class NoopWhatsappSendAdapter(whatsapp_provider_port.WhatsappProviderPort):
 
     def delete_message_template(self, access_token: str, waba_id: str, template_name: str) -> None:
         self._delegate.delete_message_template(access_token, waba_id, template_name)
+
+    def send_template_message(
+        self,
+        access_token: str,
+        phone_number_id: str,
+        whatsapp_user_id: str,
+        template_name: str,
+        language_code: str,
+        body_parameters: list[str],
+    ) -> str:
+        if not self._settings.whatsapp_outbound_noop:
+            return self._delegate.send_template_message(
+                access_token,
+                phone_number_id,
+                whatsapp_user_id,
+                template_name,
+                language_code,
+                body_parameters,
+            )
+        synthetic_id = f"noop-template-{uuid.uuid4().hex[:12]}"
+        logger.info(
+            "noop_whatsapp_send_template",
+            extra={
+                "whatsapp_user_id": whatsapp_user_id,
+                "template_name": template_name,
+                "synthetic_message_id": synthetic_id,
+            },
+        )
+        return synthetic_id

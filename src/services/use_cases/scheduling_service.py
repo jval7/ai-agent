@@ -15,6 +15,7 @@ import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
+import src.services.use_cases.reminder_service as reminder_service_module
 import src.services.use_cases.tag_service as tag_service_module
 
 logger = app_logs.get_logger(__name__)
@@ -81,6 +82,7 @@ class SchedulingService:
         auto_close_delay_seconds: int = 3600,
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
         tag_service: tag_service_module.TagService | None = None,
+        reminder_service: reminder_service_module.ReminderService | None = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
         self._conversation_repository = conversation_repository
@@ -90,6 +92,7 @@ class SchedulingService:
         self._task_scheduler = task_scheduler
         self._auto_close_delay_seconds = auto_close_delay_seconds
         self._tag_service = tag_service
+        self._reminder_service = reminder_service
         self._agent_workflow: agent_workflow_port.AgentWorkflowPort
         if agent_workflow is None:
             self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
@@ -706,6 +709,15 @@ class SchedulingService:
             new_status=request.status,
         )
         self._schedule_auto_close_task(tenant_id, request.id)
+        if self._reminder_service is not None:
+            self._reminder_service.maybe_schedule_reminder(
+                tenant_id=tenant_id,
+                source_type="SCHEDULING_REQUEST",
+                source_id=request.id,
+                patient_whatsapp_user_id=request.whatsapp_user_id,
+                patient_name=request.patient_first_name or "Paciente",
+                appointment_start_at=selected_slot.start_at,
+            )
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="BOOKED",
             request_id=request.id,
@@ -902,12 +914,27 @@ class SchedulingService:
             summary=event_summary,
         )
 
+        if self._reminder_service is not None:
+            self._reminder_service.cancel_reminders_for_source(
+                tenant_id=tenant_id,
+                source_type="SCHEDULING_REQUEST",
+                source_id=request.id,
+            )
         booked_slot.start_at = updated_event.start_at
         booked_slot.end_at = updated_event.end_at
         booked_slot.timezone = input_dto.timezone
         now_value = self._clock.now()
         request.updated_at = now_value
         self._scheduling_repository.save_request(request)
+        if self._reminder_service is not None:
+            self._reminder_service.maybe_schedule_reminder(
+                tenant_id=tenant_id,
+                source_type="SCHEDULING_REQUEST",
+                source_id=request.id,
+                patient_whatsapp_user_id=request.whatsapp_user_id,
+                patient_name=request.patient_first_name or "Paciente",
+                appointment_start_at=input_dto.start_at,
+            )
         logger.info(
             "scheduling.booked_slot_rescheduled",
             extra={
@@ -958,6 +985,12 @@ class SchedulingService:
         normalized_reason = self._normalize_patient_text(input_dto.reason)
         if normalized_reason is not None:
             request.professional_note = normalized_reason
+        if self._reminder_service is not None:
+            self._reminder_service.cancel_reminders_for_source(
+                tenant_id=tenant_id,
+                source_type="SCHEDULING_REQUEST",
+                source_id=request.id,
+            )
         request.set_status("CANCELLED", now_value)
         self._scheduling_repository.save_request(request)
         self._sync_tags_after_status_change(

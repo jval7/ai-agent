@@ -158,15 +158,36 @@ export function ConfiguracionesPage() {
   });
 
   const [debounceDelay, setDebounceDelay] = reactModule.useState(0);
+  const [reminderEnabled, setReminderEnabled] = reactModule.useState(false);
+  const [reminderDaysBefore, setReminderDaysBefore] = reactModule.useState(1);
+  const [reminderTemplateName, setReminderTemplateName] = reactModule.useState("");
+  const [reminderTemplateLanguage, setReminderTemplateLanguage] = reactModule.useState("es");
 
   reactModule.useEffect(() => {
     if (settingsQuery.data !== undefined) {
       setDebounceDelay(settingsQuery.data.messageDebounceDelaySeconds);
+      setReminderEnabled(settingsQuery.data.appointmentReminderEnabled);
+      setReminderDaysBefore(settingsQuery.data.appointmentReminderDaysBefore ?? 1);
+      setReminderTemplateName(settingsQuery.data.appointmentReminderTemplateName ?? "");
+      setReminderTemplateLanguage(settingsQuery.data.appointmentReminderTemplateLanguage);
     }
   }, [settingsQuery.data]);
 
+  const templatesQuery = reactQueryModule.useQuery({
+    queryKey: ["whatsapp-templates"],
+    queryFn: () => appContainer.whatsappTemplateUseCase.listTemplates()
+  });
+  const approvedTemplates = (templatesQuery.data ?? []).filter((t) => t.status === "APPROVED");
+
   const settingsMutation = reactQueryModule.useMutation({
-    mutationFn: () => appContainer.agentUseCase.updateAgentSettings(debounceDelay),
+    mutationFn: () =>
+      appContainer.agentUseCase.updateAgentSettings({
+        messageDebounceDelaySeconds: debounceDelay,
+        appointmentReminderEnabled: reminderEnabled,
+        appointmentReminderDaysBefore: reminderEnabled ? reminderDaysBefore : null,
+        appointmentReminderTemplateName: reminderEnabled ? reminderTemplateName : null,
+        appointmentReminderTemplateLanguage: reminderTemplateLanguage
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
     }
@@ -467,6 +488,91 @@ export function ConfiguracionesPage() {
             />
           </div>
 
+          {/* Recordatorio de cita */}
+          <div className="mt-6 border-t border-border-subtle pt-6">
+            <h4 className="text-sm font-semibold text-brand-ink">Recordatorio de cita</h4>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Envia un mensaje de plantilla al paciente antes de su cita para recordarle confirmar.
+            </p>
+
+            <div className="mt-3 flex items-center gap-3">
+              <label
+                className="relative inline-flex cursor-pointer items-center"
+                htmlFor="reminder-toggle"
+              >
+                <input
+                  checked={reminderEnabled}
+                  className="peer sr-only"
+                  id="reminder-toggle"
+                  onChange={(e) => {
+                    setReminderEnabled(e.target.checked);
+                  }}
+                  type="checkbox"
+                />
+                <div className="h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-brand-teal peer-checked:after:translate-x-full peer-focus:ring-2 peer-focus:ring-brand-teal/20" />
+              </label>
+              <span className="text-sm text-slate-700">
+                {reminderEnabled ? "Activado" : "Desactivado"}
+              </span>
+            </div>
+
+            {reminderEnabled ? (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label
+                    className="block text-sm font-medium text-slate-700"
+                    htmlFor="reminder-days"
+                  >
+                    Dias antes de la cita
+                  </label>
+                  <input
+                    className="mt-1 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                    id="reminder-days"
+                    max={7}
+                    min={1}
+                    onChange={(e) => {
+                      setReminderDaysBefore(Number(e.target.value));
+                    }}
+                    step={1}
+                    type="number"
+                    value={reminderDaysBefore}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-medium text-slate-700"
+                    htmlFor="reminder-template"
+                  >
+                    Plantilla de recordatorio
+                  </label>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Solo se muestran plantillas aprobadas por Meta.
+                  </p>
+                  <select
+                    className="mt-1 w-full max-w-xs rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                    id="reminder-template"
+                    onChange={(e) => {
+                      const selected = approvedTemplates.find((t) => t.name === e.target.value);
+                      setReminderTemplateName(e.target.value);
+                      if (selected !== undefined) {
+                        setReminderTemplateLanguage(selected.language);
+                      }
+                    }}
+                    value={reminderTemplateName}
+                  >
+                    <option value="">Seleccionar plantilla...</option>
+                    {approvedTemplates.map((t) => (
+                      <option key={t.name} value={t.name}>
+                        {t.name} ({t.language})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
           {settingsErrorMessage !== null ? (
             <errorBannerModule.ErrorBanner className="mt-3" message={settingsErrorMessage} />
           ) : null}
@@ -474,7 +580,9 @@ export function ConfiguracionesPage() {
           <div className="mt-4 flex gap-3">
             <button
               className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={settingsMutation.isPending || settingsQuery.isLoading}
+              disabled={
+                settingsMutation.isPending || settingsQuery.isLoading || templatesQuery.isLoading
+              }
               onClick={() => {
                 settingsMutation.mutate();
               }}

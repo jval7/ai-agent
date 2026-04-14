@@ -18,6 +18,7 @@ PROCESSED_WEBHOOK_EVENTS_COLLECTION = "processed_webhook_events"
 BLACKLIST_ENTRIES_COLLECTION = "blacklist_entries"
 CONVERSATION_PROCESSING_LOCKS_COLLECTION = "conversation_processing_locks"
 TAGS_COLLECTION = "tags"
+SCHEDULED_REMINDERS_COLLECTION = "scheduled_reminders"
 
 INDEXES_COLLECTION = "indexes"
 USER_EMAIL_INDEX_COLLECTION = "user_email"
@@ -246,6 +247,21 @@ def tenant_tag_document(
     tag_id: str,
 ) -> google_cloud_firestore.DocumentReference:
     return tenant_tags_collection(client, tenant_id).document(tag_id)
+
+
+def tenant_scheduled_reminders_collection(
+    client: google_cloud_firestore.Client,
+    tenant_id: str,
+) -> google_cloud_firestore.CollectionReference:
+    return tenant_document(client, tenant_id).collection(SCHEDULED_REMINDERS_COLLECTION)
+
+
+def tenant_scheduled_reminder_document(
+    client: google_cloud_firestore.Client,
+    tenant_id: str,
+    reminder_id: str,
+) -> google_cloud_firestore.DocumentReference:
+    return tenant_scheduled_reminders_collection(client, tenant_id).document(reminder_id)
 
 
 def user_email_index_document(

@@ -169,6 +169,25 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
         del waba_id
         del template_name
 
+    def send_template_message(
+        self,
+        access_token: str,
+        phone_number_id: str,
+        whatsapp_user_id: str,
+        template_name: str,
+        language_code: str,
+        body_parameters: list[str],
+    ) -> str:
+        payload = {
+            "access_token": access_token,
+            "phone_number_id": phone_number_id,
+            "whatsapp_user_id": whatsapp_user_id,
+            "template_name": template_name,
+            "language_code": language_code,
+        }
+        self.sent_messages.append(payload)
+        return f"outbound-template-{len(self.sent_messages)}"
+
 
 class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarProviderPort):
     def __init__(self) -> None:
