@@ -373,14 +373,14 @@ vitestModule.describe("AgendaPage", () => {
   vitestModule.it("creates patient from agenda panel", async () => {
     const createPatientMock = vitestModule.vi.fn(async () => ({
       tenantId: "tenant-1",
-      whatsappUserId: "wa-1",
+      whatsappUserId: "573001112233",
       firstName: "Jane",
       lastName: "Doe",
       email: "jane@example.com",
       age: 29,
       consultationReason: "Ansiedad",
       location: "Bogota",
-      phone: "573001112233",
+      phone: "+57 300 111 2233",
       createdAt: "2026-03-01T00:00:00Z"
     }));
     const container = {
@@ -417,18 +417,25 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
+    // Navigate to the manual scheduling section
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", {
         name: /Agendamiento manual/
       })
     );
 
-    testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/WhatsApp ID/i),
-      {
-        target: { value: "wa-1" }
-      }
+    // Open new patient modal via the "+ Nuevo paciente" link
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", {
+        name: /\+ Nuevo paciente/i
+      })
     );
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Nuevo paciente")).toBeInTheDocument();
+    });
+
+    // Fill in modal fields (no WhatsApp ID field — derived from phone)
     testingLibraryReactModule.fireEvent.change(
       testingLibraryReactModule.screen.getByLabelText(/^Nombre$/i),
       {
@@ -448,27 +455,27 @@ vitestModule.describe("AgendaPage", () => {
       }
     );
     testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByRole("spinbutton", { name: /Edad/i }),
-      {
-        target: { value: "29" }
-      }
-    );
-    testingLibraryReactModule.fireEvent.change(
       testingLibraryReactModule.screen.getByLabelText(/Teléfono/i),
       {
-        target: { value: "573001112233" }
+        target: { value: "+57 300 111 2233" }
       }
     );
     testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/Motivo de consulta/i),
+      testingLibraryReactModule.screen.getByLabelText(/Edad/i),
       {
-        target: { value: "Ansiedad" }
+        target: { value: "29" }
       }
     );
     testingLibraryReactModule.fireEvent.change(
       testingLibraryReactModule.screen.getByLabelText(/Ubicación/i),
       {
         target: { value: "Bogota" }
+      }
+    );
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByLabelText(/Motivo de consulta/i),
+      {
+        target: { value: "Ansiedad" }
       }
     );
 
@@ -480,14 +487,14 @@ vitestModule.describe("AgendaPage", () => {
 
     await testingLibraryReactModule.waitFor(() => {
       expect(createPatientMock).toHaveBeenCalledWith({
-        whatsappUserId: "wa-1",
+        whatsappUserId: "573001112233",
         firstName: "Jane",
         lastName: "Doe",
         email: "jane@example.com",
         age: 29,
         consultationReason: "Ansiedad",
         location: "Bogota",
-        phone: "573001112233"
+        phone: "+57 300 111 2233"
       });
     });
   });
@@ -563,7 +570,7 @@ vitestModule.describe("AgendaPage", () => {
     await testingLibraryReactModule.waitFor(() => {
       expect(
         testingLibraryReactModule.screen.getByRole("option", {
-          name: /Jane Doe \(wa-1\)/
+          name: /Jane Doe · 573001112233/
         })
       ).toBeInTheDocument();
     });
@@ -577,21 +584,9 @@ vitestModule.describe("AgendaPage", () => {
     });
     expect(patientSelect).toHaveValue("wa-1");
     testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/^Fecha$/i),
+      testingLibraryReactModule.screen.getByLabelText(/^Inicio$/i),
       {
-        target: { value: "2026-03-12" }
-      }
-    );
-    testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/^Hora$/i),
-      {
-        target: { value: "09" }
-      }
-    );
-    testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/^Minuto$/i),
-      {
-        target: { value: "00" }
+        target: { value: "2026-03-12T09:00" }
       }
     );
     testingLibraryReactModule.fireEvent.change(
@@ -609,7 +604,7 @@ vitestModule.describe("AgendaPage", () => {
 
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", {
-        name: "Crear cita manual"
+        name: "Agendar cita"
       })
     );
 
