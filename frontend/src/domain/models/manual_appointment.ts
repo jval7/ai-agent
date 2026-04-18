@@ -12,6 +12,8 @@ export interface ManualAppointment {
   endAt: string;
   timezone: string;
   summary: string;
+  isVirtual: boolean;
+  meetUrl: string | null;
   paymentAmountCop: number | null;
   paymentMethod: AppointmentPaymentMethod | null;
   paymentStatus: AppointmentPaymentStatus;
@@ -27,6 +29,7 @@ export interface CreateManualAppointmentInput {
   endAt: string;
   timezone: string;
   summary: string | null;
+  isVirtual: boolean;
 }
 
 export interface RescheduleManualAppointmentInput {

@@ -160,6 +160,8 @@ export interface ManualAppointmentApiResponse {
   end_at: string;
   timezone: string;
   summary: string;
+  is_virtual: boolean;
+  meet_url: string | null;
   payment_amount_cop: number | null;
   payment_method: "CASH" | "TRANSFER" | null;
   payment_status: "PENDING" | "PAID";
@@ -179,6 +181,7 @@ export interface CreateManualAppointmentApiRequest {
   end_at: string;
   timezone: string;
   summary: string | null;
+  is_virtual: boolean;
 }
 
 export interface RescheduleManualAppointmentApiRequest {

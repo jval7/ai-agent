@@ -112,6 +112,7 @@ interface ManualAppointmentFormState {
   startAt: string;
   durationMinutes: string;
   summary: string;
+  isVirtual: boolean;
 }
 
 type ManualAppointmentListFilter = "SCHEDULED" | "CANCELLED";
@@ -177,7 +178,8 @@ function emptyManualAppointmentForm(): ManualAppointmentFormState {
     patientWhatsappUserId: "",
     startAt: "",
     durationMinutes: "60",
-    summary: ""
+    summary: "",
+    isVirtual: true
   };
 }
 
@@ -2722,6 +2724,21 @@ export function AgendaPage() {
                       value={manualAppointmentFormState.summary}
                     />
                   </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                    <input
+                      checked={manualAppointmentFormState.isVirtual}
+                      className="h-4 w-4 rounded border-border-subtle accent-brand-teal"
+                      onChange={(event) => {
+                        const nextValue = event.target.checked;
+                        setManualAppointmentFormState((currentValue) => ({
+                          ...currentValue,
+                          isVirtual: nextValue
+                        }));
+                      }}
+                      type="checkbox"
+                    />
+                    Cita virtual (Google Meet)
+                  </label>
                 </div>
                 <div className="mt-3">
                   <button
@@ -2786,7 +2803,8 @@ export function AgendaPage() {
                           summary:
                             manualAppointmentFormState.summary.trim() === ""
                               ? null
-                              : manualAppointmentFormState.summary.trim()
+                              : manualAppointmentFormState.summary.trim(),
+                          isVirtual: manualAppointmentFormState.isVirtual
                         },
                         {
                           onSuccess: () => {
@@ -3381,6 +3399,21 @@ export function AgendaPage() {
                       value={manualAppointmentFormState.summary}
                     />
                   </label>
+                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+                    <input
+                      checked={manualAppointmentFormState.isVirtual}
+                      className="h-4 w-4 rounded border-border-subtle accent-brand-teal"
+                      onChange={(event) => {
+                        const nextValue = event.target.checked;
+                        setManualAppointmentFormState((currentValue) => ({
+                          ...currentValue,
+                          isVirtual: nextValue
+                        }));
+                      }}
+                      type="checkbox"
+                    />
+                    Cita virtual (Google Meet)
+                  </label>
                 </div>
                 <div className="mt-3">
                   <button
@@ -3444,7 +3477,8 @@ export function AgendaPage() {
                         summary:
                           manualAppointmentFormState.summary.trim() === ""
                             ? null
-                            : manualAppointmentFormState.summary.trim()
+                            : manualAppointmentFormState.summary.trim(),
+                        isVirtual: manualAppointmentFormState.isVirtual
                       });
                     }}
                     type="button"
@@ -3527,6 +3561,16 @@ export function AgendaPage() {
                         </p>
                         <p className="text-xs text-slate-600">Resumen: {appointment.summary}</p>
                         <p className="text-xs text-slate-600">Timezone: {appointment.timezone}</p>
+                        {appointment.meetUrl !== null ? (
+                          <a
+                            className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-teal underline hover:text-brand-teal-hover"
+                            href={appointment.meetUrl}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            Unirse a Meet
+                          </a>
+                        ) : null}
                         {isScheduled ? (
                           <div className="mt-2 flex flex-wrap gap-2">
                             <button
@@ -3544,7 +3588,8 @@ export function AgendaPage() {
                                     appointment.endAt,
                                     60
                                   ),
-                                  summary: appointment.summary
+                                  summary: appointment.summary,
+                                  isVirtual: appointment.isVirtual
                                 });
                               }}
                               type="button"

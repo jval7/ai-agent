@@ -266,6 +266,7 @@ class AppContainer:
             agent_workflow=self.agent_workflow_engine,
             tag_service=self.tag_service,
             reminder_service=self.reminder_service,
+            patient_repository=self.patient_repository,
         )
         self.scheduling_inbox_service = scheduling_inbox_service.SchedulingInboxService(
             scheduling_repository=self.scheduling_repository,

@@ -68,6 +68,8 @@ class ManualAppointmentService:
             start_at=create_dto.start_at,
             end_at=create_dto.end_at,
             summary=summary,
+            attendee_emails=[patient.email],
+            with_meet=create_dto.is_virtual,
         )
         now_value = self._clock.now()
         appointment = manual_appointment_entity.ManualAppointment(
@@ -80,6 +82,8 @@ class ManualAppointmentService:
             end_at=create_dto.end_at,
             timezone=create_dto.timezone,
             summary=summary,
+            is_virtual=create_dto.is_virtual,
+            meet_url=event.meet_url,
             created_at=now_value,
             updated_at=now_value,
             cancelled_at=None,
@@ -130,6 +134,12 @@ class ManualAppointmentService:
 
         summary = self._normalize_text(input_dto.summary)
         resolved_summary = summary if summary is not None else appointment.summary
+        reschedule_patient = self._patient_repository.get_by_whatsapp_user(
+            claims.tenant_id, appointment.patient_whatsapp_user_id
+        )
+        reschedule_attendee_emails = (
+            [reschedule_patient.email] if reschedule_patient is not None else []
+        )
         updated_event = self._google_calendar_onboarding_service.update_event(
             tenant_id=claims.tenant_id,
             event_id=appointment.calendar_event_id,
@@ -137,6 +147,7 @@ class ManualAppointmentService:
             end_at=input_dto.end_at,
             timezone=input_dto.timezone,
             summary=resolved_summary,
+            attendee_emails=reschedule_attendee_emails,
         )
         if self._reminder_service is not None:
             self._reminder_service.cancel_reminders_for_source(
@@ -315,6 +326,8 @@ class ManualAppointmentService:
             end_at=appointment.end_at,
             timezone=appointment.timezone,
             summary=appointment.summary,
+            is_virtual=appointment.is_virtual,
+            meet_url=appointment.meet_url,
             payment_amount_cop=appointment.payment_amount_cop,
             payment_method=appointment.payment_method,
             payment_status=appointment.payment_status,

@@ -547,7 +547,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
           start_at: input.startAt,
           end_at: input.endAt,
           timezone: input.timezone,
-          summary: input.summary
+          summary: input.summary,
+          is_virtual: input.isVirtual
         } satisfies httpTypes.CreateManualAppointmentApiRequest)
       }
     );
@@ -1036,6 +1037,8 @@ function mapManualAppointment(
     endAt: payload.end_at,
     timezone: payload.timezone,
     summary: payload.summary,
+    isVirtual: payload.is_virtual,
+    meetUrl: payload.meet_url,
     paymentAmountCop: payload.payment_amount_cop ?? null,
     paymentMethod: payload.payment_method ?? null,
     paymentStatus: payload.payment_status ?? "PENDING",

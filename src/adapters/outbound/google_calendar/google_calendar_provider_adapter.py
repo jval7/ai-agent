@@ -144,33 +144,57 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         end_at: datetime.datetime,
         timezone: str,
         summary: str,
+        attendee_emails: list[str],
+        with_meet: bool,
+        conference_request_id: str,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         encoded_calendar_id = urllib.parse.quote(calendar_id, safe="")
+        body: dict[str, object] = {
+            "summary": summary,
+            "start": {
+                "dateTime": start_at.isoformat(),
+                "timeZone": timezone,
+            },
+            "end": {
+                "dateTime": end_at.isoformat(),
+                "timeZone": timezone,
+            },
+        }
+        if attendee_emails:
+            body["attendees"] = [{"email": e} for e in attendee_emails]
+        if with_meet:
+            body["conferenceData"] = {
+                "createRequest": {
+                    "requestId": conference_request_id,
+                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
+                }
+            }
+        query_params: dict[str, str] = {"sendUpdates": "all"}
+        if with_meet:
+            query_params["conferenceDataVersion"] = "1"
+        encoded_query = urllib.parse.urlencode(query_params)
+        url = f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events?{encoded_query}"
         payload = self._post_json(
-            url=f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events",
+            url=url,
             operation_label="creating google calendar event",
             headers={"Authorization": f"Bearer {access_token}"},
-            body={
-                "summary": summary,
-                "start": {
-                    "dateTime": start_at.isoformat(),
-                    "timeZone": timezone,
-                },
-                "end": {
-                    "dateTime": end_at.isoformat(),
-                    "timeZone": timezone,
-                },
-            },
+            body=body,
         )
 
         event_id = payload.get("id")
         if not isinstance(event_id, str) or not event_id:
             raise service_exceptions.ExternalProviderError("google create event missing id")
 
+        meet_url_raw = payload.get("hangoutLink")
+        meet_url: str | None = None
+        if isinstance(meet_url_raw, str) and meet_url_raw:
+            meet_url = meet_url_raw
+
         return google_calendar_dto.GoogleCalendarEventDTO(
             event_id=event_id,
             start_at=start_at,
             end_at=end_at,
+            meet_url=meet_url,
         )
 
     def delete_event(
@@ -181,8 +205,10 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
     ) -> None:
         encoded_calendar_id = urllib.parse.quote(calendar_id, safe="")
         encoded_event_id = urllib.parse.quote(event_id, safe="")
+        query_params = {"sendUpdates": "all"}
+        encoded_query = urllib.parse.urlencode(query_params)
         self._delete(
-            url=f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events/{encoded_event_id}",
+            url=f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events/{encoded_event_id}?{encoded_query}",
             operation_label="deleting google calendar event",
             headers={"Authorization": f"Bearer {access_token}"},
         )
@@ -196,34 +222,46 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         end_at: datetime.datetime,
         timezone: str,
         summary: str,
+        attendee_emails: list[str],
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         encoded_calendar_id = urllib.parse.quote(calendar_id, safe="")
         encoded_event_id = urllib.parse.quote(event_id, safe="")
+        body: dict[str, object] = {
+            "summary": summary,
+            "start": {
+                "dateTime": start_at.isoformat(),
+                "timeZone": timezone,
+            },
+            "end": {
+                "dateTime": end_at.isoformat(),
+                "timeZone": timezone,
+            },
+        }
+        if attendee_emails:
+            body["attendees"] = [{"email": e} for e in attendee_emails]
+        query_params = {"sendUpdates": "all"}
+        encoded_query = urllib.parse.urlencode(query_params)
         payload = self._patch_json(
-            url=f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events/{encoded_event_id}",
+            url=f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events/{encoded_event_id}?{encoded_query}",
             operation_label="updating google calendar event",
             headers={"Authorization": f"Bearer {access_token}"},
-            body={
-                "summary": summary,
-                "start": {
-                    "dateTime": start_at.isoformat(),
-                    "timeZone": timezone,
-                },
-                "end": {
-                    "dateTime": end_at.isoformat(),
-                    "timeZone": timezone,
-                },
-            },
+            body=body,
         )
 
         resolved_event_id = payload.get("id")
         if not isinstance(resolved_event_id, str) or not resolved_event_id:
             raise service_exceptions.ExternalProviderError("google update event missing id")
 
+        meet_url_raw = payload.get("hangoutLink")
+        meet_url: str | None = None
+        if isinstance(meet_url_raw, str) and meet_url_raw:
+            meet_url = meet_url_raw
+
         return google_calendar_dto.GoogleCalendarEventDTO(
             event_id=resolved_event_id,
             start_at=start_at,
             end_at=end_at,
+            meet_url=meet_url,
         )
 
     def _validate_oauth_settings(self) -> None:

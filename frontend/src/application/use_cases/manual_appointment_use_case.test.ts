@@ -17,6 +17,8 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       endAt: "2026-03-10T11:00:00Z",
       timezone: "America/Bogota",
       summary: "Cita - Jane Doe",
+      isVirtual: true,
+      meetUrl: "https://meet.google.com/abc-defg-hij",
       paymentAmountCop: null,
       paymentMethod: null,
       paymentStatus: "PENDING",
@@ -35,6 +37,8 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       endAt: "2026-03-11T11:00:00Z",
       timezone: "America/Bogota",
       summary: "Cita - Jane Doe",
+      isVirtual: true,
+      meetUrl: "https://meet.google.com/abc-defg-hij",
       paymentAmountCop: null,
       paymentMethod: null,
       paymentStatus: "PENDING",
@@ -53,6 +57,8 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       endAt: "2026-03-11T11:00:00Z",
       timezone: "America/Bogota",
       summary: "Cita - Jane Doe",
+      isVirtual: false,
+      meetUrl: null,
       paymentAmountCop: 100000,
       paymentMethod: "CASH",
       paymentStatus: "PENDING",
@@ -71,6 +77,8 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       endAt: "2026-03-11T11:00:00Z",
       timezone: "America/Bogota",
       summary: "Cita - Jane Doe",
+      isVirtual: true,
+      meetUrl: null,
       paymentAmountCop: 100000,
       paymentMethod: "TRANSFER",
       paymentStatus: "PAID",
@@ -95,7 +103,8 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       startAt: "2026-03-10T10:00:00Z",
       endAt: "2026-03-10T11:00:00Z",
       timezone: "America/Bogota",
-      summary: null
+      summary: null,
+      isVirtual: true
     });
     await useCase.rescheduleAppointment("appt-1", {
       startAt: "2026-03-11T10:00:00Z",

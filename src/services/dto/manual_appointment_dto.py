@@ -14,6 +14,8 @@ class ManualAppointmentDTO(pydantic.BaseModel):
     end_at: datetime.datetime
     timezone: str
     summary: str
+    is_virtual: bool
+    meet_url: str | None
     payment_amount_cop: int | None
     payment_method: typing.Literal["CASH", "TRANSFER"] | None
     payment_status: typing.Literal["PENDING", "PAID"]
@@ -33,6 +35,7 @@ class CreateManualAppointmentDTO(pydantic.BaseModel):
     end_at: datetime.datetime
     timezone: str
     summary: str | None = None
+    is_virtual: bool = True
 
     @pydantic.model_validator(mode="after")
     def validate_range(self) -> "CreateManualAppointmentDTO":

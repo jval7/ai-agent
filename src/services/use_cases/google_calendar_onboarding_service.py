@@ -191,6 +191,8 @@ class GoogleCalendarOnboardingService:
         start_at: datetime.datetime,
         end_at: datetime.datetime,
         summary: str,
+        attendee_emails: list[str],
+        with_meet: bool,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         connection = self._get_connected_connection_with_fresh_access_token(tenant_id)
         calendar_id = connection.calendar_id
@@ -201,6 +203,7 @@ class GoogleCalendarOnboardingService:
                 "google calendar connection is missing required metadata"
             )
 
+        conference_request_id = self._id_generator.new_token()
         return self._google_calendar_provider.create_event(
             access_token=access_token,
             calendar_id=calendar_id,
@@ -208,6 +211,9 @@ class GoogleCalendarOnboardingService:
             end_at=end_at,
             timezone=timezone,
             summary=summary,
+            attendee_emails=attendee_emails,
+            with_meet=with_meet,
+            conference_request_id=conference_request_id,
         )
 
     def delete_event(
@@ -237,6 +243,7 @@ class GoogleCalendarOnboardingService:
         end_at: datetime.datetime,
         timezone: str,
         summary: str,
+        attendee_emails: list[str],
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         connection = self._get_connected_connection_with_fresh_access_token(tenant_id)
         calendar_id = connection.calendar_id
@@ -254,6 +261,7 @@ class GoogleCalendarOnboardingService:
             end_at=end_at,
             timezone=timezone,
             summary=summary,
+            attendee_emails=attendee_emails,
         )
 
     def _finalize_connection(

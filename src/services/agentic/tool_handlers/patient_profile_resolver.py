@@ -108,6 +108,7 @@ class PatientProfileResolver:
                 request_id=target_request.request_id,
                 slot_id=resolved_slot_id,
                 event_summary=event_summary,
+                attendee_emails=[resolved_patient_profile.email],
             ),
             patient_profile=resolved_patient_profile,
             patient_exists=patient_exists,

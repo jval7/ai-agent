@@ -433,7 +433,7 @@ def test_webhook_responds_when_awaiting_consultation_review() -> None:
 
 
 def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> None:
-    ctx = build_tool_calling_context(id_values=["in-msg-1", "out-msg-1"])
+    ctx = build_tool_calling_context(id_values=["in-msg-1", "conf-req-1", "out-msg-1"])
     now_value = ctx.clock.now()
     ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
@@ -522,7 +522,7 @@ def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> 
 
 def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() -> None:
     ctx = build_tool_calling_context(
-        id_values=["in-msg-1", "out-msg-1"],
+        id_values=["in-msg-1", "conf-req-1", "out-msg-1"],
         now_value=_NOW + datetime.timedelta(minutes=20),
     )
     now_value = _NOW
@@ -666,7 +666,7 @@ def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() 
 
 
 def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_profile() -> None:
-    ctx = build_tool_calling_context(id_values=["in-msg-1", "out-msg-1"])
+    ctx = build_tool_calling_context(id_values=["in-msg-1", "conf-req-1", "out-msg-1"])
     now_value = ctx.clock.now()
     ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(

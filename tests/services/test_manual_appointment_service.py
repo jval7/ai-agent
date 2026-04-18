@@ -34,7 +34,7 @@ def build_service() -> tuple[
     )
     google_provider = fake_adapters.FakeGoogleCalendarProvider()
     clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 10, tzinfo=datetime.UTC))
-    id_generator = fake_adapters.SequenceIdGenerator(["manual-appt-1"])
+    id_generator = fake_adapters.SequenceIdGenerator(["conf-req-1", "manual-appt-1"])
     google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
         google_calendar_connection_repository=calendar_connection_repository,
         google_calendar_provider=google_provider,
@@ -330,3 +330,71 @@ def test_update_manual_payment_dto_rejects_non_positive_amount() -> None:
             payment_method="CASH",
             payment_status="PENDING",
         )
+
+
+def test_create_virtual_appointment_passes_attendee_email_and_meet_flag() -> None:
+    service, _, patient_repository, google_provider = build_service()
+    patient_repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Jane",
+            last_name="Doe",
+            email="jane@example.com",
+            age=29,
+            consultation_reason="Ansiedad",
+            location="Bogota",
+            phone="573001112233",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    created = service.create_appointment(
+        claims=build_claims("professional"),
+        create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
+            patient_whatsapp_user_id="wa-1",
+            start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            is_virtual=True,
+        ),
+    )
+
+    assert google_provider.last_create_attendee_emails == [["jane@example.com"]]
+    assert google_provider.last_create_with_meet == [True]
+    assert created.is_virtual is True
+    assert created.meet_url == "https://meet.google.com/fake-meet"
+
+
+def test_create_presencial_appointment_passes_attendee_email_no_meet() -> None:
+    service, _, patient_repository, google_provider = build_service()
+    patient_repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Jane",
+            last_name="Doe",
+            email="jane@example.com",
+            age=29,
+            consultation_reason="Ansiedad",
+            location="Bogota",
+            phone="573001112233",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    created = service.create_appointment(
+        claims=build_claims("professional"),
+        create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
+            patient_whatsapp_user_id="wa-1",
+            start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            is_virtual=False,
+        ),
+    )
+
+    assert google_provider.last_create_attendee_emails == [["jane@example.com"]]
+    assert google_provider.last_create_with_meet == [False]
+    assert created.is_virtual is False
+    assert created.meet_url is None
