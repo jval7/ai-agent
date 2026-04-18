@@ -8,7 +8,6 @@ interface NewPatientModalFormState {
   phone: string;
   age: string;
   location: string;
-  consultationReason: string;
 }
 
 function emptyModalForm(): NewPatientModalFormState {
@@ -18,8 +17,7 @@ function emptyModalForm(): NewPatientModalFormState {
     email: "",
     phone: "",
     age: "",
-    location: "",
-    consultationReason: ""
+    location: ""
   };
 }
 
@@ -81,7 +79,6 @@ export function NewPatientModal({
     const trimmedEmail = formState.email.trim();
     const trimmedPhone = formState.phone.trim();
     const trimmedLocation = formState.location.trim();
-    const trimmedConsultationReason = formState.consultationReason.trim();
     const ageValue = Number.parseInt(formState.age, 10);
 
     setPhoneError(null);
@@ -93,7 +90,6 @@ export function NewPatientModal({
       trimmedEmail === "" ||
       trimmedPhone === "" ||
       trimmedLocation === "" ||
-      trimmedConsultationReason === "" ||
       Number.isNaN(ageValue) ||
       ageValue <= 0
     ) {
@@ -114,7 +110,6 @@ export function NewPatientModal({
         lastName: trimmedLastName,
         email: trimmedEmail,
         age: ageValue,
-        consultationReason: trimmedConsultationReason,
         location: trimmedLocation,
         phone: trimmedPhone
       });
@@ -266,21 +261,6 @@ export function NewPatientModal({
               />
             </label>
           </div>
-
-          {/* Row 4: Motivo de consulta */}
-          <label className={labelClass}>
-            Motivo de consulta
-            <textarea
-              className={inputClass}
-              onChange={(event) => {
-                const nextValue = event.target.value;
-                setFormState((current) => ({ ...current, consultationReason: nextValue }));
-              }}
-              placeholder="Describe el motivo principal de la consulta"
-              rows={3}
-              value={formState.consultationReason}
-            />
-          </label>
 
           {submitError !== null ? (
             <p className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">

@@ -479,7 +479,6 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         last_name: input.lastName,
         email: input.email,
         age: input.age,
-        consultation_reason: input.consultationReason,
         location: input.location,
         phone: input.phone
       } satisfies httpTypes.CreatePatientApiRequest)
@@ -501,7 +500,6 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
           last_name: input.lastName,
           email: input.email,
           age: input.age,
-          consultation_reason: input.consultationReason,
           location: input.location,
           phone: input.phone
         } satisfies httpTypes.UpdatePatientApiRequest)
@@ -1017,7 +1015,6 @@ function mapPatient(payload: httpTypes.PatientApiResponse): patientModel.Patient
     lastName: payload.last_name,
     email: payload.email,
     age: payload.age,
-    consultationReason: payload.consultation_reason,
     location: payload.location,
     phone: payload.phone,
     createdAt: payload.created_at

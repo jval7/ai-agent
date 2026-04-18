@@ -136,7 +136,6 @@ def test_reset_deletes_conversation_user_patient_and_scheduling_requests() -> No
             last_name="Lopez",
             email="maria@test.com",
             age=30,
-            consultation_reason="consulta",
             location="Bogota",
             phone="573001110001",
             created_at=started_at,

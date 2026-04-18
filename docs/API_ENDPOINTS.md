@@ -371,7 +371,6 @@ Este documento describe qué hace cada endpoint del backend.
       "last_name": "Doe",
       "email": "jane@example.com",
       "age": 29,
-      "consultation_reason": "Ansiedad",
       "location": "Bogota",
       "phone": "573001234567",
       "created_at": "2026-03-02T00:44:28Z"
@@ -392,7 +391,6 @@ Este documento describe qué hace cada endpoint del backend.
   "last_name": "Doe",
   "email": "jane@example.com",
   "age": 29,
-  "consultation_reason": "Ansiedad",
   "location": "Bogota",
   "phone": "573001234567",
   "created_at": "2026-03-02T00:44:28Z"
@@ -410,7 +408,6 @@ Este documento describe qué hace cada endpoint del backend.
   "last_name": "Doe",
   "email": "jane@example.com",
   "age": 29,
-  "consultation_reason": "Ansiedad",
   "location": "Bogota",
   "phone": "573001234567"
 }

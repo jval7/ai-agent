@@ -688,7 +688,6 @@ def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_
             last_name="Doe",
             email="jane@example.com",
             age=29,
-            consultation_reason="Ansiedad",
             location="Bogota",
             phone="573001112233",
             created_at=now_value,

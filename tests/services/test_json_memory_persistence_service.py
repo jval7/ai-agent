@@ -204,7 +204,6 @@ def test_calendar_and_scheduling_state_persist_across_restart() -> None:
                 last_name="Doe",
                 email="jane@example.com",
                 age=29,
-                consultation_reason="Ansiedad",
                 location="Bogota",
                 phone="573001112233",
                 created_at=now_value,
