@@ -6,6 +6,7 @@ import * as appContainerContextModule from "@adapters/inbound/react/app/AppConta
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import { NewPatientModal } from "@adapters/inbound/react/components/NewPatientModal";
+import * as slotPickerModule from "@adapters/inbound/react/components/SlotPicker";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import type * as manualAppointmentModel from "@domain/models/manual_appointment";
 import type * as patientModel from "@domain/models/patient";
@@ -100,6 +101,13 @@ interface PatientFormState {
 
 interface ManualAppointmentFormState {
   patientWhatsappUserId: string;
+  selectedSlots: { slotId: string; startAt: string; endAt: string; timezone: string }[];
+  summary: string;
+  isVirtual: boolean;
+}
+
+interface RescheduleManualFormState {
+  patientWhatsappUserId: string;
   startAt: string;
   durationMinutes: string;
   summary: string;
@@ -153,6 +161,15 @@ function emptyPatientForm(): PatientFormState {
 }
 
 function emptyManualAppointmentForm(): ManualAppointmentFormState {
+  return {
+    patientWhatsappUserId: "",
+    selectedSlots: [],
+    summary: "",
+    isVirtual: true
+  };
+}
+
+function emptyRescheduleManualForm(): RescheduleManualFormState {
   return {
     patientWhatsappUserId: "",
     startAt: "",
@@ -379,13 +396,20 @@ export function AgendaPage() {
     string | null
   >(null);
   const [isNewPatientModalOpen, setIsNewPatientModalOpen] = reactModule.useState(false);
+  const [manualSlotPickerMonth, setManualSlotPickerMonth] = reactModule.useState<{
+    year: number;
+    month: number;
+  }>(() => {
+    const now = luxonModule.DateTime.now().setZone(colombiaTimezone);
+    return { year: now.year, month: now.month };
+  });
   const [manualAppointmentListFilter, setManualAppointmentListFilter] =
     reactModule.useState<ManualAppointmentListFilter>("SCHEDULED");
   const [editingManualAppointmentId, setEditingManualAppointmentId] = reactModule.useState<
     string | null
   >(null);
   const [manualRescheduleFormState, setManualRescheduleFormState] =
-    reactModule.useState<ManualAppointmentFormState>(emptyManualAppointmentForm());
+    reactModule.useState<RescheduleManualFormState>(emptyRescheduleManualForm());
   const [bookedAppointmentFormState, setBookedAppointmentFormState] =
     reactModule.useState<BookedAppointmentFormState>(emptyBookedAppointmentForm());
   const [manualPaymentFormState, setManualPaymentFormState] =
@@ -458,6 +482,42 @@ export function AgendaPage() {
   const isFinanceSection = activeSectionId === "FINANCE";
   const isFinalizedSection = activeSectionId === "FINALIZED";
   const isBookedTab = activeTab === "BOOKED";
+
+  const manualSlotPickerMonthStart = luxonModule.DateTime.fromObject(
+    { year: manualSlotPickerMonth.year, month: manualSlotPickerMonth.month, day: 1 },
+    { zone: colombiaTimezone }
+  );
+  const manualSlotPickerMonthEnd = manualSlotPickerMonthStart.plus({ months: 1 });
+  const manualSlotPickerMonthFromIso = manualSlotPickerMonthStart.toISO();
+  const manualSlotPickerMonthToIso = manualSlotPickerMonthEnd.toISO();
+
+  const manualAvailabilityQuery = reactQueryModule.useQuery({
+    queryKey: [
+      "google-calendar-availability",
+      "manual",
+      manualSlotPickerMonthFromIso,
+      manualSlotPickerMonthToIso
+    ],
+    enabled:
+      isManualSchedulingSection &&
+      manualSlotPickerMonthFromIso !== null &&
+      manualSlotPickerMonthToIso !== null,
+    queryFn: () =>
+      appContainer.schedulingUseCase.getAvailability(
+        manualSlotPickerMonthFromIso!,
+        manualSlotPickerMonthToIso!
+      )
+  });
+
+  const manualBusyIntervals = reactModule.useMemo<calendarUtilsModule.BusyIntervalRange[]>(() => {
+    if (manualAvailabilityQuery.data === undefined) {
+      return [];
+    }
+    return calendarUtilsModule.parseBusyIntervals(
+      manualAvailabilityQuery.data.busyIntervals,
+      colombiaTimezone
+    );
+  }, [manualAvailabilityQuery.data]);
   const patientsByWhatsappUserId = reactModule.useMemo(() => {
     const map = new Map<string, patientModel.Patient>();
     allPatients.forEach((patient) => {
@@ -2576,47 +2636,21 @@ export function AgendaPage() {
                     <p className="text-xs font-semibold uppercase tracking-widest text-brand-teal">
                       Fecha y hora
                     </p>
-                    <div className="mt-2 grid grid-cols-2 gap-3">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Inicio
-                        <input
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setManualAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              startAt: nextValue
-                            }));
-                          }}
-                          type="datetime-local"
-                          value={manualAppointmentFormState.startAt}
-                        />
-                      </label>
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Duración
-                        <select
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setManualAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              durationMinutes: nextValue
-                            }));
-                          }}
-                          value={manualAppointmentFormState.durationMinutes}
-                        >
-                          {manualAppointmentDurationOptionsMinutes.map((minutesOption) => (
-                            <option key={minutesOption} value={String(minutesOption)}>
-                              {minutesOption} minutos
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
                     <div className="mt-2">
-                      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
-                        {colombiaTimezone}
-                      </span>
+                      <slotPickerModule.SlotPicker
+                        busyIntervals={manualBusyIntervals}
+                        isLoadingAvailability={manualAvailabilityQuery.isLoading}
+                        onMonthChange={setManualSlotPickerMonth}
+                        onSelectedSlotsChange={(slots) => {
+                          setManualAppointmentFormState((currentValue) => ({
+                            ...currentValue,
+                            selectedSlots: slots.slice(-1)
+                          }));
+                        }}
+                        requestId="manual"
+                        selectedSlots={manualAppointmentFormState.selectedSlots}
+                        timezone={colombiaTimezone}
+                      />
                     </div>
                   </div>
 
@@ -2692,47 +2726,9 @@ export function AgendaPage() {
                         setLocalSubmitErrorMessage("Debes seleccionar un paciente.");
                         return;
                       }
-                      const startAtIso = toApiDateTime(
-                        manualAppointmentFormState.startAt,
-                        colombiaTimezone
-                      );
-                      const durationMinutes = Number.parseInt(
-                        manualAppointmentFormState.durationMinutes,
-                        10
-                      );
-                      if (Number.isNaN(durationMinutes) || durationMinutes <= 0) {
-                        setLocalSubmitErrorMessage("Debes seleccionar una duración válida.");
-                        return;
-                      }
-                      if (startAtIso === null) {
-                        setLocalSubmitErrorMessage(
-                          "Debes ingresar fecha y hora de inicio válidas."
-                        );
-                        return;
-                      }
-                      if (!isThirtyMinuteAligned(startAtIso, colombiaTimezone)) {
-                        setLocalSubmitErrorMessage(
-                          "El inicio de la cita debe estar en bloques de 30 minutos."
-                        );
-                        return;
-                      }
-                      const endAtIso = calculateEndAtFromStart(
-                        startAtIso,
-                        durationMinutes,
-                        colombiaTimezone
-                      );
-                      if (startAtIso === null || endAtIso === null) {
-                        setLocalSubmitErrorMessage("No se pudo calcular la hora final de la cita.");
-                        return;
-                      }
-                      const startAtValue = luxonModule.DateTime.fromISO(startAtIso);
-                      const endAtValue = luxonModule.DateTime.fromISO(endAtIso);
-                      if (
-                        !startAtValue.isValid ||
-                        !endAtValue.isValid ||
-                        endAtValue <= startAtValue
-                      ) {
-                        setLocalSubmitErrorMessage("El fin debe ser posterior al inicio.");
+                      const [selectedSlot] = manualAppointmentFormState.selectedSlots;
+                      if (selectedSlot === undefined) {
+                        setLocalSubmitErrorMessage("Debes seleccionar un horario.");
                         return;
                       }
                       setLocalSubmitErrorMessage(null);
@@ -2740,9 +2736,9 @@ export function AgendaPage() {
                       createManualAppointmentMutation.mutate(
                         {
                           patientWhatsappUserId: manualAppointmentFormState.patientWhatsappUserId,
-                          startAt: startAtIso,
-                          endAt: endAtIso,
-                          timezone: colombiaTimezone,
+                          startAt: selectedSlot.startAt,
+                          endAt: selectedSlot.endAt,
+                          timezone: selectedSlot.timezone,
                           summary:
                             manualAppointmentFormState.summary.trim() === ""
                               ? null
@@ -2839,47 +2835,21 @@ export function AgendaPage() {
                     <p className="text-xs font-semibold uppercase tracking-widest text-brand-teal">
                       Fecha y hora
                     </p>
-                    <div className="mt-2 grid grid-cols-2 gap-3">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Inicio
-                        <input
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setManualAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              startAt: nextValue
-                            }));
-                          }}
-                          type="datetime-local"
-                          value={manualAppointmentFormState.startAt}
-                        />
-                      </label>
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Duración
-                        <select
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setManualAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              durationMinutes: nextValue
-                            }));
-                          }}
-                          value={manualAppointmentFormState.durationMinutes}
-                        >
-                          {manualAppointmentDurationOptionsMinutes.map((minutesOption) => (
-                            <option key={minutesOption} value={String(minutesOption)}>
-                              {minutesOption} minutos
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
                     <div className="mt-2">
-                      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
-                        {colombiaTimezone}
-                      </span>
+                      <slotPickerModule.SlotPicker
+                        busyIntervals={manualBusyIntervals}
+                        isLoadingAvailability={manualAvailabilityQuery.isLoading}
+                        onMonthChange={setManualSlotPickerMonth}
+                        onSelectedSlotsChange={(slots) => {
+                          setManualAppointmentFormState((currentValue) => ({
+                            ...currentValue,
+                            selectedSlots: slots.slice(-1)
+                          }));
+                        }}
+                        requestId="manual"
+                        selectedSlots={manualAppointmentFormState.selectedSlots}
+                        timezone={colombiaTimezone}
+                      />
                     </div>
                   </div>
 
@@ -2965,63 +2935,25 @@ export function AgendaPage() {
                     disabled={
                       createManualAppointmentMutation.isPending ||
                       manualAppointmentFormState.patientWhatsappUserId === "" ||
-                      manualAppointmentFormState.startAt === ""
+                      manualAppointmentFormState.selectedSlots.length !== 1
                     }
                     onClick={() => {
                       if (manualAppointmentFormState.patientWhatsappUserId.trim() === "") {
                         setLocalSubmitErrorMessage("Debes seleccionar un paciente.");
                         return;
                       }
-                      const startAtIso = toApiDateTime(
-                        manualAppointmentFormState.startAt,
-                        colombiaTimezone
-                      );
-                      const durationMinutes = Number.parseInt(
-                        manualAppointmentFormState.durationMinutes,
-                        10
-                      );
-                      if (Number.isNaN(durationMinutes) || durationMinutes <= 0) {
-                        setLocalSubmitErrorMessage("Debes seleccionar una duración válida.");
-                        return;
-                      }
-                      if (startAtIso === null) {
-                        setLocalSubmitErrorMessage(
-                          "Debes ingresar fecha y hora de inicio válidas."
-                        );
-                        return;
-                      }
-                      if (!isThirtyMinuteAligned(startAtIso, colombiaTimezone)) {
-                        setLocalSubmitErrorMessage(
-                          "El inicio de la cita debe estar en bloques de 30 minutos."
-                        );
-                        return;
-                      }
-                      const endAtIso = calculateEndAtFromStart(
-                        startAtIso,
-                        durationMinutes,
-                        colombiaTimezone
-                      );
-                      if (startAtIso === null || endAtIso === null) {
-                        setLocalSubmitErrorMessage("No se pudo calcular la hora final de la cita.");
-                        return;
-                      }
-                      const startAtValue = luxonModule.DateTime.fromISO(startAtIso);
-                      const endAtValue = luxonModule.DateTime.fromISO(endAtIso);
-                      if (
-                        !startAtValue.isValid ||
-                        !endAtValue.isValid ||
-                        endAtValue <= startAtValue
-                      ) {
-                        setLocalSubmitErrorMessage("El fin debe ser posterior al inicio.");
+                      const [selectedSlot] = manualAppointmentFormState.selectedSlots;
+                      if (selectedSlot === undefined) {
+                        setLocalSubmitErrorMessage("Debes seleccionar un horario.");
                         return;
                       }
                       setLocalSubmitErrorMessage(null);
                       setSubmitSuccessMessage(null);
                       createManualAppointmentMutation.mutate({
                         patientWhatsappUserId: manualAppointmentFormState.patientWhatsappUserId,
-                        startAt: startAtIso,
-                        endAt: endAtIso,
-                        timezone: colombiaTimezone,
+                        startAt: selectedSlot.startAt,
+                        endAt: selectedSlot.endAt,
+                        timezone: selectedSlot.timezone,
                         summary:
                           manualAppointmentFormState.summary.trim() === ""
                             ? null

@@ -500,15 +500,27 @@ vitestModule.describe("AgendaPage", () => {
   });
 
   vitestModule.it("creates manual appointment from agenda panel", async () => {
+    vitestModule.vi.spyOn(luxonModule.DateTime, "now").mockReturnValue(
+      luxonModule.DateTime.fromISO("2026-03-01T00:00:00", {
+        zone: "America/Bogota"
+      }) as luxonModule.DateTime<true>
+    );
+
     const createManualAppointmentMock = vitestModule.vi.fn(async () => ({
       appointmentId: "manual-1",
       tenantId: "tenant-1",
       patientWhatsappUserId: "wa-1",
       status: "SCHEDULED",
       calendarEventId: "event-1",
-      startAt: "2026-03-12T09:00:00Z",
-      endAt: "2026-03-12T10:00:00Z",
-      timezone: "UTC",
+      startAt: "2026-03-12T09:00:00-05:00",
+      endAt: "2026-03-12T10:00:00-05:00",
+      timezone: "America/Bogota",
+      isVirtual: false,
+      meetUrl: null,
+      paymentAmountCop: null,
+      paymentMethod: null,
+      paymentStatus: "PENDING",
+      paymentUpdatedAt: null,
       summary: "Cita manual",
       createdAt: "2026-03-01T00:00:00Z",
       updatedAt: "2026-03-01T00:00:00Z",
@@ -520,7 +532,7 @@ vitestModule.describe("AgendaPage", () => {
           tenantId: "tenant-1",
           status: "CONNECTED",
           calendarId: "primary",
-          professionalTimezone: "UTC",
+          professionalTimezone: "America/Bogota",
           connectedAt: "2026-03-01T00:00:00Z"
         }))
       },
@@ -529,7 +541,7 @@ vitestModule.describe("AgendaPage", () => {
         getAvailability: vitestModule.vi.fn(async () => ({
           tenantId: "tenant-1",
           calendarId: "primary",
-          timezone: "UTC",
+          timezone: "America/Bogota",
           busyIntervals: []
         })),
         submitProfessionalSlots: vitestModule.vi.fn(),
@@ -575,26 +587,31 @@ vitestModule.describe("AgendaPage", () => {
       ).toBeInTheDocument();
     });
 
-    const patientSelect = testingLibraryReactModule.screen.getByRole("combobox", {
+    // Select patient
+    const patientSelects = testingLibraryReactModule.screen.getAllByRole("combobox", {
       name: /Paciente/i
     });
-
+    const patientSelect = patientSelects[0]!;
     testingLibraryReactModule.fireEvent.change(patientSelect, {
       target: { value: "wa-1" }
     });
     expect(patientSelect).toHaveValue("wa-1");
-    testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/^Inicio$/i),
-      {
-        target: { value: "2026-03-12T09:00" }
-      }
+
+    // Click day 12 in the SlotPicker calendar (March 12 is future from mock now=March 1)
+    const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+    testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
+
+    // Click the 9 AM slot chip
+    await testingLibraryReactModule.waitFor(() => {
+      expect(
+        testingLibraryReactModule.screen.getAllByRole("button", { name: "9 AM" })[0]
+      ).toBeInTheDocument();
+    });
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getAllByRole("button", { name: "9 AM" })[0]!
     );
-    testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/^Duración$/i),
-      {
-        target: { value: "60" }
-      }
-    );
+
+    // Fill in the summary
     testingLibraryReactModule.fireEvent.change(
       testingLibraryReactModule.screen.getByLabelText(/^Resumen$/i),
       {
@@ -602,6 +619,7 @@ vitestModule.describe("AgendaPage", () => {
       }
     );
 
+    // Submit
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", {
         name: "Agendar cita"
