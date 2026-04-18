@@ -17,6 +17,10 @@ include $(MAKE_API_BASE_FILE)
 export
 endif
 
+# Default ADC for personal projects: compartido en /repos/.secrets/.
+# Puede sobrescribirse desde .env o entorno con ?= respetando precedencia.
+GOOGLE_APPLICATION_CREDENTIALS ?= ../.secrets/gcp-adc-gmail.json
+
 # Resolve relative ADC path from .env to absolute so Terraform finds it
 # regardless of which subdirectory it runs in.
 ifneq (,$(GOOGLE_APPLICATION_CREDENTIALS))

@@ -1,12 +1,12 @@
 project_id         = "ai-agent-calendar-2603011621"
-project_name       = "AI Agent Calendar Dev"
+project_name       = "AI Agent Calendar Prod"
 billing_account_id = "01E8FF-24B127-856018"
 
 org_id    = null
 folder_id = null
 
 labels = {
-  env   = "dev"
+  env   = "prod"
   owner = "jhon"
 }
 
