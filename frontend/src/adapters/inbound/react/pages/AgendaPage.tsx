@@ -93,7 +93,6 @@ interface PatientFormState {
   lastName: string;
   email: string;
   age: string;
-  consultationReason: string;
   location: string;
   phone: string;
 }
@@ -146,7 +145,6 @@ function emptyPatientForm(): PatientFormState {
     lastName: "",
     email: "",
     age: "",
-    consultationReason: "",
     location: "",
     phone: ""
   };
@@ -2439,21 +2437,6 @@ export function AgendaPage() {
                     />
                   </label>
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Motivo de consulta
-                    <input
-                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setPatientFormState((currentValue) => ({
-                          ...currentValue,
-                          consultationReason: nextValue
-                        }));
-                      }}
-                      type="text"
-                      value={patientFormState.consultationReason}
-                    />
-                  </label>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Ubicación
                     <input
                       className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
@@ -2477,7 +2460,6 @@ export function AgendaPage() {
                       const trimmedFirstName = patientFormState.firstName.trim();
                       const trimmedLastName = patientFormState.lastName.trim();
                       const trimmedEmail = patientFormState.email.trim();
-                      const trimmedConsultationReason = patientFormState.consultationReason.trim();
                       const trimmedLocation = patientFormState.location.trim();
                       const trimmedPhone = patientFormState.phone.trim();
                       const ageValue = Number.parseInt(patientFormState.age, 10);
@@ -2486,7 +2468,6 @@ export function AgendaPage() {
                         trimmedFirstName === "" ||
                         trimmedLastName === "" ||
                         trimmedEmail === "" ||
-                        trimmedConsultationReason === "" ||
                         trimmedLocation === "" ||
                         trimmedPhone === "" ||
                         Number.isNaN(ageValue) ||
@@ -2512,7 +2493,6 @@ export function AgendaPage() {
                           lastName: trimmedLastName,
                           email: trimmedEmail,
                           age: ageValue,
-                          consultationReason: trimmedConsultationReason,
                           location: trimmedLocation,
                           phone: trimmedPhone
                         },
@@ -2629,8 +2609,8 @@ export function AgendaPage() {
                     </p>
                     <div className="mt-2 space-y-3">
                       <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Resumen
-                        <input
+                        Motivo de consulta
+                        <textarea
                           className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                           onChange={(event) => {
                             const nextValue = event.target.value;
@@ -2639,8 +2619,8 @@ export function AgendaPage() {
                               summary: nextValue
                             }));
                           }}
-                          placeholder="Ej. Control mensual"
-                          type="text"
+                          placeholder="Ej. Consulta de seguimiento"
+                          rows={3}
                           value={manualAppointmentFormState.summary}
                         />
                       </label>
@@ -2892,8 +2872,8 @@ export function AgendaPage() {
                     </p>
                     <div className="mt-2 space-y-3">
                       <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Resumen
-                        <input
+                        Motivo de consulta
+                        <textarea
                           className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                           onChange={(event) => {
                             const nextValue = event.target.value;
@@ -2902,8 +2882,8 @@ export function AgendaPage() {
                               summary: nextValue
                             }));
                           }}
-                          placeholder="Ej. Control mensual"
-                          type="text"
+                          placeholder="Ej. Consulta de seguimiento"
+                          rows={3}
                           value={manualAppointmentFormState.summary}
                         />
                       </label>

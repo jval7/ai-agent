@@ -10,7 +10,6 @@ class Patient(pydantic.BaseModel):
     last_name: str
     email: pydantic.EmailStr
     age: int
-    consultation_reason: str
     location: str
     phone: str
     created_at: datetime.datetime
@@ -20,7 +19,6 @@ class Patient(pydantic.BaseModel):
         "whatsapp_user_id",
         "first_name",
         "last_name",
-        "consultation_reason",
         "location",
         "phone",
     )

@@ -58,7 +58,6 @@ vitestModule.describe("ClientsPage", () => {
           lastName: "Smith",
           email: "john@example.com",
           age: 34,
-          consultationReason: "Insomnio",
           location: "Medellin",
           phone: "573001445566",
           createdAt: "2026-03-02T10:00:00Z"
@@ -71,7 +70,6 @@ vitestModule.describe("ClientsPage", () => {
         lastName: "Doe",
         email: "jane@example.com",
         age: 29,
-        consultationReason: "Ansiedad",
         location: "Bogota",
         phone: "573001112233",
         createdAt: "2026-03-01T10:00:00Z"
@@ -87,7 +85,6 @@ vitestModule.describe("ClientsPage", () => {
             lastName: "Doe",
             email: "jane@example.com",
             age: 29,
-            consultationReason: "Ansiedad",
             location: "Bogota",
             phone: "573001112233",
             createdAt: "2026-03-01T10:00:00Z"
@@ -99,7 +96,6 @@ vitestModule.describe("ClientsPage", () => {
             lastName: "Smith",
             email: "john@example.com",
             age: 34,
-            consultationReason: "Insomnio",
             location: "Medellin",
             phone: "573001445566",
             createdAt: "2026-03-02T10:00:00Z"
@@ -122,7 +118,6 @@ vitestModule.describe("ClientsPage", () => {
     testingLibraryReactModule.fireEvent.click(johnButton);
 
     await testingLibraryReactModule.waitFor(() => {
-      expect(testingLibraryReactModule.screen.getByText("Insomnio")).toBeInTheDocument();
       expect(testingLibraryReactModule.screen.getByText("Medellin")).toBeInTheDocument();
     });
     expect(getPatientMock).toHaveBeenCalledWith("wa-2");
@@ -141,7 +136,6 @@ vitestModule.describe("ClientsPage", () => {
             lastName: "Doe",
             email: "jane@example.com",
             age: 29,
-            consultationReason: "Ansiedad",
             location: "Bogota",
             phone: "573001112233",
             createdAt: "2026-03-01T10:00:00Z"
@@ -154,7 +148,6 @@ vitestModule.describe("ClientsPage", () => {
           lastName: "Doe",
           email: "jane@example.com",
           age: 29,
-          consultationReason: "Ansiedad",
           location: "Bogota",
           phone: "573001112233",
           createdAt: "2026-03-01T10:00:00Z"

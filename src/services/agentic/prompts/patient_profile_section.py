@@ -25,7 +25,6 @@ class PatientProfileSection(prompt_section.PromptSection):
             f"- patient_full_name: {known_patient_full_name}",
             f"- patient_email: {known_patient.email}",
             f"- patient_age: {known_patient.age}",
-            f"- consultation_reason: {known_patient.consultation_reason}",
             f"- patient_location: {known_patient.location}",
             f"- patient_phone: {known_patient.phone}",
             "If patient data is already known and still valid, do not ask for it again.",

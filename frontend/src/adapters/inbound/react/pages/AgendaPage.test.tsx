@@ -124,7 +124,7 @@ vitestModule.describe("AgendaPage", () => {
           patientFirstName: "Juan",
           patientLastName: "Perez",
           patientAge: 35,
-          consultationReason: "Estrés",
+          consultationReason: "Ansiedad",
           consultationDetails: null,
           appointmentModality: "VIRTUAL",
           patientLocation: "Bogotá",
@@ -156,7 +156,7 @@ vitestModule.describe("AgendaPage", () => {
           patientFirstName: "Camila",
           patientLastName: "Diaz",
           patientAge: 31,
-          consultationReason: "Insomnio",
+          consultationReason: "Ansiedad",
           consultationDetails: null,
           appointmentModality: "PRESENCIAL",
           patientLocation: "Medellín",
@@ -315,7 +315,6 @@ vitestModule.describe("AgendaPage", () => {
             lastName: "Manual",
             email: "maria@example.com",
             age: 30,
-            consultationReason: "Control",
             location: "Bogota",
             phone: "573001001001",
             createdAt: "2026-03-01T00:00:00Z"
@@ -378,7 +377,6 @@ vitestModule.describe("AgendaPage", () => {
       lastName: "Doe",
       email: "jane@example.com",
       age: 29,
-      consultationReason: "Ansiedad",
       location: "Bogota",
       phone: "+57 300 111 2233",
       createdAt: "2026-03-01T00:00:00Z"
@@ -472,12 +470,6 @@ vitestModule.describe("AgendaPage", () => {
         target: { value: "Bogota" }
       }
     );
-    testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/Motivo de consulta/i),
-      {
-        target: { value: "Ansiedad" }
-      }
-    );
 
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", {
@@ -492,7 +484,6 @@ vitestModule.describe("AgendaPage", () => {
         lastName: "Doe",
         email: "jane@example.com",
         age: 29,
-        consultationReason: "Ansiedad",
         location: "Bogota",
         phone: "+57 300 111 2233"
       });
@@ -546,7 +537,6 @@ vitestModule.describe("AgendaPage", () => {
             lastName: "Doe",
             email: "jane@example.com",
             age: 29,
-            consultationReason: "Ansiedad",
             location: "Bogota",
             phone: "573001112233",
             createdAt: "2026-03-01T00:00:00Z"
@@ -596,7 +586,7 @@ vitestModule.describe("AgendaPage", () => {
       }
     );
     testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/^Resumen$/i),
+      testingLibraryReactModule.screen.getByLabelText(/^Motivo de consulta$/i),
       {
         target: { value: "Cita manual" }
       }
@@ -790,7 +780,6 @@ vitestModule.describe("AgendaPage", () => {
             lastName: "Manual",
             email: "maria@example.com",
             age: 30,
-            consultationReason: "Control",
             location: "Bogota",
             phone: "573001001001",
             createdAt: "2026-03-01T00:00:00Z"
@@ -1081,7 +1070,6 @@ vitestModule.describe("AgendaPage", () => {
             lastName: "Manual",
             email: "manual@example.com",
             age: 33,
-            consultationReason: "Control",
             location: "Bogota",
             phone: "573000000000",
             createdAt: "2026-03-01T00:00:00Z"

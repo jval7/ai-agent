@@ -143,10 +143,6 @@ export function ClientsPage() {
                     <strong>Edad:</strong> {patientDetailQuery.data.age}
                   </p>
                   <p>
-                    <strong>Motivo de consulta:</strong>{" "}
-                    {patientDetailQuery.data.consultationReason}
-                  </p>
-                  <p>
                     <strong>Ubicacion:</strong> {patientDetailQuery.data.location}
                   </p>
                   <p>

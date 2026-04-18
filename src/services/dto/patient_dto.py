@@ -10,7 +10,6 @@ class PatientDTO(pydantic.BaseModel):
     last_name: str
     email: str
     age: int
-    consultation_reason: str
     location: str
     phone: str
     created_at: datetime.datetime
@@ -26,7 +25,6 @@ class CreatePatientDTO(pydantic.BaseModel):
     last_name: str
     email: str
     age: int
-    consultation_reason: str
     location: str
     phone: str
 
@@ -36,6 +34,5 @@ class UpdatePatientDTO(pydantic.BaseModel):
     last_name: str
     email: str
     age: int
-    consultation_reason: str
     location: str
     phone: str

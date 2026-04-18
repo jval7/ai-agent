@@ -224,7 +224,6 @@ vitestModule.describe("BackendApiAdapter", () => {
               last_name: "Doe",
               email: "jane@example.com",
               age: 29,
-              consultation_reason: "Ansiedad",
               location: "Bogota",
               phone: "573001112233",
               created_at: "2026-03-01T10:00:00Z"
@@ -240,7 +239,6 @@ vitestModule.describe("BackendApiAdapter", () => {
           last_name: "Doe",
           email: "jane@example.com",
           age: 29,
-          consultation_reason: "Ansiedad",
           location: "Bogota",
           phone: "573001112233",
           created_at: "2026-03-01T10:00:00Z"

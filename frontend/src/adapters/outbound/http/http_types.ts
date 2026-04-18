@@ -119,7 +119,6 @@ export interface PatientApiResponse {
   last_name: string;
   email: string;
   age: number;
-  consultation_reason: string;
   location: string;
   phone: string;
   created_at: string;
@@ -135,7 +134,6 @@ export interface CreatePatientApiRequest {
   last_name: string;
   email: string;
   age: number;
-  consultation_reason: string;
   location: string;
   phone: string;
 }
@@ -145,7 +143,6 @@ export interface UpdatePatientApiRequest {
   last_name: string;
   email: string;
   age: number;
-  consultation_reason: string;
   location: string;
   phone: string;
 }

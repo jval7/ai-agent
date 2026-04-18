@@ -18,7 +18,6 @@ class ResolvedPatientProfile(pydantic.BaseModel):
     full_name: str
     email: str
     age: int
-    consultation_reason: str
     location: str
     phone: str
 
@@ -205,7 +204,6 @@ class PatientProfileResolver:
             last_name=self._extract_last_name(patient_profile.full_name),
             email=patient_profile.email,
             age=patient_profile.age,
-            consultation_reason=patient_profile.consultation_reason,
             location=patient_profile.location,
             phone=patient_profile.phone,
             created_at=self._clock.now(),
@@ -297,7 +295,6 @@ class PatientProfileResolver:
                     or existing_patient.first_name,
                     email=existing_patient.email,
                     age=existing_patient.age,
-                    consultation_reason=existing_patient.consultation_reason,
                     location=existing_patient.location,
                     phone=existing_patient.phone,
                 ),
@@ -354,15 +351,6 @@ class PatientProfileResolver:
                 "patient_age is invalid; ask only for age as a whole number between 1 and 120"
             )
 
-        consultation_reason = self._coalesce_patient_text(
-            primary=request.consultation_reason,
-            fallback=tool_input_dto.consultation_reason,
-        )
-        if consultation_reason is None:
-            raise service_exceptions.InvalidStateError(
-                "missing required patient data: consultation_reason; ask only for the consultation reason now"
-            )
-
         patient_location = self._coalesce_patient_text(
             primary=request.patient_location,
             fallback=tool_input_dto.patient_location,
@@ -377,7 +365,6 @@ class PatientProfileResolver:
                 full_name=patient_full_name,
                 email=patient_email,
                 age=patient_age,
-                consultation_reason=consultation_reason,
                 location=patient_location,
                 phone=patient_phone,
             ),
@@ -429,13 +416,6 @@ class PatientProfileResolver:
         normalized_age = self._normalize_patient_age(tool_input_dto.patient_age)
         if normalized_age is not None and normalized_age != existing_patient.age:
             mismatched_fields.append("patient_age")
-
-        normalized_reason = self._normalize_patient_text(tool_input_dto.consultation_reason)
-        if (
-            normalized_reason is not None
-            and normalized_reason != existing_patient.consultation_reason
-        ):
-            mismatched_fields.append("consultation_reason")
 
         normalized_location = self._normalize_patient_text(tool_input_dto.patient_location)
         if normalized_location is not None and normalized_location != existing_patient.location:
