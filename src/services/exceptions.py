@@ -24,3 +24,7 @@ class InvalidStateError(ServiceError):
 
 class ExternalProviderError(ServiceError):
     """Raised when external adapter cannot complete operation."""
+
+
+class OfficialTemplateActiveError(ServiceError):
+    """Raised when attempting to delete an official template that is currently activated."""

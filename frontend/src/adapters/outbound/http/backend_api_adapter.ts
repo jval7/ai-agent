@@ -100,16 +100,16 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       message_debounce_delay_seconds: number;
       appointment_reminder_enabled: boolean;
       appointment_reminder_days_before: number | null;
-      appointment_reminder_template_name: string | null;
-      appointment_reminder_template_language: string;
+      appointment_reminder_attendance_template_name: string | null;
+      appointment_reminder_payment_template_name: string | null;
     }>("/v1/agent/settings", { method: "GET", authRequired: true });
     return {
       tenantId: raw.tenant_id,
       messageDebounceDelaySeconds: raw.message_debounce_delay_seconds,
       appointmentReminderEnabled: raw.appointment_reminder_enabled,
       appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
-      appointmentReminderTemplateName: raw.appointment_reminder_template_name,
-      appointmentReminderTemplateLanguage: raw.appointment_reminder_template_language
+      appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
+      appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name
     };
   }
 
@@ -121,8 +121,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       message_debounce_delay_seconds: number;
       appointment_reminder_enabled: boolean;
       appointment_reminder_days_before: number | null;
-      appointment_reminder_template_name: string | null;
-      appointment_reminder_template_language: string;
+      appointment_reminder_attendance_template_name: string | null;
+      appointment_reminder_payment_template_name: string | null;
     }>("/v1/agent/settings", {
       method: "PUT",
       authRequired: true,
@@ -130,8 +130,9 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         message_debounce_delay_seconds: input.messageDebounceDelaySeconds,
         appointment_reminder_enabled: input.appointmentReminderEnabled,
         appointment_reminder_days_before: input.appointmentReminderDaysBefore,
-        appointment_reminder_template_name: input.appointmentReminderTemplateName,
-        appointment_reminder_template_language: input.appointmentReminderTemplateLanguage
+        appointment_reminder_attendance_template_name:
+          input.appointmentReminderAttendanceTemplateName,
+        appointment_reminder_payment_template_name: input.appointmentReminderPaymentTemplateName
       })
     });
     return {
@@ -139,8 +140,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       messageDebounceDelaySeconds: raw.message_debounce_delay_seconds,
       appointmentReminderEnabled: raw.appointment_reminder_enabled,
       appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
-      appointmentReminderTemplateName: raw.appointment_reminder_template_name,
-      appointmentReminderTemplateLanguage: raw.appointment_reminder_template_language
+      appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
+      appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name
     };
   }
 
@@ -848,6 +849,42 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     });
   }
 
+  async listOfficialTemplateStatus(): Promise<whatsappTemplateModel.OfficialTemplateStatus[]> {
+    const raw = await this.request<{
+      items: {
+        kind: string;
+        name: string;
+        meta_status: string;
+        rejection_reason: string | null;
+      }[];
+    }>("/v1/whatsapp/templates/official/status", { method: "GET", authRequired: true });
+    return raw.items.map(mapOfficialTemplateStatus);
+  }
+
+  async activateOfficialTemplate(
+    kind: whatsappTemplateModel.OfficialReminderKind
+  ): Promise<whatsappTemplateModel.OfficialTemplateStatus> {
+    const raw = await this.request<{
+      kind: string;
+      name: string;
+      meta_status: string;
+      rejection_reason: string | null;
+    }>(`/v1/whatsapp/templates/official/${kind}/activate`, {
+      method: "POST",
+      authRequired: true
+    });
+    return mapOfficialTemplateStatus(raw);
+  }
+
+  async deactivateOfficialTemplate(
+    kind: whatsappTemplateModel.OfficialReminderKind
+  ): Promise<void> {
+    await this.request<void>(`/v1/whatsapp/templates/official/${kind}/deactivate`, {
+      method: "POST",
+      authRequired: true
+    });
+  }
+
   private async request<T>(path: string, options: RequestOptions): Promise<T> {
     const retryOnUnauthorized = options.retryOnUnauthorized ?? true;
     const requestId = options.requestId ?? requestIdModule.createRequestId();
@@ -1060,6 +1097,20 @@ function mapWhatsappTemplate(
       text: c.text,
       ...(c.example_values ? { exampleValues: c.example_values } : {})
     }))
+  };
+}
+
+function mapOfficialTemplateStatus(raw: {
+  kind: string;
+  name: string;
+  meta_status: string;
+  rejection_reason: string | null;
+}): whatsappTemplateModel.OfficialTemplateStatus {
+  return {
+    kind: raw.kind as whatsappTemplateModel.OfficialReminderKind,
+    name: raw.name,
+    metaStatus: raw.meta_status as whatsappTemplateModel.OfficialTemplateMetaStatus,
+    rejectionReason: raw.rejection_reason
   };
 }
 

@@ -14,6 +14,7 @@ import src.entrypoints.web.routers.health_router as health_router
 import src.entrypoints.web.routers.internal_router as internal_router
 import src.entrypoints.web.routers.manual_appointment_router as manual_appointment_router
 import src.entrypoints.web.routers.oauth_router as oauth_router
+import src.entrypoints.web.routers.official_template_router as official_template_router
 import src.entrypoints.web.routers.onboarding_router as onboarding_router
 import src.entrypoints.web.routers.patient_router as patient_router
 import src.entrypoints.web.routers.reminder_router as reminder_router
@@ -52,6 +53,7 @@ def create_app() -> fastapi.FastAPI:
     app.include_router(blacklist_router.router)
     app.include_router(whatsapp_router.router)
     app.include_router(whatsapp_template_router.router)
+    app.include_router(official_template_router.router)
     app.include_router(google_calendar_router.router)
     app.include_router(onboarding_router.router)
     app.include_router(webhook_router.router)

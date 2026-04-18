@@ -54,15 +54,15 @@ class AgentService:
                 if existing_profile is not None
                 else None
             ),
-            appointment_reminder_template_name=(
-                existing_profile.appointment_reminder_template_name
+            appointment_reminder_attendance_template_name=(
+                existing_profile.appointment_reminder_attendance_template_name
                 if existing_profile is not None
                 else None
             ),
-            appointment_reminder_template_language=(
-                existing_profile.appointment_reminder_template_language
+            appointment_reminder_payment_template_name=(
+                existing_profile.appointment_reminder_payment_template_name
                 if existing_profile is not None
-                else "es"
+                else None
             ),
             updated_at=now_value,
         )
@@ -80,16 +80,16 @@ class AgentService:
                 message_debounce_delay_seconds=0,
                 appointment_reminder_enabled=False,
                 appointment_reminder_days_before=None,
-                appointment_reminder_template_name=None,
-                appointment_reminder_template_language="es",
+                appointment_reminder_attendance_template_name=None,
+                appointment_reminder_payment_template_name=None,
             )
         return agent_dto.AgentSettingsResponseDTO(
             tenant_id=tenant_id,
             message_debounce_delay_seconds=agent_profile.message_debounce_delay_seconds,
             appointment_reminder_enabled=agent_profile.appointment_reminder_enabled,
             appointment_reminder_days_before=agent_profile.appointment_reminder_days_before,
-            appointment_reminder_template_name=agent_profile.appointment_reminder_template_name,
-            appointment_reminder_template_language=agent_profile.appointment_reminder_template_language,
+            appointment_reminder_attendance_template_name=agent_profile.appointment_reminder_attendance_template_name,
+            appointment_reminder_payment_template_name=agent_profile.appointment_reminder_payment_template_name,
         )
 
     def update_agent_settings(
@@ -108,8 +108,8 @@ class AgentService:
             message_debounce_delay_seconds=update_dto.message_debounce_delay_seconds,
             appointment_reminder_enabled=update_dto.appointment_reminder_enabled,
             appointment_reminder_days_before=update_dto.appointment_reminder_days_before,
-            appointment_reminder_template_name=update_dto.appointment_reminder_template_name,
-            appointment_reminder_template_language=update_dto.appointment_reminder_template_language,
+            appointment_reminder_attendance_template_name=update_dto.appointment_reminder_attendance_template_name,
+            appointment_reminder_payment_template_name=update_dto.appointment_reminder_payment_template_name,
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
@@ -118,6 +118,6 @@ class AgentService:
             message_debounce_delay_seconds=agent_profile.message_debounce_delay_seconds,
             appointment_reminder_enabled=agent_profile.appointment_reminder_enabled,
             appointment_reminder_days_before=agent_profile.appointment_reminder_days_before,
-            appointment_reminder_template_name=agent_profile.appointment_reminder_template_name,
-            appointment_reminder_template_language=agent_profile.appointment_reminder_template_language,
+            appointment_reminder_attendance_template_name=agent_profile.appointment_reminder_attendance_template_name,
+            appointment_reminder_payment_template_name=agent_profile.appointment_reminder_payment_template_name,
         )

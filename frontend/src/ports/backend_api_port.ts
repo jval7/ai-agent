@@ -128,4 +128,10 @@ export interface BackendApiPort {
     request: whatsappTemplateModel.CreateTemplateRequest
   ): Promise<whatsappTemplateModel.WhatsappTemplate>;
   deleteWhatsappTemplate(name: string): Promise<void>;
+
+  listOfficialTemplateStatus(): Promise<whatsappTemplateModel.OfficialTemplateStatus[]>;
+  activateOfficialTemplate(
+    kind: whatsappTemplateModel.OfficialReminderKind
+  ): Promise<whatsappTemplateModel.OfficialTemplateStatus>;
+  deactivateOfficialTemplate(kind: whatsappTemplateModel.OfficialReminderKind): Promise<void>;
 }

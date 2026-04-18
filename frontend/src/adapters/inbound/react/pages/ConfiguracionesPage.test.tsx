@@ -73,9 +73,32 @@ function buildContainer() {
       })),
       updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
       getAgentSettings: vitestModule.vi.fn(async () => ({
-        messageDebounceDelaySeconds: 5
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null
       })),
       updateAgentSettings: vitestModule.vi.fn(async () => undefined)
+    },
+    whatsappTemplateUseCase: {
+      listOfficialTemplateStatus: vitestModule.vi.fn(async () => [
+        {
+          kind: "ATTENDANCE",
+          name: "appointment_reminder_attendance",
+          metaStatus: "NOT_CREATED",
+          rejectionReason: null
+        },
+        {
+          kind: "PAYMENT",
+          name: "appointment_reminder_payment",
+          metaStatus: "NOT_CREATED",
+          rejectionReason: null
+        }
+      ]),
+      activateOfficialTemplate: vitestModule.vi.fn(async () => undefined),
+      deactivateOfficialTemplate: vitestModule.vi.fn(async () => undefined)
     }
   };
 }

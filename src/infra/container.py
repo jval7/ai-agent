@@ -215,10 +215,6 @@ class AppContainer:
             meta_app_id=self.settings.meta_app_id,
             meta_config_id=self.settings.meta_config_id,
         )
-        self.whatsapp_template_service = whatsapp_template_service.WhatsappTemplateService(
-            whatsapp_provider=self.whatsapp_provider_adapter,
-            whatsapp_connection_repository=self.whatsapp_connection_repository,
-        )
         self.google_calendar_onboarding_service = (
             google_calendar_onboarding_service.GoogleCalendarOnboardingService(
                 google_calendar_connection_repository=self.google_calendar_connection_repository,
@@ -254,6 +250,13 @@ class AppContainer:
             task_scheduler=self.task_scheduler,
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
+        )
+        self.whatsapp_template_service = whatsapp_template_service.WhatsappTemplateService(
+            whatsapp_provider=self.whatsapp_provider_adapter,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
+            agent_profile_repository=self.agent_profile_repository,
+            clock=self.clock_adapter,
+            reminder_service=self.reminder_service,
         )
         self.scheduling_service = scheduling_service.SchedulingService(
             scheduling_repository=self.scheduling_repository,

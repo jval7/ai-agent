@@ -19,3 +19,19 @@ export interface CreateTemplateRequest {
   language: string;
   components: TemplateComponent[];
 }
+
+export type OfficialReminderKind = "ATTENDANCE" | "PAYMENT";
+
+export type OfficialTemplateMetaStatus =
+  | "NOT_CREATED"
+  | "PENDING"
+  | "APPROVED"
+  | "REJECTED"
+  | "DISABLED";
+
+export interface OfficialTemplateStatus {
+  kind: OfficialReminderKind;
+  name: string;
+  metaStatus: OfficialTemplateMetaStatus;
+  rejectionReason: string | null;
+}

@@ -5,6 +5,7 @@ import * as reactRouterDomModule from "react-router-dom";
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
+import * as officialTemplateCardModule from "@adapters/inbound/react/components/OfficialTemplateCard";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
 import * as uiErrorModule from "@shared/http/ui_error";
@@ -16,6 +17,7 @@ const googleCalendarConnectionQueryKey = ["google-calendar-connection"] as const
 const onboardingStatusQueryKey = ["onboarding-status"] as const;
 const promptQueryKey = ["system-prompt"] as const;
 const settingsQueryKey = ["agent-settings"] as const;
+const officialTemplateStatusQueryKey = ["official-template-status"] as const;
 
 function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   if (status === undefined) {
@@ -160,24 +162,61 @@ export function ConfiguracionesPage() {
   const [debounceDelay, setDebounceDelay] = reactModule.useState(0);
   const [reminderEnabled, setReminderEnabled] = reactModule.useState(false);
   const [reminderDaysBefore, setReminderDaysBefore] = reactModule.useState(1);
-  const [reminderTemplateName, setReminderTemplateName] = reactModule.useState("");
-  const [reminderTemplateLanguage, setReminderTemplateLanguage] = reactModule.useState("es");
 
   reactModule.useEffect(() => {
     if (settingsQuery.data !== undefined) {
       setDebounceDelay(settingsQuery.data.messageDebounceDelaySeconds);
       setReminderEnabled(settingsQuery.data.appointmentReminderEnabled);
       setReminderDaysBefore(settingsQuery.data.appointmentReminderDaysBefore ?? 1);
-      setReminderTemplateName(settingsQuery.data.appointmentReminderTemplateName ?? "");
-      setReminderTemplateLanguage(settingsQuery.data.appointmentReminderTemplateLanguage);
     }
   }, [settingsQuery.data]);
 
-  const templatesQuery = reactQueryModule.useQuery({
-    queryKey: ["whatsapp-templates"],
-    queryFn: () => appContainer.whatsappTemplateUseCase.listTemplates()
+  const officialTemplateStatusQuery = reactQueryModule.useQuery({
+    queryKey: officialTemplateStatusQueryKey,
+    queryFn: () => appContainer.whatsappTemplateUseCase.listOfficialTemplateStatus()
   });
-  const approvedTemplates = (templatesQuery.data ?? []).filter((t) => t.status === "APPROVED");
+
+  const attendanceStatus = (officialTemplateStatusQuery.data ?? []).find(
+    (s) => s.kind === "ATTENDANCE"
+  );
+  const paymentStatus = (officialTemplateStatusQuery.data ?? []).find((s) => s.kind === "PAYMENT");
+  const attendanceApproved = attendanceStatus?.metaStatus === "APPROVED";
+
+  const [activatingKind, setActivatingKind] = reactModule.useState<"ATTENDANCE" | "PAYMENT" | null>(
+    null
+  );
+  const [deactivatingKind, setDeactivatingKind] = reactModule.useState<
+    "ATTENDANCE" | "PAYMENT" | null
+  >(null);
+
+  const activateMutation = reactQueryModule.useMutation({
+    mutationFn: (kind: "ATTENDANCE" | "PAYMENT") => {
+      setActivatingKind(kind);
+      return appContainer.whatsappTemplateUseCase.activateOfficialTemplate(kind);
+    },
+    onSuccess: async () => {
+      setActivatingKind(null);
+      await queryClient.invalidateQueries({ queryKey: officialTemplateStatusQueryKey });
+    },
+    onError: () => {
+      setActivatingKind(null);
+    }
+  });
+
+  const deactivateMutation = reactQueryModule.useMutation({
+    mutationFn: (kind: "ATTENDANCE" | "PAYMENT") => {
+      setDeactivatingKind(kind);
+      return appContainer.whatsappTemplateUseCase.deactivateOfficialTemplate(kind);
+    },
+    onSuccess: async () => {
+      setDeactivatingKind(null);
+      await queryClient.invalidateQueries({ queryKey: officialTemplateStatusQueryKey });
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+    },
+    onError: () => {
+      setDeactivatingKind(null);
+    }
+  });
 
   const settingsMutation = reactQueryModule.useMutation({
     mutationFn: () =>
@@ -185,8 +224,10 @@ export function ConfiguracionesPage() {
         messageDebounceDelaySeconds: debounceDelay,
         appointmentReminderEnabled: reminderEnabled,
         appointmentReminderDaysBefore: reminderEnabled ? reminderDaysBefore : null,
-        appointmentReminderTemplateName: reminderEnabled ? reminderTemplateName : null,
-        appointmentReminderTemplateLanguage: reminderTemplateLanguage
+        appointmentReminderAttendanceTemplateName:
+          settingsQuery.data?.appointmentReminderAttendanceTemplateName ?? null,
+        appointmentReminderPaymentTemplateName:
+          settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
@@ -200,7 +241,10 @@ export function ConfiguracionesPage() {
 
   const settingsErrorMessage = uiErrorModule.resolveUiErrorMessage([
     settingsMutation.error,
-    settingsQuery.error
+    settingsQuery.error,
+    activateMutation.error,
+    deactivateMutation.error,
+    officialTemplateStatusQuery.error
   ]);
 
   return (
@@ -495,14 +539,48 @@ export function ConfiguracionesPage() {
               Envia un mensaje de plantilla al paciente antes de su cita para recordarle confirmar.
             </p>
 
-            <div className="mt-3 flex items-center gap-3">
+            {/* Official template cards */}
+            <div className="mt-4 space-y-3">
+              {attendanceStatus !== undefined ? (
+                <officialTemplateCardModule.OfficialTemplateCard
+                  isMutating={activatingKind === "ATTENDANCE" || deactivatingKind === "ATTENDANCE"}
+                  kind="ATTENDANCE"
+                  onActivate={() => {
+                    activateMutation.mutate("ATTENDANCE");
+                  }}
+                  onDeactivate={() => {
+                    deactivateMutation.mutate("ATTENDANCE");
+                  }}
+                  status={attendanceStatus}
+                />
+              ) : null}
+              {paymentStatus !== undefined ? (
+                <officialTemplateCardModule.OfficialTemplateCard
+                  isMutating={activatingKind === "PAYMENT" || deactivatingKind === "PAYMENT"}
+                  kind="PAYMENT"
+                  onActivate={() => {
+                    activateMutation.mutate("PAYMENT");
+                  }}
+                  onDeactivate={() => {
+                    deactivateMutation.mutate("PAYMENT");
+                  }}
+                  status={paymentStatus}
+                />
+              ) : null}
+            </div>
+
+            <div className="mt-4 flex items-center gap-3">
               <label
-                className="relative inline-flex cursor-pointer items-center"
+                className={[
+                  "relative inline-flex cursor-pointer items-center",
+                  !attendanceApproved ? "opacity-50" : ""
+                ].join(" ")}
                 htmlFor="reminder-toggle"
               >
                 <input
                   checked={reminderEnabled}
                   className="peer sr-only"
+                  disabled={!attendanceApproved}
                   id="reminder-toggle"
                   onChange={(e) => {
                     setReminderEnabled(e.target.checked);
@@ -514,61 +592,30 @@ export function ConfiguracionesPage() {
               <span className="text-sm text-slate-700">
                 {reminderEnabled ? "Activado" : "Desactivado"}
               </span>
+              {!attendanceApproved ? (
+                <span className="text-xs text-slate-400">
+                  Activa la plantilla de asistencia para habilitar recordatorios.
+                </span>
+              ) : null}
             </div>
 
             {reminderEnabled ? (
-              <div className="mt-4 space-y-4">
-                <div>
-                  <label
-                    className="block text-sm font-medium text-slate-700"
-                    htmlFor="reminder-days"
-                  >
-                    Dias antes de la cita
-                  </label>
-                  <input
-                    className="mt-1 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    id="reminder-days"
-                    max={7}
-                    min={1}
-                    onChange={(e) => {
-                      setReminderDaysBefore(Number(e.target.value));
-                    }}
-                    step={1}
-                    type="number"
-                    value={reminderDaysBefore}
-                  />
-                </div>
-
-                <div>
-                  <label
-                    className="block text-sm font-medium text-slate-700"
-                    htmlFor="reminder-template"
-                  >
-                    Plantilla de recordatorio
-                  </label>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Solo se muestran plantillas aprobadas por Meta.
-                  </p>
-                  <select
-                    className="mt-1 w-full max-w-xs rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    id="reminder-template"
-                    onChange={(e) => {
-                      const selected = approvedTemplates.find((t) => t.name === e.target.value);
-                      setReminderTemplateName(e.target.value);
-                      if (selected !== undefined) {
-                        setReminderTemplateLanguage(selected.language);
-                      }
-                    }}
-                    value={reminderTemplateName}
-                  >
-                    <option value="">Seleccionar plantilla...</option>
-                    {approvedTemplates.map((t) => (
-                      <option key={t.name} value={t.name}>
-                        {t.name} ({t.language})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-slate-700" htmlFor="reminder-days">
+                  Dias antes de la cita
+                </label>
+                <input
+                  className="mt-1 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                  id="reminder-days"
+                  max={7}
+                  min={1}
+                  onChange={(e) => {
+                    setReminderDaysBefore(Number(e.target.value));
+                  }}
+                  step={1}
+                  type="number"
+                  value={reminderDaysBefore}
+                />
               </div>
             ) : null}
           </div>
@@ -580,9 +627,7 @@ export function ConfiguracionesPage() {
           <div className="mt-4 flex gap-3">
             <button
               className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={
-                settingsMutation.isPending || settingsQuery.isLoading || templatesQuery.isLoading
-              }
+              disabled={settingsMutation.isPending || settingsQuery.isLoading}
               onClick={() => {
                 settingsMutation.mutate();
               }}

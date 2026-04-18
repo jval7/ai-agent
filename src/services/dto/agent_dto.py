@@ -24,8 +24,8 @@ class UpdateAgentSettingsDTO(pydantic.BaseModel):
     message_debounce_delay_seconds: int
     appointment_reminder_enabled: bool = False
     appointment_reminder_days_before: int | None = None
-    appointment_reminder_template_name: str | None = None
-    appointment_reminder_template_language: str = "es"
+    appointment_reminder_attendance_template_name: str | None = None
+    appointment_reminder_payment_template_name: str | None = None
 
     @pydantic.field_validator("message_debounce_delay_seconds")
     @classmethod
@@ -48,9 +48,9 @@ class UpdateAgentSettingsDTO(pydantic.BaseModel):
                 raise ValueError(
                     "appointment_reminder_days_before is required when appointment_reminder_enabled is True"
                 )
-            if self.appointment_reminder_template_name is None:
+            if self.appointment_reminder_attendance_template_name is None:
                 raise ValueError(
-                    "appointment_reminder_template_name is required when appointment_reminder_enabled is True"
+                    "appointment_reminder_attendance_template_name is required when appointment_reminder_enabled is True"
                 )
         return self
 
@@ -60,5 +60,5 @@ class AgentSettingsResponseDTO(pydantic.BaseModel):
     message_debounce_delay_seconds: int
     appointment_reminder_enabled: bool
     appointment_reminder_days_before: int | None
-    appointment_reminder_template_name: str | None
-    appointment_reminder_template_language: str
+    appointment_reminder_attendance_template_name: str | None
+    appointment_reminder_payment_template_name: str | None
