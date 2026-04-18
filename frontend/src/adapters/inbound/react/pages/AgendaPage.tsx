@@ -874,7 +874,6 @@ export function AgendaPage() {
     });
   }, [selectedBookedBotRequest]);
 
-  const manualCreateStartParts = splitLocalDateTimeInput(manualAppointmentFormState.startAt);
   const manualRescheduleStartParts = splitLocalDateTimeInput(manualRescheduleFormState.startAt);
 
   const resolvePaymentReviewMutation = reactQueryModule.useMutation({
@@ -2571,125 +2570,120 @@ export function AgendaPage() {
                     })()}
                   </div>
                 </header>
-                <div className="grid gap-3">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    <p className="block">Inicio</p>
-                    <div className="mt-1 grid grid-cols-3 gap-2">
-                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Fecha
+                <div className="space-y-5">
+                  {/* Fecha y hora section */}
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-brand-teal">
+                      Fecha y hora
+                    </p>
+                    <div className="mt-2 grid grid-cols-2 gap-3">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Inicio
                         <input
                           className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                           onChange={(event) => {
-                            const nextDate = event.target.value;
+                            const nextValue = event.target.value;
                             setManualAppointmentFormState((currentValue) => ({
                               ...currentValue,
-                              startAt: mergeLocalDateTimeInput(currentValue.startAt, {
-                                date: nextDate
-                              })
+                              startAt: nextValue
                             }));
                           }}
-                          type="date"
-                          value={manualCreateStartParts.date}
+                          type="datetime-local"
+                          value={manualAppointmentFormState.startAt}
                         />
                       </label>
-                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Hora
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Duración
                         <select
                           className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                           onChange={(event) => {
-                            const nextHour = event.target.value;
+                            const nextValue = event.target.value;
                             setManualAppointmentFormState((currentValue) => ({
                               ...currentValue,
-                              startAt: mergeLocalDateTimeInput(currentValue.startAt, {
-                                hour: nextHour
-                              })
+                              durationMinutes: nextValue
                             }));
                           }}
-                          value={manualCreateStartParts.hour}
+                          value={manualAppointmentFormState.durationMinutes}
                         >
-                          {hourOptions.map((hourOption) => (
-                            <option key={hourOption} value={hourOption}>
-                              {hourOption}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                        Minuto
-                        <select
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextMinute = event.target.value as LocalDateTimeParts["minute"];
-                            setManualAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              startAt: mergeLocalDateTimeInput(currentValue.startAt, {
-                                minute: nextMinute
-                              })
-                            }));
-                          }}
-                          value={manualCreateStartParts.minute}
-                        >
-                          {halfHourMinuteOptions.map((minuteOption) => (
-                            <option key={minuteOption} value={minuteOption}>
-                              {minuteOption}
+                          {manualAppointmentDurationOptionsMinutes.map((minutesOption) => (
+                            <option key={minutesOption} value={String(minutesOption)}>
+                              {minutesOption} minutos
                             </option>
                           ))}
                         </select>
                       </label>
                     </div>
+                    <div className="mt-2">
+                      <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
+                        {colombiaTimezone}
+                      </span>
+                    </div>
                   </div>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Duración
-                    <select
-                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setManualAppointmentFormState((currentValue) => ({
-                          ...currentValue,
-                          durationMinutes: nextValue
-                        }));
-                      }}
-                      value={manualAppointmentFormState.durationMinutes}
-                    >
-                      {manualAppointmentDurationOptionsMinutes.map((minutesOption) => (
-                        <option key={minutesOption} value={String(minutesOption)}>
-                          {minutesOption} minutos
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Resumen
-                    <input
-                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setManualAppointmentFormState((currentValue) => ({
-                          ...currentValue,
-                          summary: nextValue
-                        }));
-                      }}
-                      type="text"
-                      value={manualAppointmentFormState.summary}
-                    />
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
-                    <input
-                      checked={manualAppointmentFormState.isVirtual}
-                      className="h-4 w-4 rounded border-border-subtle accent-brand-teal"
-                      onChange={(event) => {
-                        const nextValue = event.target.checked;
-                        setManualAppointmentFormState((currentValue) => ({
-                          ...currentValue,
-                          isVirtual: nextValue
-                        }));
-                      }}
-                      type="checkbox"
-                    />
-                    Cita virtual (Google Meet)
-                  </label>
+
+                  <div className="border-t border-border-subtle" />
+
+                  {/* Detalles section */}
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-brand-teal">
+                      Detalles
+                    </p>
+                    <div className="mt-2 space-y-3">
+                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Resumen
+                        <input
+                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setManualAppointmentFormState((currentValue) => ({
+                              ...currentValue,
+                              summary: nextValue
+                            }));
+                          }}
+                          placeholder="Ej. Control mensual"
+                          type="text"
+                          value={manualAppointmentFormState.summary}
+                        />
+                      </label>
+
+                      {/* Meet toggle */}
+                      <div className="flex items-start gap-3">
+                        <button
+                          className={[
+                            "relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-teal/30",
+                            manualAppointmentFormState.isVirtual ? "bg-brand-teal" : "bg-slate-200"
+                          ].join(" ")}
+                          onClick={() => {
+                            setManualAppointmentFormState((currentValue) => ({
+                              ...currentValue,
+                              isVirtual: !currentValue.isVirtual
+                            }));
+                          }}
+                          role="switch"
+                          aria-checked={manualAppointmentFormState.isVirtual}
+                          type="button"
+                        >
+                          <span
+                            className={[
+                              "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200",
+                              manualAppointmentFormState.isVirtual
+                                ? "translate-x-4"
+                                : "translate-x-0"
+                            ].join(" ")}
+                          />
+                        </button>
+                        <div>
+                          <p className="text-sm font-medium text-slate-700">
+                            Cita virtual (Google Meet)
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Se generará un enlace automáticamente.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-3">
+                <div className="mt-5">
                   <button
                     className="w-full rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={createManualAppointmentMutation.isPending}
@@ -2765,7 +2759,7 @@ export function AgendaPage() {
                     }}
                     type="button"
                   >
-                    {createManualAppointmentMutation.isPending ? "Creando..." : "Crear cita manual"}
+                    {createManualAppointmentMutation.isPending ? "Creando..." : "Agendar cita"}
                   </button>
                 </div>
               </article>
