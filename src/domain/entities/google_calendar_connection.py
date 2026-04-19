@@ -17,3 +17,4 @@ class GoogleCalendarConnection(pydantic.BaseModel):
     scope: str | None
     updated_at: datetime.datetime
     connected_at: datetime.datetime | None
+    professional_name: str | None = None

@@ -9,6 +9,7 @@ import src.ports.clock_port as clock_port
 import src.ports.patient_repository_port as patient_repository_port
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.exceptions as service_exceptions
+import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.scheduling_service as scheduling_service
 
 logger = app_logs.get_logger(__name__)
@@ -36,14 +37,16 @@ class PatientProfileResolver:
         scheduling_svc: scheduling_service.SchedulingService,
         patient_repository: patient_repository_port.PatientRepositoryPort,
         clock: clock_port.ClockPort,
-        professional_signature: str,
+        google_calendar_onboarding_service: (
+            google_calendar_onboarding_service.GoogleCalendarOnboardingService
+        ),
         sleep_seconds: typing.Callable[[float], None],
         google_network_retry_backoff_seconds: list[float] | None = None,
     ) -> None:
         self._scheduling_service = scheduling_svc
         self._patient_repository = patient_repository
         self._clock = clock
-        self._professional_signature = professional_signature
+        self._google_calendar_onboarding_service = google_calendar_onboarding_service
         self._sleep_seconds = sleep_seconds
         self._google_network_retry_backoff_seconds = (
             google_network_retry_backoff_seconds
@@ -100,8 +103,10 @@ class PatientProfileResolver:
             default_patient_phone=target_request.whatsapp_user_id,
         )
         event_summary = self._build_event_summary_for_confirmation(
-            resolved_patient_profile=resolved_patient_profile
+            tenant_id=tenant_id,
+            resolved_patient_profile=resolved_patient_profile,
         )
+        consultation_reason = self._normalize_patient_text(tool_input_dto.consultation_reason)
 
         return ResolvedConfirmSelection(
             confirm_input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
@@ -109,6 +114,7 @@ class PatientProfileResolver:
                 slot_id=resolved_slot_id,
                 event_summary=event_summary,
                 attendee_emails=[resolved_patient_profile.email],
+                description=consultation_reason,
             ),
             patient_profile=resolved_patient_profile,
             patient_exists=patient_exists,
@@ -377,9 +383,15 @@ class PatientProfileResolver:
 
     def _build_event_summary_for_confirmation(
         self,
+        tenant_id: str,
         resolved_patient_profile: ResolvedPatientProfile,
     ) -> str:
-        return f"{resolved_patient_profile.full_name}/ {self._professional_signature}"
+        professional_name = self._google_calendar_onboarding_service.get_professional_name(
+            tenant_id
+        )
+        if not professional_name:
+            professional_name = "Profesional"
+        return f"{professional_name}/{resolved_patient_profile.full_name}"
 
     def _log_existing_patient_mismatch(
         self,

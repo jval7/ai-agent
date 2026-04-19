@@ -132,7 +132,8 @@ def test_create_and_reschedule_manual_appointment() -> None:
     )
 
     assert created.appointment_id == "manual-appt-1"
-    assert google_provider.created_event_summaries == ["Cita - Jane Doe"]
+    assert google_provider.created_event_summaries == ["Test Professional/Jane Doe"]
+    assert google_provider.created_event_descriptions == [None]
 
     rescheduled = service.reschedule_appointment(
         claims=build_claims("professional"),
@@ -146,7 +147,8 @@ def test_create_and_reschedule_manual_appointment() -> None:
     )
 
     assert rescheduled.start_at == datetime.datetime(2026, 1, 16, 10, 0, tzinfo=datetime.UTC)
-    assert google_provider.updated_event_summaries == ["Cita - Jane Doe reprogramada"]
+    assert google_provider.updated_event_summaries == ["Test Professional/Jane Doe"]
+    assert google_provider.updated_event_descriptions == ["Cita - Jane Doe reprogramada"]
     stored = manual_repository.get_by_id("tenant-1", "manual-appt-1")
     assert stored is not None
     assert stored.status == "SCHEDULED"
@@ -391,3 +393,109 @@ def test_create_presencial_appointment_passes_attendee_email_no_meet() -> None:
     assert google_provider.last_create_with_meet == [False]
     assert created.is_virtual is False
     assert created.meet_url is None
+
+
+def test_create_appointment_uses_professional_name_as_event_title() -> None:
+    service, _, patient_repository, google_provider = build_service()
+    patient_repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Jane",
+            last_name="Doe",
+            email="jane@example.com",
+            age=29,
+            location="Bogota",
+            phone="573001112233",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    service.create_appointment(
+        claims=build_claims("professional"),
+        create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
+            patient_whatsapp_user_id="wa-1",
+            start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            summary="Ansiedad",
+        ),
+    )
+
+    assert google_provider.created_event_summaries == ["Test Professional/Jane Doe"]
+    assert google_provider.created_event_descriptions == ["Ansiedad"]
+
+
+def test_create_appointment_falls_back_to_profesional_when_name_unavailable() -> None:
+    store = in_memory_store.InMemoryStore()
+    manual_repository = (
+        manual_appointment_repository_adapter.InMemoryManualAppointmentRepositoryAdapter(store)
+    )
+    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
+    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
+        store
+    )
+    google_provider = fake_adapters.FakeGoogleCalendarProvider()
+    google_provider.metadata = google_calendar_dto.GoogleCalendarMetadataDTO(
+        calendar_id="primary",
+        timezone="America/Bogota",
+        summary=None,
+    )
+    clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 10, tzinfo=datetime.UTC))
+    id_generator = fake_adapters.SequenceIdGenerator(["conf-req-1", "manual-appt-1"])
+    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
+        google_calendar_connection_repository=calendar_connection_repository,
+        google_calendar_provider=google_provider,
+        id_generator=id_generator,
+        clock=clock,
+    )
+    calendar_connection_repository.save(
+        google_calendar_connection_entity.GoogleCalendarConnection(
+            tenant_id="tenant-1",
+            professional_user_id="user-1",
+            status="CONNECTED",
+            calendar_id="primary",
+            timezone="America/Bogota",
+            access_token="access-1",
+            refresh_token="refresh-1",
+            token_expires_at=datetime.datetime(2026, 1, 11, tzinfo=datetime.UTC),
+            oauth_state=None,
+            scope="calendar",
+            updated_at=datetime.datetime(2026, 1, 10, tzinfo=datetime.UTC),
+            connected_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    svc = manual_appointment_service.ManualAppointmentService(
+        manual_appointment_repository=manual_repository,
+        patient_repository=patient_repository,
+        google_calendar_onboarding_service=google_service,
+        id_generator=id_generator,
+        clock=clock,
+    )
+    patient_repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Jane",
+            last_name="Doe",
+            email="jane@example.com",
+            age=29,
+            location="Bogota",
+            phone="573001112233",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    svc.create_appointment(
+        claims=build_claims("professional"),
+        create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
+            patient_whatsapp_user_id="wa-1",
+            start_at=datetime.datetime(2026, 1, 15, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            summary="Ansiedad",
+        ),
+    )
+
+    assert google_provider.created_event_summaries == ["Profesional/Jane Doe"]
+    assert google_provider.created_event_descriptions == ["Ansiedad"]

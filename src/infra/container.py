@@ -294,7 +294,7 @@ class AppContainer:
             scheduling_svc=self.scheduling_service,
             patient_repository=self.patient_repository,
             clock=self.clock_adapter,
-            professional_signature="Psi. Alejandra Escobar",
+            google_calendar_onboarding_service=self.google_calendar_onboarding_service,
             sleep_seconds=time.sleep,
         )
         self.tool_handler_registry = tool_handler_registry.ToolHandlerRegistry(

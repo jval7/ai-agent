@@ -706,6 +706,7 @@ class SchedulingService:
                 summary=normalized_summary,
                 attendee_emails=input_dto.attendee_emails,
                 with_meet=with_meet,
+                description=input_dto.description,
             )
         except service_exceptions.ExternalProviderError as error:
             if self._is_google_conflict_error(str(error)):

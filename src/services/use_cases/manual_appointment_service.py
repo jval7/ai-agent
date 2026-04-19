@@ -62,14 +62,20 @@ class ManualAppointmentService:
         if patient is None:
             raise service_exceptions.EntityNotFoundError("patient not found")
 
+        motivo = self._normalize_text(create_dto.summary)
         summary = self._resolve_summary(create_dto.summary, patient)
+        event_title = self._build_event_title(
+            tenant_id=claims.tenant_id,
+            patient=patient,
+        )
         event = self._google_calendar_onboarding_service.create_event(
             tenant_id=claims.tenant_id,
             start_at=create_dto.start_at,
             end_at=create_dto.end_at,
-            summary=summary,
+            summary=event_title,
             attendee_emails=[patient.email],
             with_meet=create_dto.is_virtual,
+            description=motivo,
         )
         now_value = self._clock.now()
         appointment = manual_appointment_entity.ManualAppointment(
@@ -140,14 +146,19 @@ class ManualAppointmentService:
         reschedule_attendee_emails = (
             [reschedule_patient.email] if reschedule_patient is not None else []
         )
+        reschedule_event_title = self._build_event_title(
+            tenant_id=claims.tenant_id,
+            patient=reschedule_patient,
+        )
         updated_event = self._google_calendar_onboarding_service.update_event(
             tenant_id=claims.tenant_id,
             event_id=appointment.calendar_event_id,
             start_at=input_dto.start_at,
             end_at=input_dto.end_at,
             timezone=input_dto.timezone,
-            summary=resolved_summary,
+            summary=reschedule_event_title,
             attendee_emails=reschedule_attendee_emails,
+            description=resolved_summary,
         )
         if self._reminder_service is not None:
             self._reminder_service.cancel_reminders_for_source(
@@ -285,6 +296,22 @@ class ManualAppointmentService:
             },
         )
         return self._to_dto(appointment)
+
+    def _build_event_title(
+        self,
+        tenant_id: str,
+        patient: patient_entity.Patient | None,
+    ) -> str:
+        professional_name = self._google_calendar_onboarding_service.get_professional_name(
+            tenant_id
+        )
+        if not professional_name:
+            professional_name = "Profesional"
+        if patient is not None:
+            patient_full_name = f"{patient.first_name} {patient.last_name}"
+        else:
+            patient_full_name = "Paciente"
+        return f"{professional_name}/{patient_full_name}"
 
     def _resolve_summary(
         self,

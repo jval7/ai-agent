@@ -185,6 +185,59 @@ class GoogleCalendarOnboardingService:
                 return True
         return False
 
+    def get_professional_name(self, tenant_id: str) -> str | None:
+        try:
+            return self._ensure_professional_name(tenant_id)
+        except Exception as error:
+            logger.warning(
+                "google_calendar.professional_name.fetch_failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="google_calendar.professional_name.fetch_failed",
+                        message="could not resolve professional name",
+                        data={"tenant_id": tenant_id, "error": str(error)},
+                    )
+                },
+            )
+            return None
+
+    def _ensure_professional_name(self, tenant_id: str) -> str | None:
+        connection = self._google_calendar_connection_repository.get_by_tenant_id(tenant_id)
+        if connection is None:
+            return None
+        if connection.professional_name is not None:
+            return connection.professional_name
+        return self._lazy_fetch_professional_name(connection)
+
+    def _lazy_fetch_professional_name(
+        self,
+        connection: google_calendar_connection_entity.GoogleCalendarConnection,
+    ) -> str | None:
+        connection = self._get_connected_connection_with_fresh_access_token(connection.tenant_id)
+        access_token = connection.access_token
+        if access_token is None:
+            return None
+        metadata = self._google_calendar_provider.get_primary_calendar_metadata(access_token)
+        professional_name = metadata.summary
+        now_value = self._clock.now()
+        updated_connection = google_calendar_connection_entity.GoogleCalendarConnection(
+            tenant_id=connection.tenant_id,
+            professional_user_id=connection.professional_user_id,
+            status=connection.status,
+            calendar_id=connection.calendar_id,
+            timezone=connection.timezone,
+            access_token=connection.access_token,
+            refresh_token=connection.refresh_token,
+            token_expires_at=connection.token_expires_at,
+            oauth_state=connection.oauth_state,
+            scope=connection.scope,
+            updated_at=now_value,
+            connected_at=connection.connected_at,
+            professional_name=professional_name,
+        )
+        self._google_calendar_connection_repository.save(updated_connection)
+        return professional_name
+
     def create_event(
         self,
         tenant_id: str,
@@ -193,6 +246,7 @@ class GoogleCalendarOnboardingService:
         summary: str,
         attendee_emails: list[str],
         with_meet: bool,
+        description: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         connection = self._get_connected_connection_with_fresh_access_token(tenant_id)
         calendar_id = connection.calendar_id
@@ -214,6 +268,7 @@ class GoogleCalendarOnboardingService:
             attendee_emails=attendee_emails,
             with_meet=with_meet,
             conference_request_id=conference_request_id,
+            description=description,
         )
 
     def delete_event(
@@ -244,6 +299,7 @@ class GoogleCalendarOnboardingService:
         timezone: str,
         summary: str,
         attendee_emails: list[str],
+        description: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         connection = self._get_connected_connection_with_fresh_access_token(tenant_id)
         calendar_id = connection.calendar_id
@@ -262,6 +318,7 @@ class GoogleCalendarOnboardingService:
             timezone=timezone,
             summary=summary,
             attendee_emails=attendee_emails,
+            description=description,
         )
 
     def _finalize_connection(
@@ -295,6 +352,7 @@ class GoogleCalendarOnboardingService:
             scope=tokens.scope,
             updated_at=now_value,
             connected_at=now_value,
+            professional_name=metadata.summary,
         )
         self._google_calendar_connection_repository.save(updated_connection)
         logger.info(

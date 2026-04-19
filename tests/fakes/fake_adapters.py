@@ -199,15 +199,18 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         self.metadata = google_calendar_dto.GoogleCalendarMetadataDTO(
             calendar_id="primary",
             timezone="America/Bogota",
+            summary="Test Professional",
         )
         self.busy_intervals: list[google_calendar_dto.GoogleCalendarBusyIntervalDTO] = []
         self.created_events: list[google_calendar_dto.GoogleCalendarEventDTO] = []
         self.created_event_summaries: list[str] = []
+        self.created_event_descriptions: list[str | None] = []
         self.last_create_attendee_emails: list[list[str]] = []
         self.last_create_with_meet: list[bool] = []
         self.deleted_event_ids: list[str] = []
         self.updated_events: list[google_calendar_dto.GoogleCalendarEventDTO] = []
         self.updated_event_summaries: list[str] = []
+        self.updated_event_descriptions: list[str | None] = []
         self.last_update_attendee_emails: list[list[str]] = []
         self.busy_interval_errors: list[service_exceptions.ExternalProviderError] = []
         self.create_event_errors: list[service_exceptions.ExternalProviderError] = []
@@ -267,6 +270,7 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         attendee_emails: list[str],
         with_meet: bool,
         conference_request_id: str,
+        description: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         if self.create_event_errors:
             raise self.create_event_errors.pop(0)
@@ -275,6 +279,7 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         del timezone
         del conference_request_id
         self.created_event_summaries.append(summary)
+        self.created_event_descriptions.append(description)
         self.last_create_attendee_emails.append(list(attendee_emails))
         self.last_create_with_meet.append(with_meet)
         meet_url = "https://meet.google.com/fake-meet" if with_meet else None
@@ -309,6 +314,7 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         timezone: str,
         summary: str,
         attendee_emails: list[str],
+        description: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         if self.update_event_errors:
             raise self.update_event_errors.pop(0)
@@ -316,6 +322,7 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         del calendar_id
         del timezone
         self.updated_event_summaries.append(summary)
+        self.updated_event_descriptions.append(description)
         self.last_update_attendee_emails.append(list(attendee_emails))
         event = google_calendar_dto.GoogleCalendarEventDTO(
             event_id=event_id,

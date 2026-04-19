@@ -104,6 +104,7 @@ class ConfirmSelectedSlotInputDTO(pydantic.BaseModel):
     slot_id: str
     event_summary: str
     attendee_emails: list[str] = []
+    description: str | None = None
 
 
 class ConfirmSelectedSlotToolInputDTO(pydantic.BaseModel):

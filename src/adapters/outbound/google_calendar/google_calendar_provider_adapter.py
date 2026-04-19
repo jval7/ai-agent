@@ -80,9 +80,15 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         if not isinstance(timezone, str) or not timezone:
             timezone = "UTC"
 
+        summary_raw = payload.get("summary")
+        summary: str | None = None
+        if isinstance(summary_raw, str) and summary_raw.strip() and "@" not in summary_raw:
+            summary = summary_raw.strip()
+
         return google_calendar_dto.GoogleCalendarMetadataDTO(
             calendar_id=calendar_id,
             timezone=timezone,
+            summary=summary,
         )
 
     def list_busy_intervals(
@@ -147,6 +153,7 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         attendee_emails: list[str],
         with_meet: bool,
         conference_request_id: str,
+        description: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         encoded_calendar_id = urllib.parse.quote(calendar_id, safe="")
         body: dict[str, object] = {
@@ -160,6 +167,8 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
                 "timeZone": timezone,
             },
         }
+        if description is not None:
+            body["description"] = description
         if attendee_emails:
             body["attendees"] = [{"email": e} for e in attendee_emails]
         if with_meet:
@@ -223,6 +232,7 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         timezone: str,
         summary: str,
         attendee_emails: list[str],
+        description: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         encoded_calendar_id = urllib.parse.quote(calendar_id, safe="")
         encoded_event_id = urllib.parse.quote(event_id, safe="")
@@ -237,6 +247,8 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
                 "timeZone": timezone,
             },
         }
+        if description is not None:
+            body["description"] = description
         if attendee_emails:
             body["attendees"] = [{"email": e} for e in attendee_emails]
         query_params = {"sendUpdates": "all"}

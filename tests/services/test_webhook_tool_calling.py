@@ -70,6 +70,7 @@ def _build_new_components(
     clock: fake_adapters.FixedClock,
     whatsapp_provider: fake_adapters.FakeWhatsappProvider,
     id_generator: fake_adapters.SequenceIdGenerator,
+    google_service: google_calendar_onboarding_service.GoogleCalendarOnboardingService,
     sleep_fn: typing.Callable[[float], None] | None = None,
 ) -> dict[str, typing.Any]:
     """Builds the new refactored components for WebhookService."""
@@ -83,7 +84,7 @@ def _build_new_components(
         scheduling_svc=scheduling_svc,
         patient_repository=patient_repository,
         clock=clock,
-        professional_signature="Psi. Alejandra Escobar",
+        google_calendar_onboarding_service=google_service,
         sleep_seconds=effective_sleep,
     )
     handler_registry = tool_handler_registry.ToolHandlerRegistry(
@@ -241,6 +242,7 @@ def build_tool_calling_context(
             clock,
             provider,
             id_generator,
+            google_service=google_service,
             sleep_fn=sleep_fn,
         ),
     )
@@ -503,7 +505,7 @@ def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> 
     assert saved_request.status == "BOOKED"
     assert saved_request.selected_slot_id == "slot-1"
     assert saved_request.calendar_event_id == "event-1"
-    assert ctx.google_provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+    assert ctx.google_provider.created_event_summaries == ["Test Professional/Jane Doe"]
     created_patient = ctx.patient_repository.get_by_whatsapp_user("tenant-1", "wa-user-1")
     assert created_patient is not None
     assert created_patient.location == "Bogota"
@@ -746,7 +748,7 @@ def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_
     saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
     assert saved_request.status == "BOOKED"
-    assert ctx.google_provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+    assert ctx.google_provider.created_event_summaries == ["Test Professional/Jane Doe"]
     persisted_patient = ctx.patient_repository.get_by_whatsapp_user("tenant-1", "wa-user-1")
     assert persisted_patient is not None
     assert persisted_patient.first_name == "Jane"
