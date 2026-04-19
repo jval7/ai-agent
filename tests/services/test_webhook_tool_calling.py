@@ -11,6 +11,7 @@ import src.adapters.outbound.inmemory.processed_webhook_event_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.task_scheduler_adapter as inmemory_task_scheduler_adapter
+import src.adapters.outbound.inmemory.tenant_repository_adapter as tenant_repository_adapter
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.conversation as conversation_entity
@@ -19,6 +20,7 @@ import src.domain.entities.message as message_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
+import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
@@ -202,11 +204,22 @@ def build_tool_calling_context(
     id_generator = fake_adapters.SequenceIdGenerator(id_values)
     clock = fake_adapters.FixedClock(now_value)
     google_provider = fake_adapters.FakeGoogleCalendarProvider()
+    tenant_repo = tenant_repository_adapter.InMemoryTenantRepositoryAdapter(store)
+    tenant_repo.save(
+        tenant_entity.Tenant(
+            id="tenant-1",
+            name="Test Clinic",
+            created_at=now_value,
+            updated_at=now_value,
+            professional_name="Test Professional",
+        )
+    )
     google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
         google_calendar_connection_repository=calendar_connection_repository,
         google_calendar_provider=google_provider,
         id_generator=id_generator,
         clock=clock,
+        tenant_repository=tenant_repo,
     )
     task_sched = inmemory_task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
     scheduling_use_case = scheduling_service.SchedulingService(

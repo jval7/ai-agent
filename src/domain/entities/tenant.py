@@ -8,3 +8,4 @@ class Tenant(pydantic.BaseModel):
     name: str
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    professional_name: str | None = None

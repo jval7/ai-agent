@@ -1,10 +1,12 @@
 import datetime
 import typing
 
+import src.domain.entities.tenant as tenant_entity
 import src.ports.clock_port as clock_port
 import src.ports.google_calendar_provider_port as google_calendar_provider_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.llm_provider_port as llm_provider_port
+import src.ports.tenant_repository_port as tenant_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.google_calendar_dto as google_calendar_dto
 import src.services.dto.llm_dto as llm_dto
@@ -199,7 +201,6 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         self.metadata = google_calendar_dto.GoogleCalendarMetadataDTO(
             calendar_id="primary",
             timezone="America/Bogota",
-            summary="Test Professional",
         )
         self.busy_intervals: list[google_calendar_dto.GoogleCalendarBusyIntervalDTO] = []
         self.created_events: list[google_calendar_dto.GoogleCalendarEventDTO] = []
@@ -331,3 +332,23 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         )
         self.updated_events.append(event)
         return event.model_copy(deep=True)
+
+
+class FakeTenantRepository(tenant_repository_port.TenantRepositoryPort):
+    def __init__(self) -> None:
+        self._tenants: dict[str, tenant_entity.Tenant] = {}
+
+    def save(self, tenant: tenant_entity.Tenant) -> None:
+        self._tenants[tenant.id] = tenant.model_copy(deep=True)
+
+    def get_by_id(self, tenant_id: str) -> tenant_entity.Tenant | None:
+        tenant = self._tenants.get(tenant_id)
+        if tenant is None:
+            return None
+        return tenant.model_copy(deep=True)
+
+    def delete_with_data(self, tenant_id: str) -> bool:
+        if tenant_id not in self._tenants:
+            return False
+        del self._tenants[tenant_id]
+        return True

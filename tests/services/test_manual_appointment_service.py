@@ -9,8 +9,8 @@ import src.adapters.outbound.inmemory.patient_repository_adapter as patient_repo
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.domain.entities.patient as patient_entity
+import src.domain.entities.tenant as tenant_entity
 import src.services.dto.auth_dto as auth_dto
-import src.services.dto.google_calendar_dto as google_calendar_dto
 import src.services.dto.manual_appointment_dto as manual_appointment_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
@@ -18,7 +18,9 @@ import src.services.use_cases.manual_appointment_service as manual_appointment_s
 import tests.fakes.fake_adapters as fake_adapters
 
 
-def build_service() -> tuple[
+def build_service(
+    professional_name: str | None = "Test Professional",
+) -> tuple[
     manual_appointment_service.ManualAppointmentService,
     manual_appointment_repository_adapter.InMemoryManualAppointmentRepositoryAdapter,
     patient_repository_adapter.InMemoryPatientRepositoryAdapter,
@@ -32,6 +34,16 @@ def build_service() -> tuple[
     calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
         store
     )
+    tenant_repository = fake_adapters.FakeTenantRepository()
+    tenant_repository.save(
+        tenant_entity.Tenant(
+            id="tenant-1",
+            name="Test Tenant",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            professional_name=professional_name,
+        )
+    )
     google_provider = fake_adapters.FakeGoogleCalendarProvider()
     clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 10, tzinfo=datetime.UTC))
     id_generator = fake_adapters.SequenceIdGenerator(["conf-req-1", "manual-appt-1"])
@@ -40,6 +52,7 @@ def build_service() -> tuple[
         google_calendar_provider=google_provider,
         id_generator=id_generator,
         clock=clock,
+        tenant_repository=tenant_repository,
     )
 
     calendar_connection_repository.save(
@@ -56,15 +69,6 @@ def build_service() -> tuple[
             scope="calendar",
             updated_at=datetime.datetime(2026, 1, 10, tzinfo=datetime.UTC),
             connected_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
-        )
-    )
-    google_provider.refreshed_tokens_by_refresh_token["refresh-1"] = (
-        google_calendar_dto.GoogleOauthTokensDTO(
-            access_token="access-2",
-            refresh_token="refresh-1",
-            expires_in_seconds=3600,
-            scope="calendar",
-            token_type="Bearer",
         )
     )
     service = manual_appointment_service.ManualAppointmentService(
@@ -427,51 +431,7 @@ def test_create_appointment_uses_professional_name_as_event_title() -> None:
 
 
 def test_create_appointment_falls_back_to_profesional_when_name_unavailable() -> None:
-    store = in_memory_store.InMemoryStore()
-    manual_repository = (
-        manual_appointment_repository_adapter.InMemoryManualAppointmentRepositoryAdapter(store)
-    )
-    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
-    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
-        store
-    )
-    google_provider = fake_adapters.FakeGoogleCalendarProvider()
-    google_provider.metadata = google_calendar_dto.GoogleCalendarMetadataDTO(
-        calendar_id="primary",
-        timezone="America/Bogota",
-        summary=None,
-    )
-    clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 10, tzinfo=datetime.UTC))
-    id_generator = fake_adapters.SequenceIdGenerator(["conf-req-1", "manual-appt-1"])
-    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
-        google_calendar_connection_repository=calendar_connection_repository,
-        google_calendar_provider=google_provider,
-        id_generator=id_generator,
-        clock=clock,
-    )
-    calendar_connection_repository.save(
-        google_calendar_connection_entity.GoogleCalendarConnection(
-            tenant_id="tenant-1",
-            professional_user_id="user-1",
-            status="CONNECTED",
-            calendar_id="primary",
-            timezone="America/Bogota",
-            access_token="access-1",
-            refresh_token="refresh-1",
-            token_expires_at=datetime.datetime(2026, 1, 11, tzinfo=datetime.UTC),
-            oauth_state=None,
-            scope="calendar",
-            updated_at=datetime.datetime(2026, 1, 10, tzinfo=datetime.UTC),
-            connected_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
-        )
-    )
-    svc = manual_appointment_service.ManualAppointmentService(
-        manual_appointment_repository=manual_repository,
-        patient_repository=patient_repository,
-        google_calendar_onboarding_service=google_service,
-        id_generator=id_generator,
-        clock=clock,
-    )
+    service, _, patient_repository, google_provider = build_service(professional_name=None)
     patient_repository.save(
         patient_entity.Patient(
             tenant_id="tenant-1",
@@ -486,7 +446,7 @@ def test_create_appointment_falls_back_to_profesional_when_name_unavailable() ->
         )
     )
 
-    svc.create_appointment(
+    service.create_appointment(
         claims=build_claims("professional"),
         create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
             patient_whatsapp_user_id="wa-1",
