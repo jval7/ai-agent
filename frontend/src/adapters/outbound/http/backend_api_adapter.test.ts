@@ -400,6 +400,58 @@ vitestModule.describe("BackendApiAdapter", () => {
     vitestModule.expect(bookedPaymentUpdate.paymentAmountCop).toBe(80000);
   });
 
+  vitestModule.it("maps getTenantProfile and updateTenantProfile endpoints", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/tenant/profile", ({ request }) => {
+        const authHeader = request.headers.get("authorization");
+        vitestModule.expect(authHeader).toBe("Bearer access-1");
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          name: "Ana Garcia",
+          professional_name: "Dra. Ana Garcia"
+        });
+      }),
+      mswModule.http.put("http://api.test/v1/tenant/profile", async ({ request }) => {
+        const body = (await request.json()) as { professional_name: string | null };
+        vitestModule.expect(body.professional_name).toBe("Dra. Ana M. Garcia");
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          name: "Ana Garcia",
+          professional_name: "Dra. Ana M. Garcia"
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const profile = await adapter.getTenantProfile();
+    vitestModule.expect(profile.tenantId).toBe("tenant-1");
+    vitestModule.expect(profile.name).toBe("Ana Garcia");
+    vitestModule.expect(profile.professionalName).toBe("Dra. Ana Garcia");
+
+    const updated = await adapter.updateTenantProfile({ professionalName: "Dra. Ana M. Garcia" });
+    vitestModule.expect(updated.professionalName).toBe("Dra. Ana M. Garcia");
+  });
+
+  vitestModule.it("maps null professional_name in getTenantProfile", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/tenant/profile", () => {
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          name: "Ana Garcia",
+          professional_name: null
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const profile = await adapter.getTenantProfile();
+    vitestModule.expect(profile.professionalName).toBeNull();
+  });
+
   vitestModule.it("resets conversation messages with DELETE endpoint", async () => {
     serverModule.server.use(
       mswModule.http.delete("http://api.test/v1/conversations/conv-1/messages", ({ request }) => {

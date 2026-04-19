@@ -367,3 +367,13 @@ export interface CreateTemplateApiRequest {
   language: string;
   components: TemplateComponentApiResponse[];
 }
+
+export interface TenantProfileResponse {
+  tenant_id: string;
+  name: string;
+  professional_name: string | null;
+}
+
+export interface UpdateTenantProfileRequest {
+  professional_name: string | null;
+}

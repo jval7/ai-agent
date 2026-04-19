@@ -8,6 +8,7 @@ import type * as onboardingModel from "@domain/models/onboarding";
 import type * as patientModel from "@domain/models/patient";
 import type * as scheduledReminderModel from "@domain/models/scheduled_reminder";
 import type * as schedulingModel from "@domain/models/scheduling";
+import type * as tenantModel from "@domain/models/tenant";
 import type * as whatsappModel from "@domain/models/whatsapp";
 import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 import type * as backendApiPort from "@ports/backend_api_port";
@@ -806,6 +807,27 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     });
   }
 
+  async getTenantProfile(): Promise<tenantModel.TenantProfile> {
+    const payload = await this.request<httpTypes.TenantProfileResponse>("/v1/tenant/profile", {
+      method: "GET",
+      authRequired: true
+    });
+    return mapTenantProfile(payload);
+  }
+
+  async updateTenantProfile(
+    input: tenantModel.UpdateTenantProfileInput
+  ): Promise<tenantModel.TenantProfile> {
+    const payload = await this.request<httpTypes.TenantProfileResponse>("/v1/tenant/profile", {
+      method: "PUT",
+      authRequired: true,
+      body: JSON.stringify({
+        professional_name: input.professionalName
+      } satisfies httpTypes.UpdateTenantProfileRequest)
+    });
+    return mapTenantProfile(payload);
+  }
+
   async listWhatsappTemplates(): Promise<whatsappTemplateModel.WhatsappTemplate[]> {
     const payload = await this.request<httpTypes.TemplateListApiResponse>(
       "/v1/whatsapp/templates",
@@ -1063,6 +1085,14 @@ function mapWhatsappTemplate(
       text: c.text,
       ...(c.example_values ? { exampleValues: c.example_values } : {})
     }))
+  };
+}
+
+function mapTenantProfile(payload: httpTypes.TenantProfileResponse): tenantModel.TenantProfile {
+  return {
+    tenantId: payload.tenant_id,
+    name: payload.name,
+    professionalName: payload.professional_name
   };
 }
 
