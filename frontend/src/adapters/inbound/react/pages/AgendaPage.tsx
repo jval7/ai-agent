@@ -95,6 +95,7 @@ interface PatientFormState {
   email: string;
   age: string;
   location: string;
+  phonePrefix: string;
   phone: string;
 }
 
@@ -154,6 +155,7 @@ function emptyPatientForm(): PatientFormState {
     email: "",
     age: "",
     location: "",
+    phonePrefix: "",
     phone: ""
   };
 }
@@ -385,6 +387,7 @@ export function AgendaPage() {
   const [submitSuccessMessage, setSubmitSuccessMessage] = reactModule.useState<string | null>(null);
   const [patientFormState, setPatientFormState] =
     reactModule.useState<PatientFormState>(emptyPatientForm());
+  const [mobilePrefixError, setMobilePrefixError] = reactModule.useState<string | null>(null);
   const [manualAppointmentFormState, setManualAppointmentFormState] =
     reactModule.useState<ManualAppointmentFormState>(emptyManualAppointmentForm());
   const [manualMobileStep, setManualMobileStep] = reactModule.useState<
@@ -2455,31 +2458,49 @@ export function AgendaPage() {
                       value={patientFormState.email}
                     />
                   </label>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Teléfono
-                    <input
-                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setPatientFormState((currentValue) => ({
-                          ...currentValue,
-                          phone: nextValue
-                        }));
-                      }}
-                      placeholder="+57 300 123 4567"
-                      type="text"
-                      value={patientFormState.phone}
-                    />
-                    {(() => {
-                      const derived = deriveWhatsappUserId(patientFormState.phone);
-                      const showError = patientFormState.phone.trim() !== "" && derived.length < 8;
-                      return showError ? (
-                        <p className="mt-1 text-[11px] text-rose-600">
-                          Incluye el código de país, ej. +57 300 123 4567
-                        </p>
-                      ) : null;
-                    })()}
-                  </label>
+                  <div className="grid grid-cols-[1fr_2fr] gap-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Prefijo
+                      <input
+                        className={[
+                          "mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20",
+                          mobilePrefixError !== null
+                            ? "border-rose-400 focus:border-rose-400 focus:ring-rose-200"
+                            : ""
+                        ].join(" ")}
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setPatientFormState((currentValue) => ({
+                            ...currentValue,
+                            phonePrefix: nextValue
+                          }));
+                          setMobilePrefixError(null);
+                        }}
+                        placeholder="+57"
+                        type="text"
+                        value={patientFormState.phonePrefix}
+                      />
+                      {mobilePrefixError !== null ? (
+                        <p className="mt-1 text-[11px] text-rose-600">{mobilePrefixError}</p>
+                      ) : null}
+                    </label>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Teléfono
+                      <input
+                        className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setPatientFormState((currentValue) => ({
+                            ...currentValue,
+                            phone: nextValue
+                          }));
+                        }}
+                        placeholder="300 123 4567"
+                        type="text"
+                        value={patientFormState.phone}
+                      />
+                    </label>
+                  </div>
                   <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Edad
                     <input
@@ -2521,9 +2542,9 @@ export function AgendaPage() {
                       const trimmedLastName = patientFormState.lastName.trim();
                       const trimmedEmail = patientFormState.email.trim();
                       const trimmedLocation = patientFormState.location.trim();
+                      const trimmedPrefix = patientFormState.phonePrefix.trim();
                       const trimmedPhone = patientFormState.phone.trim();
                       const ageValue = Number.parseInt(patientFormState.age, 10);
-                      const derivedWhatsappUserId = deriveWhatsappUserId(trimmedPhone);
                       if (
                         trimmedFirstName === "" ||
                         trimmedLastName === "" ||
@@ -2538,13 +2559,19 @@ export function AgendaPage() {
                         );
                         return;
                       }
+                      if (trimmedPrefix === "") {
+                        setMobilePrefixError("Especifica el prefijo telefónico (ej. +57)");
+                        return;
+                      }
+                      const derivedWhatsappUserId = deriveWhatsappUserId(
+                        trimmedPrefix + trimmedPhone
+                      );
                       if (derivedWhatsappUserId.length < 8) {
-                        setLocalSubmitErrorMessage(
-                          "Incluye el código de país en el teléfono, ej. +57 300 123 4567"
-                        );
+                        setLocalSubmitErrorMessage("El número debe tener al menos 8 dígitos.");
                         return;
                       }
                       setLocalSubmitErrorMessage(null);
+                      setMobilePrefixError(null);
                       setSubmitSuccessMessage(null);
                       createPatientMutation.mutate(
                         {
@@ -2554,6 +2581,7 @@ export function AgendaPage() {
                           email: trimmedEmail,
                           age: ageValue,
                           location: trimmedLocation,
+                          phonePrefix: trimmedPrefix,
                           phone: trimmedPhone
                         },
                         {

@@ -316,6 +316,7 @@ vitestModule.describe("AgendaPage", () => {
             email: "maria@example.com",
             age: 30,
             location: "Bogota",
+            phonePrefix: null,
             phone: "573001001001",
             createdAt: "2026-03-01T00:00:00Z"
           }
@@ -378,7 +379,8 @@ vitestModule.describe("AgendaPage", () => {
       email: "jane@example.com",
       age: 29,
       location: "Bogota",
-      phone: "+57 300 111 2233",
+      phonePrefix: "+57",
+      phone: "300 111 2233",
       createdAt: "2026-03-01T00:00:00Z"
     }));
     const container = {
@@ -433,7 +435,7 @@ vitestModule.describe("AgendaPage", () => {
       expect(testingLibraryReactModule.screen.getByText("Nuevo paciente")).toBeInTheDocument();
     });
 
-    // Fill in modal fields (no WhatsApp ID field — derived from phone)
+    // Fill in modal fields (no WhatsApp ID field — derived from prefix+phone)
     testingLibraryReactModule.fireEvent.change(
       testingLibraryReactModule.screen.getByLabelText(/^Nombre$/i),
       {
@@ -453,9 +455,15 @@ vitestModule.describe("AgendaPage", () => {
       }
     );
     testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/Teléfono/i),
+      testingLibraryReactModule.screen.getByLabelText(/^Prefijo$/i),
       {
-        target: { value: "+57 300 111 2233" }
+        target: { value: "+57" }
+      }
+    );
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByLabelText(/^Teléfono$/i),
+      {
+        target: { value: "300 111 2233" }
       }
     );
     testingLibraryReactModule.fireEvent.change(
@@ -485,9 +493,100 @@ vitestModule.describe("AgendaPage", () => {
         email: "jane@example.com",
         age: 29,
         location: "Bogota",
-        phone: "+57 300 111 2233"
+        phonePrefix: "+57",
+        phone: "300 111 2233"
       });
     });
+  });
+
+  vitestModule.it("blocks modal submit when Prefijo is empty", async () => {
+    const createPatientMock = vitestModule.vi.fn();
+    const container = {
+      onboardingUseCase: {
+        getGoogleCalendarConnectionStatus: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          status: "CONNECTED",
+          calendarId: "primary",
+          professionalTimezone: "UTC",
+          connectedAt: "2026-03-01T00:00:00Z"
+        }))
+      },
+      schedulingUseCase: {
+        listRequests: vitestModule.vi.fn(async () => []),
+        getAvailability: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          calendarId: "primary",
+          timezone: "UTC",
+          busyIntervals: []
+        })),
+        submitProfessionalSlots: vitestModule.vi.fn(),
+        resolveConsultationReview: vitestModule.vi.fn(),
+        rescheduleBookedSlot: vitestModule.vi.fn(),
+        cancelBookedSlot: vitestModule.vi.fn()
+      },
+      patientUseCase: {
+        listPatients: vitestModule.vi.fn(async () => []),
+        createPatient: createPatientMock
+      },
+      manualAppointmentUseCase: {
+        listAppointments: vitestModule.vi.fn(async () => [])
+      }
+    };
+
+    renderAgendaPage(container);
+
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", {
+        name: /Agendamiento manual/
+      })
+    );
+
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", {
+        name: /\+ Nuevo paciente/i
+      })
+    );
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Nuevo paciente")).toBeInTheDocument();
+    });
+
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByLabelText(/^Nombre$/i),
+      { target: { value: "Jane" } }
+    );
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByLabelText(/Apellido/i),
+      { target: { value: "Doe" } }
+    );
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByLabelText(/Email/i),
+      { target: { value: "jane@example.com" } }
+    );
+    // Leave Prefijo empty intentionally
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByLabelText(/^Teléfono$/i),
+      { target: { value: "300 111 2233" } }
+    );
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByLabelText(/Edad/i),
+      { target: { value: "29" } }
+    );
+    testingLibraryReactModule.fireEvent.change(
+      testingLibraryReactModule.screen.getByLabelText(/Ubicación/i),
+      { target: { value: "Bogota" } }
+    );
+
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", { name: "Crear paciente" })
+    );
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(
+        testingLibraryReactModule.screen.getByText(/Especifica el prefijo telefónico/)
+      ).toBeInTheDocument();
+    });
+    expect(createPatientMock).not.toHaveBeenCalled();
   });
 
   vitestModule.it("creates manual appointment from agenda panel", async () => {
@@ -550,6 +649,7 @@ vitestModule.describe("AgendaPage", () => {
             email: "jane@example.com",
             age: 29,
             location: "Bogota",
+            phonePrefix: null,
             phone: "573001112233",
             createdAt: "2026-03-01T00:00:00Z"
           }
@@ -799,6 +899,7 @@ vitestModule.describe("AgendaPage", () => {
             email: "maria@example.com",
             age: 30,
             location: "Bogota",
+            phonePrefix: null,
             phone: "573001001001",
             createdAt: "2026-03-01T00:00:00Z"
           }

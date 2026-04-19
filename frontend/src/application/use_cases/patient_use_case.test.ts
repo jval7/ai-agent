@@ -15,7 +15,8 @@ vitestModule.describe("PatientUseCase", () => {
       email: "john@example.com",
       age: 34,
       location: "Medellin",
-      phone: "573001445566",
+      phonePrefix: "+57",
+      phone: "3001445566",
       createdAt: "2026-03-02T10:00:00Z"
     }));
     const updatePatientMock = vitestModule.vi.fn(async () => ({
@@ -26,6 +27,7 @@ vitestModule.describe("PatientUseCase", () => {
       email: "jane-updated@example.com",
       age: 30,
       location: "Bogota",
+      phonePrefix: null,
       phone: "573001112233",
       createdAt: "2026-03-01T10:00:00Z"
     }));
@@ -37,6 +39,7 @@ vitestModule.describe("PatientUseCase", () => {
       email: "jane@example.com",
       age: 29,
       location: "Bogota",
+      phonePrefix: null,
       phone: "573001112233",
       createdAt: "2026-03-01T10:00:00Z"
     }));
@@ -50,6 +53,7 @@ vitestModule.describe("PatientUseCase", () => {
           email: "jane@example.com",
           age: 29,
           location: "Bogota",
+          phonePrefix: null,
           phone: "573001112233",
           createdAt: "2026-03-01T10:00:00Z"
         }
@@ -70,7 +74,8 @@ vitestModule.describe("PatientUseCase", () => {
       email: "john@example.com",
       age: 34,
       location: "Medellin",
-      phone: "573001445566"
+      phonePrefix: "+57",
+      phone: "3001445566"
     });
     await useCase.updatePatient("wa-1", {
       firstName: "Jane Updated",
@@ -78,6 +83,7 @@ vitestModule.describe("PatientUseCase", () => {
       email: "jane-updated@example.com",
       age: 30,
       location: "Bogota",
+      phonePrefix: null,
       phone: "573001112233"
     });
     await useCase.removePatient("wa-1");
@@ -92,6 +98,7 @@ vitestModule.describe("PatientUseCase", () => {
       email: "jane-updated@example.com",
       age: 30,
       location: "Bogota",
+      phonePrefix: null,
       phone: "573001112233"
     });
     vitestModule.expect(removePatientMock).toHaveBeenCalledWith("wa-1");

@@ -372,12 +372,14 @@ Este documento describe qué hace cada endpoint del backend.
       "email": "jane@example.com",
       "age": 29,
       "location": "Bogota",
+      "phone_prefix": "+57",
       "phone": "573001234567",
       "created_at": "2026-03-02T00:44:28Z"
     }
   ]
 }
 ```
+- `phone_prefix` es `string | null` (opcional). El chatbot no lo captura separado, por lo que pacientes creados por el bot tienen `null`. Pacientes creados desde el panel manual lo traen requerido.
 
 ### `GET /v1/patients/{whatsapp_user_id}`
 - Auth: sí (owner)
@@ -392,6 +394,7 @@ Este documento describe qué hace cada endpoint del backend.
   "email": "jane@example.com",
   "age": 29,
   "location": "Bogota",
+  "phone_prefix": "+57",
   "phone": "573001234567",
   "created_at": "2026-03-02T00:44:28Z"
 }
@@ -409,9 +412,11 @@ Este documento describe qué hace cada endpoint del backend.
   "email": "jane@example.com",
   "age": 29,
   "location": "Bogota",
+  "phone_prefix": "+57",
   "phone": "573001234567"
 }
 ```
+- `phone_prefix`: opcional en el backend (`string | null`), requerido en la UI del panel manual.
 - Response body: igual que `GET /v1/patients/{whatsapp_user_id}`.
 
 ### `PUT /v1/patients/{whatsapp_user_id}`

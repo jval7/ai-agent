@@ -225,6 +225,7 @@ vitestModule.describe("BackendApiAdapter", () => {
               email: "jane@example.com",
               age: 29,
               location: "Bogota",
+              phone_prefix: null,
               phone: "573001112233",
               created_at: "2026-03-01T10:00:00Z"
             }
@@ -240,6 +241,7 @@ vitestModule.describe("BackendApiAdapter", () => {
           email: "jane@example.com",
           age: 29,
           location: "Bogota",
+          phone_prefix: null,
           phone: "573001112233",
           created_at: "2026-03-01T10:00:00Z"
         });
@@ -426,5 +428,64 @@ vitestModule.describe("BackendApiAdapter", () => {
     const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
 
     await adapter.removePatient("wa-1");
+  });
+
+  vitestModule.it("maps phone_prefix round-trip for create and get patient", async () => {
+    serverModule.server.use(
+      mswModule.http.post("http://api.test/v1/patients", async ({ request }) => {
+        const body = (await request.json()) as {
+          phone_prefix: string | null;
+          phone: string;
+        };
+        vitestModule.expect(body.phone_prefix).toBe("+57");
+        vitestModule.expect(body.phone).toBe("3001112233");
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          whatsapp_user_id: "573001112233",
+          first_name: "Jane",
+          last_name: "Doe",
+          email: "jane@example.com",
+          age: 29,
+          location: "Bogota",
+          phone_prefix: "+57",
+          phone: "3001112233",
+          created_at: "2026-03-01T10:00:00Z"
+        });
+      }),
+      mswModule.http.get("http://api.test/v1/patients/wa-null-prefix", () => {
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          whatsapp_user_id: "wa-null-prefix",
+          first_name: "Legacy",
+          last_name: "Patient",
+          email: "legacy@example.com",
+          age: 40,
+          location: "Cali",
+          phone_prefix: null,
+          phone: "573009998888",
+          created_at: "2025-01-01T00:00:00Z"
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const created = await adapter.createPatient({
+      whatsappUserId: "573001112233",
+      firstName: "Jane",
+      lastName: "Doe",
+      email: "jane@example.com",
+      age: 29,
+      location: "Bogota",
+      phonePrefix: "+57",
+      phone: "3001112233"
+    });
+    vitestModule.expect(created.phonePrefix).toBe("+57");
+    vitestModule.expect(created.phone).toBe("3001112233");
+
+    const legacy = await adapter.getPatient("wa-null-prefix");
+    vitestModule.expect(legacy.phonePrefix).toBeNull();
+    vitestModule.expect(legacy.phone).toBe("573009998888");
   });
 });

@@ -72,6 +72,7 @@ class PatientQueryService:
             email=create_dto.email,
             age=create_dto.age,
             location=create_dto.location,
+            phone_prefix=create_dto.phone_prefix,
             phone=create_dto.phone,
             created_at=self._clock.now(),
         )
@@ -112,6 +113,7 @@ class PatientQueryService:
             email=update_dto.email,
             age=update_dto.age,
             location=update_dto.location,
+            phone_prefix=update_dto.phone_prefix,
             phone=update_dto.phone,
             created_at=existing_patient.created_at,
         )
@@ -209,6 +211,7 @@ class PatientQueryService:
             email=patient.email,
             age=patient.age,
             location=patient.location,
+            phone_prefix=patient.phone_prefix,
             phone=patient.phone,
             created_at=patient.created_at,
         )

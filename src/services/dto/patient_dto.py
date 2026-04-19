@@ -11,6 +11,7 @@ class PatientDTO(pydantic.BaseModel):
     email: str
     age: int
     location: str
+    phone_prefix: str | None = None
     phone: str
     created_at: datetime.datetime
 
@@ -26,6 +27,7 @@ class CreatePatientDTO(pydantic.BaseModel):
     email: str
     age: int
     location: str
+    phone_prefix: str | None = None
     phone: str
 
 
@@ -35,4 +37,5 @@ class UpdatePatientDTO(pydantic.BaseModel):
     email: str
     age: int
     location: str
+    phone_prefix: str | None = None
     phone: str

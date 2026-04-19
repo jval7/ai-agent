@@ -5,6 +5,7 @@ interface NewPatientModalFormState {
   firstName: string;
   lastName: string;
   email: string;
+  phonePrefix: string;
   phone: string;
   age: string;
   location: string;
@@ -15,6 +16,7 @@ function emptyModalForm(): NewPatientModalFormState {
     firstName: "",
     lastName: "",
     email: "",
+    phonePrefix: "",
     phone: "",
     age: "",
     location: ""
@@ -42,11 +44,13 @@ export function NewPatientModal({
 }: NewPatientModalProps) {
   const [formState, setFormState] =
     reactModule.useState<NewPatientModalFormState>(emptyModalForm());
+  const [phonePrefixError, setPhonePrefixError] = reactModule.useState<string | null>(null);
   const [phoneError, setPhoneError] = reactModule.useState<string | null>(null);
   const [submitError, setSubmitError] = reactModule.useState<string | null>(null);
 
   const handleClose = reactModule.useCallback(() => {
     setFormState(emptyModalForm());
+    setPhonePrefixError(null);
     setPhoneError(null);
     setSubmitError(null);
     onClose();
@@ -77,10 +81,12 @@ export function NewPatientModal({
     const trimmedFirstName = formState.firstName.trim();
     const trimmedLastName = formState.lastName.trim();
     const trimmedEmail = formState.email.trim();
+    const trimmedPrefix = formState.phonePrefix.trim();
     const trimmedPhone = formState.phone.trim();
     const trimmedLocation = formState.location.trim();
     const ageValue = Number.parseInt(formState.age, 10);
 
+    setPhonePrefixError(null);
     setPhoneError(null);
     setSubmitError(null);
 
@@ -97,9 +103,14 @@ export function NewPatientModal({
       return;
     }
 
-    const whatsappUserId = deriveWhatsappUserId(trimmedPhone);
+    if (trimmedPrefix === "") {
+      setPhonePrefixError("Especifica el prefijo telefónico (ej. +57)");
+      return;
+    }
+
+    const whatsappUserId = deriveWhatsappUserId(trimmedPrefix + trimmedPhone);
     if (whatsappUserId.length < 8) {
-      setPhoneError("Incluye el código de país, ej. +57 300 123 4567");
+      setPhoneError("El número debe tener al menos 8 dígitos.");
       return;
     }
 
@@ -111,10 +122,12 @@ export function NewPatientModal({
         email: trimmedEmail,
         age: ageValue,
         location: trimmedLocation,
+        phonePrefix: trimmedPrefix,
         phone: trimmedPhone
       });
       onCreated(whatsappUserId);
       setFormState(emptyModalForm());
+      setPhonePrefixError(null);
       setPhoneError(null);
       setSubmitError(null);
       onClose();
@@ -192,7 +205,7 @@ export function NewPatientModal({
             </label>
           </div>
 
-          {/* Row 2: Email | Teléfono */}
+          {/* Row 2: Email | Prefijo + Teléfono */}
           <div className="grid grid-cols-2 gap-3">
             <label className={labelClass}>
               Email
@@ -207,28 +220,52 @@ export function NewPatientModal({
                 value={formState.email}
               />
             </label>
-            <label className={labelClass}>
-              Teléfono
-              <input
-                className={[
-                  inputClass,
-                  phoneError !== null
-                    ? "border-rose-400 focus:border-rose-400 focus:ring-rose-200"
-                    : ""
-                ].join(" ")}
-                onChange={(event) => {
-                  const nextValue = event.target.value;
-                  setFormState((current) => ({ ...current, phone: nextValue }));
-                  setPhoneError(null);
-                }}
-                placeholder="+57 300 123 4567"
-                type="text"
-                value={formState.phone}
-              />
-              {phoneError !== null ? (
-                <p className="mt-1 text-[11px] text-rose-600">{phoneError}</p>
-              ) : null}
-            </label>
+            <div className="grid grid-cols-[1fr_2fr] gap-2">
+              <label className={labelClass}>
+                Prefijo
+                <input
+                  className={[
+                    inputClass,
+                    phonePrefixError !== null
+                      ? "border-rose-400 focus:border-rose-400 focus:ring-rose-200"
+                      : ""
+                  ].join(" ")}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setFormState((current) => ({ ...current, phonePrefix: nextValue }));
+                    setPhonePrefixError(null);
+                  }}
+                  placeholder="+57"
+                  type="text"
+                  value={formState.phonePrefix}
+                />
+                {phonePrefixError !== null ? (
+                  <p className="mt-1 text-[11px] text-rose-600">{phonePrefixError}</p>
+                ) : null}
+              </label>
+              <label className={labelClass}>
+                Teléfono
+                <input
+                  className={[
+                    inputClass,
+                    phoneError !== null
+                      ? "border-rose-400 focus:border-rose-400 focus:ring-rose-200"
+                      : ""
+                  ].join(" ")}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setFormState((current) => ({ ...current, phone: nextValue }));
+                    setPhoneError(null);
+                  }}
+                  placeholder="300 123 4567"
+                  type="text"
+                  value={formState.phone}
+                />
+                {phoneError !== null ? (
+                  <p className="mt-1 text-[11px] text-rose-600">{phoneError}</p>
+                ) : null}
+              </label>
+            </div>
           </div>
 
           {/* Row 3: Edad | Ubicación */}

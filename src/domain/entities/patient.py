@@ -11,6 +11,7 @@ class Patient(pydantic.BaseModel):
     email: pydantic.EmailStr
     age: int
     location: str
+    phone_prefix: str | None = None
     phone: str
     created_at: datetime.datetime
 

@@ -64,6 +64,30 @@ def test_patient_repository_list_by_tenant_returns_only_tenant_items() -> None:
     assert tenant_1_items[0].whatsapp_user_id == "wa-1"
 
 
+def test_patient_repository_save_and_get_preserves_phone_prefix() -> None:
+    store = in_memory_store.InMemoryStore()
+    repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
+    patient = patient_entity.Patient(
+        tenant_id="tenant-1",
+        whatsapp_user_id="wa-prefix-1",
+        first_name="Carlos",
+        last_name="Perez",
+        email="carlos@example.com",
+        age=40,
+        location="Cali",
+        phone_prefix="+57",
+        phone="3009998877",
+        created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+    )
+
+    repository.save(patient)
+
+    restored = repository.get_by_whatsapp_user("tenant-1", "wa-prefix-1")
+    assert restored is not None
+    assert restored.phone_prefix == "+57"
+    assert restored.phone == "3009998877"
+
+
 def test_patient_repository_delete_removes_only_target_patient() -> None:
     store = in_memory_store.InMemoryStore()
     repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)

@@ -19,6 +19,7 @@ class ResolvedPatientProfile(pydantic.BaseModel):
     email: str
     age: int
     location: str
+    phone_prefix: str | None
     phone: str
 
 
@@ -205,6 +206,7 @@ class PatientProfileResolver:
             email=patient_profile.email,
             age=patient_profile.age,
             location=patient_profile.location,
+            phone_prefix=patient_profile.phone_prefix,
             phone=patient_profile.phone,
             created_at=self._clock.now(),
         )
@@ -296,6 +298,7 @@ class PatientProfileResolver:
                     email=existing_patient.email,
                     age=existing_patient.age,
                     location=existing_patient.location,
+                    phone_prefix=existing_patient.phone_prefix,
                     phone=existing_patient.phone,
                 ),
                 True,
@@ -366,6 +369,7 @@ class PatientProfileResolver:
                 email=patient_email,
                 age=patient_age,
                 location=patient_location,
+                phone_prefix=None,
                 phone=patient_phone,
             ),
             False,

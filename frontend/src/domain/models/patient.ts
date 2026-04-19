@@ -6,6 +6,7 @@ export interface Patient {
   email: string;
   age: number;
   location: string;
+  phonePrefix: string | null;
   phone: string;
   createdAt: string;
 }
@@ -17,6 +18,7 @@ export interface CreatePatientInput {
   email: string;
   age: number;
   location: string;
+  phonePrefix: string | null;
   phone: string;
 }
 
@@ -26,5 +28,6 @@ export interface UpdatePatientInput {
   email: string;
   age: number;
   location: string;
+  phonePrefix: string | null;
   phone: string;
 }
