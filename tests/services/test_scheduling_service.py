@@ -231,7 +231,7 @@ def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
         ),
     )
 
@@ -264,13 +264,13 @@ def test_confirm_selected_slot_creates_event_when_available() -> None:
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
         ),
     )
 
     assert result.status == "BOOKED"
     assert result.calendar_event_id == "event-1"
-    assert provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+    assert provider.created_event_summaries == ["Test Professional/Jane Doe"]
 
 
 def test_confirm_selected_slot_archives_active_chat_messages_into_subsession() -> None:
@@ -321,7 +321,7 @@ def test_confirm_selected_slot_archives_active_chat_messages_into_subsession() -
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
         ),
     )
 
@@ -379,7 +379,7 @@ def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
         ),
     )
 
@@ -489,12 +489,12 @@ def test_confirm_selected_slot_accepts_selected_slot_status() -> None:
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
         ),
     )
 
     assert result.status == "BOOKED"
-    assert provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+    assert provider.created_event_summaries == ["Test Professional/Jane Doe"]
 
 
 def test_reschedule_booked_slot_updates_booked_request() -> None:
@@ -753,7 +753,7 @@ def test_confirm_slot_virtual_modality_passes_with_meet_true() -> None:
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
             attendee_emails=["jane@example.com"],
         ),
     )
@@ -787,7 +787,7 @@ def test_confirm_slot_presencial_modality_passes_with_meet_false() -> None:
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
             attendee_emails=["jane@example.com"],
         ),
     )
