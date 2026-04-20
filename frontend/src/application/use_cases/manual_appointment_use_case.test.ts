@@ -19,7 +19,8 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       summary: "Cita - Jane Doe",
       isVirtual: true,
       meetUrl: "https://meet.google.com/abc-defg-hij",
-      paymentAmountCop: null,
+      paymentAmountCop: 120000,
+      paymentCurrency: "COP" as const,
       paymentMethod: null,
       paymentStatus: "PENDING",
       paymentUpdatedAt: null,
@@ -40,6 +41,7 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       isVirtual: true,
       meetUrl: "https://meet.google.com/abc-defg-hij",
       paymentAmountCop: null,
+      paymentCurrency: "COP" as const,
       paymentMethod: null,
       paymentStatus: "PENDING",
       paymentUpdatedAt: null,
@@ -60,6 +62,7 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       isVirtual: false,
       meetUrl: null,
       paymentAmountCop: 100000,
+      paymentCurrency: "COP" as const,
       paymentMethod: "CASH",
       paymentStatus: "PENDING",
       paymentUpdatedAt: "2026-03-03T09:00:00Z",
@@ -80,6 +83,7 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       isVirtual: true,
       meetUrl: null,
       paymentAmountCop: 100000,
+      paymentCurrency: "COP" as const,
       paymentMethod: "TRANSFER",
       paymentStatus: "PAID",
       paymentUpdatedAt: "2026-03-03T11:00:00Z",
@@ -104,7 +108,11 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       endAt: "2026-03-10T11:00:00Z",
       timezone: "America/Bogota",
       summary: null,
-      isVirtual: true
+      isVirtual: true,
+      paymentAmountCop: 120000,
+      paymentCurrency: "COP",
+      paymentStatus: "PENDING",
+      paymentMethod: null
     });
     await useCase.rescheduleAppointment("appt-1", {
       startAt: "2026-03-11T10:00:00Z",

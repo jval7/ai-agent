@@ -63,6 +63,7 @@ import src.services.use_cases.reminder_service as reminder_service
 import src.services.use_cases.scheduling_inbox_service as scheduling_inbox_service
 import src.services.use_cases.scheduling_service as scheduling_service
 import src.services.use_cases.tag_service as tag_service
+import src.services.use_cases.tenant_profile_service as tenant_profile_service
 import src.services.use_cases.webhook_service as webhook_service
 import src.services.use_cases.whatsapp_onboarding_service as whatsapp_onboarding_service
 import src.services.use_cases.whatsapp_template_service as whatsapp_template_service
@@ -219,12 +220,17 @@ class AppContainer:
             whatsapp_provider=self.whatsapp_provider_adapter,
             whatsapp_connection_repository=self.whatsapp_connection_repository,
         )
+        self.tenant_profile_service = tenant_profile_service.TenantProfileService(
+            tenant_repository=self.tenant_repository,
+            clock=self.clock_adapter,
+        )
         self.google_calendar_onboarding_service = (
             google_calendar_onboarding_service.GoogleCalendarOnboardingService(
                 google_calendar_connection_repository=self.google_calendar_connection_repository,
                 google_calendar_provider=self.google_calendar_provider_adapter,
                 id_generator=self.id_generator_adapter,
                 clock=self.clock_adapter,
+                tenant_repository=self.tenant_repository,
             )
         )
         self.task_scheduler: task_scheduler_port.TaskSchedulerPort

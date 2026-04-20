@@ -24,7 +24,6 @@ class GoogleOauthTokensDTO(pydantic.BaseModel):
 class GoogleCalendarMetadataDTO(pydantic.BaseModel):
     calendar_id: str
     timezone: str
-    summary: str | None = None
 
 
 class GoogleCalendarBusyIntervalDTO(pydantic.BaseModel):

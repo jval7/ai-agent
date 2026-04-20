@@ -11,6 +11,7 @@ import type * as patientModel from "@domain/models/patient";
 import type * as scheduledReminderModel from "@domain/models/scheduled_reminder";
 import type * as backendApiPort from "@ports/backend_api_port";
 import type * as schedulingModel from "@domain/models/scheduling";
+import type * as tenantModel from "@domain/models/tenant";
 import type * as whatsappModel from "@domain/models/whatsapp";
 import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 
@@ -90,6 +91,16 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
   async updateAgentSettings(
     _input: agentModel.UpdateAgentSettingsInput
   ): Promise<agentModel.AgentSettings> {
+    throw new Error("not used");
+  }
+
+  async getTenantProfile(): Promise<tenantModel.TenantProfile> {
+    throw new Error("not used");
+  }
+
+  async updateTenantProfile(
+    _input: tenantModel.UpdateTenantProfileInput
+  ): Promise<tenantModel.TenantProfile> {
     throw new Error("not used");
   }
 

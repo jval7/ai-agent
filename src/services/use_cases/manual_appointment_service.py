@@ -78,6 +78,7 @@ class ManualAppointmentService:
             description=motivo,
         )
         now_value = self._clock.now()
+        payment_updated_at = now_value if create_dto.payment_status == "PAID" else None
         appointment = manual_appointment_entity.ManualAppointment(
             id=self._id_generator.new_id(),
             tenant_id=claims.tenant_id,
@@ -90,6 +91,11 @@ class ManualAppointmentService:
             summary=summary,
             is_virtual=create_dto.is_virtual,
             meet_url=event.meet_url,
+            payment_amount_cop=create_dto.payment_amount_cop,
+            payment_currency=create_dto.payment_currency,
+            payment_method=create_dto.payment_method,
+            payment_status=create_dto.payment_status,
+            payment_updated_at=payment_updated_at,
             created_at=now_value,
             updated_at=now_value,
             cancelled_at=None,
@@ -274,6 +280,7 @@ class ManualAppointmentService:
 
         now_value = self._clock.now()
         appointment.payment_amount_cop = input_dto.payment_amount_cop
+        appointment.payment_currency = input_dto.payment_currency
         appointment.payment_method = input_dto.payment_method
         appointment.payment_status = input_dto.payment_status
         appointment.payment_updated_at = now_value
@@ -356,6 +363,7 @@ class ManualAppointmentService:
             is_virtual=appointment.is_virtual,
             meet_url=appointment.meet_url,
             payment_amount_cop=appointment.payment_amount_cop,
+            payment_currency=appointment.payment_currency,
             payment_method=appointment.payment_method,
             payment_status=appointment.payment_status,
             payment_updated_at=appointment.payment_updated_at,

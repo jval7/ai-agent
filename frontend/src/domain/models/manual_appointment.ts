@@ -1,6 +1,7 @@
 export type ManualAppointmentStatus = "SCHEDULED" | "CANCELLED";
 export type AppointmentPaymentMethod = "CASH" | "TRANSFER";
 export type AppointmentPaymentStatus = "PENDING" | "PAID";
+export type AppointmentPaymentCurrency = "COP" | "USD";
 
 export interface ManualAppointment {
   appointmentId: string;
@@ -15,6 +16,7 @@ export interface ManualAppointment {
   isVirtual: boolean;
   meetUrl: string | null;
   paymentAmountCop: number | null;
+  paymentCurrency: AppointmentPaymentCurrency;
   paymentMethod: AppointmentPaymentMethod | null;
   paymentStatus: AppointmentPaymentStatus;
   paymentUpdatedAt: string | null;
@@ -30,6 +32,10 @@ export interface CreateManualAppointmentInput {
   timezone: string;
   summary: string | null;
   isVirtual: boolean;
+  paymentAmountCop: number;
+  paymentCurrency: AppointmentPaymentCurrency;
+  paymentStatus: AppointmentPaymentStatus;
+  paymentMethod: AppointmentPaymentMethod | null;
 }
 
 export interface RescheduleManualAppointmentInput {
@@ -45,6 +51,7 @@ export interface CancelManualAppointmentInput {
 
 export interface UpdateManualAppointmentPaymentInput {
   paymentAmountCop: number;
+  paymentCurrency?: AppointmentPaymentCurrency;
   paymentMethod: AppointmentPaymentMethod;
   paymentStatus: AppointmentPaymentStatus;
 }

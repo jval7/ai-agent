@@ -4,8 +4,10 @@ import * as luxonModule from "luxon";
 
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
+import * as appointmentDetailCardModule from "@adapters/inbound/react/components/AppointmentDetailCard";
+import * as appointmentDrawerModule from "@adapters/inbound/react/components/AppointmentDrawer";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
-import { NewPatientModal } from "@adapters/inbound/react/components/NewPatientModal";
+import { NewManualAppointmentModal } from "@adapters/inbound/react/components/NewManualAppointmentModal";
 import * as slotPickerModule from "@adapters/inbound/react/components/SlotPicker";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import type * as manualAppointmentModel from "@domain/models/manual_appointment";
@@ -20,9 +22,6 @@ const googleCalendarConnectionQueryKey = ["google-calendar-connection"] as const
 const patientsQueryKey = ["patients"] as const;
 const manualAppointmentsQueryKey = ["manual-appointments"] as const;
 const colombiaTimezone = "America/Bogota";
-const manualAppointmentDurationOptionsMinutes = [30, 45, 60, 90, 120];
-const halfHourMinuteOptions = ["00", "30"] as const;
-const hourOptions = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
 
 interface AgendaSection {
   id: string;
@@ -36,18 +35,13 @@ interface AgendaSection {
 const agendaSections: AgendaSection[] = [
   {
     id: "FINALIZED",
-    label: "Agenda e Historial",
+    label: "Agenda",
     statuses: [
       { status: "BOOKED", label: "Agendadas" },
       { status: "SESSION_CLOSED", label: "Cerradas" },
       { status: "CANCELLED", label: "Canceladas" },
       { status: "HUMAN_HANDOFF", label: "Human Handoff" }
     ]
-  },
-  {
-    id: "MANUAL_SCHEDULING",
-    label: "Agendamiento manual",
-    statuses: []
   },
   {
     id: "FINANCE",
@@ -67,12 +61,6 @@ const approvalStatusLabels: Record<
   CONSULTATION_REJECTED: { label: "Rechazado", tone: "danger" }
 };
 
-interface LocalDateTimeParts {
-  date: string;
-  hour: string;
-  minute: "00" | "30";
-}
-
 interface BookedAppointment {
   itemKey: string;
   source: "BOT" | "MANUAL";
@@ -88,38 +76,7 @@ interface BookedAppointment {
   manualAppointment: manualAppointmentModel.ManualAppointment | null;
 }
 
-interface PatientFormState {
-  whatsappUserId: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  age: string;
-  location: string;
-  phonePrefix: string;
-  phone: string;
-}
-
-interface ManualAppointmentFormState {
-  patientWhatsappUserId: string;
-  selectedSlots: { slotId: string; startAt: string; endAt: string; timezone: string }[];
-  summary: string;
-  isVirtual: boolean;
-}
-
-interface RescheduleManualFormState {
-  patientWhatsappUserId: string;
-  startAt: string;
-  durationMinutes: string;
-  summary: string;
-  isVirtual: boolean;
-}
-
-type ManualAppointmentListFilter = "SCHEDULED" | "CANCELLED";
-
 interface BookedAppointmentFormState {
-  startDate: string;
-  startTime: string;
-  durationMinutes: string;
   cancelReason: string;
 }
 
@@ -147,43 +104,8 @@ interface FinanceAppointmentItem {
   paymentUpdatedAt: string | null;
 }
 
-function emptyPatientForm(): PatientFormState {
-  return {
-    whatsappUserId: "",
-    firstName: "",
-    lastName: "",
-    email: "",
-    age: "",
-    location: "",
-    phonePrefix: "",
-    phone: ""
-  };
-}
-
-function emptyManualAppointmentForm(): ManualAppointmentFormState {
-  return {
-    patientWhatsappUserId: "",
-    selectedSlots: [],
-    summary: "",
-    isVirtual: true
-  };
-}
-
-function emptyRescheduleManualForm(): RescheduleManualFormState {
-  return {
-    patientWhatsappUserId: "",
-    startAt: "",
-    durationMinutes: "60",
-    summary: "",
-    isVirtual: true
-  };
-}
-
 function emptyBookedAppointmentForm(): BookedAppointmentFormState {
   return {
-    startDate: "",
-    startTime: "08:00",
-    durationMinutes: "60",
     cancelReason: ""
   };
 }
@@ -196,108 +118,12 @@ function emptyPaymentForm(): PaymentFormState {
   };
 }
 
-function toDateTimeInputValue(isoValue: string, timezone: string): string {
-  const dateValue = luxonModule.DateTime.fromISO(isoValue, { setZone: true }).setZone(timezone);
-  if (!dateValue.isValid) {
-    return "";
-  }
-  return dateValue.toFormat("yyyy-LL-dd'T'HH:mm");
-}
-
-function toApiDateTime(value: string, timezone: string): string | null {
-  const parsedValue = luxonModule.DateTime.fromISO(value, { zone: timezone });
-  if (!parsedValue.isValid) {
-    return null;
-  }
-  const isoValue = parsedValue.toISO();
-  if (isoValue === null) {
-    return null;
-  }
-  return isoValue;
-}
-
-function splitLocalDateTimeInput(value: string): LocalDateTimeParts {
-  const parsedValue = luxonModule.DateTime.fromISO(value);
-  if (!parsedValue.isValid) {
-    return {
-      date: "",
-      hour: "09",
-      minute: "00"
-    };
-  }
-  return {
-    date: parsedValue.toFormat("yyyy-LL-dd"),
-    hour: parsedValue.toFormat("HH"),
-    minute: parsedValue.minute >= 30 ? "30" : "00"
-  };
-}
-
-function mergeLocalDateTimeInput(
-  currentValue: string,
-  updates: Partial<LocalDateTimeParts>
-): string {
-  const currentParts = splitLocalDateTimeInput(currentValue);
-  const nextDate = updates.date ?? currentParts.date;
-  const nextHour = updates.hour ?? currentParts.hour;
-  const nextMinute = updates.minute ?? currentParts.minute;
-  if (nextDate === "") {
-    return "";
-  }
-  return `${nextDate}T${nextHour}:${nextMinute}`;
-}
-
-function calculateEndAtFromStart(
-  startAtIso: string,
-  durationMinutes: number,
-  timezone: string
-): string | null {
-  const startAtValue = luxonModule.DateTime.fromISO(startAtIso, { zone: timezone });
-  if (!startAtValue.isValid) {
-    return null;
-  }
-  const endAtValue = startAtValue.plus({ minutes: durationMinutes });
-  const endAtIso = endAtValue.toISO();
-  if (endAtIso === null) {
-    return null;
-  }
-  return endAtIso;
-}
-
-function resolveDurationMinutesFromRange(
-  startAtIso: string,
-  endAtIso: string,
-  fallbackMinutes: number
-): string {
-  const startAtValue = luxonModule.DateTime.fromISO(startAtIso);
-  const endAtValue = luxonModule.DateTime.fromISO(endAtIso);
-  if (!startAtValue.isValid || !endAtValue.isValid) {
-    return String(fallbackMinutes);
-  }
-  const diffMinutes = Math.round(endAtValue.diff(startAtValue, "minutes").minutes);
-  if (diffMinutes <= 0) {
-    return String(fallbackMinutes);
-  }
-  return String(diffMinutes);
-}
-
-function isThirtyMinuteAligned(isoValue: string, timezone: string): boolean {
-  const dateValue = luxonModule.DateTime.fromISO(isoValue, { zone: timezone });
-  if (!dateValue.isValid) {
-    return false;
-  }
-  return dateValue.minute % 30 === 0;
-}
-
 function formatCopCurrency(value: number): string {
   return new Intl.NumberFormat("es-CO", {
     style: "currency",
     currency: "COP",
     maximumFractionDigits: 0
   }).format(value);
-}
-
-function deriveWhatsappUserId(phone: string): string {
-  return phone.replace(/\D/g, "");
 }
 
 function resolvePatientDisplayName(
@@ -385,41 +211,18 @@ export function AgendaPage() {
     null
   );
   const [submitSuccessMessage, setSubmitSuccessMessage] = reactModule.useState<string | null>(null);
-  const [patientFormState, setPatientFormState] =
-    reactModule.useState<PatientFormState>(emptyPatientForm());
-  const [mobilePrefixError, setMobilePrefixError] = reactModule.useState<string | null>(null);
-  const [manualAppointmentFormState, setManualAppointmentFormState] =
-    reactModule.useState<ManualAppointmentFormState>(emptyManualAppointmentForm());
-  const [manualMobileStep, setManualMobileStep] = reactModule.useState<
-    "SELECT_PATIENT" | "CREATE_PATIENT" | "APPOINTMENT_FORM"
-  >("SELECT_PATIENT");
-  const [manualMobileSelectedPatientId, setManualMobileSelectedPatientId] = reactModule.useState<
-    string | null
-  >(null);
-  const [isNewPatientModalOpen, setIsNewPatientModalOpen] = reactModule.useState(false);
-  const [manualSlotPickerMonth, setManualSlotPickerMonth] = reactModule.useState<{
-    year: number;
-    month: number;
-  }>(() => {
-    const now = luxonModule.DateTime.now().setZone(colombiaTimezone);
-    return { year: now.year, month: now.month };
-  });
-  const [manualAppointmentListFilter, setManualAppointmentListFilter] =
-    reactModule.useState<ManualAppointmentListFilter>("SCHEDULED");
-  const [editingManualAppointmentId, setEditingManualAppointmentId] = reactModule.useState<
-    string | null
-  >(null);
-  const [manualRescheduleFormState, setManualRescheduleFormState] =
-    reactModule.useState<RescheduleManualFormState>(emptyRescheduleManualForm());
   const [bookedAppointmentFormState, setBookedAppointmentFormState] =
     reactModule.useState<BookedAppointmentFormState>(emptyBookedAppointmentForm());
-  const [manualPaymentFormState, setManualPaymentFormState] =
-    reactModule.useState<PaymentFormState>(emptyPaymentForm());
   const [bookedPaymentFormState, setBookedPaymentFormState] =
     reactModule.useState<PaymentFormState>(emptyPaymentForm());
   const [expandedBookedAction, setExpandedBookedAction] = reactModule.useState<
     "reschedule" | "cancel" | "payment" | null
   >(null);
+  const [desktopDrawerOpen, setDesktopDrawerOpen] = reactModule.useState(false);
+  const [drawerPaymentDraft, setDrawerPaymentDraft] = reactModule.useState<{
+    amountCop: string;
+    category: string;
+  }>({ amountCop: "", category: "CASH" });
   const [financeFromDate, setFinanceFromDate] = reactModule.useState<string>("");
   const [financeToDate, setFinanceToDate] = reactModule.useState<string>("");
   const [financePaymentStatusFilter, setFinancePaymentStatusFilter] =
@@ -429,6 +232,16 @@ export function AgendaPage() {
   const [financeSourceFilter, setFinanceSourceFilter] =
     reactModule.useState<FinanceSourceFilter>("ALL");
   const [financeSearchTerm, setFinanceSearchTerm] = reactModule.useState<string>("");
+  const [rescheduleSlotPickerMonth, setRescheduleSlotPickerMonth] = reactModule.useState<{
+    year: number;
+    month: number;
+  }>(() => {
+    const now = luxonModule.DateTime.now().setZone(colombiaTimezone);
+    return { year: now.year, month: now.month };
+  });
+  const [rescheduleSelectedSlots, setRescheduleSelectedSlots] = reactModule.useState<
+    { slotId: string; startAt: string; endAt: string; timezone: string }[]
+  >([]);
 
   const allRequests = requestsQuery.data ?? [];
   const allPatients = patientsQuery.data ?? [];
@@ -445,12 +258,6 @@ export function AgendaPage() {
   const sectionCounts = reactModule.useMemo(() => {
     const counts: Record<string, number> = {};
     agendaSections.forEach((section) => {
-      if (section.id === "MANUAL_SCHEDULING") {
-        counts[section.id] = allManualAppointments.filter(
-          (appointment) => appointment.status === "SCHEDULED"
-        ).length;
-        return;
-      }
       if (section.id === "FINANCE") {
         const bookedCount = allRequests.filter(
           (request) => request.status === "BOOKED" || request.status === "SESSION_CLOSED"
@@ -474,51 +281,17 @@ export function AgendaPage() {
       counts[section.id] = sectionCount;
     });
     return counts;
-  }, [allManualAppointments, requestCountByStatus]);
+  }, [allManualAppointments, allRequests, requestCountByStatus]);
 
   const filteredRequests = reactModule.useMemo(() => {
     return allRequests.filter((request) => request.status === activeTab);
   }, [allRequests, activeTab]);
-  const isManualSchedulingSection = activeSectionId === "MANUAL_SCHEDULING";
   const isFinanceSection = activeSectionId === "FINANCE";
   const isFinalizedSection = activeSectionId === "FINALIZED";
   const isBookedTab = activeTab === "BOOKED";
+  // Legacy: manual scheduling is now handled by NewManualAppointmentModal
+  const [isNewManualModalOpen, setIsNewManualModalOpen] = reactModule.useState(false);
 
-  const manualSlotPickerMonthStart = luxonModule.DateTime.fromObject(
-    { year: manualSlotPickerMonth.year, month: manualSlotPickerMonth.month, day: 1 },
-    { zone: colombiaTimezone }
-  );
-  const manualSlotPickerMonthEnd = manualSlotPickerMonthStart.plus({ months: 1 });
-  const manualSlotPickerMonthFromIso = manualSlotPickerMonthStart.toISO();
-  const manualSlotPickerMonthToIso = manualSlotPickerMonthEnd.toISO();
-
-  const manualAvailabilityQuery = reactQueryModule.useQuery({
-    queryKey: [
-      "google-calendar-availability",
-      "manual",
-      manualSlotPickerMonthFromIso,
-      manualSlotPickerMonthToIso
-    ],
-    enabled:
-      isManualSchedulingSection &&
-      manualSlotPickerMonthFromIso !== null &&
-      manualSlotPickerMonthToIso !== null,
-    queryFn: () =>
-      appContainer.schedulingUseCase.getAvailability(
-        manualSlotPickerMonthFromIso!,
-        manualSlotPickerMonthToIso!
-      )
-  });
-
-  const manualBusyIntervals = reactModule.useMemo<calendarUtilsModule.BusyIntervalRange[]>(() => {
-    if (manualAvailabilityQuery.data === undefined) {
-      return [];
-    }
-    return calendarUtilsModule.parseBusyIntervals(
-      manualAvailabilityQuery.data.busyIntervals,
-      colombiaTimezone
-    );
-  }, [manualAvailabilityQuery.data]);
   const patientsByWhatsappUserId = reactModule.useMemo(() => {
     const map = new Map<string, patientModel.Patient>();
     allPatients.forEach((patient) => {
@@ -526,24 +299,6 @@ export function AgendaPage() {
     });
     return map;
   }, [allPatients]);
-  const sortedManualAppointments = reactModule.useMemo(() => {
-    return [...allManualAppointments].sort((left, right) => {
-      return left.startAt.localeCompare(right.startAt);
-    });
-  }, [allManualAppointments]);
-  const manualAppointmentCountByStatus = reactModule.useMemo(() => {
-    return {
-      SCHEDULED: allManualAppointments.filter((appointment) => appointment.status === "SCHEDULED")
-        .length,
-      CANCELLED: allManualAppointments.filter((appointment) => appointment.status === "CANCELLED")
-        .length
-    };
-  }, [allManualAppointments]);
-  const filteredManualAppointments = reactModule.useMemo(() => {
-    return sortedManualAppointments.filter(
-      (appointment) => appointment.status === manualAppointmentListFilter
-    );
-  }, [manualAppointmentListFilter, sortedManualAppointments]);
 
   const handleSectionChange = (sectionId: string) => {
     setActiveSectionId(sectionId);
@@ -889,37 +644,8 @@ export function AgendaPage() {
     selectedBookedAppointment?.source === "BOT" ? selectedBookedAppointment.request : null;
   reactModule.useEffect(() => {
     setExpandedBookedAction(null);
-    if (selectedBookedAppointment?.source !== "BOT" || selectedBookedBotRequest === null) {
-      setBookedAppointmentFormState(emptyBookedAppointmentForm());
-      return;
-    }
-    const startInTz = selectedBookedAppointment.startAt.setZone(timezone);
-    const endInTz = selectedBookedAppointment.endAt.setZone(timezone);
-    const durationMins = endInTz.diff(startInTz, "minutes").minutes;
-    setBookedAppointmentFormState({
-      startDate: startInTz.toFormat("yyyy-LL-dd"),
-      startTime: startInTz.toFormat("HH:mm"),
-      durationMinutes: String(Math.max(Math.round(durationMins), 30)),
-      cancelReason: ""
-    });
+    setBookedAppointmentFormState(emptyBookedAppointmentForm());
   }, [selectedBookedAppointment, selectedBookedBotRequest, timezone]);
-  reactModule.useEffect(() => {
-    if (
-      selectedBookedAppointment?.source !== "MANUAL" ||
-      selectedBookedAppointment.manualAppointment === null
-    ) {
-      setManualPaymentFormState(emptyPaymentForm());
-      return;
-    }
-    setManualPaymentFormState({
-      paymentAmountCop:
-        selectedBookedAppointment.manualAppointment.paymentAmountCop == null
-          ? ""
-          : String(selectedBookedAppointment.manualAppointment.paymentAmountCop),
-      paymentMethod: selectedBookedAppointment.manualAppointment.paymentMethod ?? "CASH",
-      paymentStatus: selectedBookedAppointment.manualAppointment.paymentStatus ?? "PENDING"
-    });
-  }, [selectedBookedAppointment]);
   reactModule.useEffect(() => {
     if (selectedBookedBotRequest === null) {
       setBookedPaymentFormState(emptyPaymentForm());
@@ -935,7 +661,106 @@ export function AgendaPage() {
     });
   }, [selectedBookedBotRequest]);
 
-  const manualRescheduleStartParts = splitLocalDateTimeInput(manualRescheduleFormState.startAt);
+  // Sync drawer payment draft when selected appointment changes
+  reactModule.useEffect(() => {
+    if (selectedBookedAppointment === null) {
+      setDrawerPaymentDraft({ amountCop: "", category: "CASH" });
+      return;
+    }
+    if (
+      selectedBookedAppointment.source === "MANUAL" &&
+      selectedBookedAppointment.manualAppointment !== null
+    ) {
+      const ma = selectedBookedAppointment.manualAppointment;
+      setDrawerPaymentDraft({
+        amountCop: ma.paymentAmountCop == null ? "" : String(ma.paymentAmountCop),
+        category: ma.paymentMethod ?? "CASH"
+      });
+    } else if (
+      selectedBookedAppointment.source === "BOT" &&
+      selectedBookedAppointment.request !== null
+    ) {
+      const req = selectedBookedAppointment.request;
+      setDrawerPaymentDraft({
+        amountCop: req.paymentAmountCop == null ? "" : String(req.paymentAmountCop),
+        category: req.paymentMethod ?? "CASH"
+      });
+    }
+  }, [selectedBookedAppointment]);
+
+  // Seed rescheduleSelectedSlots with the current appointment's slot when reschedule opens
+  reactModule.useEffect(() => {
+    if (expandedBookedAction !== "reschedule" || selectedBookedAppointment === null) {
+      if (expandedBookedAction !== "reschedule") {
+        setRescheduleSelectedSlots([]);
+      }
+      return;
+    }
+    const startAt = selectedBookedAppointment.startAt.toISO();
+    const endAt = selectedBookedAppointment.endAt.toISO();
+    if (startAt === null || endAt === null) {
+      setRescheduleSelectedSlots([]);
+      return;
+    }
+    const appointmentId =
+      selectedBookedAppointment.source === "MANUAL"
+        ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")
+        : (selectedBookedAppointment.requestId ?? "reschedule");
+    const startDt = selectedBookedAppointment.startAt.setZone(colombiaTimezone);
+    const slotId = `${appointmentId}_${startDt.toFormat("yyyyLLdd_HHmm")}`;
+    setRescheduleSelectedSlots([{ slotId, startAt, endAt, timezone: colombiaTimezone }]);
+  }, [expandedBookedAction, selectedBookedAppointment]);
+
+  // Availability query for the reschedule SlotPicker
+  const rescheduleMonthStart = luxonModule.DateTime.fromObject(
+    {
+      year: rescheduleSlotPickerMonth.year,
+      month: rescheduleSlotPickerMonth.month,
+      day: 1
+    },
+    { zone: colombiaTimezone }
+  );
+  const rescheduleMonthEnd = rescheduleMonthStart.plus({ months: 1 });
+  const rescheduleMonthFromIso = rescheduleMonthStart.toISO();
+  const rescheduleMonthToIso = rescheduleMonthEnd.toISO();
+
+  const rescheduleAvailabilityQuery = reactQueryModule.useQuery({
+    queryKey: [
+      "google-calendar-availability",
+      "reschedule",
+      rescheduleMonthFromIso,
+      rescheduleMonthToIso
+    ],
+    enabled:
+      expandedBookedAction === "reschedule" &&
+      rescheduleMonthFromIso !== null &&
+      rescheduleMonthToIso !== null,
+    queryFn: () =>
+      appContainer.schedulingUseCase.getAvailability(rescheduleMonthFromIso!, rescheduleMonthToIso!)
+  });
+
+  const rescheduleBusyIntervals = reactModule.useMemo<
+    calendarUtilsModule.BusyIntervalRange[]
+  >(() => {
+    if (rescheduleAvailabilityQuery.data === undefined) {
+      return [];
+    }
+    const allBusy = calendarUtilsModule.parseBusyIntervals(
+      rescheduleAvailabilityQuery.data.busyIntervals,
+      colombiaTimezone
+    );
+    if (selectedBookedAppointment === null) {
+      return allBusy;
+    }
+    // Exclude the current appointment's own slot so it doesn't appear as busy
+    const currentStartMs = selectedBookedAppointment.startAt.setZone(colombiaTimezone).toMillis();
+    const currentEndMs = selectedBookedAppointment.endAt.setZone(colombiaTimezone).toMillis();
+    return allBusy.filter((interval) => {
+      return !(
+        interval.start.toMillis() === currentStartMs && interval.end.toMillis() === currentEndMs
+      );
+    });
+  }, [rescheduleAvailabilityQuery.data, selectedBookedAppointment]);
 
   const resolvePaymentReviewMutation = reactQueryModule.useMutation({
     mutationFn: (payload: {
@@ -943,6 +768,7 @@ export function AgendaPage() {
       decision: "APPROVE" | "SEND_REMINDER";
       professionalNote: string | null;
       paymentAmountCop: number | null;
+      paymentCurrency: "COP" | "USD";
     }) => {
       return appContainer.schedulingUseCase.resolvePaymentReview(
         payload.request.conversationId,
@@ -950,7 +776,8 @@ export function AgendaPage() {
         {
           decision: payload.decision,
           professionalNote: payload.professionalNote,
-          paymentAmountCop: payload.paymentAmountCop
+          paymentAmountCop: payload.paymentAmountCop,
+          paymentCurrency: payload.paymentCurrency
         }
       );
     },
@@ -981,30 +808,6 @@ export function AgendaPage() {
     }
   });
 
-  const createPatientMutation = reactQueryModule.useMutation({
-    mutationFn: (payload: patientModel.CreatePatientInput) => {
-      return appContainer.patientUseCase.createPatient(payload);
-    },
-    onSuccess: async () => {
-      setSubmitSuccessMessage("Paciente creado correctamente.");
-      setLocalSubmitErrorMessage(null);
-      setPatientFormState(emptyPatientForm());
-      await queryClient.invalidateQueries({ queryKey: patientsQueryKey });
-    }
-  });
-
-  const createManualAppointmentMutation = reactQueryModule.useMutation({
-    mutationFn: (payload: manualAppointmentModel.CreateManualAppointmentInput) => {
-      return appContainer.manualAppointmentUseCase.createAppointment(payload);
-    },
-    onSuccess: async () => {
-      setSubmitSuccessMessage("Cita manual creada correctamente.");
-      setLocalSubmitErrorMessage(null);
-      setManualAppointmentFormState(emptyManualAppointmentForm());
-      await queryClient.invalidateQueries({ queryKey: manualAppointmentsQueryKey });
-    }
-  });
-
   const rescheduleManualAppointmentMutation = reactQueryModule.useMutation({
     mutationFn: (payload: {
       appointmentId: string;
@@ -1018,7 +821,6 @@ export function AgendaPage() {
     onSuccess: async () => {
       setSubmitSuccessMessage("Cita manual reprogramada correctamente.");
       setLocalSubmitErrorMessage(null);
-      setEditingManualAppointmentId(null);
       await queryClient.invalidateQueries({ queryKey: manualAppointmentsQueryKey });
     }
   });
@@ -1036,7 +838,6 @@ export function AgendaPage() {
     onSuccess: async () => {
       setSubmitSuccessMessage("Cita manual cancelada correctamente.");
       setLocalSubmitErrorMessage(null);
-      setEditingManualAppointmentId(null);
       await queryClient.invalidateQueries({ queryKey: manualAppointmentsQueryKey });
     }
   });
@@ -1099,8 +900,6 @@ export function AgendaPage() {
 
   const submitErrorMessage = uiErrorModule.resolveUiErrorMessage([
     resolvePaymentReviewMutation.error,
-    createPatientMutation.error,
-    createManualAppointmentMutation.error,
     rescheduleManualAppointmentMutation.error,
     cancelManualAppointmentMutation.error,
     updateManualPaymentMutation.error,
@@ -1154,7 +953,7 @@ export function AgendaPage() {
 
         <div className="flex flex-col gap-4">
           {/* Mobile: bottom-tab-bar style grid */}
-          <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1 sm:hidden">
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:hidden">
             {agendaSections.map((section) => {
               const isActive = activeSectionId === section.id;
               const count = sectionCounts[section.id] ?? 0;
@@ -1171,21 +970,6 @@ export function AgendaPage() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
-                    />
-                  </svg>
-                ),
-                MANUAL_SCHEDULING: (
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"
                     />
                   </svg>
                 ),
@@ -1207,7 +991,6 @@ export function AgendaPage() {
               };
               const shortLabels: Record<string, string> = {
                 FINALIZED: "Agenda",
-                MANUAL_SCHEDULING: "Manual",
                 FINANCE: "Finanzas"
               };
               return (
@@ -1302,15 +1085,12 @@ export function AgendaPage() {
         </div>
       </section>
 
-      {!isManualSchedulingSection && !isFinanceSection ? (
+      {!isFinanceSection ? (
         <section className="mt-4">
           <div
-            className={[
-              "grid gap-4",
-              isBookedTab
-                ? "lg:grid-cols-[520px_minmax(0,1fr)]"
-                : "lg:grid-cols-[320px_minmax(0,1fr)]"
-            ].join(" ")}
+            className={["grid gap-4", isBookedTab ? "" : "lg:grid-cols-[320px_minmax(0,1fr)]"].join(
+              " "
+            )}
           >
             {isBookedTab ? (
               <article
@@ -1325,12 +1105,23 @@ export function AgendaPage() {
                     mobileBookedStep !== "calendar" ? "hidden sm:block" : ""
                   ].join(" ")}
                 >
-                  <h3 className="text-sm font-semibold sm:text-base">
-                    Calendario de citas agendadas
-                  </h3>
-                  <p className="text-[11px] text-slate-500 sm:text-xs">
-                    Integra citas del chatbot y manuales. Toca un día para ver detalle.
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold sm:text-base">
+                        Calendario de citas agendadas
+                      </h3>
+                      <p className="text-[11px] text-slate-500 sm:text-xs">
+                        Integra citas del chatbot y manuales. Toca un día para ver detalle.
+                      </p>
+                    </div>
+                    <button
+                      className="hidden shrink-0 rounded-lg bg-brand-teal px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover sm:block"
+                      onClick={() => setIsNewManualModalOpen(true)}
+                      type="button"
+                    >
+                      + Nueva cita manual
+                    </button>
+                  </div>
                 </header>
                 <div className="space-y-3 p-2 sm:p-3">
                   <div
@@ -1470,6 +1261,10 @@ export function AgendaPage() {
                         {selectedDayAppointments.map((appointment) => {
                           const isSelectedAppointment =
                             appointment.itemKey === selectedBookedItemKey;
+                          const isVirtualAppointment =
+                            appointment.source === "MANUAL"
+                              ? (appointment.manualAppointment?.isVirtual ?? false)
+                              : appointment.request?.appointmentModality === "VIRTUAL";
                           return (
                             <button
                               className={[
@@ -1497,15 +1292,51 @@ export function AgendaPage() {
                                 <p className="text-xs">{appointment.patientDisplayName}</p>
                               ) : null}
                               <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
-                              <p className="text-[11px] uppercase text-slate-500">
-                                {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
-                              </p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span className="text-[11px] uppercase text-slate-500">
+                                  {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
+                                </span>
+                                <span
+                                  className={[
+                                    "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                    isVirtualAppointment
+                                      ? "bg-brand-accent-light text-brand-teal"
+                                      : "bg-slate-100 text-slate-600"
+                                  ].join(" ")}
+                                >
+                                  {isVirtualAppointment ? "Google Meet" : "Presencial"}
+                                </span>
+                              </div>
                             </button>
                           );
                         })}
                       </div>
                     )}
                   </div>
+
+                  {/* Mobile FAB — only in calendar step */}
+                  {mobileBookedStep === "calendar" ? (
+                    <button
+                      aria-label="Nueva cita manual"
+                      className="fixed bottom-4 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-teal text-white shadow-lg transition-colors hover:bg-brand-teal-hover sm:hidden"
+                      onClick={() => setIsNewManualModalOpen(true)}
+                      type="button"
+                    >
+                      <svg
+                        className="h-7 w-7"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 4.5v15m7.5-7.5h-15"
+                        />
+                      </svg>
+                    </button>
+                  ) : null}
 
                   {/* Desktop full calendar */}
                   <div className="hidden sm:block">
@@ -1530,13 +1361,17 @@ export function AgendaPage() {
                             const dayAppointments =
                               isoDate === null ? [] : (bookedAppointmentsByDay.get(isoDate) ?? []);
                             const isSelectedDay = isoDate === selectedDayIso;
+                            const isPastDay =
+                              isoDate !== null && isoDate < (nowDate.toISODate() ?? "");
                             return (
                               <div
                                 className={[
                                   "min-h-32 rounded-md border p-1.5",
                                   isSelectedDay
                                     ? "border-brand-teal bg-brand-accent-light/40"
-                                    : "border-slate-200 bg-white"
+                                    : isPastDay
+                                      ? "border-slate-200 bg-slate-50 opacity-70"
+                                      : "border-slate-200 bg-white"
                                 ].join(" ")}
                                 key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
                               >
@@ -1565,15 +1400,14 @@ export function AgendaPage() {
 
                                 <div className="mt-1 space-y-1">
                                   {dayAppointments.slice(0, 2).map((appointment) => {
-                                    const isSelectedAppointment =
-                                      appointment.itemKey === selectedBookedItemKey;
+                                    const isChatbot = appointment.source === "BOT";
                                     return (
                                       <button
                                         className={[
-                                          "w-full rounded border px-1.5 py-1.5 text-left text-[11px]",
-                                          isSelectedAppointment
-                                            ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                                          "w-full rounded border px-1.5 py-1.5 text-left text-[11px] font-semibold transition-colors",
+                                          isChatbot
+                                            ? "border-brand-teal/40 bg-brand-accent-light text-brand-teal hover:bg-brand-accent-light/70"
+                                            : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
                                         ].join(" ")}
                                         key={appointment.itemKey}
                                         onClick={() => {
@@ -1582,6 +1416,8 @@ export function AgendaPage() {
                                           setSelectedRequestId(appointment.requestId);
                                           setSubmitSuccessMessage(null);
                                           setLocalSubmitErrorMessage(null);
+                                          setExpandedBookedAction(null);
+                                          setDesktopDrawerOpen(true);
                                         }}
                                         title={`${appointment.startAt.toFormat(
                                           "HH:mm"
@@ -1590,9 +1426,12 @@ export function AgendaPage() {
                                         } | ${appointment.source === "MANUAL" ? "Manual" : "Chatbot"}`}
                                         type="button"
                                       >
-                                        <span className="block font-semibold leading-tight">
+                                        <span className="block leading-tight">
                                           {appointment.startAt.toFormat("HH:mm")} -{" "}
                                           {appointment.endAt.toFormat("HH:mm")}
+                                        </span>
+                                        <span className="block truncate leading-tight opacity-80">
+                                          {appointment.patientDisplayName}
                                         </span>
                                       </button>
                                     );
@@ -1607,6 +1446,17 @@ export function AgendaPage() {
                             );
                           })}
                         </div>
+                      </div>
+                    </div>
+                    {/* Legend */}
+                    <div className="mt-2 hidden items-center gap-4 sm:flex">
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-block h-2.5 w-2.5 rounded-full bg-brand-teal" />
+                        <span className="text-[11px] text-slate-500">Chatbot</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-block h-2.5 w-2.5 rounded-full bg-slate-400" />
+                        <span className="text-[11px] text-slate-500">Manual</span>
                       </div>
                     </div>
                   </div>
@@ -1626,13 +1476,20 @@ export function AgendaPage() {
                         {selectedDayAppointments.map((appointment) => {
                           const isSelectedAppointment =
                             appointment.itemKey === selectedBookedItemKey;
+                          const isChatbot = appointment.source === "BOT";
+                          const isVirtualAppointment =
+                            appointment.source === "MANUAL"
+                              ? (appointment.manualAppointment?.isVirtual ?? false)
+                              : appointment.request?.appointmentModality === "VIRTUAL";
                           return (
                             <button
                               className={[
                                 "w-full rounded-md border px-2.5 py-2 text-left sm:px-3",
-                                isSelectedAppointment
+                                isSelectedAppointment && desktopDrawerOpen
                                   ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                                  : isChatbot
+                                    ? "border-brand-teal/30 bg-brand-accent-light/50 text-brand-teal hover:border-brand-teal"
+                                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                               ].join(" ")}
                               key={`day-${appointment.itemKey}`}
                               onClick={() => {
@@ -1641,6 +1498,8 @@ export function AgendaPage() {
                                 setSelectedRequestId(appointment.requestId);
                                 setSubmitSuccessMessage(null);
                                 setLocalSubmitErrorMessage(null);
+                                setExpandedBookedAction(null);
+                                setDesktopDrawerOpen(true);
                               }}
                               type="button"
                             >
@@ -1652,9 +1511,21 @@ export function AgendaPage() {
                                 <p className="text-xs">{appointment.patientDisplayName}</p>
                               ) : null}
                               <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
-                              <p className="text-[11px] uppercase text-slate-500">
-                                {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
-                              </p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span className="text-[11px] uppercase text-slate-500">
+                                  {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
+                                </span>
+                                <span
+                                  className={[
+                                    "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                    isVirtualAppointment
+                                      ? "bg-brand-accent-light text-brand-teal"
+                                      : "bg-slate-100 text-slate-600"
+                                  ].join(" ")}
+                                >
+                                  {isVirtualAppointment ? "Google Meet" : "Presencial"}
+                                </span>
+                              </div>
                             </button>
                           );
                         })}
@@ -1733,7 +1604,8 @@ export function AgendaPage() {
             <article
               className={[
                 "space-y-4 rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4",
-                isBookedTab && mobileBookedStep !== "detail" ? "hidden sm:block" : ""
+                isBookedTab && mobileBookedStep !== "detail" ? "hidden" : "",
+                isBookedTab && mobileBookedStep === "detail" ? "sm:hidden" : ""
               ].join(" ")}
             >
               {isBookedTab && mobileBookedStep === "detail" ? (
@@ -1753,124 +1625,238 @@ export function AgendaPage() {
                   Volver a citas del día
                 </button>
               ) : null}
+              {isBookedTab && selectedBookedAppointment !== null ? (
+                <appointmentDetailCardModule.AppointmentDetailCard
+                  origin={selectedBookedAppointment.source === "MANUAL" ? "MANUAL" : "CHATBOT"}
+                  modality={
+                    selectedBookedAppointment.source === "MANUAL" &&
+                    selectedBookedAppointment.manualAppointment !== null
+                      ? selectedBookedAppointment.manualAppointment.isVirtual
+                        ? "VIRTUAL"
+                        : "PRESENCIAL"
+                      : selectedBookedAppointment.request?.appointmentModality === "PRESENCIAL"
+                        ? "PRESENCIAL"
+                        : "VIRTUAL"
+                  }
+                  patientFullName={selectedBookedAppointment.patientDisplayName}
+                  summary={
+                    selectedBookedAppointment.source === "MANUAL"
+                      ? selectedBookedAppointment.summary
+                      : (selectedBookedAppointment.request?.consultationReason ?? null)
+                  }
+                  startAt={selectedBookedAppointment.startAt.toISO() ?? ""}
+                  endAt={selectedBookedAppointment.endAt.toISO() ?? ""}
+                  timezone={timezone}
+                  durationMinutes={Math.round(
+                    selectedBookedAppointment.endAt.diff(
+                      selectedBookedAppointment.startAt,
+                      "minutes"
+                    ).minutes
+                  )}
+                  payment={
+                    selectedBookedAppointment.source === "MANUAL" &&
+                    selectedBookedAppointment.manualAppointment !== null
+                      ? {
+                          status: selectedBookedAppointment.manualAppointment.paymentStatus ?? null,
+                          amountCop: selectedBookedAppointment.manualAppointment.paymentAmountCop,
+                          currency: selectedBookedAppointment.manualAppointment.paymentCurrency,
+                          category: selectedBookedAppointment.manualAppointment.paymentMethod
+                        }
+                      : {
+                          status: selectedBookedAppointment.request?.paymentStatus ?? null,
+                          amountCop: selectedBookedAppointment.request?.paymentAmountCop ?? null,
+                          currency: selectedBookedAppointment.request?.paymentCurrency ?? "COP",
+                          category: selectedBookedAppointment.request?.paymentMethod ?? null
+                        }
+                  }
+                  paymentDraft={drawerPaymentDraft}
+                  onPaymentDraftChange={setDrawerPaymentDraft}
+                  isSavingPayment={
+                    updateManualPaymentMutation.isPending || updateBookedPaymentMutation.isPending
+                  }
+                  onSavePayment={() => {
+                    const amountCop = Number.parseInt(drawerPaymentDraft.amountCop, 10);
+                    if (Number.isNaN(amountCop) || amountCop <= 0) {
+                      setLocalSubmitErrorMessage("El valor del pago debe ser mayor a cero.");
+                      return;
+                    }
+                    setLocalSubmitErrorMessage(null);
+                    setSubmitSuccessMessage(null);
+                    if (
+                      selectedBookedAppointment.source === "MANUAL" &&
+                      selectedBookedAppointment.manualAppointmentId !== null
+                    ) {
+                      updateManualPaymentMutation.mutate({
+                        appointmentId: selectedBookedAppointment.manualAppointmentId,
+                        input: {
+                          paymentAmountCop: amountCop,
+                          paymentCurrency:
+                            selectedBookedAppointment.manualAppointment?.paymentCurrency ?? "COP",
+                          paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
+                          paymentStatus: "PAID"
+                        }
+                      });
+                    } else if (
+                      selectedBookedAppointment.source === "BOT" &&
+                      selectedBookedAppointment.requestId !== null
+                    ) {
+                      updateBookedPaymentMutation.mutate({
+                        requestId: selectedBookedAppointment.requestId,
+                        input: {
+                          paymentAmountCop: amountCop,
+                          paymentCurrency:
+                            selectedBookedAppointment.request?.paymentCurrency ?? "COP",
+                          paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
+                          paymentStatus: "PAID"
+                        }
+                      });
+                    }
+                  }}
+                  onReschedule={() => {
+                    setExpandedBookedAction(
+                      expandedBookedAction === "reschedule" ? null : "reschedule"
+                    );
+                  }}
+                  onCancel={() => {
+                    if (selectedBookedAppointment === null) {
+                      return;
+                    }
+                    const isConfirmed = window.confirm("¿Seguro que quieres cancelar esta cita?");
+                    if (!isConfirmed) {
+                      return;
+                    }
+                    setLocalSubmitErrorMessage(null);
+                    setSubmitSuccessMessage(null);
+                    if (
+                      selectedBookedAppointment.source === "BOT" &&
+                      selectedBookedBotRequest !== null
+                    ) {
+                      cancelBookedSlotMutation.mutate({
+                        requestId: selectedBookedBotRequest.requestId,
+                        input: { reason: null }
+                      });
+                    } else if (
+                      selectedBookedAppointment.source === "MANUAL" &&
+                      selectedBookedAppointment.manualAppointmentId !== null
+                    ) {
+                      cancelManualAppointmentMutation.mutate({
+                        appointmentId: selectedBookedAppointment.manualAppointmentId,
+                        input: { reason: null }
+                      });
+                    }
+                  }}
+                  errorMessage={localSubmitErrorMessage ?? submitErrorMessage}
+                  successMessage={submitSuccessMessage}
+                />
+              ) : null}
+
+              {/* Expanded action forms for booked tab — shared mobile/desktop */}
               {isBookedTab &&
               selectedBookedAppointment !== null &&
-              selectedBookedAppointment.source === "MANUAL" ? (
-                <section className="space-y-3">
-                  <h4 className="text-sm font-semibold text-brand-ink">Detalle cita manual</h4>
-                  <div className="rounded-lg border border-border-subtle p-3 text-xs text-slate-700">
-                    <p>
-                      <strong>ID:</strong> {selectedBookedAppointment.manualAppointmentId}
-                    </p>
-                    <p>
-                      <strong>Paciente:</strong> {selectedBookedAppointment.patientDisplayName}
-                    </p>
-                    <p>
-                      <strong>Resumen:</strong> {selectedBookedAppointment.summary}
-                    </p>
-                    <p>
-                      <strong>Horario:</strong>{" "}
-                      {selectedBookedAppointment.startAt.toFormat("dd LLL yyyy HH:mm")} -{" "}
-                      {selectedBookedAppointment.endAt.toFormat("HH:mm")}
-                    </p>
-                    <p>
-                      <strong>Origen:</strong> Agendamiento manual
+              expandedBookedAction === "reschedule" ? (
+                <div
+                  className="rounded-lg border border-border-subtle p-4 space-y-4"
+                  data-testid="reschedule-slotpicker-panel"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Selecciona un nuevo horario disponible.
                     </p>
                   </div>
-                  <div className="rounded-lg border border-border-subtle p-3">
-                    <h5 className="text-sm font-semibold text-brand-ink">Pago de cita</h5>
-                    <div className="mt-3 grid gap-3 md:grid-cols-3">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Valor (COP)
-                        <input
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          min={1}
-                          onChange={(event) => {
-                            setManualPaymentFormState((currentValue) => ({
-                              ...currentValue,
-                              paymentAmountCop: event.target.value
-                            }));
-                          }}
-                          type="number"
-                          value={manualPaymentFormState.paymentAmountCop}
-                        />
-                      </label>
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Categoría
-                        <select
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            setManualPaymentFormState((currentValue) => ({
-                              ...currentValue,
-                              paymentMethod: event.target.value as "CASH" | "TRANSFER"
-                            }));
-                          }}
-                          value={manualPaymentFormState.paymentMethod}
-                        >
-                          <option value="CASH">Efectivo</option>
-                          <option value="TRANSFER">Transferencia</option>
-                        </select>
-                      </label>
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Estado
-                        <select
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            setManualPaymentFormState((currentValue) => ({
-                              ...currentValue,
-                              paymentStatus: event.target.value as "PENDING" | "PAID"
-                            }));
-                          }}
-                          value={manualPaymentFormState.paymentStatus}
-                        >
-                          <option value="PENDING">Pendiente por pago</option>
-                          <option value="PAID">Pagada</option>
-                        </select>
-                      </label>
-                    </div>
-                    <div className="mt-3">
-                      <button
-                        className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={updateManualPaymentMutation.isPending}
-                        onClick={() => {
-                          if (selectedBookedAppointment.manualAppointmentId === null) {
-                            return;
-                          }
-                          const paymentAmountCop = Number.parseInt(
-                            manualPaymentFormState.paymentAmountCop,
-                            10
-                          );
-                          if (Number.isNaN(paymentAmountCop) || paymentAmountCop <= 0) {
-                            setLocalSubmitErrorMessage("El valor del pago debe ser mayor a cero.");
-                            return;
-                          }
-                          setLocalSubmitErrorMessage(null);
-                          setSubmitSuccessMessage(null);
-                          updateManualPaymentMutation.mutate({
+                  <slotPickerModule.SlotPicker
+                    timezone={colombiaTimezone}
+                    busyIntervals={rescheduleBusyIntervals}
+                    requestId={
+                      selectedBookedAppointment.source === "MANUAL"
+                        ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")
+                        : (selectedBookedAppointment.requestId ?? "reschedule")
+                    }
+                    selectedSlots={rescheduleSelectedSlots}
+                    onSelectedSlotsChange={(slots) => setRescheduleSelectedSlots(slots.slice(-1))}
+                    isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
+                    onMonthChange={setRescheduleSlotPickerMonth}
+                  />
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button
+                      className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={
+                        rescheduleSelectedSlots.length !== 1 ||
+                        rescheduleManualAppointmentMutation.isPending ||
+                        rescheduleBookedSlotMutation.isPending
+                      }
+                      onClick={() => {
+                        const slot = rescheduleSelectedSlots[0];
+                        if (slot === undefined) {
+                          return;
+                        }
+                        setLocalSubmitErrorMessage(null);
+                        setSubmitSuccessMessage(null);
+                        if (
+                          selectedBookedAppointment.source === "MANUAL" &&
+                          selectedBookedAppointment.manualAppointmentId !== null
+                        ) {
+                          rescheduleManualAppointmentMutation.mutate({
                             appointmentId: selectedBookedAppointment.manualAppointmentId,
                             input: {
-                              paymentAmountCop,
-                              paymentMethod: manualPaymentFormState.paymentMethod,
-                              paymentStatus: manualPaymentFormState.paymentStatus
+                              startAt: slot.startAt,
+                              endAt: slot.endAt,
+                              timezone: slot.timezone,
+                              summary:
+                                selectedBookedAppointment.manualAppointment?.summary.trim() === ""
+                                  ? null
+                                  : (selectedBookedAppointment.manualAppointment?.summary ?? null)
                             }
                           });
-                        }}
-                        type="button"
-                      >
-                        {updateManualPaymentMutation.isPending
-                          ? "Guardando pago..."
-                          : "Guardar pago manual"}
-                      </button>
-                    </div>
+                        } else if (
+                          selectedBookedAppointment.source === "BOT" &&
+                          selectedBookedBotRequest !== null
+                        ) {
+                          const eventSummary =
+                            selectedBookedAppointment.patientDisplayName.trim() === ""
+                              ? "Cita"
+                              : `Cita - ${selectedBookedAppointment.patientDisplayName}`;
+                          rescheduleBookedSlotMutation.mutate({
+                            requestId: selectedBookedBotRequest.requestId,
+                            input: {
+                              startAt: slot.startAt,
+                              endAt: slot.endAt,
+                              timezone: slot.timezone,
+                              eventSummary
+                            }
+                          });
+                        }
+                      }}
+                      type="button"
+                    >
+                      {rescheduleManualAppointmentMutation.isPending ||
+                      rescheduleBookedSlotMutation.isPending
+                        ? "Guardando..."
+                        : "Guardar reprogramación"}
+                    </button>
+                    <button
+                      className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                      onClick={() => {
+                        setExpandedBookedAction(null);
+                        setRescheduleSelectedSlots([]);
+                      }}
+                      type="button"
+                    >
+                      Cancelar
+                    </button>
                   </div>
-                </section>
-              ) : selectedRequest === undefined ? (
+                </div>
+              ) : null}
+
+              {isBookedTab && selectedBookedAppointment === null ? (
                 <p className="text-sm text-slate-500">
-                  {isBookedTab
-                    ? "Selecciona una cita en el calendario para ver todos los detalles."
-                    : "Selecciona una solicitud para ver detalle y gestionar slots."}
+                  Selecciona una cita en el calendario para ver todos los detalles.
                 </p>
-              ) : (
+              ) : !isBookedTab && selectedRequest === undefined ? (
+                <p className="text-sm text-slate-500">
+                  Selecciona una solicitud para ver detalle y gestionar slots.
+                </p>
+              ) : !isBookedTab && selectedRequest !== undefined ? (
                 <>
                   <section className="rounded-lg border border-border-subtle p-4">
                     <div className="mb-3 flex items-center justify-between">
@@ -2027,7 +2013,8 @@ export function AgendaPage() {
                                 request: selectedRequest,
                                 decision: "SEND_REMINDER",
                                 professionalNote: null,
-                                paymentAmountCop: null
+                                paymentAmountCop: null,
+                                paymentCurrency: "COP"
                               });
                             }}
                             type="button"
@@ -2040,106 +2027,40 @@ export function AgendaPage() {
                       </div>
 
                       {expandedBookedAction === "reschedule" ? (
-                        <div className="mt-3 rounded-lg border border-border-subtle p-3">
-                          <p className="text-xs text-slate-500">
-                            Reprograma esta cita y sincroniza el cambio en Google Calendar.
-                          </p>
-                          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Fecha
-                              <input
-                                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                onChange={(event) => {
-                                  const nextValue = event.target.value;
-                                  setBookedAppointmentFormState((currentValue) => ({
-                                    ...currentValue,
-                                    startDate: nextValue
-                                  }));
-                                }}
-                                type="date"
-                                value={bookedAppointmentFormState.startDate}
-                              />
-                            </label>
-                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Hora
-                              <select
-                                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                onChange={(event) => {
-                                  const nextValue = event.target.value;
-                                  setBookedAppointmentFormState((currentValue) => ({
-                                    ...currentValue,
-                                    startTime: nextValue
-                                  }));
-                                }}
-                                value={bookedAppointmentFormState.startTime}
-                              >
-                                {Array.from({ length: 48 }, (_, idx) => {
-                                  const hours = String(Math.floor(idx / 2)).padStart(2, "0");
-                                  const mins = idx % 2 === 0 ? "00" : "30";
-                                  const timeValue = `${hours}:${mins}`;
-                                  return (
-                                    <option key={timeValue} value={timeValue}>
-                                      {timeValue}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                            </label>
-                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Duración (min)
-                              <select
-                                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                onChange={(event) => {
-                                  const nextValue = event.target.value;
-                                  setBookedAppointmentFormState((currentValue) => ({
-                                    ...currentValue,
-                                    durationMinutes: nextValue
-                                  }));
-                                }}
-                                value={bookedAppointmentFormState.durationMinutes}
-                              >
-                                <option value="30">30 min</option>
-                                <option value="60">60 min</option>
-                                <option value="90">90 min</option>
-                                <option value="120">120 min</option>
-                              </select>
-                            </label>
+                        <div
+                          className="mt-3 rounded-lg border border-border-subtle p-4 space-y-4"
+                          data-testid="reschedule-slotpicker-bot"
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Selecciona un nuevo horario disponible.
+                            </p>
                           </div>
-                          <div className="mt-3">
+                          <slotPickerModule.SlotPicker
+                            timezone={colombiaTimezone}
+                            busyIntervals={rescheduleBusyIntervals}
+                            requestId={selectedBookedAppointment?.requestId ?? "reschedule"}
+                            selectedSlots={rescheduleSelectedSlots}
+                            onSelectedSlotsChange={(slots) =>
+                              setRescheduleSelectedSlots(slots.slice(-1))
+                            }
+                            isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
+                            onMonthChange={setRescheduleSlotPickerMonth}
+                          />
+                          <div className="flex flex-wrap gap-2 pt-1">
                             <button
                               className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={rescheduleBookedSlotMutation.isPending}
+                              disabled={
+                                rescheduleSelectedSlots.length !== 1 ||
+                                rescheduleBookedSlotMutation.isPending
+                              }
                               onClick={() => {
-                                if (selectedBookedBotRequest === null) {
+                                const slot = rescheduleSelectedSlots[0];
+                                if (slot === undefined || selectedBookedBotRequest === null) {
                                   return;
                                 }
-                                const { startDate, startTime, durationMinutes } =
-                                  bookedAppointmentFormState;
-                                if (startDate === "" || startTime === "") {
-                                  setLocalSubmitErrorMessage(
-                                    "Debes seleccionar fecha y hora para reprogramar."
-                                  );
-                                  return;
-                                }
-                                const colombiaTimezone = "America/Bogota";
-                                const startAtDt = luxonModule.DateTime.fromISO(
-                                  `${startDate}T${startTime}`,
-                                  { zone: colombiaTimezone }
-                                );
-                                if (!startAtDt.isValid) {
-                                  setLocalSubmitErrorMessage("Fecha u hora no válida.");
-                                  return;
-                                }
-                                const endAtDt = startAtDt.plus({
-                                  minutes: Number(durationMinutes)
-                                });
-                                const startAtIso = startAtDt.toISO();
-                                const endAtIso = endAtDt.toISO();
-                                if (startAtIso === null || endAtIso === null) {
-                                  setLocalSubmitErrorMessage("Error al calcular las fechas.");
-                                  return;
-                                }
-                                const originalSummary =
+                                const eventSummary =
                                   selectedBookedAppointment?.patientDisplayName.trim() === ""
                                     ? "Cita"
                                     : `Cita - ${selectedBookedAppointment?.patientDisplayName ?? ""}`;
@@ -2148,18 +2069,28 @@ export function AgendaPage() {
                                 rescheduleBookedSlotMutation.mutate({
                                   requestId: selectedBookedBotRequest.requestId,
                                   input: {
-                                    startAt: startAtIso,
-                                    endAt: endAtIso,
-                                    timezone: colombiaTimezone,
-                                    eventSummary: originalSummary
+                                    startAt: slot.startAt,
+                                    endAt: slot.endAt,
+                                    timezone: slot.timezone,
+                                    eventSummary
                                   }
                                 });
                               }}
                               type="button"
                             >
                               {rescheduleBookedSlotMutation.isPending
-                                ? "Reprogramando..."
-                                : "Reprogramar cita"}
+                                ? "Guardando..."
+                                : "Guardar reprogramación"}
+                            </button>
+                            <button
+                              className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                              onClick={() => {
+                                setExpandedBookedAction(null);
+                                setRescheduleSelectedSlots([]);
+                              }}
+                              type="button"
+                            >
+                              Cancelar
                             </button>
                           </div>
                         </div>
@@ -2292,6 +2223,8 @@ export function AgendaPage() {
                                   requestId: selectedBookedBotRequest.requestId,
                                   input: {
                                     paymentAmountCop,
+                                    paymentCurrency:
+                                      selectedBookedBotRequest.paymentCurrency ?? "COP",
                                     paymentMethod: bookedPaymentFormState.paymentMethod,
                                     paymentStatus: bookedPaymentFormState.paymentStatus
                                   }
@@ -2309,7 +2242,7 @@ export function AgendaPage() {
                     </section>
                   ) : null}
                 </>
-              )}
+              ) : null}
 
               {loadingErrorMessage !== null ? (
                 <errorBannerModule.ErrorBanner message={loadingErrorMessage} />
@@ -2327,1044 +2260,329 @@ export function AgendaPage() {
               ) : null}
             </article>
           </div>
-        </section>
-      ) : null}
 
-      {isManualSchedulingSection ? (
-        <section className="mt-4 sm:mt-6">
-          {/* ===== MOBILE STEP-BY-STEP FLOW ===== */}
-          <div className="sm:hidden">
-            {manualMobileStep === "SELECT_PATIENT" ? (
-              <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
-                <header className="mb-3">
-                  <h3 className="text-sm font-semibold text-brand-ink">Seleccionar paciente</h3>
-                  <p className="text-[11px] text-slate-500">
-                    Elige un paciente existente o crea uno nuevo.
-                  </p>
-                </header>
-                <div className="mb-3">
-                  <button
-                    className="w-full rounded-lg border-2 border-dashed border-brand-teal/40 px-4 py-3 text-sm font-semibold text-brand-teal transition-colors hover:border-brand-teal hover:bg-brand-accent-light"
-                    onClick={() => setManualMobileStep("CREATE_PATIENT")}
-                    type="button"
-                  >
-                    + Crear nuevo paciente
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  {patientsQuery.isLoading ? (
-                    <p className="text-sm text-slate-500">Cargando pacientes...</p>
-                  ) : null}
-                  {allPatients.length === 0 && !patientsQuery.isLoading ? (
-                    <p className="text-sm text-slate-500">Aún no hay pacientes registrados.</p>
-                  ) : null}
-                  {allPatients.map((patient) => (
-                    <button
-                      className="w-full rounded-lg border border-border-subtle bg-white p-3 text-left transition-colors hover:border-brand-teal hover:bg-brand-accent-light"
-                      key={patient.whatsappUserId}
-                      onClick={() => {
-                        setManualMobileSelectedPatientId(patient.whatsappUserId);
-                        setManualAppointmentFormState((currentValue) => ({
-                          ...currentValue,
-                          patientWhatsappUserId: patient.whatsappUserId
-                        }));
-                        setManualMobileStep("APPOINTMENT_FORM");
-                      }}
-                      type="button"
-                    >
-                      <p className="text-sm font-semibold text-brand-ink">
-                        {patient.firstName} {patient.lastName}
-                      </p>
-                      <p className="text-xs text-slate-600">WhatsApp: {patient.whatsappUserId}</p>
-                      <p className="text-xs text-slate-600">Tel: {patient.phone}</p>
-                    </button>
-                  ))}
-                </div>
-              </article>
-            ) : null}
-
-            {manualMobileStep === "CREATE_PATIENT" ? (
-              <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
-                <header className="mb-3 flex items-center gap-2">
-                  <button
-                    className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
-                    onClick={() => setManualMobileStep("SELECT_PATIENT")}
-                    type="button"
-                  >
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M15.75 19.5L8.25 12l7.5-7.5"
-                      />
-                    </svg>
-                  </button>
-                  <div>
-                    <h3 className="text-sm font-semibold text-brand-ink">Crear paciente</h3>
-                    <p className="text-[11px] text-slate-500">
-                      Completa los datos del nuevo paciente.
-                    </p>
-                  </div>
-                </header>
-                <div className="grid gap-3">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Nombre
-                    <input
-                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setPatientFormState((currentValue) => ({
-                          ...currentValue,
-                          firstName: nextValue
-                        }));
-                      }}
-                      type="text"
-                      value={patientFormState.firstName}
-                    />
-                  </label>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Apellido
-                    <input
-                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setPatientFormState((currentValue) => ({
-                          ...currentValue,
-                          lastName: nextValue
-                        }));
-                      }}
-                      type="text"
-                      value={patientFormState.lastName}
-                    />
-                  </label>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Email
-                    <input
-                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setPatientFormState((currentValue) => ({
-                          ...currentValue,
-                          email: nextValue
-                        }));
-                      }}
-                      type="email"
-                      value={patientFormState.email}
-                    />
-                  </label>
-                  <div className="grid grid-cols-[1fr_2fr] gap-2">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Prefijo
-                      <input
-                        className={[
-                          "mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20",
-                          mobilePrefixError !== null
-                            ? "border-rose-400 focus:border-rose-400 focus:ring-rose-200"
-                            : ""
-                        ].join(" ")}
-                        onChange={(event) => {
-                          const nextValue = event.target.value;
-                          setPatientFormState((currentValue) => ({
-                            ...currentValue,
-                            phonePrefix: nextValue
-                          }));
-                          setMobilePrefixError(null);
-                        }}
-                        placeholder="+57"
-                        type="text"
-                        value={patientFormState.phonePrefix}
-                      />
-                      {mobilePrefixError !== null ? (
-                        <p className="mt-1 text-[11px] text-rose-600">{mobilePrefixError}</p>
-                      ) : null}
-                    </label>
-                    <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Teléfono
-                      <input
-                        className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                        onChange={(event) => {
-                          const nextValue = event.target.value;
-                          setPatientFormState((currentValue) => ({
-                            ...currentValue,
-                            phone: nextValue
-                          }));
-                        }}
-                        placeholder="300 123 4567"
-                        type="text"
-                        value={patientFormState.phone}
-                      />
-                    </label>
-                  </div>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Edad
-                    <input
-                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                      min={1}
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setPatientFormState((currentValue) => ({
-                          ...currentValue,
-                          age: nextValue
-                        }));
-                      }}
-                      type="number"
-                      value={patientFormState.age}
-                    />
-                  </label>
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Ubicación
-                    <input
-                      className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setPatientFormState((currentValue) => ({
-                          ...currentValue,
-                          location: nextValue
-                        }));
-                      }}
-                      type="text"
-                      value={patientFormState.location}
-                    />
-                  </label>
-                </div>
-                <div className="mt-3">
-                  <button
-                    className="w-full rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={createPatientMutation.isPending}
-                    onClick={() => {
-                      const trimmedFirstName = patientFormState.firstName.trim();
-                      const trimmedLastName = patientFormState.lastName.trim();
-                      const trimmedEmail = patientFormState.email.trim();
-                      const trimmedLocation = patientFormState.location.trim();
-                      const trimmedPrefix = patientFormState.phonePrefix.trim();
-                      const trimmedPhone = patientFormState.phone.trim();
-                      const ageValue = Number.parseInt(patientFormState.age, 10);
-                      if (
-                        trimmedFirstName === "" ||
-                        trimmedLastName === "" ||
-                        trimmedEmail === "" ||
-                        trimmedLocation === "" ||
-                        trimmedPhone === "" ||
-                        Number.isNaN(ageValue) ||
-                        ageValue <= 0
-                      ) {
-                        setLocalSubmitErrorMessage(
-                          "Completa todos los campos del paciente antes de guardar."
-                        );
-                        return;
-                      }
-                      if (trimmedPrefix === "") {
-                        setMobilePrefixError("Especifica el prefijo telefónico (ej. +57)");
-                        return;
-                      }
-                      const derivedWhatsappUserId = deriveWhatsappUserId(
-                        trimmedPrefix + trimmedPhone
-                      );
-                      if (derivedWhatsappUserId.length < 8) {
-                        setLocalSubmitErrorMessage("El número debe tener al menos 8 dígitos.");
-                        return;
-                      }
-                      setLocalSubmitErrorMessage(null);
-                      setMobilePrefixError(null);
-                      setSubmitSuccessMessage(null);
-                      createPatientMutation.mutate(
-                        {
-                          whatsappUserId: derivedWhatsappUserId,
-                          firstName: trimmedFirstName,
-                          lastName: trimmedLastName,
-                          email: trimmedEmail,
-                          age: ageValue,
-                          location: trimmedLocation,
-                          phonePrefix: trimmedPrefix,
-                          phone: trimmedPhone
-                        },
-                        {
-                          onSuccess: () => {
-                            setManualMobileStep("SELECT_PATIENT");
-                          }
-                        }
-                      );
-                    }}
-                    type="button"
-                  >
-                    {createPatientMutation.isPending ? "Creando..." : "Crear paciente"}
-                  </button>
-                </div>
-              </article>
-            ) : null}
-
-            {manualMobileStep === "APPOINTMENT_FORM" ? (
-              <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card">
-                <header className="mb-3 flex items-center gap-2">
-                  <button
-                    className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
-                    onClick={() => {
-                      setManualMobileStep("SELECT_PATIENT");
-                      setManualMobileSelectedPatientId(null);
-                    }}
-                    type="button"
-                  >
-                    <svg
-                      className="h-5 w-5"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M15.75 19.5L8.25 12l7.5-7.5"
-                      />
-                    </svg>
-                  </button>
-                  <div>
-                    <h3 className="text-sm font-semibold text-brand-ink">Nueva cita manual</h3>
-                    {(() => {
-                      const selectedPatient = allPatients.find(
-                        (p) => p.whatsappUserId === manualMobileSelectedPatientId
-                      );
-                      return selectedPatient !== undefined ? (
-                        <p className="text-[11px] text-slate-500">
-                          Paciente: {selectedPatient.firstName} {selectedPatient.lastName}
-                        </p>
-                      ) : null;
-                    })()}
-                  </div>
-                </header>
-                <div className="space-y-5">
-                  {/* Fecha y hora section */}
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-brand-teal">
-                      Fecha y hora
-                    </p>
-                    <div className="mt-2">
-                      <slotPickerModule.SlotPicker
-                        busyIntervals={manualBusyIntervals}
-                        isLoadingAvailability={manualAvailabilityQuery.isLoading}
-                        onMonthChange={setManualSlotPickerMonth}
-                        onSelectedSlotsChange={(slots) => {
-                          setManualAppointmentFormState((currentValue) => ({
-                            ...currentValue,
-                            selectedSlots: slots.slice(-1)
-                          }));
-                        }}
-                        requestId="manual"
-                        selectedSlots={manualAppointmentFormState.selectedSlots}
-                        timezone={colombiaTimezone}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="border-t border-border-subtle" />
-
-                  {/* Detalles section */}
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-brand-teal">
-                      Detalles
-                    </p>
-                    <div className="mt-2 space-y-3">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Motivo de consulta
-                        <textarea
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setManualAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              summary: nextValue
-                            }));
-                          }}
-                          placeholder="Ej. Consulta de seguimiento"
-                          rows={3}
-                          value={manualAppointmentFormState.summary}
-                        />
-                      </label>
-
-                      {/* Meet toggle */}
-                      <div className="flex items-start gap-3">
-                        <button
-                          className={[
-                            "relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-teal/30",
-                            manualAppointmentFormState.isVirtual ? "bg-brand-teal" : "bg-slate-200"
-                          ].join(" ")}
-                          onClick={() => {
-                            setManualAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              isVirtual: !currentValue.isVirtual
-                            }));
-                          }}
-                          role="switch"
-                          aria-checked={manualAppointmentFormState.isVirtual}
-                          type="button"
-                        >
-                          <span
-                            className={[
-                              "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200",
-                              manualAppointmentFormState.isVirtual
-                                ? "translate-x-4"
-                                : "translate-x-0"
-                            ].join(" ")}
-                          />
-                        </button>
-                        <div>
-                          <p className="text-sm font-medium text-slate-700">
-                            Cita virtual (Google Meet)
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            Se generará un enlace automáticamente.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-5">
-                  <button
-                    className="w-full rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={createManualAppointmentMutation.isPending}
-                    onClick={() => {
-                      if (manualAppointmentFormState.patientWhatsappUserId.trim() === "") {
-                        setLocalSubmitErrorMessage("Debes seleccionar un paciente.");
-                        return;
-                      }
-                      const [selectedSlot] = manualAppointmentFormState.selectedSlots;
-                      if (selectedSlot === undefined) {
-                        setLocalSubmitErrorMessage("Debes seleccionar un horario.");
-                        return;
-                      }
-                      setLocalSubmitErrorMessage(null);
-                      setSubmitSuccessMessage(null);
-                      createManualAppointmentMutation.mutate(
-                        {
-                          patientWhatsappUserId: manualAppointmentFormState.patientWhatsappUserId,
-                          startAt: selectedSlot.startAt,
-                          endAt: selectedSlot.endAt,
-                          timezone: selectedSlot.timezone,
-                          summary:
-                            manualAppointmentFormState.summary.trim() === ""
-                              ? null
-                              : manualAppointmentFormState.summary.trim(),
-                          isVirtual: manualAppointmentFormState.isVirtual
-                        },
-                        {
-                          onSuccess: () => {
-                            setManualMobileStep("SELECT_PATIENT");
-                            setManualMobileSelectedPatientId(null);
-                          }
-                        }
-                      );
-                    }}
-                    type="button"
-                  >
-                    {createManualAppointmentMutation.isPending ? "Creando..." : "Agendar cita"}
-                  </button>
-                </div>
-              </article>
-            ) : null}
-          </div>
-
-          {/* ===== DESKTOP HERO LAYOUT ===== */}
-          <div className="hidden sm:block">
-            {/* Hero card: centered, max-w-2xl */}
-            <div className="mx-auto max-w-2xl">
-              <article className="rounded-xl border border-border-subtle bg-white shadow-card">
-                {/* Card header */}
-                <header className="border-b border-border-subtle px-6 py-5">
-                  <h2 className="text-lg font-semibold text-brand-ink">Nueva cita manual</h2>
-                  <p className="mt-0.5 text-sm text-slate-500">
-                    Selecciona un paciente y define el horario.
-                  </p>
-                </header>
-
-                <div className="px-6 py-5 space-y-5">
-                  {/* Paciente section */}
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-brand-teal">
-                      Paciente
-                    </p>
-                    <div className="mt-2 flex items-center gap-3">
-                      <div className="relative flex-1">
-                        <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">
-                          <svg
-                            className="h-4 w-4"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth={1.5}
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z"
-                            />
-                          </svg>
-                        </span>
-                        <select
-                          aria-label="Paciente"
-                          className="w-full rounded-lg border border-border-subtle py-2 pl-9 pr-3 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setManualAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              patientWhatsappUserId: nextValue
-                            }));
-                          }}
-                          value={manualAppointmentFormState.patientWhatsappUserId}
-                        >
-                          <option value="">Selecciona un paciente</option>
-                          {allPatients.map((patient) => (
-                            <option key={patient.whatsappUserId} value={patient.whatsappUserId}>
-                              {patient.firstName} {patient.lastName} · {patient.phone}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <button
-                        className="shrink-0 text-sm font-semibold text-brand-teal transition-colors hover:text-brand-teal-hover"
-                        onClick={() => setIsNewPatientModalOpen(true)}
-                        type="button"
-                      >
-                        + Nuevo paciente
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="border-t border-border-subtle" />
-
-                  {/* Fecha y hora section */}
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-brand-teal">
-                      Fecha y hora
-                    </p>
-                    <div className="mt-2">
-                      <slotPickerModule.SlotPicker
-                        busyIntervals={manualBusyIntervals}
-                        isLoadingAvailability={manualAvailabilityQuery.isLoading}
-                        onMonthChange={setManualSlotPickerMonth}
-                        onSelectedSlotsChange={(slots) => {
-                          setManualAppointmentFormState((currentValue) => ({
-                            ...currentValue,
-                            selectedSlots: slots.slice(-1)
-                          }));
-                        }}
-                        requestId="manual"
-                        selectedSlots={manualAppointmentFormState.selectedSlots}
-                        timezone={colombiaTimezone}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="border-t border-border-subtle" />
-
-                  {/* Detalles section */}
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-widest text-brand-teal">
-                      Detalles
-                    </p>
-                    <div className="mt-2 space-y-3">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Motivo de consulta
-                        <textarea
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setManualAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              summary: nextValue
-                            }));
-                          }}
-                          placeholder="Ej. Consulta de seguimiento"
-                          rows={3}
-                          value={manualAppointmentFormState.summary}
-                        />
-                      </label>
-
-                      {/* Meet toggle */}
-                      <div className="flex items-start gap-3">
-                        <button
-                          className={[
-                            "relative mt-0.5 inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-brand-teal/30",
-                            manualAppointmentFormState.isVirtual ? "bg-brand-teal" : "bg-slate-200"
-                          ].join(" ")}
-                          onClick={() => {
-                            setManualAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              isVirtual: !currentValue.isVirtual
-                            }));
-                          }}
-                          role="switch"
-                          aria-checked={manualAppointmentFormState.isVirtual}
-                          type="button"
-                        >
-                          <span
-                            className={[
-                              "inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200",
-                              manualAppointmentFormState.isVirtual
-                                ? "translate-x-4"
-                                : "translate-x-0"
-                            ].join(" ")}
-                          />
-                        </button>
-                        <div>
-                          <p className="text-sm font-medium text-slate-700">
-                            Cita virtual (Google Meet)
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            Se generará un enlace automáticamente.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card footer */}
-                <div className="flex items-center justify-between border-t border-border-subtle px-6 py-4">
-                  <button
-                    className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                    onClick={() => {
-                      setManualAppointmentFormState(emptyManualAppointmentForm());
-                      setLocalSubmitErrorMessage(null);
-                      setSubmitSuccessMessage(null);
-                    }}
-                    type="button"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    className="rounded-lg bg-brand-teal px-5 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={
-                      createManualAppointmentMutation.isPending ||
-                      manualAppointmentFormState.patientWhatsappUserId === "" ||
-                      manualAppointmentFormState.selectedSlots.length !== 1
+          {/* Desktop drawer — only for Agenda e Historial (booked tab) */}
+          {isFinalizedSection && isBookedTab ? (
+            <appointmentDrawerModule.AppointmentDrawer
+              isOpen={desktopDrawerOpen && selectedBookedAppointment !== null}
+              onClose={() => {
+                setDesktopDrawerOpen(false);
+                setExpandedBookedAction(null);
+                setLocalSubmitErrorMessage(null);
+                setSubmitSuccessMessage(null);
+              }}
+            >
+              {selectedBookedAppointment !== null ? (
+                <>
+                  <appointmentDetailCardModule.AppointmentDetailCard
+                    origin={selectedBookedAppointment.source === "MANUAL" ? "MANUAL" : "CHATBOT"}
+                    modality={
+                      selectedBookedAppointment.source === "MANUAL" &&
+                      selectedBookedAppointment.manualAppointment !== null
+                        ? selectedBookedAppointment.manualAppointment.isVirtual
+                          ? "VIRTUAL"
+                          : "PRESENCIAL"
+                        : selectedBookedAppointment.request?.appointmentModality === "PRESENCIAL"
+                          ? "PRESENCIAL"
+                          : "VIRTUAL"
                     }
-                    onClick={() => {
-                      if (manualAppointmentFormState.patientWhatsappUserId.trim() === "") {
-                        setLocalSubmitErrorMessage("Debes seleccionar un paciente.");
-                        return;
-                      }
-                      const [selectedSlot] = manualAppointmentFormState.selectedSlots;
-                      if (selectedSlot === undefined) {
-                        setLocalSubmitErrorMessage("Debes seleccionar un horario.");
+                    patientFullName={selectedBookedAppointment.patientDisplayName}
+                    summary={
+                      selectedBookedAppointment.source === "MANUAL"
+                        ? selectedBookedAppointment.summary
+                        : (selectedBookedAppointment.request?.consultationReason ?? null)
+                    }
+                    startAt={selectedBookedAppointment.startAt.toISO() ?? ""}
+                    endAt={selectedBookedAppointment.endAt.toISO() ?? ""}
+                    timezone={timezone}
+                    durationMinutes={Math.round(
+                      selectedBookedAppointment.endAt.diff(
+                        selectedBookedAppointment.startAt,
+                        "minutes"
+                      ).minutes
+                    )}
+                    payment={
+                      selectedBookedAppointment.source === "MANUAL" &&
+                      selectedBookedAppointment.manualAppointment !== null
+                        ? {
+                            status:
+                              selectedBookedAppointment.manualAppointment.paymentStatus ?? null,
+                            amountCop: selectedBookedAppointment.manualAppointment.paymentAmountCop,
+                            currency: selectedBookedAppointment.manualAppointment.paymentCurrency,
+                            category: selectedBookedAppointment.manualAppointment.paymentMethod
+                          }
+                        : {
+                            status: selectedBookedAppointment.request?.paymentStatus ?? null,
+                            amountCop: selectedBookedAppointment.request?.paymentAmountCop ?? null,
+                            currency: selectedBookedAppointment.request?.paymentCurrency ?? "COP",
+                            category: selectedBookedAppointment.request?.paymentMethod ?? null
+                          }
+                    }
+                    paymentDraft={drawerPaymentDraft}
+                    onPaymentDraftChange={setDrawerPaymentDraft}
+                    isSavingPayment={
+                      updateManualPaymentMutation.isPending || updateBookedPaymentMutation.isPending
+                    }
+                    onSavePayment={() => {
+                      const amountCop = Number.parseInt(drawerPaymentDraft.amountCop, 10);
+                      if (Number.isNaN(amountCop) || amountCop <= 0) {
+                        setLocalSubmitErrorMessage("El valor del pago debe ser mayor a cero.");
                         return;
                       }
                       setLocalSubmitErrorMessage(null);
                       setSubmitSuccessMessage(null);
-                      createManualAppointmentMutation.mutate({
-                        patientWhatsappUserId: manualAppointmentFormState.patientWhatsappUserId,
-                        startAt: selectedSlot.startAt,
-                        endAt: selectedSlot.endAt,
-                        timezone: selectedSlot.timezone,
-                        summary:
-                          manualAppointmentFormState.summary.trim() === ""
-                            ? null
-                            : manualAppointmentFormState.summary.trim(),
-                        isVirtual: manualAppointmentFormState.isVirtual
-                      });
+                      if (
+                        selectedBookedAppointment.source === "MANUAL" &&
+                        selectedBookedAppointment.manualAppointmentId !== null
+                      ) {
+                        updateManualPaymentMutation.mutate({
+                          appointmentId: selectedBookedAppointment.manualAppointmentId,
+                          input: {
+                            paymentAmountCop: amountCop,
+                            paymentCurrency:
+                              selectedBookedAppointment.manualAppointment?.paymentCurrency ?? "COP",
+                            paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
+                            paymentStatus: "PAID"
+                          }
+                        });
+                      } else if (
+                        selectedBookedAppointment.source === "BOT" &&
+                        selectedBookedAppointment.requestId !== null
+                      ) {
+                        updateBookedPaymentMutation.mutate({
+                          requestId: selectedBookedAppointment.requestId,
+                          input: {
+                            paymentAmountCop: amountCop,
+                            paymentCurrency:
+                              selectedBookedAppointment.request?.paymentCurrency ?? "COP",
+                            paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
+                            paymentStatus: "PAID"
+                          }
+                        });
+                      }
                     }}
-                    type="button"
-                  >
-                    {createManualAppointmentMutation.isPending ? "Agendando..." : "Agendar cita"}
-                  </button>
-                </div>
-              </article>
+                    onReschedule={() => {
+                      setExpandedBookedAction(
+                        expandedBookedAction === "reschedule" ? null : "reschedule"
+                      );
+                    }}
+                    onCancel={() => {
+                      if (selectedBookedAppointment === null) {
+                        return;
+                      }
+                      const isConfirmed = window.confirm("¿Seguro que quieres cancelar esta cita?");
+                      if (!isConfirmed) {
+                        return;
+                      }
+                      setLocalSubmitErrorMessage(null);
+                      setSubmitSuccessMessage(null);
+                      if (
+                        selectedBookedAppointment.source === "BOT" &&
+                        selectedBookedBotRequest !== null
+                      ) {
+                        cancelBookedSlotMutation.mutate({
+                          requestId: selectedBookedBotRequest.requestId,
+                          input: { reason: null }
+                        });
+                      } else if (
+                        selectedBookedAppointment.source === "MANUAL" &&
+                        selectedBookedAppointment.manualAppointmentId !== null
+                      ) {
+                        cancelManualAppointmentMutation.mutate({
+                          appointmentId: selectedBookedAppointment.manualAppointmentId,
+                          input: { reason: null }
+                        });
+                      }
+                    }}
+                    errorMessage={localSubmitErrorMessage ?? submitErrorMessage}
+                    successMessage={submitSuccessMessage}
+                  />
 
-              {/* Error / success feedback */}
-              {submitErrorMessage !== null ? (
-                <div className="mt-3">
-                  <errorBannerModule.ErrorBanner message={submitErrorMessage} />
-                </div>
-              ) : null}
-              {localSubmitErrorMessage !== null ? (
-                <div className="mt-3">
-                  <errorBannerModule.ErrorBanner message={localSubmitErrorMessage} />
-                </div>
-              ) : null}
-              {submitSuccessMessage !== null ? (
-                <div className="mt-3 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                  {submitSuccessMessage}
-                </div>
-              ) : null}
-            </div>
-
-            {/* Manual appointments list — visually lighter, below hero */}
-            <div className="mx-auto mt-8 max-w-2xl">
-              <h3 className="text-sm font-medium text-brand-ink">Citas manuales agendadas</h3>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  className={[
-                    "rounded-md border px-3 py-1.5 text-xs font-semibold",
-                    manualAppointmentListFilter === "SCHEDULED"
-                      ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                  ].join(" ")}
-                  onClick={() => {
-                    setManualAppointmentListFilter("SCHEDULED");
-                    setEditingManualAppointmentId(null);
-                  }}
-                  type="button"
-                >
-                  Agendadas ({manualAppointmentCountByStatus.SCHEDULED})
-                </button>
-                <button
-                  className={[
-                    "rounded-md border px-3 py-1.5 text-xs font-semibold",
-                    manualAppointmentListFilter === "CANCELLED"
-                      ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                  ].join(" ")}
-                  onClick={() => {
-                    setManualAppointmentListFilter("CANCELLED");
-                    setEditingManualAppointmentId(null);
-                  }}
-                  type="button"
-                >
-                  Canceladas ({manualAppointmentCountByStatus.CANCELLED})
-                </button>
-              </div>
-              <div className="mt-3 space-y-2">
-                {manualAppointmentsQuery.isLoading ? (
-                  <p className="text-sm text-slate-500">Cargando citas manuales...</p>
-                ) : null}
-                {filteredManualAppointments.length === 0 ? (
-                  <p className="text-sm text-slate-500">
-                    {manualAppointmentListFilter === "SCHEDULED"
-                      ? "No hay citas manuales agendadas."
-                      : "No hay citas manuales canceladas."}
-                  </p>
-                ) : null}
-                {filteredManualAppointments.map((appointment) => {
-                  const patient = patientsByWhatsappUserId.get(appointment.patientWhatsappUserId);
-                  const patientName =
-                    patient === undefined
-                      ? appointment.patientWhatsappUserId
-                      : `${patient.firstName} ${patient.lastName}`;
-                  const startText = dateUtilsModule.formatDateTime(appointment.startAt);
-                  const endText = dateUtilsModule.formatDateTime(appointment.endAt);
-                  const isEditing = editingManualAppointmentId === appointment.appointmentId;
-                  const isScheduled = appointment.status === "SCHEDULED";
-                  return (
+                  {/* Expanded reschedule form */}
+                  {expandedBookedAction === "reschedule" ? (
                     <div
-                      className="rounded-lg border border-slate-200 bg-white p-3"
-                      key={appointment.appointmentId}
+                      className="border-t border-border-subtle px-5 py-4 space-y-4"
+                      data-testid="reschedule-slotpicker-drawer"
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-brand-ink">{patientName}</p>
-                        <statusBadgeModule.StatusBadge label={appointment.status} tone="neutral" />
+                      <div>
+                        <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Selecciona un nuevo horario disponible.
+                        </p>
                       </div>
-                      <p className="text-xs text-slate-600">ID: {appointment.appointmentId}</p>
-                      <p className="text-xs text-slate-600">
-                        {startText} - {endText}
-                      </p>
-                      <p className="text-xs text-slate-600">Resumen: {appointment.summary}</p>
-                      <p className="text-xs text-slate-600">Timezone: {appointment.timezone}</p>
-                      {appointment.meetUrl !== null ? (
-                        <a
-                          className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-brand-teal underline hover:text-brand-teal-hover"
-                          href={appointment.meetUrl}
-                          rel="noopener noreferrer"
-                          target="_blank"
-                        >
-                          Unirse a Meet
-                        </a>
-                      ) : null}
-                      {isScheduled ? (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          <button
-                            className="rounded-md border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                            onClick={() => {
-                              setEditingManualAppointmentId(appointment.appointmentId);
-                              setManualRescheduleFormState({
-                                patientWhatsappUserId: appointment.patientWhatsappUserId,
-                                startAt: toDateTimeInputValue(
-                                  appointment.startAt,
-                                  colombiaTimezone
-                                ),
-                                durationMinutes: resolveDurationMinutesFromRange(
-                                  appointment.startAt,
-                                  appointment.endAt,
-                                  60
-                                ),
-                                summary: appointment.summary,
-                                isVirtual: appointment.isVirtual
-                              });
-                            }}
-                            type="button"
-                          >
-                            Reprogramar
-                          </button>
-                          <button
-                            className="rounded-md border border-rose-300 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={cancelManualAppointmentMutation.isPending}
-                            onClick={() => {
-                              const isConfirmed = window.confirm(
-                                "¿Seguro que quieres eliminar esta cita manual?"
-                              );
-                              if (!isConfirmed) {
-                                return;
-                              }
-                              setLocalSubmitErrorMessage(null);
-                              setSubmitSuccessMessage(null);
-                              cancelManualAppointmentMutation.mutate({
-                                appointmentId: appointment.appointmentId,
+                      <slotPickerModule.SlotPicker
+                        timezone={colombiaTimezone}
+                        busyIntervals={rescheduleBusyIntervals}
+                        requestId={
+                          selectedBookedAppointment.source === "MANUAL"
+                            ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")
+                            : (selectedBookedAppointment.requestId ?? "reschedule")
+                        }
+                        selectedSlots={rescheduleSelectedSlots}
+                        onSelectedSlotsChange={(slots) =>
+                          setRescheduleSelectedSlots(slots.slice(-1))
+                        }
+                        isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
+                        onMonthChange={setRescheduleSlotPickerMonth}
+                      />
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <button
+                          className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={
+                            rescheduleSelectedSlots.length !== 1 ||
+                            rescheduleManualAppointmentMutation.isPending ||
+                            rescheduleBookedSlotMutation.isPending
+                          }
+                          onClick={() => {
+                            const slot = rescheduleSelectedSlots[0];
+                            if (slot === undefined) {
+                              return;
+                            }
+                            setLocalSubmitErrorMessage(null);
+                            setSubmitSuccessMessage(null);
+                            if (
+                              selectedBookedAppointment.source === "MANUAL" &&
+                              selectedBookedAppointment.manualAppointmentId !== null
+                            ) {
+                              rescheduleManualAppointmentMutation.mutate({
+                                appointmentId: selectedBookedAppointment.manualAppointmentId,
                                 input: {
-                                  reason: null
+                                  startAt: slot.startAt,
+                                  endAt: slot.endAt,
+                                  timezone: slot.timezone,
+                                  summary:
+                                    selectedBookedAppointment.manualAppointment?.summary.trim() ===
+                                    ""
+                                      ? null
+                                      : (selectedBookedAppointment.manualAppointment?.summary ??
+                                        null)
                                 }
                               });
-                            }}
-                            type="button"
-                          >
-                            {cancelManualAppointmentMutation.isPending
-                              ? "Eliminando..."
-                              : "Eliminar"}
-                          </button>
-                        </div>
-                      ) : null}
-                      {isEditing ? (
-                        <div className="mt-3 grid gap-3 rounded-lg border border-border-subtle bg-slate-50 p-3 md:grid-cols-2">
-                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            <p className="block">Inicio</p>
-                            <div className="mt-1 grid grid-cols-3 gap-2">
-                              <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                Fecha
-                                <input
-                                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                  onChange={(event) => {
-                                    const nextDate = event.target.value;
-                                    setManualRescheduleFormState((currentValue) => ({
-                                      ...currentValue,
-                                      startAt: mergeLocalDateTimeInput(currentValue.startAt, {
-                                        date: nextDate
-                                      })
-                                    }));
-                                  }}
-                                  type="date"
-                                  value={manualRescheduleStartParts.date}
-                                />
-                              </label>
-                              <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                Hora
-                                <select
-                                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                  onChange={(event) => {
-                                    const nextHour = event.target.value;
-                                    setManualRescheduleFormState((currentValue) => ({
-                                      ...currentValue,
-                                      startAt: mergeLocalDateTimeInput(currentValue.startAt, {
-                                        hour: nextHour
-                                      })
-                                    }));
-                                  }}
-                                  value={manualRescheduleStartParts.hour}
-                                >
-                                  {hourOptions.map((hourOption) => (
-                                    <option key={hourOption} value={hourOption}>
-                                      {hourOption}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                                Minuto
-                                <select
-                                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                  onChange={(event) => {
-                                    const nextMinute = event.target
-                                      .value as LocalDateTimeParts["minute"];
-                                    setManualRescheduleFormState((currentValue) => ({
-                                      ...currentValue,
-                                      startAt: mergeLocalDateTimeInput(currentValue.startAt, {
-                                        minute: nextMinute
-                                      })
-                                    }));
-                                  }}
-                                  value={manualRescheduleStartParts.minute}
-                                >
-                                  {halfHourMinuteOptions.map((minuteOption) => (
-                                    <option key={minuteOption} value={minuteOption}>
-                                      {minuteOption}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            </div>
-                          </div>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Duración
-                            <select
-                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                              onChange={(event) => {
-                                const nextValue = event.target.value;
-                                setManualRescheduleFormState((currentValue) => ({
-                                  ...currentValue,
-                                  durationMinutes: nextValue
-                                }));
-                              }}
-                              value={manualRescheduleFormState.durationMinutes}
-                            >
-                              {manualAppointmentDurationOptionsMinutes.map((minutesOption) => (
-                                <option key={minutesOption} value={String(minutesOption)}>
-                                  {minutesOption} minutos
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Timezone
-                            <input
-                              className="mt-1 w-full rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700"
-                              disabled
-                              readOnly
-                              type="text"
-                              value={colombiaTimezone}
-                            />
-                          </label>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Resumen
-                            <input
-                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                              onChange={(event) => {
-                                const nextValue = event.target.value;
-                                setManualRescheduleFormState((currentValue) => ({
-                                  ...currentValue,
-                                  summary: nextValue
-                                }));
-                              }}
-                              type="text"
-                              value={manualRescheduleFormState.summary}
-                            />
-                          </label>
-                          <div className="md:col-span-2 flex flex-wrap gap-2">
-                            <button
-                              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={rescheduleManualAppointmentMutation.isPending}
-                              onClick={() => {
-                                const startAtIso = toApiDateTime(
-                                  manualRescheduleFormState.startAt,
-                                  colombiaTimezone
-                                );
-                                const durationMinutes = Number.parseInt(
-                                  manualRescheduleFormState.durationMinutes,
-                                  10
-                                );
-                                if (Number.isNaN(durationMinutes) || durationMinutes <= 0) {
-                                  setLocalSubmitErrorMessage(
-                                    "Debes seleccionar una duración válida."
-                                  );
-                                  return;
+                            } else if (
+                              selectedBookedAppointment.source === "BOT" &&
+                              selectedBookedBotRequest !== null
+                            ) {
+                              const eventSummary =
+                                selectedBookedAppointment.patientDisplayName.trim() === ""
+                                  ? "Cita"
+                                  : `Cita - ${selectedBookedAppointment.patientDisplayName}`;
+                              rescheduleBookedSlotMutation.mutate({
+                                requestId: selectedBookedBotRequest.requestId,
+                                input: {
+                                  startAt: slot.startAt,
+                                  endAt: slot.endAt,
+                                  timezone: slot.timezone,
+                                  eventSummary
                                 }
-                                if (startAtIso === null) {
-                                  setLocalSubmitErrorMessage(
-                                    "Debes ingresar fecha y hora de inicio válidas."
-                                  );
-                                  return;
-                                }
-                                if (!isThirtyMinuteAligned(startAtIso, colombiaTimezone)) {
-                                  setLocalSubmitErrorMessage(
-                                    "El inicio de la cita debe estar en bloques de 30 minutos."
-                                  );
-                                  return;
-                                }
-                                const endAtIso = calculateEndAtFromStart(
-                                  startAtIso,
-                                  durationMinutes,
-                                  colombiaTimezone
-                                );
-                                if (endAtIso === null) {
-                                  setLocalSubmitErrorMessage(
-                                    "No se pudo calcular la hora final de la cita."
-                                  );
-                                  return;
-                                }
-                                const startAtValue = luxonModule.DateTime.fromISO(startAtIso);
-                                const endAtValue = luxonModule.DateTime.fromISO(endAtIso);
-                                if (
-                                  !startAtValue.isValid ||
-                                  !endAtValue.isValid ||
-                                  endAtValue <= startAtValue
-                                ) {
-                                  setLocalSubmitErrorMessage(
-                                    "El fin debe ser posterior al inicio."
-                                  );
-                                  return;
-                                }
-                                setLocalSubmitErrorMessage(null);
-                                setSubmitSuccessMessage(null);
-                                rescheduleManualAppointmentMutation.mutate({
-                                  appointmentId: appointment.appointmentId,
-                                  input: {
-                                    startAt: startAtIso,
-                                    endAt: endAtIso,
-                                    timezone: colombiaTimezone,
-                                    summary:
-                                      manualRescheduleFormState.summary.trim() === ""
-                                        ? null
-                                        : manualRescheduleFormState.summary.trim()
-                                  }
-                                });
-                              }}
-                              type="button"
-                            >
-                              {rescheduleManualAppointmentMutation.isPending
-                                ? "Guardando..."
-                                : "Guardar reprogramación"}
-                            </button>
-                            <button
-                              className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                              onClick={() => {
-                                setEditingManualAppointmentId(null);
-                              }}
-                              type="button"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
+                              });
+                            }
+                          }}
+                          type="button"
+                        >
+                          {rescheduleManualAppointmentMutation.isPending ||
+                          rescheduleBookedSlotMutation.isPending
+                            ? "Guardando..."
+                            : "Guardar reprogramación"}
+                        </button>
+                        <button
+                          className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                          onClick={() => {
+                            setExpandedBookedAction(null);
+                            setRescheduleSelectedSlots([]);
+                          }}
+                          type="button"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+                  ) : null}
 
-          {/* NewPatientModal — rendered for both mobile and desktop */}
-          <NewPatientModal
-            isOpen={isNewPatientModalOpen}
-            isSubmitting={createPatientMutation.isPending}
-            onClose={() => setIsNewPatientModalOpen(false)}
-            onCreated={(whatsappUserId) => {
-              setManualAppointmentFormState((currentValue) => ({
-                ...currentValue,
-                patientWhatsappUserId: whatsappUserId
-              }));
-            }}
-            onSubmit={async (input) => {
-              await createPatientMutation.mutateAsync(input);
-            }}
-          />
-
-          {/* Mobile error/success feedback */}
-          <div className="mt-3 space-y-2 sm:hidden">
-            {submitErrorMessage !== null ? (
-              <errorBannerModule.ErrorBanner message={submitErrorMessage} />
-            ) : null}
-            {localSubmitErrorMessage !== null ? (
-              <errorBannerModule.ErrorBanner message={localSubmitErrorMessage} />
-            ) : null}
-            {submitSuccessMessage !== null ? (
-              <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                {submitSuccessMessage}
-              </div>
-            ) : null}
-          </div>
+                  {/* Expanded cancel form */}
+                  {expandedBookedAction === "cancel" ? (
+                    <div className="border-t border-border-subtle px-5 py-4">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Cancelar cita
+                      </p>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Motivo de cancelación (opcional)
+                        <textarea
+                          className="mt-1 min-h-20 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setBookedAppointmentFormState((currentValue) => ({
+                              ...currentValue,
+                              cancelReason: nextValue
+                            }));
+                          }}
+                          value={bookedAppointmentFormState.cancelReason}
+                        />
+                      </label>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={
+                            cancelBookedSlotMutation.isPending ||
+                            cancelManualAppointmentMutation.isPending
+                          }
+                          onClick={() => {
+                            const isConfirmed = window.confirm(
+                              "¿Seguro que quieres cancelar esta cita?"
+                            );
+                            if (!isConfirmed) {
+                              return;
+                            }
+                            setLocalSubmitErrorMessage(null);
+                            setSubmitSuccessMessage(null);
+                            if (
+                              selectedBookedAppointment.source === "BOT" &&
+                              selectedBookedBotRequest !== null
+                            ) {
+                              cancelBookedSlotMutation.mutate({
+                                requestId: selectedBookedBotRequest.requestId,
+                                input: {
+                                  reason:
+                                    bookedAppointmentFormState.cancelReason.trim() === ""
+                                      ? null
+                                      : bookedAppointmentFormState.cancelReason.trim()
+                                }
+                              });
+                            } else if (
+                              selectedBookedAppointment.source === "MANUAL" &&
+                              selectedBookedAppointment.manualAppointmentId !== null
+                            ) {
+                              cancelManualAppointmentMutation.mutate({
+                                appointmentId: selectedBookedAppointment.manualAppointmentId,
+                                input: {
+                                  reason:
+                                    bookedAppointmentFormState.cancelReason.trim() === ""
+                                      ? null
+                                      : bookedAppointmentFormState.cancelReason.trim()
+                                }
+                              });
+                            }
+                          }}
+                          type="button"
+                        >
+                          {cancelBookedSlotMutation.isPending ||
+                          cancelManualAppointmentMutation.isPending
+                            ? "Cancelando..."
+                            : "Cancelar cita"}
+                        </button>
+                        <button
+                          className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                          onClick={() => setExpandedBookedAction(null)}
+                          type="button"
+                        >
+                          Cerrar
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </appointmentDrawerModule.AppointmentDrawer>
+          ) : null}
         </section>
       ) : null}
 
@@ -3570,6 +2788,13 @@ export function AgendaPage() {
           </article>
         </section>
       ) : null}
+      <NewManualAppointmentModal
+        isOpen={isNewManualModalOpen}
+        onClose={() => setIsNewManualModalOpen(false)}
+        onCreated={() => {
+          void queryClient.invalidateQueries({ queryKey: manualAppointmentsQueryKey });
+        }}
+      />
     </appShellModule.AppShell>
   );
 }

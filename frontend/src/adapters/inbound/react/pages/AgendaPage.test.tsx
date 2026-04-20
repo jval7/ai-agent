@@ -211,9 +211,9 @@ vitestModule.describe("AgendaPage", () => {
       renderAgendaPage(container);
 
       testingLibraryReactModule.fireEvent.click(
-        testingLibraryReactModule.screen.getByRole("button", {
-          name: /Agenda e Historial/
-        })
+        testingLibraryReactModule.screen.getAllByRole("button", {
+          name: /^Agenda$/
+        })[0]!
       );
 
       await testingLibraryReactModule.waitFor(() => {
@@ -226,21 +226,24 @@ vitestModule.describe("AgendaPage", () => {
         );
       });
 
-      const [secondAppointmentButton] = testingLibraryReactModule.screen.getAllByRole("button", {
+      // Click on the day "12" in the mobile calendar to go to dayList step
+      const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+      testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
+
+      // In dayList step, click the 11:00 - 12:00 appointment to go to detail step
+      // getAllByRole because the desktop calendar also renders the same time chips in jsdom
+      const timeButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
         name: /11:00 - 12:00/
       });
-      if (secondAppointmentButton === undefined) {
-        throw new Error("No se encontró la cita de 11:00 - 12:00.");
-      }
-      testingLibraryReactModule.fireEvent.click(secondAppointmentButton);
+      testingLibraryReactModule.fireEvent.click(timeButtons[0]!);
 
+      // Detail step shows AppointmentDetailCard with patient name
       await testingLibraryReactModule.waitFor(() => {
         expect(testingLibraryReactModule.screen.getAllByText("Juan Perez").length).toBeGreaterThan(
           0
         );
-        expect(
-          testingLibraryReactModule.screen.getByText(/12 Mar 2026 11:00 - 12:00/)
-        ).toBeInTheDocument();
+        // AppointmentDetailCard shows the origin kicker
+        expect(testingLibraryReactModule.screen.getByText("Cita chatbot")).toBeInTheDocument();
       });
     }
   );
@@ -334,6 +337,13 @@ vitestModule.describe("AgendaPage", () => {
             endAt: "2026-03-12T16:00:00Z",
             timezone: "America/Bogota",
             summary: "Cita control",
+            isVirtual: false,
+            meetUrl: null,
+            paymentAmountCop: null,
+            paymentCurrency: "COP" as const,
+            paymentMethod: null,
+            paymentStatus: "PENDING",
+            paymentUpdatedAt: null,
             createdAt: "2026-03-01T00:00:00Z",
             updatedAt: "2026-03-01T00:00:00Z",
             cancelledAt: null
@@ -345,9 +355,9 @@ vitestModule.describe("AgendaPage", () => {
     renderAgendaPage(container);
 
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agenda e Historial/
-      })
+      testingLibraryReactModule.screen.getAllByRole("button", {
+        name: /^Agenda$/
+      })[0]!
     );
 
     await testingLibraryReactModule.waitFor(() => {
@@ -356,17 +366,27 @@ vitestModule.describe("AgendaPage", () => {
       ).toBeInTheDocument();
     });
 
-    const manualAppointmentButton = testingLibraryReactModule.screen
-      .getAllByRole("button", { name: /15:00 - 16:00/ })
-      .find((button) => button.getAttribute("title")?.includes("Manual") === true);
-    if (manualAppointmentButton === undefined) {
-      throw new Error("No se encontró la cita manual en la previsualización del calendario.");
-    }
-    testingLibraryReactModule.fireEvent.click(manualAppointmentButton);
+    // Click on day "12" in the mobile calendar to go to dayList
+    const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+    testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
 
+    // In dayList, click on the 15:00 - 16:00 appointment chip
+    // getAllByRole because the desktop calendar also renders the same time chips in jsdom
+    const timeButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+      name: /15:00 - 16:00/
+    });
+    testingLibraryReactModule.fireEvent.click(timeButtons[0]!);
+
+    // Detail step shows AppointmentDetailCard with patient name and summary
     await testingLibraryReactModule.waitFor(() => {
-      expect(testingLibraryReactModule.screen.getByText("Detalle cita manual")).toBeInTheDocument();
-      expect(testingLibraryReactModule.screen.getByText("Cita control")).toBeInTheDocument();
+      expect(testingLibraryReactModule.screen.getAllByText("Maria Manual").length).toBeGreaterThan(
+        0
+      );
+      expect(testingLibraryReactModule.screen.getAllByText("Cita control").length).toBeGreaterThan(
+        0
+      );
+      // AppointmentDetailCard shows origin kicker
+      expect(testingLibraryReactModule.screen.getByText("Cita manual")).toBeInTheDocument();
     });
   });
 
@@ -417,14 +437,17 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
-    // Navigate to the manual scheduling section
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agendamiento manual/
-      })
-    );
+    // Open new manual appointment modal via "+ Nueva cita manual" button
+    const nuevaCitaButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+      name: /Nueva cita manual/i
+    });
+    testingLibraryReactModule.fireEvent.click(nuevaCitaButtons[0]!);
 
-    // Open new patient modal via the "+ Nuevo paciente" link
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Nueva cita manual")).toBeInTheDocument();
+    });
+
+    // Open new patient modal via the "+ Nuevo paciente" link inside the appointment modal
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", {
         name: /\+ Nuevo paciente/i
@@ -535,11 +558,15 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agendamiento manual/
-      })
-    );
+    // Open new manual appointment modal via "+ Nueva cita manual" button
+    const nuevaCitaButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+      name: /Nueva cita manual/i
+    });
+    testingLibraryReactModule.fireEvent.click(nuevaCitaButtons[0]!);
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Nueva cita manual")).toBeInTheDocument();
+    });
 
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", {
@@ -607,7 +634,8 @@ vitestModule.describe("AgendaPage", () => {
       timezone: "America/Bogota",
       isVirtual: false,
       meetUrl: null,
-      paymentAmountCop: null,
+      paymentAmountCop: 120000,
+      paymentCurrency: "COP" as const,
       paymentMethod: null,
       paymentStatus: "PENDING",
       paymentUpdatedAt: null,
@@ -663,11 +691,15 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agendamiento manual/
-      })
-    );
+    // Open the new manual appointment modal via "+ Nueva cita manual" button
+    const nuevaCitaButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+      name: /Nueva cita manual/i
+    });
+    testingLibraryReactModule.fireEvent.click(nuevaCitaButtons[0]!);
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Nueva cita manual")).toBeInTheDocument();
+    });
 
     await testingLibraryReactModule.waitFor(() => {
       expect(
@@ -677,41 +709,47 @@ vitestModule.describe("AgendaPage", () => {
       ).toBeInTheDocument();
     });
 
+    // Scope to the modal to avoid colliding with the page calendar
+    const modalEl = testingLibraryReactModule.screen.getByTestId("new-manual-appointment-modal");
+    const withinModal = testingLibraryReactModule.within(modalEl);
+
     // Select patient
-    const patientSelects = testingLibraryReactModule.screen.getAllByRole("combobox", {
-      name: /Paciente/i
+    const patientSelect = withinModal.getByRole("combobox", {
+      name: /Seleccionar paciente/i
     });
-    const patientSelect = patientSelects[0]!;
     testingLibraryReactModule.fireEvent.change(patientSelect, {
       target: { value: "wa-1" }
     });
     expect(patientSelect).toHaveValue("wa-1");
 
     // Click day 12 in the SlotPicker calendar (March 12 is future from mock now=March 1)
-    const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+    const dayButtons = withinModal.getAllByRole("button", { name: "12" });
     testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
 
     // Click the 9 AM slot chip
     await testingLibraryReactModule.waitFor(() => {
-      expect(
-        testingLibraryReactModule.screen.getAllByRole("button", { name: "9 AM" })[0]
-      ).toBeInTheDocument();
+      expect(withinModal.getAllByRole("button", { name: "9 AM" })[0]).toBeInTheDocument();
     });
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getAllByRole("button", { name: "9 AM" })[0]!
+      withinModal.getAllByRole("button", { name: "9 AM" })[0]!
     );
 
     // Fill in the summary
     testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/^Motivo de consulta$/i),
+      withinModal.getByLabelText(/^Motivo de consulta$/i),
       {
         target: { value: "Cita manual" }
       }
     );
 
+    // Fill in the payment amount (required by the modal)
+    testingLibraryReactModule.fireEvent.change(withinModal.getByRole("spinbutton"), {
+      target: { value: "120000" }
+    });
+
     // Submit
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
+      withinModal.getByRole("button", {
         name: "Agendar cita"
       })
     );
@@ -730,6 +768,10 @@ vitestModule.describe("AgendaPage", () => {
   });
 
   vitestModule.it("cancels booked chatbot appointment from agenda", async () => {
+    vitestModule.vi
+      .spyOn(luxonModule.DateTime, "now")
+      .mockReturnValue(luxonModule.DateTime.utc(2026, 3, 1, 0, 0, 0) as luxonModule.DateTime<true>);
+
     const confirmSpy = vitestModule.vi.spyOn(window, "confirm").mockReturnValue(true);
     const cancelBookedSlotMock = vitestModule.vi.fn(async () => ({
       requestId: "req-booked-1",
@@ -823,20 +865,34 @@ vitestModule.describe("AgendaPage", () => {
     renderAgendaPage(container);
 
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agenda e Historial/
-      })
+      testingLibraryReactModule.screen.getAllByRole("button", {
+        name: /^Agenda$/
+      })[0]!
     );
 
-    const expandCancelButton = await testingLibraryReactModule.screen.findByRole("button", {
-      name: "Cancelar"
+    // Wait for data to load, then navigate to detail via mobile wizard
+    await testingLibraryReactModule.waitFor(() => {
+      expect(
+        testingLibraryReactModule.screen.getByText("Calendario de citas agendadas")
+      ).toBeInTheDocument();
     });
-    testingLibraryReactModule.fireEvent.click(expandCancelButton);
 
-    const cancelButton = await testingLibraryReactModule.screen.findByRole("button", {
+    // Click day "12" in the mobile calendar to go to dayList step
+    const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+    testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
+
+    // Click the 09:00 - 10:00 appointment in dayList to go to detail step
+    const timeButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+      name: /09:00 - 10:00/
+    });
+    testingLibraryReactModule.fireEvent.click(timeButtons[0]!);
+
+    // AppointmentDetailCard is now shown; click "Cancelar cita" in ACCIONES
+    // (new behavior: single click triggers window.confirm() and cancels immediately)
+    const cancelAccionesButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
       name: "Cancelar cita"
     });
-    testingLibraryReactModule.fireEvent.click(cancelButton);
+    testingLibraryReactModule.fireEvent.click(cancelAccionesButtons[0]!);
 
     await testingLibraryReactModule.waitFor(() => {
       expect(cancelBookedSlotMock).toHaveBeenCalledWith("req-booked-1", {
@@ -847,6 +903,10 @@ vitestModule.describe("AgendaPage", () => {
   });
 
   vitestModule.it("updates manual appointment payment from booked detail", async () => {
+    vitestModule.vi
+      .spyOn(luxonModule.DateTime, "now")
+      .mockReturnValue(luxonModule.DateTime.utc(2026, 3, 1, 0, 0, 0) as luxonModule.DateTime<true>);
+
     const updateManualPaymentMock = vitestModule.vi.fn(async () => ({
       appointmentId: "manual-1",
       tenantId: "tenant-1",
@@ -857,7 +917,10 @@ vitestModule.describe("AgendaPage", () => {
       endAt: "2026-03-12T16:00:00Z",
       timezone: "UTC",
       summary: "Cita control",
+      isVirtual: false,
+      meetUrl: null,
       paymentAmountCop: 120000,
+      paymentCurrency: "COP" as const,
       paymentMethod: "TRANSFER",
       paymentStatus: "PAID",
       paymentUpdatedAt: "2026-03-10T10:00:00Z",
@@ -917,7 +980,10 @@ vitestModule.describe("AgendaPage", () => {
             endAt: "2026-03-12T16:00:00Z",
             timezone: "UTC",
             summary: "Cita control",
+            isVirtual: false,
+            meetUrl: null,
             paymentAmountCop: null,
+            paymentCurrency: "COP" as const,
             paymentMethod: null,
             paymentStatus: "PENDING",
             paymentUpdatedAt: null,
@@ -933,13 +999,34 @@ vitestModule.describe("AgendaPage", () => {
     renderAgendaPage(container);
 
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", { name: /Agenda e Historial/ })
+      testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
     );
 
+    // Wait for calendar to load, then navigate to detail via mobile wizard
     await testingLibraryReactModule.waitFor(() => {
-      expect(testingLibraryReactModule.screen.getByText("Detalle cita manual")).toBeInTheDocument();
+      expect(
+        testingLibraryReactModule.screen.getByText("Calendario de citas agendadas")
+      ).toBeInTheDocument();
     });
 
+    // Click day "12" in mobile calendar to go to dayList step
+    const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+    testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
+
+    // Click the 15:00 - 16:00 appointment in dayList to go to detail step
+    const timeButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+      name: /15:00 - 16:00/
+    });
+    testingLibraryReactModule.fireEvent.click(timeButtons[0]!);
+
+    // AppointmentDetailCard is shown with payment form (PENDING status)
+    await testingLibraryReactModule.waitFor(() => {
+      expect(
+        testingLibraryReactModule.screen.getByRole("spinbutton", { name: /Valor \(COP\)/i })
+      ).toBeInTheDocument();
+    });
+
+    // Fill in payment amount
     testingLibraryReactModule.fireEvent.change(
       testingLibraryReactModule.screen.getByRole("spinbutton", {
         name: /Valor \(COP\)/i
@@ -948,25 +1035,24 @@ vitestModule.describe("AgendaPage", () => {
         target: { value: "120000" }
       }
     );
+
+    // Change payment category
     testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByRole("combobox", { name: /^Categoría$/i }),
+      testingLibraryReactModule.screen.getByRole("combobox", { name: /Categoría de pago/i }),
       {
         target: { value: "TRANSFER" }
       }
     );
-    testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByRole("combobox", { name: /^Estado$/i }),
-      {
-        target: { value: "PAID" }
-      }
-    );
+
+    // Submit payment — AppointmentDetailCard always sets paymentStatus to "PAID"
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", { name: "Guardar pago manual" })
+      testingLibraryReactModule.screen.getByRole("button", { name: "Registrar pago" })
     );
 
     await testingLibraryReactModule.waitFor(() => {
       expect(updateManualPaymentMock).toHaveBeenCalledWith("manual-1", {
         paymentAmountCop: 120000,
+        paymentCurrency: "COP",
         paymentMethod: "TRANSFER",
         paymentStatus: "PAID"
       });
@@ -974,6 +1060,10 @@ vitestModule.describe("AgendaPage", () => {
   });
 
   vitestModule.it("updates chatbot appointment payment from booked detail", async () => {
+    vitestModule.vi
+      .spyOn(luxonModule.DateTime, "now")
+      .mockReturnValue(luxonModule.DateTime.utc(2026, 3, 1, 0, 0, 0) as luxonModule.DateTime<true>);
+
     const updateBookedPaymentMock = vitestModule.vi.fn(async () => ({
       requestId: "req-booked-1",
       conversationId: "conv-booked-1",
@@ -995,8 +1085,9 @@ vitestModule.describe("AgendaPage", () => {
       selectedSlotId: "slot-1",
       calendarEventId: "event-1",
       paymentAmountCop: 80000,
+      paymentCurrency: "COP" as const,
       paymentMethod: "CASH",
-      paymentStatus: "PENDING",
+      paymentStatus: "PAID",
       paymentUpdatedAt: "2026-03-12T08:00:00Z",
       createdAt: "2026-03-01T00:00:00Z",
       updatedAt: "2026-03-12T08:00:00Z",
@@ -1043,6 +1134,7 @@ vitestModule.describe("AgendaPage", () => {
             selectedSlotId: "slot-1",
             calendarEventId: "event-1",
             paymentAmountCop: null,
+            paymentCurrency: "COP" as const,
             paymentMethod: null,
             paymentStatus: "PENDING",
             paymentUpdatedAt: null,
@@ -1083,20 +1175,34 @@ vitestModule.describe("AgendaPage", () => {
     renderAgendaPage(container);
 
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", { name: /Agenda e Historial/ })
+      testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
     );
 
-    const expandPaymentButton = await testingLibraryReactModule.screen.findByRole("button", {
-      name: "Agregar pago"
-    });
-    testingLibraryReactModule.fireEvent.click(expandPaymentButton);
-
+    // Wait for calendar to load, then navigate to detail via mobile wizard
     await testingLibraryReactModule.waitFor(() => {
       expect(
-        testingLibraryReactModule.screen.getByRole("button", { name: "Guardar pago" })
+        testingLibraryReactModule.screen.getByText("Calendario de citas agendadas")
       ).toBeInTheDocument();
     });
 
+    // Click day "12" in mobile calendar to go to dayList step
+    const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+    testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
+
+    // Click the 09:00 - 10:00 appointment in dayList to go to detail step
+    const timeButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+      name: /09:00 - 10:00/
+    });
+    testingLibraryReactModule.fireEvent.click(timeButtons[0]!);
+
+    // AppointmentDetailCard is shown with payment form (PENDING status)
+    await testingLibraryReactModule.waitFor(() => {
+      expect(
+        testingLibraryReactModule.screen.getByRole("spinbutton", { name: /Valor \(COP\)/i })
+      ).toBeInTheDocument();
+    });
+
+    // Fill in payment amount (default category is CASH)
     testingLibraryReactModule.fireEvent.change(
       testingLibraryReactModule.screen.getByRole("spinbutton", {
         name: /Valor \(COP\)/i
@@ -1105,15 +1211,18 @@ vitestModule.describe("AgendaPage", () => {
         target: { value: "80000" }
       }
     );
+
+    // Submit payment — AppointmentDetailCard always sets paymentStatus to "PAID"
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", { name: "Guardar pago" })
+      testingLibraryReactModule.screen.getByRole("button", { name: "Registrar pago" })
     );
 
     await testingLibraryReactModule.waitFor(() => {
       expect(updateBookedPaymentMock).toHaveBeenCalledWith("req-booked-1", {
         paymentAmountCop: 80000,
+        paymentCurrency: "COP",
         paymentMethod: "CASH",
-        paymentStatus: "PENDING"
+        paymentStatus: "PAID"
       });
     });
   });
@@ -1152,6 +1261,7 @@ vitestModule.describe("AgendaPage", () => {
             selectedSlotId: "slot-1",
             calendarEventId: "event-1",
             paymentAmountCop: 100000,
+            paymentCurrency: "COP" as const,
             paymentMethod: "TRANSFER",
             paymentStatus: "PAID",
             paymentUpdatedAt: "2026-03-12T08:00:00Z",
@@ -1208,6 +1318,7 @@ vitestModule.describe("AgendaPage", () => {
             timezone: "UTC",
             summary: "Cita manual",
             paymentAmountCop: null,
+            paymentCurrency: "COP" as const,
             paymentMethod: null,
             paymentStatus: "PENDING",
             paymentUpdatedAt: null,
@@ -1246,4 +1357,248 @@ vitestModule.describe("AgendaPage", () => {
       expect(testingLibraryReactModule.screen.queryByText("Paciente Manual")).toBeNull();
     });
   });
+
+  vitestModule.it(
+    "shows SlotPicker when Reprogramar cita is clicked for a booked manual appointment",
+    async () => {
+      vitestModule.vi
+        .spyOn(luxonModule.DateTime, "now")
+        .mockReturnValue(
+          luxonModule.DateTime.utc(2026, 3, 1, 0, 0, 0) as luxonModule.DateTime<true>
+        );
+
+      const container = {
+        onboardingUseCase: {
+          getGoogleCalendarConnectionStatus: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            status: "CONNECTED",
+            calendarId: "primary",
+            professionalTimezone: "UTC",
+            connectedAt: "2026-03-01T00:00:00Z"
+          }))
+        },
+        schedulingUseCase: {
+          listRequests: vitestModule.vi.fn(async () => []),
+          getAvailability: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            calendarId: "primary",
+            timezone: "UTC",
+            busyIntervals: []
+          })),
+          submitProfessionalSlots: vitestModule.vi.fn(),
+          resolveConsultationReview: vitestModule.vi.fn(),
+          rescheduleBookedSlot: vitestModule.vi.fn(),
+          cancelBookedSlot: vitestModule.vi.fn(),
+          updateBookedPayment: vitestModule.vi.fn()
+        },
+        patientUseCase: {
+          listPatients: vitestModule.vi.fn(async () => [
+            {
+              tenantId: "tenant-1",
+              whatsappUserId: "wa-manual-1",
+              firstName: "Maria",
+              lastName: "Manual",
+              email: "maria@example.com",
+              age: 30,
+              location: "Bogota",
+              phonePrefix: null,
+              phone: "573001001001",
+              createdAt: "2026-03-01T00:00:00Z"
+            }
+          ])
+        },
+        manualAppointmentUseCase: {
+          listAppointments: vitestModule.vi.fn(async () => [
+            {
+              appointmentId: "manual-1",
+              tenantId: "tenant-1",
+              patientWhatsappUserId: "wa-manual-1",
+              status: "SCHEDULED",
+              calendarEventId: "event-manual-1",
+              startAt: "2026-03-12T15:00:00Z",
+              endAt: "2026-03-12T16:00:00Z",
+              timezone: "UTC",
+              summary: "Cita control",
+              isVirtual: false,
+              meetUrl: null,
+              paymentAmountCop: null,
+              paymentCurrency: "COP" as const,
+              paymentMethod: null,
+              paymentStatus: "PENDING",
+              paymentUpdatedAt: null,
+              createdAt: "2026-03-01T00:00:00Z",
+              updatedAt: "2026-03-01T00:00:00Z",
+              cancelledAt: null
+            }
+          ]),
+          rescheduleAppointment: vitestModule.vi.fn(),
+          cancelAppointment: vitestModule.vi.fn(),
+          updatePayment: vitestModule.vi.fn()
+        }
+      };
+
+      renderAgendaPage(container);
+
+      testingLibraryReactModule.fireEvent.click(
+        testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
+      );
+
+      // Wait for calendar to load
+      await testingLibraryReactModule.waitFor(() => {
+        expect(
+          testingLibraryReactModule.screen.getByText("Calendario de citas agendadas")
+        ).toBeInTheDocument();
+      });
+
+      // Click day "12" in the calendar
+      const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+      testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
+
+      // Click the appointment in dayList to go to detail step
+      const timeButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+        name: /15:00 - 16:00/
+      });
+      testingLibraryReactModule.fireEvent.click(timeButtons[0]!);
+
+      // Click "Reprogramar cita" button in AppointmentDetailCard
+      const rescheduleButton = await testingLibraryReactModule.screen.findByRole("button", {
+        name: "Reprogramar cita"
+      });
+      testingLibraryReactModule.fireEvent.click(rescheduleButton);
+
+      // SlotPicker panel should be visible
+      await testingLibraryReactModule.waitFor(() => {
+        expect(
+          testingLibraryReactModule.screen.getByTestId("reschedule-slotpicker-panel")
+        ).toBeInTheDocument();
+      });
+
+      // Helper text should be shown (unique to the SlotPicker panel)
+      expect(
+        testingLibraryReactModule.screen.getByText("Selecciona un nuevo horario disponible.")
+      ).toBeInTheDocument();
+    }
+  );
+
+  vitestModule.it(
+    "pre-selects current appointment slot in SlotPicker when reschedule opens",
+    async () => {
+      vitestModule.vi
+        .spyOn(luxonModule.DateTime, "now")
+        .mockReturnValue(
+          luxonModule.DateTime.utc(2026, 3, 1, 0, 0, 0) as luxonModule.DateTime<true>
+        );
+
+      const container = {
+        onboardingUseCase: {
+          getGoogleCalendarConnectionStatus: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            status: "CONNECTED",
+            calendarId: "primary",
+            professionalTimezone: "UTC",
+            connectedAt: "2026-03-01T00:00:00Z"
+          }))
+        },
+        schedulingUseCase: {
+          listRequests: vitestModule.vi.fn(async () => []),
+          getAvailability: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            calendarId: "primary",
+            timezone: "UTC",
+            busyIntervals: []
+          })),
+          submitProfessionalSlots: vitestModule.vi.fn(),
+          resolveConsultationReview: vitestModule.vi.fn(),
+          rescheduleBookedSlot: vitestModule.vi.fn(),
+          cancelBookedSlot: vitestModule.vi.fn(),
+          updateBookedPayment: vitestModule.vi.fn()
+        },
+        patientUseCase: {
+          listPatients: vitestModule.vi.fn(async () => [
+            {
+              tenantId: "tenant-1",
+              whatsappUserId: "wa-manual-1",
+              firstName: "Maria",
+              lastName: "Manual",
+              email: "maria@example.com",
+              age: 30,
+              location: "Bogota",
+              phonePrefix: null,
+              phone: "573001001001",
+              createdAt: "2026-03-01T00:00:00Z"
+            }
+          ])
+        },
+        manualAppointmentUseCase: {
+          listAppointments: vitestModule.vi.fn(async () => [
+            {
+              appointmentId: "manual-1",
+              tenantId: "tenant-1",
+              patientWhatsappUserId: "wa-manual-1",
+              status: "SCHEDULED",
+              calendarEventId: "event-manual-1",
+              startAt: "2026-03-12T15:00:00Z",
+              endAt: "2026-03-12T16:00:00Z",
+              timezone: "UTC",
+              summary: "Cita control",
+              isVirtual: false,
+              meetUrl: null,
+              paymentAmountCop: null,
+              paymentCurrency: "COP" as const,
+              paymentMethod: null,
+              paymentStatus: "PENDING",
+              paymentUpdatedAt: null,
+              createdAt: "2026-03-01T00:00:00Z",
+              updatedAt: "2026-03-01T00:00:00Z",
+              cancelledAt: null
+            }
+          ]),
+          rescheduleAppointment: vitestModule.vi.fn(),
+          cancelAppointment: vitestModule.vi.fn(),
+          updatePayment: vitestModule.vi.fn()
+        }
+      };
+
+      renderAgendaPage(container);
+
+      testingLibraryReactModule.fireEvent.click(
+        testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
+      );
+
+      await testingLibraryReactModule.waitFor(() => {
+        expect(
+          testingLibraryReactModule.screen.getByText("Calendario de citas agendadas")
+        ).toBeInTheDocument();
+      });
+
+      // Navigate to detail
+      const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+      testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
+
+      const timeButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+        name: /15:00 - 16:00/
+      });
+      testingLibraryReactModule.fireEvent.click(timeButtons[0]!);
+
+      // Open reschedule
+      const rescheduleButton = await testingLibraryReactModule.screen.findByRole("button", {
+        name: "Reprogramar cita"
+      });
+      testingLibraryReactModule.fireEvent.click(rescheduleButton);
+
+      // SlotPicker should show "Horarios seleccionados" pill for the current slot
+      await testingLibraryReactModule.waitFor(() => {
+        expect(
+          testingLibraryReactModule.screen.getByText("Horarios seleccionados")
+        ).toBeInTheDocument();
+      });
+
+      // The pill should show the current appointment time (mar. 12, 3:00 PM in Bogota = UTC-5, so 15:00 UTC = 10:00 AM Bogota)
+      // SlotPicker renders as LLL dd, h:mm a in locale es
+      // UTC 15:00 = America/Bogota 10:00 (UTC-5)
+      expect(
+        testingLibraryReactModule.screen.getByText(/mar\. 12.*10:00|10:00 a/i)
+      ).toBeInTheDocument();
+    }
+  );
 });

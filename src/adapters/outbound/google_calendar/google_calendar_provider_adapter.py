@@ -80,15 +80,9 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         if not isinstance(timezone, str) or not timezone:
             timezone = "UTC"
 
-        summary_raw = payload.get("summary")
-        summary: str | None = None
-        if isinstance(summary_raw, str) and summary_raw.strip() and "@" not in summary_raw:
-            summary = summary_raw.strip()
-
         return google_calendar_dto.GoogleCalendarMetadataDTO(
             calendar_id=calendar_id,
             timezone=timezone,
-            summary=summary,
         )
 
     def list_busy_intervals(
