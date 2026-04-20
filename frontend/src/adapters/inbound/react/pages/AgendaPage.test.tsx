@@ -1353,4 +1353,248 @@ vitestModule.describe("AgendaPage", () => {
       expect(testingLibraryReactModule.screen.queryByText("Paciente Manual")).toBeNull();
     });
   });
+
+  vitestModule.it(
+    "shows SlotPicker when Reprogramar cita is clicked for a booked manual appointment",
+    async () => {
+      vitestModule.vi
+        .spyOn(luxonModule.DateTime, "now")
+        .mockReturnValue(
+          luxonModule.DateTime.utc(2026, 3, 1, 0, 0, 0) as luxonModule.DateTime<true>
+        );
+
+      const container = {
+        onboardingUseCase: {
+          getGoogleCalendarConnectionStatus: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            status: "CONNECTED",
+            calendarId: "primary",
+            professionalTimezone: "UTC",
+            connectedAt: "2026-03-01T00:00:00Z"
+          }))
+        },
+        schedulingUseCase: {
+          listRequests: vitestModule.vi.fn(async () => []),
+          getAvailability: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            calendarId: "primary",
+            timezone: "UTC",
+            busyIntervals: []
+          })),
+          submitProfessionalSlots: vitestModule.vi.fn(),
+          resolveConsultationReview: vitestModule.vi.fn(),
+          rescheduleBookedSlot: vitestModule.vi.fn(),
+          cancelBookedSlot: vitestModule.vi.fn(),
+          updateBookedPayment: vitestModule.vi.fn()
+        },
+        patientUseCase: {
+          listPatients: vitestModule.vi.fn(async () => [
+            {
+              tenantId: "tenant-1",
+              whatsappUserId: "wa-manual-1",
+              firstName: "Maria",
+              lastName: "Manual",
+              email: "maria@example.com",
+              age: 30,
+              location: "Bogota",
+              phonePrefix: null,
+              phone: "573001001001",
+              createdAt: "2026-03-01T00:00:00Z"
+            }
+          ])
+        },
+        manualAppointmentUseCase: {
+          listAppointments: vitestModule.vi.fn(async () => [
+            {
+              appointmentId: "manual-1",
+              tenantId: "tenant-1",
+              patientWhatsappUserId: "wa-manual-1",
+              status: "SCHEDULED",
+              calendarEventId: "event-manual-1",
+              startAt: "2026-03-12T15:00:00Z",
+              endAt: "2026-03-12T16:00:00Z",
+              timezone: "UTC",
+              summary: "Cita control",
+              isVirtual: false,
+              meetUrl: null,
+              paymentAmountCop: null,
+              paymentCurrency: "COP" as const,
+              paymentMethod: null,
+              paymentStatus: "PENDING",
+              paymentUpdatedAt: null,
+              createdAt: "2026-03-01T00:00:00Z",
+              updatedAt: "2026-03-01T00:00:00Z",
+              cancelledAt: null
+            }
+          ]),
+          rescheduleAppointment: vitestModule.vi.fn(),
+          cancelAppointment: vitestModule.vi.fn(),
+          updatePayment: vitestModule.vi.fn()
+        }
+      };
+
+      renderAgendaPage(container);
+
+      testingLibraryReactModule.fireEvent.click(
+        testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
+      );
+
+      // Wait for calendar to load
+      await testingLibraryReactModule.waitFor(() => {
+        expect(
+          testingLibraryReactModule.screen.getByText("Calendario de citas agendadas")
+        ).toBeInTheDocument();
+      });
+
+      // Click day "12" in the calendar
+      const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+      testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
+
+      // Click the appointment in dayList to go to detail step
+      const timeButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+        name: /15:00 - 16:00/
+      });
+      testingLibraryReactModule.fireEvent.click(timeButtons[0]!);
+
+      // Click "Reprogramar cita" button in AppointmentDetailCard
+      const rescheduleButton = await testingLibraryReactModule.screen.findByRole("button", {
+        name: "Reprogramar cita"
+      });
+      testingLibraryReactModule.fireEvent.click(rescheduleButton);
+
+      // SlotPicker panel should be visible
+      await testingLibraryReactModule.waitFor(() => {
+        expect(
+          testingLibraryReactModule.screen.getByTestId("reschedule-slotpicker-panel")
+        ).toBeInTheDocument();
+      });
+
+      // Helper text should be shown (unique to the SlotPicker panel)
+      expect(
+        testingLibraryReactModule.screen.getByText("Selecciona un nuevo horario disponible.")
+      ).toBeInTheDocument();
+    }
+  );
+
+  vitestModule.it(
+    "pre-selects current appointment slot in SlotPicker when reschedule opens",
+    async () => {
+      vitestModule.vi
+        .spyOn(luxonModule.DateTime, "now")
+        .mockReturnValue(
+          luxonModule.DateTime.utc(2026, 3, 1, 0, 0, 0) as luxonModule.DateTime<true>
+        );
+
+      const container = {
+        onboardingUseCase: {
+          getGoogleCalendarConnectionStatus: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            status: "CONNECTED",
+            calendarId: "primary",
+            professionalTimezone: "UTC",
+            connectedAt: "2026-03-01T00:00:00Z"
+          }))
+        },
+        schedulingUseCase: {
+          listRequests: vitestModule.vi.fn(async () => []),
+          getAvailability: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            calendarId: "primary",
+            timezone: "UTC",
+            busyIntervals: []
+          })),
+          submitProfessionalSlots: vitestModule.vi.fn(),
+          resolveConsultationReview: vitestModule.vi.fn(),
+          rescheduleBookedSlot: vitestModule.vi.fn(),
+          cancelBookedSlot: vitestModule.vi.fn(),
+          updateBookedPayment: vitestModule.vi.fn()
+        },
+        patientUseCase: {
+          listPatients: vitestModule.vi.fn(async () => [
+            {
+              tenantId: "tenant-1",
+              whatsappUserId: "wa-manual-1",
+              firstName: "Maria",
+              lastName: "Manual",
+              email: "maria@example.com",
+              age: 30,
+              location: "Bogota",
+              phonePrefix: null,
+              phone: "573001001001",
+              createdAt: "2026-03-01T00:00:00Z"
+            }
+          ])
+        },
+        manualAppointmentUseCase: {
+          listAppointments: vitestModule.vi.fn(async () => [
+            {
+              appointmentId: "manual-1",
+              tenantId: "tenant-1",
+              patientWhatsappUserId: "wa-manual-1",
+              status: "SCHEDULED",
+              calendarEventId: "event-manual-1",
+              startAt: "2026-03-12T15:00:00Z",
+              endAt: "2026-03-12T16:00:00Z",
+              timezone: "UTC",
+              summary: "Cita control",
+              isVirtual: false,
+              meetUrl: null,
+              paymentAmountCop: null,
+              paymentCurrency: "COP" as const,
+              paymentMethod: null,
+              paymentStatus: "PENDING",
+              paymentUpdatedAt: null,
+              createdAt: "2026-03-01T00:00:00Z",
+              updatedAt: "2026-03-01T00:00:00Z",
+              cancelledAt: null
+            }
+          ]),
+          rescheduleAppointment: vitestModule.vi.fn(),
+          cancelAppointment: vitestModule.vi.fn(),
+          updatePayment: vitestModule.vi.fn()
+        }
+      };
+
+      renderAgendaPage(container);
+
+      testingLibraryReactModule.fireEvent.click(
+        testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
+      );
+
+      await testingLibraryReactModule.waitFor(() => {
+        expect(
+          testingLibraryReactModule.screen.getByText("Calendario de citas agendadas")
+        ).toBeInTheDocument();
+      });
+
+      // Navigate to detail
+      const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+      testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
+
+      const timeButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+        name: /15:00 - 16:00/
+      });
+      testingLibraryReactModule.fireEvent.click(timeButtons[0]!);
+
+      // Open reschedule
+      const rescheduleButton = await testingLibraryReactModule.screen.findByRole("button", {
+        name: "Reprogramar cita"
+      });
+      testingLibraryReactModule.fireEvent.click(rescheduleButton);
+
+      // SlotPicker should show "Horarios seleccionados" pill for the current slot
+      await testingLibraryReactModule.waitFor(() => {
+        expect(
+          testingLibraryReactModule.screen.getByText("Horarios seleccionados")
+        ).toBeInTheDocument();
+      });
+
+      // The pill should show the current appointment time (mar. 12, 3:00 PM in Bogota = UTC-5, so 15:00 UTC = 10:00 AM Bogota)
+      // SlotPicker renders as LLL dd, h:mm a in locale es
+      // UTC 15:00 = America/Bogota 10:00 (UTC-5)
+      expect(
+        testingLibraryReactModule.screen.getByText(/mar\. 12.*10:00|10:00 a/i)
+      ).toBeInTheDocument();
+    }
+  );
 });

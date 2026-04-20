@@ -8,6 +8,7 @@ import * as appointmentDetailCardModule from "@adapters/inbound/react/components
 import * as appointmentDrawerModule from "@adapters/inbound/react/components/AppointmentDrawer";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import { NewManualAppointmentModal } from "@adapters/inbound/react/components/NewManualAppointmentModal";
+import * as slotPickerModule from "@adapters/inbound/react/components/SlotPicker";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import type * as manualAppointmentModel from "@domain/models/manual_appointment";
 import type * as patientModel from "@domain/models/patient";
@@ -21,8 +22,6 @@ const googleCalendarConnectionQueryKey = ["google-calendar-connection"] as const
 const patientsQueryKey = ["patients"] as const;
 const manualAppointmentsQueryKey = ["manual-appointments"] as const;
 const colombiaTimezone = "America/Bogota";
-const manualAppointmentDurationOptionsMinutes = [30, 45, 60, 90, 120];
-const hourOptions = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, "0"));
 
 interface AgendaSection {
   id: string;
@@ -62,12 +61,6 @@ const approvalStatusLabels: Record<
   CONSULTATION_REJECTED: { label: "Rechazado", tone: "danger" }
 };
 
-interface LocalDateTimeParts {
-  date: string;
-  hour: string;
-  minute: "00" | "30";
-}
-
 interface BookedAppointment {
   itemKey: string;
   source: "BOT" | "MANUAL";
@@ -83,18 +76,7 @@ interface BookedAppointment {
   manualAppointment: manualAppointmentModel.ManualAppointment | null;
 }
 
-interface RescheduleManualFormState {
-  patientWhatsappUserId: string;
-  startAt: string;
-  durationMinutes: string;
-  summary: string;
-  isVirtual: boolean;
-}
-
 interface BookedAppointmentFormState {
-  startDate: string;
-  startTime: string;
-  durationMinutes: string;
   cancelReason: string;
 }
 
@@ -122,21 +104,8 @@ interface FinanceAppointmentItem {
   paymentUpdatedAt: string | null;
 }
 
-function emptyRescheduleManualForm(): RescheduleManualFormState {
-  return {
-    patientWhatsappUserId: "",
-    startAt: "",
-    durationMinutes: "60",
-    summary: "",
-    isVirtual: true
-  };
-}
-
 function emptyBookedAppointmentForm(): BookedAppointmentFormState {
   return {
-    startDate: "",
-    startTime: "08:00",
-    durationMinutes: "60",
     cancelReason: ""
   };
 }
@@ -147,98 +116,6 @@ function emptyPaymentForm(): PaymentFormState {
     paymentMethod: "CASH",
     paymentStatus: "PENDING"
   };
-}
-
-function toDateTimeInputValue(isoValue: string, timezone: string): string {
-  const dateValue = luxonModule.DateTime.fromISO(isoValue, { setZone: true }).setZone(timezone);
-  if (!dateValue.isValid) {
-    return "";
-  }
-  return dateValue.toFormat("yyyy-LL-dd'T'HH:mm");
-}
-
-function toApiDateTime(value: string, timezone: string): string | null {
-  const parsedValue = luxonModule.DateTime.fromISO(value, { zone: timezone });
-  if (!parsedValue.isValid) {
-    return null;
-  }
-  const isoValue = parsedValue.toISO();
-  if (isoValue === null) {
-    return null;
-  }
-  return isoValue;
-}
-
-function splitLocalDateTimeInput(value: string): LocalDateTimeParts {
-  const parsedValue = luxonModule.DateTime.fromISO(value);
-  if (!parsedValue.isValid) {
-    return {
-      date: "",
-      hour: "09",
-      minute: "00"
-    };
-  }
-  return {
-    date: parsedValue.toFormat("yyyy-LL-dd"),
-    hour: parsedValue.toFormat("HH"),
-    minute: parsedValue.minute >= 30 ? "30" : "00"
-  };
-}
-
-function mergeLocalDateTimeInput(
-  currentValue: string,
-  updates: Partial<LocalDateTimeParts>
-): string {
-  const currentParts = splitLocalDateTimeInput(currentValue);
-  const nextDate = updates.date ?? currentParts.date;
-  const nextHour = updates.hour ?? currentParts.hour;
-  const nextMinute = updates.minute ?? currentParts.minute;
-  if (nextDate === "") {
-    return "";
-  }
-  return `${nextDate}T${nextHour}:${nextMinute}`;
-}
-
-function calculateEndAtFromStart(
-  startAtIso: string,
-  durationMinutes: number,
-  timezone: string
-): string | null {
-  const startAtValue = luxonModule.DateTime.fromISO(startAtIso, { zone: timezone });
-  if (!startAtValue.isValid) {
-    return null;
-  }
-  const endAtValue = startAtValue.plus({ minutes: durationMinutes });
-  const endAtIso = endAtValue.toISO();
-  if (endAtIso === null) {
-    return null;
-  }
-  return endAtIso;
-}
-
-function resolveDurationMinutesFromRange(
-  startAtIso: string,
-  endAtIso: string,
-  fallbackMinutes: number
-): string {
-  const startAtValue = luxonModule.DateTime.fromISO(startAtIso);
-  const endAtValue = luxonModule.DateTime.fromISO(endAtIso);
-  if (!startAtValue.isValid || !endAtValue.isValid) {
-    return String(fallbackMinutes);
-  }
-  const diffMinutes = Math.round(endAtValue.diff(startAtValue, "minutes").minutes);
-  if (diffMinutes <= 0) {
-    return String(fallbackMinutes);
-  }
-  return String(diffMinutes);
-}
-
-function isThirtyMinuteAligned(isoValue: string, timezone: string): boolean {
-  const dateValue = luxonModule.DateTime.fromISO(isoValue, { zone: timezone });
-  if (!dateValue.isValid) {
-    return false;
-  }
-  return dateValue.minute % 30 === 0;
 }
 
 function formatCopCurrency(value: number): string {
@@ -334,8 +211,6 @@ export function AgendaPage() {
     null
   );
   const [submitSuccessMessage, setSubmitSuccessMessage] = reactModule.useState<string | null>(null);
-  const [manualRescheduleFormState, setManualRescheduleFormState] =
-    reactModule.useState<RescheduleManualFormState>(emptyRescheduleManualForm());
   const [bookedAppointmentFormState, setBookedAppointmentFormState] =
     reactModule.useState<BookedAppointmentFormState>(emptyBookedAppointmentForm());
   const [bookedPaymentFormState, setBookedPaymentFormState] =
@@ -357,6 +232,16 @@ export function AgendaPage() {
   const [financeSourceFilter, setFinanceSourceFilter] =
     reactModule.useState<FinanceSourceFilter>("ALL");
   const [financeSearchTerm, setFinanceSearchTerm] = reactModule.useState<string>("");
+  const [rescheduleSlotPickerMonth, setRescheduleSlotPickerMonth] = reactModule.useState<{
+    year: number;
+    month: number;
+  }>(() => {
+    const now = luxonModule.DateTime.now().setZone(colombiaTimezone);
+    return { year: now.year, month: now.month };
+  });
+  const [rescheduleSelectedSlots, setRescheduleSelectedSlots] = reactModule.useState<
+    { slotId: string; startAt: string; endAt: string; timezone: string }[]
+  >([]);
 
   const allRequests = requestsQuery.data ?? [];
   const allPatients = patientsQuery.data ?? [];
@@ -759,19 +644,7 @@ export function AgendaPage() {
     selectedBookedAppointment?.source === "BOT" ? selectedBookedAppointment.request : null;
   reactModule.useEffect(() => {
     setExpandedBookedAction(null);
-    if (selectedBookedAppointment?.source !== "BOT" || selectedBookedBotRequest === null) {
-      setBookedAppointmentFormState(emptyBookedAppointmentForm());
-      return;
-    }
-    const startInTz = selectedBookedAppointment.startAt.setZone(timezone);
-    const endInTz = selectedBookedAppointment.endAt.setZone(timezone);
-    const durationMins = endInTz.diff(startInTz, "minutes").minutes;
-    setBookedAppointmentFormState({
-      startDate: startInTz.toFormat("yyyy-LL-dd"),
-      startTime: startInTz.toFormat("HH:mm"),
-      durationMinutes: String(Math.max(Math.round(durationMins), 30)),
-      cancelReason: ""
-    });
+    setBookedAppointmentFormState(emptyBookedAppointmentForm());
   }, [selectedBookedAppointment, selectedBookedBotRequest, timezone]);
   reactModule.useEffect(() => {
     if (selectedBookedBotRequest === null) {
@@ -787,27 +660,6 @@ export function AgendaPage() {
       paymentStatus: selectedBookedBotRequest.paymentStatus ?? "PENDING"
     });
   }, [selectedBookedBotRequest]);
-
-  // Initialize manual reschedule form when reschedule action is expanded for a manual appointment
-  reactModule.useEffect(() => {
-    if (expandedBookedAction !== "reschedule") {
-      return;
-    }
-    const ma =
-      selectedBookedAppointment?.source === "MANUAL"
-        ? selectedBookedAppointment.manualAppointment
-        : null;
-    if (ma === null) {
-      return;
-    }
-    setManualRescheduleFormState({
-      patientWhatsappUserId: ma.patientWhatsappUserId,
-      startAt: toDateTimeInputValue(ma.startAt, colombiaTimezone),
-      durationMinutes: resolveDurationMinutesFromRange(ma.startAt, ma.endAt, 60),
-      summary: ma.summary,
-      isVirtual: ma.isVirtual
-    });
-  }, [expandedBookedAction, selectedBookedAppointment]);
 
   // Sync drawer payment draft when selected appointment changes
   reactModule.useEffect(() => {
@@ -836,7 +688,79 @@ export function AgendaPage() {
     }
   }, [selectedBookedAppointment]);
 
-  const manualRescheduleStartParts = splitLocalDateTimeInput(manualRescheduleFormState.startAt);
+  // Seed rescheduleSelectedSlots with the current appointment's slot when reschedule opens
+  reactModule.useEffect(() => {
+    if (expandedBookedAction !== "reschedule" || selectedBookedAppointment === null) {
+      if (expandedBookedAction !== "reschedule") {
+        setRescheduleSelectedSlots([]);
+      }
+      return;
+    }
+    const startAt = selectedBookedAppointment.startAt.toISO();
+    const endAt = selectedBookedAppointment.endAt.toISO();
+    if (startAt === null || endAt === null) {
+      setRescheduleSelectedSlots([]);
+      return;
+    }
+    const appointmentId =
+      selectedBookedAppointment.source === "MANUAL"
+        ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")
+        : (selectedBookedAppointment.requestId ?? "reschedule");
+    const startDt = selectedBookedAppointment.startAt.setZone(colombiaTimezone);
+    const slotId = `${appointmentId}_${startDt.toFormat("yyyyLLdd_HHmm")}`;
+    setRescheduleSelectedSlots([{ slotId, startAt, endAt, timezone: colombiaTimezone }]);
+  }, [expandedBookedAction, selectedBookedAppointment]);
+
+  // Availability query for the reschedule SlotPicker
+  const rescheduleMonthStart = luxonModule.DateTime.fromObject(
+    {
+      year: rescheduleSlotPickerMonth.year,
+      month: rescheduleSlotPickerMonth.month,
+      day: 1
+    },
+    { zone: colombiaTimezone }
+  );
+  const rescheduleMonthEnd = rescheduleMonthStart.plus({ months: 1 });
+  const rescheduleMonthFromIso = rescheduleMonthStart.toISO();
+  const rescheduleMonthToIso = rescheduleMonthEnd.toISO();
+
+  const rescheduleAvailabilityQuery = reactQueryModule.useQuery({
+    queryKey: [
+      "google-calendar-availability",
+      "reschedule",
+      rescheduleMonthFromIso,
+      rescheduleMonthToIso
+    ],
+    enabled:
+      expandedBookedAction === "reschedule" &&
+      rescheduleMonthFromIso !== null &&
+      rescheduleMonthToIso !== null,
+    queryFn: () =>
+      appContainer.schedulingUseCase.getAvailability(rescheduleMonthFromIso!, rescheduleMonthToIso!)
+  });
+
+  const rescheduleBusyIntervals = reactModule.useMemo<
+    calendarUtilsModule.BusyIntervalRange[]
+  >(() => {
+    if (rescheduleAvailabilityQuery.data === undefined) {
+      return [];
+    }
+    const allBusy = calendarUtilsModule.parseBusyIntervals(
+      rescheduleAvailabilityQuery.data.busyIntervals,
+      colombiaTimezone
+    );
+    if (selectedBookedAppointment === null) {
+      return allBusy;
+    }
+    // Exclude the current appointment's own slot so it doesn't appear as busy
+    const currentStartMs = selectedBookedAppointment.startAt.setZone(colombiaTimezone).toMillis();
+    const currentEndMs = selectedBookedAppointment.endAt.setZone(colombiaTimezone).toMillis();
+    return allBusy.filter((interval) => {
+      return !(
+        interval.start.toMillis() === currentStartMs && interval.end.toMillis() === currentEndMs
+      );
+    });
+  }, [rescheduleAvailabilityQuery.data, selectedBookedAppointment]);
 
   const resolvePaymentReviewMutation = reactQueryModule.useMutation({
     mutationFn: (payload: {
@@ -1826,264 +1750,97 @@ export function AgendaPage() {
               {isBookedTab &&
               selectedBookedAppointment !== null &&
               expandedBookedAction === "reschedule" ? (
-                <div className="rounded-lg border border-border-subtle p-3">
-                  <p className="text-xs text-slate-500">
-                    Reprograma esta cita y sincroniza el cambio en Google Calendar.
-                  </p>
-                  {selectedBookedAppointment.source === "BOT" &&
-                  selectedBookedBotRequest !== null ? (
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Fecha
-                        <input
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setBookedAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              startDate: nextValue
-                            }));
-                          }}
-                          type="date"
-                          value={bookedAppointmentFormState.startDate}
-                        />
-                      </label>
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Hora
-                        <select
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setBookedAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              startTime: nextValue
-                            }));
-                          }}
-                          value={bookedAppointmentFormState.startTime}
-                        >
-                          {Array.from({ length: 48 }, (_, idx) => {
-                            const hours = String(Math.floor(idx / 2)).padStart(2, "0");
-                            const mins = idx % 2 === 0 ? "00" : "30";
-                            const timeValue = `${hours}:${mins}`;
-                            return (
-                              <option key={timeValue} value={timeValue}>
-                                {timeValue}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </label>
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Duración (min)
-                        <select
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setBookedAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              durationMinutes: nextValue
-                            }));
-                          }}
-                          value={bookedAppointmentFormState.durationMinutes}
-                        >
-                          <option value="30">30 min</option>
-                          <option value="60">60 min</option>
-                          <option value="90">90 min</option>
-                          <option value="120">120 min</option>
-                        </select>
-                      </label>
-                      <div className="sm:col-span-3">
-                        <button
-                          className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={rescheduleBookedSlotMutation.isPending}
-                          onClick={() => {
-                            if (selectedBookedBotRequest === null) {
-                              return;
+                <div
+                  className="rounded-lg border border-border-subtle p-4 space-y-4"
+                  data-testid="reschedule-slotpicker-panel"
+                >
+                  <div>
+                    <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Selecciona un nuevo horario disponible.
+                    </p>
+                  </div>
+                  <slotPickerModule.SlotPicker
+                    timezone={colombiaTimezone}
+                    busyIntervals={rescheduleBusyIntervals}
+                    requestId={
+                      selectedBookedAppointment.source === "MANUAL"
+                        ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")
+                        : (selectedBookedAppointment.requestId ?? "reschedule")
+                    }
+                    selectedSlots={rescheduleSelectedSlots}
+                    onSelectedSlotsChange={(slots) => setRescheduleSelectedSlots(slots.slice(-1))}
+                    isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
+                    onMonthChange={setRescheduleSlotPickerMonth}
+                  />
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button
+                      className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={
+                        rescheduleSelectedSlots.length !== 1 ||
+                        rescheduleManualAppointmentMutation.isPending ||
+                        rescheduleBookedSlotMutation.isPending
+                      }
+                      onClick={() => {
+                        const slot = rescheduleSelectedSlots[0];
+                        if (slot === undefined) {
+                          return;
+                        }
+                        setLocalSubmitErrorMessage(null);
+                        setSubmitSuccessMessage(null);
+                        if (
+                          selectedBookedAppointment.source === "MANUAL" &&
+                          selectedBookedAppointment.manualAppointmentId !== null
+                        ) {
+                          rescheduleManualAppointmentMutation.mutate({
+                            appointmentId: selectedBookedAppointment.manualAppointmentId,
+                            input: {
+                              startAt: slot.startAt,
+                              endAt: slot.endAt,
+                              timezone: slot.timezone,
+                              summary:
+                                selectedBookedAppointment.manualAppointment?.summary.trim() === ""
+                                  ? null
+                                  : (selectedBookedAppointment.manualAppointment?.summary ?? null)
                             }
-                            const { startDate, startTime, durationMinutes } =
-                              bookedAppointmentFormState;
-                            if (startDate === "" || startTime === "") {
-                              setLocalSubmitErrorMessage(
-                                "Debes seleccionar fecha y hora para reprogramar."
-                              );
-                              return;
+                          });
+                        } else if (
+                          selectedBookedAppointment.source === "BOT" &&
+                          selectedBookedBotRequest !== null
+                        ) {
+                          const eventSummary =
+                            selectedBookedAppointment.patientDisplayName.trim() === ""
+                              ? "Cita"
+                              : `Cita - ${selectedBookedAppointment.patientDisplayName}`;
+                          rescheduleBookedSlotMutation.mutate({
+                            requestId: selectedBookedBotRequest.requestId,
+                            input: {
+                              startAt: slot.startAt,
+                              endAt: slot.endAt,
+                              timezone: slot.timezone,
+                              eventSummary
                             }
-                            const rescheduleTz = "America/Bogota";
-                            const startAtDt = luxonModule.DateTime.fromISO(
-                              `${startDate}T${startTime}`,
-                              { zone: rescheduleTz }
-                            );
-                            if (!startAtDt.isValid) {
-                              setLocalSubmitErrorMessage("Fecha u hora no válida.");
-                              return;
-                            }
-                            const endAtDt = startAtDt.plus({
-                              minutes: Number(durationMinutes)
-                            });
-                            const startAtIso = startAtDt.toISO();
-                            const endAtIso = endAtDt.toISO();
-                            if (startAtIso === null || endAtIso === null) {
-                              setLocalSubmitErrorMessage("Error al calcular las fechas.");
-                              return;
-                            }
-                            const originalSummary =
-                              selectedBookedAppointment.patientDisplayName.trim() === ""
-                                ? "Cita"
-                                : `Cita - ${selectedBookedAppointment.patientDisplayName}`;
-                            setLocalSubmitErrorMessage(null);
-                            setSubmitSuccessMessage(null);
-                            rescheduleBookedSlotMutation.mutate({
-                              requestId: selectedBookedBotRequest.requestId,
-                              input: {
-                                startAt: startAtIso,
-                                endAt: endAtIso,
-                                timezone: rescheduleTz,
-                                eventSummary: originalSummary
-                              }
-                            });
-                          }}
-                          type="button"
-                        >
-                          {rescheduleBookedSlotMutation.isPending
-                            ? "Reprogramando..."
-                            : "Reprogramar cita"}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                  {selectedBookedAppointment.source === "MANUAL" &&
-                  selectedBookedAppointment.manualAppointmentId !== null ? (
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Fecha
-                        <input
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextDate = event.target.value;
-                            setManualRescheduleFormState((currentValue) => ({
-                              ...currentValue,
-                              startAt: mergeLocalDateTimeInput(currentValue.startAt, {
-                                date: nextDate
-                              })
-                            }));
-                          }}
-                          type="date"
-                          value={manualRescheduleStartParts.date}
-                        />
-                      </label>
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Hora
-                        <select
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextHour = event.target.value;
-                            setManualRescheduleFormState((currentValue) => ({
-                              ...currentValue,
-                              startAt: mergeLocalDateTimeInput(currentValue.startAt, {
-                                hour: nextHour
-                              })
-                            }));
-                          }}
-                          value={manualRescheduleStartParts.hour}
-                        >
-                          {hourOptions.map((hourOption) => (
-                            <option key={hourOption} value={hourOption}>
-                              {hourOption}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Duración
-                        <select
-                          className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setManualRescheduleFormState((currentValue) => ({
-                              ...currentValue,
-                              durationMinutes: nextValue
-                            }));
-                          }}
-                          value={manualRescheduleFormState.durationMinutes}
-                        >
-                          {manualAppointmentDurationOptionsMinutes.map((minutesOption) => (
-                            <option key={minutesOption} value={String(minutesOption)}>
-                              {minutesOption} minutos
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="sm:col-span-3 flex flex-wrap gap-2">
-                        <button
-                          className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={rescheduleManualAppointmentMutation.isPending}
-                          onClick={() => {
-                            const manualId = selectedBookedAppointment.manualAppointmentId;
-                            if (manualId === null) {
-                              return;
-                            }
-                            const startAtIso = toApiDateTime(
-                              manualRescheduleFormState.startAt,
-                              colombiaTimezone
-                            );
-                            const durationMinutes = Number.parseInt(
-                              manualRescheduleFormState.durationMinutes,
-                              10
-                            );
-                            if (Number.isNaN(durationMinutes) || durationMinutes <= 0) {
-                              setLocalSubmitErrorMessage("Duración inválida.");
-                              return;
-                            }
-                            if (startAtIso === null) {
-                              setLocalSubmitErrorMessage("Fecha y hora de inicio inválidas.");
-                              return;
-                            }
-                            if (!isThirtyMinuteAligned(startAtIso, colombiaTimezone)) {
-                              setLocalSubmitErrorMessage(
-                                "El inicio debe estar en bloques de 30 minutos."
-                              );
-                              return;
-                            }
-                            const endAtIso = calculateEndAtFromStart(
-                              startAtIso,
-                              durationMinutes,
-                              colombiaTimezone
-                            );
-                            if (endAtIso === null) {
-                              setLocalSubmitErrorMessage("No se pudo calcular la hora final.");
-                              return;
-                            }
-                            setLocalSubmitErrorMessage(null);
-                            setSubmitSuccessMessage(null);
-                            rescheduleManualAppointmentMutation.mutate({
-                              appointmentId: manualId,
-                              input: {
-                                startAt: startAtIso,
-                                endAt: endAtIso,
-                                timezone: colombiaTimezone,
-                                summary:
-                                  manualRescheduleFormState.summary.trim() === ""
-                                    ? null
-                                    : manualRescheduleFormState.summary.trim()
-                              }
-                            });
-                          }}
-                          type="button"
-                        >
-                          {rescheduleManualAppointmentMutation.isPending
-                            ? "Guardando..."
-                            : "Guardar reprogramación"}
-                        </button>
-                        <button
-                          className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                          onClick={() => setExpandedBookedAction(null)}
-                          type="button"
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
+                          });
+                        }
+                      }}
+                      type="button"
+                    >
+                      {rescheduleManualAppointmentMutation.isPending ||
+                      rescheduleBookedSlotMutation.isPending
+                        ? "Guardando..."
+                        : "Guardar reprogramación"}
+                    </button>
+                    <button
+                      className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                      onClick={() => {
+                        setExpandedBookedAction(null);
+                        setRescheduleSelectedSlots([]);
+                      }}
+                      type="button"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
                 </div>
               ) : null}
 
@@ -2265,106 +2022,40 @@ export function AgendaPage() {
                       </div>
 
                       {expandedBookedAction === "reschedule" ? (
-                        <div className="mt-3 rounded-lg border border-border-subtle p-3">
-                          <p className="text-xs text-slate-500">
-                            Reprograma esta cita y sincroniza el cambio en Google Calendar.
-                          </p>
-                          <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Fecha
-                              <input
-                                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                onChange={(event) => {
-                                  const nextValue = event.target.value;
-                                  setBookedAppointmentFormState((currentValue) => ({
-                                    ...currentValue,
-                                    startDate: nextValue
-                                  }));
-                                }}
-                                type="date"
-                                value={bookedAppointmentFormState.startDate}
-                              />
-                            </label>
-                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Hora
-                              <select
-                                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                onChange={(event) => {
-                                  const nextValue = event.target.value;
-                                  setBookedAppointmentFormState((currentValue) => ({
-                                    ...currentValue,
-                                    startTime: nextValue
-                                  }));
-                                }}
-                                value={bookedAppointmentFormState.startTime}
-                              >
-                                {Array.from({ length: 48 }, (_, idx) => {
-                                  const hours = String(Math.floor(idx / 2)).padStart(2, "0");
-                                  const mins = idx % 2 === 0 ? "00" : "30";
-                                  const timeValue = `${hours}:${mins}`;
-                                  return (
-                                    <option key={timeValue} value={timeValue}>
-                                      {timeValue}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                            </label>
-                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Duración (min)
-                              <select
-                                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                onChange={(event) => {
-                                  const nextValue = event.target.value;
-                                  setBookedAppointmentFormState((currentValue) => ({
-                                    ...currentValue,
-                                    durationMinutes: nextValue
-                                  }));
-                                }}
-                                value={bookedAppointmentFormState.durationMinutes}
-                              >
-                                <option value="30">30 min</option>
-                                <option value="60">60 min</option>
-                                <option value="90">90 min</option>
-                                <option value="120">120 min</option>
-                              </select>
-                            </label>
+                        <div
+                          className="mt-3 rounded-lg border border-border-subtle p-4 space-y-4"
+                          data-testid="reschedule-slotpicker-bot"
+                        >
+                          <div>
+                            <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              Selecciona un nuevo horario disponible.
+                            </p>
                           </div>
-                          <div className="mt-3">
+                          <slotPickerModule.SlotPicker
+                            timezone={colombiaTimezone}
+                            busyIntervals={rescheduleBusyIntervals}
+                            requestId={selectedBookedAppointment?.requestId ?? "reschedule"}
+                            selectedSlots={rescheduleSelectedSlots}
+                            onSelectedSlotsChange={(slots) =>
+                              setRescheduleSelectedSlots(slots.slice(-1))
+                            }
+                            isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
+                            onMonthChange={setRescheduleSlotPickerMonth}
+                          />
+                          <div className="flex flex-wrap gap-2 pt-1">
                             <button
                               className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={rescheduleBookedSlotMutation.isPending}
+                              disabled={
+                                rescheduleSelectedSlots.length !== 1 ||
+                                rescheduleBookedSlotMutation.isPending
+                              }
                               onClick={() => {
-                                if (selectedBookedBotRequest === null) {
+                                const slot = rescheduleSelectedSlots[0];
+                                if (slot === undefined || selectedBookedBotRequest === null) {
                                   return;
                                 }
-                                const { startDate, startTime, durationMinutes } =
-                                  bookedAppointmentFormState;
-                                if (startDate === "" || startTime === "") {
-                                  setLocalSubmitErrorMessage(
-                                    "Debes seleccionar fecha y hora para reprogramar."
-                                  );
-                                  return;
-                                }
-                                const colombiaTimezone = "America/Bogota";
-                                const startAtDt = luxonModule.DateTime.fromISO(
-                                  `${startDate}T${startTime}`,
-                                  { zone: colombiaTimezone }
-                                );
-                                if (!startAtDt.isValid) {
-                                  setLocalSubmitErrorMessage("Fecha u hora no válida.");
-                                  return;
-                                }
-                                const endAtDt = startAtDt.plus({
-                                  minutes: Number(durationMinutes)
-                                });
-                                const startAtIso = startAtDt.toISO();
-                                const endAtIso = endAtDt.toISO();
-                                if (startAtIso === null || endAtIso === null) {
-                                  setLocalSubmitErrorMessage("Error al calcular las fechas.");
-                                  return;
-                                }
-                                const originalSummary =
+                                const eventSummary =
                                   selectedBookedAppointment?.patientDisplayName.trim() === ""
                                     ? "Cita"
                                     : `Cita - ${selectedBookedAppointment?.patientDisplayName ?? ""}`;
@@ -2373,18 +2064,28 @@ export function AgendaPage() {
                                 rescheduleBookedSlotMutation.mutate({
                                   requestId: selectedBookedBotRequest.requestId,
                                   input: {
-                                    startAt: startAtIso,
-                                    endAt: endAtIso,
-                                    timezone: colombiaTimezone,
-                                    eventSummary: originalSummary
+                                    startAt: slot.startAt,
+                                    endAt: slot.endAt,
+                                    timezone: slot.timezone,
+                                    eventSummary
                                   }
                                 });
                               }}
                               type="button"
                             >
                               {rescheduleBookedSlotMutation.isPending
-                                ? "Reprogramando..."
-                                : "Reprogramar cita"}
+                                ? "Guardando..."
+                                : "Guardar reprogramación"}
+                            </button>
+                            <button
+                              className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                              onClick={() => {
+                                setExpandedBookedAction(null);
+                                setRescheduleSelectedSlots([]);
+                              }}
+                              type="button"
+                            >
+                              Cancelar
                             </button>
                           </div>
                         </div>
@@ -2690,259 +2391,101 @@ export function AgendaPage() {
 
                   {/* Expanded reschedule form */}
                   {expandedBookedAction === "reschedule" ? (
-                    <div className="border-t border-border-subtle px-5 py-4">
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Reprogramar cita
-                      </p>
-                      {selectedBookedAppointment.source === "BOT" &&
-                      selectedBookedBotRequest !== null ? (
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Fecha
-                            <input
-                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                              onChange={(event) => {
-                                const nextValue = event.target.value;
-                                setBookedAppointmentFormState((currentValue) => ({
-                                  ...currentValue,
-                                  startDate: nextValue
-                                }));
-                              }}
-                              type="date"
-                              value={bookedAppointmentFormState.startDate}
-                            />
-                          </label>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Hora
-                            <select
-                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                              onChange={(event) => {
-                                const nextValue = event.target.value;
-                                setBookedAppointmentFormState((currentValue) => ({
-                                  ...currentValue,
-                                  startTime: nextValue
-                                }));
-                              }}
-                              value={bookedAppointmentFormState.startTime}
-                            >
-                              {Array.from({ length: 48 }, (_, idx) => {
-                                const hours = String(Math.floor(idx / 2)).padStart(2, "0");
-                                const mins = idx % 2 === 0 ? "00" : "30";
-                                const timeValue = `${hours}:${mins}`;
-                                return (
-                                  <option key={timeValue} value={timeValue}>
-                                    {timeValue}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                          </label>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Duración (min)
-                            <select
-                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                              onChange={(event) => {
-                                const nextValue = event.target.value;
-                                setBookedAppointmentFormState((currentValue) => ({
-                                  ...currentValue,
-                                  durationMinutes: nextValue
-                                }));
-                              }}
-                              value={bookedAppointmentFormState.durationMinutes}
-                            >
-                              <option value="30">30 min</option>
-                              <option value="60">60 min</option>
-                              <option value="90">90 min</option>
-                              <option value="120">120 min</option>
-                            </select>
-                          </label>
-                          <div className="sm:col-span-3">
-                            <button
-                              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={rescheduleBookedSlotMutation.isPending}
-                              onClick={() => {
-                                const { startDate, startTime, durationMinutes } =
-                                  bookedAppointmentFormState;
-                                if (startDate === "" || startTime === "") {
-                                  setLocalSubmitErrorMessage("Debes seleccionar fecha y hora.");
-                                  return;
+                    <div
+                      className="border-t border-border-subtle px-5 py-4 space-y-4"
+                      data-testid="reschedule-slotpicker-drawer"
+                    >
+                      <div>
+                        <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Selecciona un nuevo horario disponible.
+                        </p>
+                      </div>
+                      <slotPickerModule.SlotPicker
+                        timezone={colombiaTimezone}
+                        busyIntervals={rescheduleBusyIntervals}
+                        requestId={
+                          selectedBookedAppointment.source === "MANUAL"
+                            ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")
+                            : (selectedBookedAppointment.requestId ?? "reschedule")
+                        }
+                        selectedSlots={rescheduleSelectedSlots}
+                        onSelectedSlotsChange={(slots) =>
+                          setRescheduleSelectedSlots(slots.slice(-1))
+                        }
+                        isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
+                        onMonthChange={setRescheduleSlotPickerMonth}
+                      />
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <button
+                          className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={
+                            rescheduleSelectedSlots.length !== 1 ||
+                            rescheduleManualAppointmentMutation.isPending ||
+                            rescheduleBookedSlotMutation.isPending
+                          }
+                          onClick={() => {
+                            const slot = rescheduleSelectedSlots[0];
+                            if (slot === undefined) {
+                              return;
+                            }
+                            setLocalSubmitErrorMessage(null);
+                            setSubmitSuccessMessage(null);
+                            if (
+                              selectedBookedAppointment.source === "MANUAL" &&
+                              selectedBookedAppointment.manualAppointmentId !== null
+                            ) {
+                              rescheduleManualAppointmentMutation.mutate({
+                                appointmentId: selectedBookedAppointment.manualAppointmentId,
+                                input: {
+                                  startAt: slot.startAt,
+                                  endAt: slot.endAt,
+                                  timezone: slot.timezone,
+                                  summary:
+                                    selectedBookedAppointment.manualAppointment?.summary.trim() ===
+                                    ""
+                                      ? null
+                                      : (selectedBookedAppointment.manualAppointment?.summary ??
+                                        null)
                                 }
-                                const rescheduleTz = "America/Bogota";
-                                const startAtDt = luxonModule.DateTime.fromISO(
-                                  `${startDate}T${startTime}`,
-                                  { zone: rescheduleTz }
-                                );
-                                if (!startAtDt.isValid) {
-                                  setLocalSubmitErrorMessage("Fecha u hora no válida.");
-                                  return;
+                              });
+                            } else if (
+                              selectedBookedAppointment.source === "BOT" &&
+                              selectedBookedBotRequest !== null
+                            ) {
+                              const eventSummary =
+                                selectedBookedAppointment.patientDisplayName.trim() === ""
+                                  ? "Cita"
+                                  : `Cita - ${selectedBookedAppointment.patientDisplayName}`;
+                              rescheduleBookedSlotMutation.mutate({
+                                requestId: selectedBookedBotRequest.requestId,
+                                input: {
+                                  startAt: slot.startAt,
+                                  endAt: slot.endAt,
+                                  timezone: slot.timezone,
+                                  eventSummary
                                 }
-                                const endAtDt = startAtDt.plus({
-                                  minutes: Number(durationMinutes)
-                                });
-                                const startAtIso = startAtDt.toISO();
-                                const endAtIso = endAtDt.toISO();
-                                if (startAtIso === null || endAtIso === null) {
-                                  setLocalSubmitErrorMessage("Error al calcular las fechas.");
-                                  return;
-                                }
-                                const originalSummary =
-                                  selectedBookedAppointment.patientDisplayName.trim() === ""
-                                    ? "Cita"
-                                    : `Cita - ${selectedBookedAppointment.patientDisplayName}`;
-                                setLocalSubmitErrorMessage(null);
-                                setSubmitSuccessMessage(null);
-                                rescheduleBookedSlotMutation.mutate({
-                                  requestId: selectedBookedBotRequest.requestId,
-                                  input: {
-                                    startAt: startAtIso,
-                                    endAt: endAtIso,
-                                    timezone: rescheduleTz,
-                                    eventSummary: originalSummary
-                                  }
-                                });
-                              }}
-                              type="button"
-                            >
-                              {rescheduleBookedSlotMutation.isPending
-                                ? "Reprogramando..."
-                                : "Reprogramar cita"}
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                      {selectedBookedAppointment.source === "MANUAL" &&
-                      selectedBookedAppointment.manualAppointmentId !== null ? (
-                        <div className="grid gap-3 sm:grid-cols-3">
-                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Fecha
-                            <input
-                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                              onChange={(event) => {
-                                const nextDate = event.target.value;
-                                setManualRescheduleFormState((currentValue) => ({
-                                  ...currentValue,
-                                  startAt: mergeLocalDateTimeInput(currentValue.startAt, {
-                                    date: nextDate
-                                  })
-                                }));
-                              }}
-                              type="date"
-                              value={manualRescheduleStartParts.date}
-                            />
-                          </label>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Hora
-                            <select
-                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                              onChange={(event) => {
-                                const nextHour = event.target.value;
-                                setManualRescheduleFormState((currentValue) => ({
-                                  ...currentValue,
-                                  startAt: mergeLocalDateTimeInput(currentValue.startAt, {
-                                    hour: nextHour
-                                  })
-                                }));
-                              }}
-                              value={manualRescheduleStartParts.hour}
-                            >
-                              {hourOptions.map((hourOption) => (
-                                <option key={hourOption} value={hourOption}>
-                                  {hourOption}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Duración
-                            <select
-                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                              onChange={(event) => {
-                                const nextValue = event.target.value;
-                                setManualRescheduleFormState((currentValue) => ({
-                                  ...currentValue,
-                                  durationMinutes: nextValue
-                                }));
-                              }}
-                              value={manualRescheduleFormState.durationMinutes}
-                            >
-                              {manualAppointmentDurationOptionsMinutes.map((minutesOption) => (
-                                <option key={minutesOption} value={String(minutesOption)}>
-                                  {minutesOption} minutos
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <div className="sm:col-span-3 flex flex-wrap gap-2">
-                            <button
-                              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={rescheduleManualAppointmentMutation.isPending}
-                              onClick={() => {
-                                const manualId = selectedBookedAppointment.manualAppointmentId;
-                                if (manualId === null) {
-                                  return;
-                                }
-                                const startAtIso = toApiDateTime(
-                                  manualRescheduleFormState.startAt,
-                                  colombiaTimezone
-                                );
-                                const durationMinutes = Number.parseInt(
-                                  manualRescheduleFormState.durationMinutes,
-                                  10
-                                );
-                                if (Number.isNaN(durationMinutes) || durationMinutes <= 0) {
-                                  setLocalSubmitErrorMessage("Duración inválida.");
-                                  return;
-                                }
-                                if (startAtIso === null) {
-                                  setLocalSubmitErrorMessage("Fecha y hora inválidas.");
-                                  return;
-                                }
-                                if (!isThirtyMinuteAligned(startAtIso, colombiaTimezone)) {
-                                  setLocalSubmitErrorMessage(
-                                    "El inicio debe estar en bloques de 30 minutos."
-                                  );
-                                  return;
-                                }
-                                const endAtIso = calculateEndAtFromStart(
-                                  startAtIso,
-                                  durationMinutes,
-                                  colombiaTimezone
-                                );
-                                if (endAtIso === null) {
-                                  setLocalSubmitErrorMessage("No se pudo calcular la hora final.");
-                                  return;
-                                }
-                                setLocalSubmitErrorMessage(null);
-                                setSubmitSuccessMessage(null);
-                                rescheduleManualAppointmentMutation.mutate({
-                                  appointmentId: manualId,
-                                  input: {
-                                    startAt: startAtIso,
-                                    endAt: endAtIso,
-                                    timezone: colombiaTimezone,
-                                    summary:
-                                      manualRescheduleFormState.summary.trim() === ""
-                                        ? null
-                                        : manualRescheduleFormState.summary.trim()
-                                  }
-                                });
-                              }}
-                              type="button"
-                            >
-                              {rescheduleManualAppointmentMutation.isPending
-                                ? "Guardando..."
-                                : "Guardar reprogramación"}
-                            </button>
-                            <button
-                              className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                              onClick={() => setExpandedBookedAction(null)}
-                              type="button"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
+                              });
+                            }
+                          }}
+                          type="button"
+                        >
+                          {rescheduleManualAppointmentMutation.isPending ||
+                          rescheduleBookedSlotMutation.isPending
+                            ? "Guardando..."
+                            : "Guardar reprogramación"}
+                        </button>
+                        <button
+                          className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                          onClick={() => {
+                            setExpandedBookedAction(null);
+                            setRescheduleSelectedSlots([]);
+                          }}
+                          type="button"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
                   ) : null}
 
