@@ -8,6 +8,7 @@ import src.ports.agent_workflow_port as agent_workflow_port
 import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
+import src.ports.patient_repository_port as patient_repository_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.ports.task_scheduler_port as task_scheduler_port
 import src.services.agentic.workflow_engine as workflow_engine
@@ -83,6 +84,7 @@ class SchedulingService:
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
         tag_service: tag_service_module.TagService | None = None,
         reminder_service: reminder_service_module.ReminderService | None = None,
+        patient_repository: patient_repository_port.PatientRepositoryPort | None = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
         self._conversation_repository = conversation_repository
@@ -93,6 +95,7 @@ class SchedulingService:
         self._auto_close_delay_seconds = auto_close_delay_seconds
         self._tag_service = tag_service
         self._reminder_service = reminder_service
+        self._patient_repository = patient_repository
         self._agent_workflow: agent_workflow_port.AgentWorkflowPort
         if agent_workflow is None:
             self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
@@ -679,6 +682,19 @@ class SchedulingService:
         if has_conflict:
             return self._mark_selected_slot_conflict(request, selected_slot, now_value)
 
+        with_meet = request.appointment_modality == "VIRTUAL"
+        if request.appointment_modality is None:
+            logger.warning(
+                "scheduling.confirm_slot.missing_modality",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="scheduling.confirm_slot.missing_modality",
+                        message="appointment_modality is None; defaulting to PRESENCIAL",
+                        data={"tenant_id": tenant_id, "request_id": input_dto.request_id},
+                    )
+                },
+            )
+
         try:
             normalized_summary = input_dto.event_summary.strip()
             if not normalized_summary:
@@ -688,6 +704,9 @@ class SchedulingService:
                 start_at=selected_slot.start_at,
                 end_at=selected_slot.end_at,
                 summary=normalized_summary,
+                attendee_emails=input_dto.attendee_emails,
+                with_meet=with_meet,
+                description=input_dto.description,
             )
         except service_exceptions.ExternalProviderError as error:
             if self._is_google_conflict_error(str(error)):
@@ -890,6 +909,7 @@ class SchedulingService:
         if input_dto.decision == "APPROVE":
             request.payment_status = "PAID"
             request.payment_amount_cop = input_dto.payment_amount_cop
+            request.payment_currency = input_dto.payment_currency
             request.payment_updated_at = now_value
             request.set_status("AWAITING_PATIENT_CHOICE", now_value)
 
@@ -945,6 +965,13 @@ class SchedulingService:
             request=request,
             requested_summary=input_dto.event_summary,
         )
+        reschedule_attendee_emails: list[str] = []
+        if self._patient_repository is not None:
+            reschedule_patient = self._patient_repository.get_by_whatsapp_user(
+                tenant_id, request.whatsapp_user_id
+            )
+            if reschedule_patient is not None:
+                reschedule_attendee_emails = [reschedule_patient.email]
         updated_event = self._google_calendar_onboarding_service.update_event(
             tenant_id=tenant_id,
             event_id=request.calendar_event_id,
@@ -952,6 +979,7 @@ class SchedulingService:
             end_at=input_dto.end_at,
             timezone=input_dto.timezone,
             summary=event_summary,
+            attendee_emails=reschedule_attendee_emails,
         )
 
         if self._reminder_service is not None:
@@ -1055,6 +1083,7 @@ class SchedulingService:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")
         now_value = self._clock.now()
         request.payment_amount_cop = input_dto.payment_amount_cop
+        request.payment_currency = input_dto.payment_currency
         request.payment_method = input_dto.payment_method
         request.payment_status = input_dto.payment_status
         request.payment_updated_at = now_value
@@ -1072,6 +1101,7 @@ class SchedulingService:
                         "payment_status": request.payment_status,
                         "payment_method": request.payment_method,
                         "payment_amount_cop": request.payment_amount_cop,
+                        "payment_currency": request.payment_currency,
                     },
                 )
             },
@@ -1542,6 +1572,7 @@ class SchedulingService:
             selected_slot_id=request.selected_slot_id,
             calendar_event_id=request.calendar_event_id,
             payment_amount_cop=request.payment_amount_cop,
+            payment_currency=request.payment_currency,
             payment_method=request.payment_method,
             payment_status=request.payment_status,
             payment_updated_at=request.payment_updated_at,

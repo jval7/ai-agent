@@ -9,6 +9,7 @@ import src.ports.clock_port as clock_port
 import src.ports.patient_repository_port as patient_repository_port
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.exceptions as service_exceptions
+import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.scheduling_service as scheduling_service
 
 logger = app_logs.get_logger(__name__)
@@ -18,8 +19,8 @@ class ResolvedPatientProfile(pydantic.BaseModel):
     full_name: str
     email: str
     age: int
-    consultation_reason: str
     location: str
+    phone_prefix: str | None
     phone: str
 
 
@@ -36,14 +37,16 @@ class PatientProfileResolver:
         scheduling_svc: scheduling_service.SchedulingService,
         patient_repository: patient_repository_port.PatientRepositoryPort,
         clock: clock_port.ClockPort,
-        professional_signature: str,
+        google_calendar_onboarding_service: (
+            google_calendar_onboarding_service.GoogleCalendarOnboardingService
+        ),
         sleep_seconds: typing.Callable[[float], None],
         google_network_retry_backoff_seconds: list[float] | None = None,
     ) -> None:
         self._scheduling_service = scheduling_svc
         self._patient_repository = patient_repository
         self._clock = clock
-        self._professional_signature = professional_signature
+        self._google_calendar_onboarding_service = google_calendar_onboarding_service
         self._sleep_seconds = sleep_seconds
         self._google_network_retry_backoff_seconds = (
             google_network_retry_backoff_seconds
@@ -100,14 +103,18 @@ class PatientProfileResolver:
             default_patient_phone=target_request.whatsapp_user_id,
         )
         event_summary = self._build_event_summary_for_confirmation(
-            resolved_patient_profile=resolved_patient_profile
+            tenant_id=tenant_id,
+            resolved_patient_profile=resolved_patient_profile,
         )
+        consultation_reason = self._normalize_patient_text(tool_input_dto.consultation_reason)
 
         return ResolvedConfirmSelection(
             confirm_input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
                 request_id=target_request.request_id,
                 slot_id=resolved_slot_id,
                 event_summary=event_summary,
+                attendee_emails=[resolved_patient_profile.email],
+                description=consultation_reason,
             ),
             patient_profile=resolved_patient_profile,
             patient_exists=patient_exists,
@@ -204,8 +211,8 @@ class PatientProfileResolver:
             last_name=self._extract_last_name(patient_profile.full_name),
             email=patient_profile.email,
             age=patient_profile.age,
-            consultation_reason=patient_profile.consultation_reason,
             location=patient_profile.location,
+            phone_prefix=patient_profile.phone_prefix,
             phone=patient_profile.phone,
             created_at=self._clock.now(),
         )
@@ -296,8 +303,8 @@ class PatientProfileResolver:
                     or existing_patient.first_name,
                     email=existing_patient.email,
                     age=existing_patient.age,
-                    consultation_reason=existing_patient.consultation_reason,
                     location=existing_patient.location,
+                    phone_prefix=existing_patient.phone_prefix,
                     phone=existing_patient.phone,
                 ),
                 True,
@@ -353,15 +360,6 @@ class PatientProfileResolver:
                 "patient_age is invalid; ask only for age as a whole number between 1 and 120"
             )
 
-        consultation_reason = self._coalesce_patient_text(
-            primary=request.consultation_reason,
-            fallback=tool_input_dto.consultation_reason,
-        )
-        if consultation_reason is None:
-            raise service_exceptions.InvalidStateError(
-                "missing required patient data: consultation_reason; ask only for the consultation reason now"
-            )
-
         patient_location = self._coalesce_patient_text(
             primary=request.patient_location,
             fallback=tool_input_dto.patient_location,
@@ -376,8 +374,8 @@ class PatientProfileResolver:
                 full_name=patient_full_name,
                 email=patient_email,
                 age=patient_age,
-                consultation_reason=consultation_reason,
                 location=patient_location,
+                phone_prefix=None,
                 phone=patient_phone,
             ),
             False,
@@ -385,9 +383,15 @@ class PatientProfileResolver:
 
     def _build_event_summary_for_confirmation(
         self,
+        tenant_id: str,
         resolved_patient_profile: ResolvedPatientProfile,
     ) -> str:
-        return f"{resolved_patient_profile.full_name}/ {self._professional_signature}"
+        professional_name = self._google_calendar_onboarding_service.get_professional_name(
+            tenant_id
+        )
+        if not professional_name:
+            professional_name = "Profesional"
+        return f"{professional_name}/{resolved_patient_profile.full_name}"
 
     def _log_existing_patient_mismatch(
         self,
@@ -428,13 +432,6 @@ class PatientProfileResolver:
         normalized_age = self._normalize_patient_age(tool_input_dto.patient_age)
         if normalized_age is not None and normalized_age != existing_patient.age:
             mismatched_fields.append("patient_age")
-
-        normalized_reason = self._normalize_patient_text(tool_input_dto.consultation_reason)
-        if (
-            normalized_reason is not None
-            and normalized_reason != existing_patient.consultation_reason
-        ):
-            mismatched_fields.append("consultation_reason")
 
         normalized_location = self._normalize_patient_text(tool_input_dto.patient_location)
         if normalized_location is not None and normalized_location != existing_patient.location:

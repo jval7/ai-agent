@@ -6,6 +6,7 @@ import src.ports.clock_port as clock_port
 import src.ports.google_calendar_connection_repository_port as google_calendar_connection_repository_port
 import src.ports.google_calendar_provider_port as google_calendar_provider_port
 import src.ports.id_generator_port as id_generator_port
+import src.ports.tenant_repository_port as tenant_repository_port
 import src.services.dto.google_calendar_dto as google_calendar_dto
 import src.services.exceptions as service_exceptions
 
@@ -21,11 +22,13 @@ class GoogleCalendarOnboardingService:
         google_calendar_provider: google_calendar_provider_port.GoogleCalendarProviderPort,
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
+        tenant_repository: tenant_repository_port.TenantRepositoryPort | None = None,
     ) -> None:
         self._google_calendar_connection_repository = google_calendar_connection_repository
         self._google_calendar_provider = google_calendar_provider
         self._id_generator = id_generator
         self._clock = clock
+        self._tenant_repository = tenant_repository
         self._oauth_scopes = ["https://www.googleapis.com/auth/calendar"]
 
     def create_oauth_session(
@@ -185,12 +188,23 @@ class GoogleCalendarOnboardingService:
                 return True
         return False
 
+    def get_professional_name(self, tenant_id: str) -> str | None:
+        if self._tenant_repository is None:
+            return None
+        tenant = self._tenant_repository.get_by_id(tenant_id)
+        if tenant is None:
+            return None
+        return tenant.professional_name
+
     def create_event(
         self,
         tenant_id: str,
         start_at: datetime.datetime,
         end_at: datetime.datetime,
         summary: str,
+        attendee_emails: list[str],
+        with_meet: bool,
+        description: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         connection = self._get_connected_connection_with_fresh_access_token(tenant_id)
         calendar_id = connection.calendar_id
@@ -201,6 +215,7 @@ class GoogleCalendarOnboardingService:
                 "google calendar connection is missing required metadata"
             )
 
+        conference_request_id = self._id_generator.new_token()
         return self._google_calendar_provider.create_event(
             access_token=access_token,
             calendar_id=calendar_id,
@@ -208,6 +223,10 @@ class GoogleCalendarOnboardingService:
             end_at=end_at,
             timezone=timezone,
             summary=summary,
+            attendee_emails=attendee_emails,
+            with_meet=with_meet,
+            conference_request_id=conference_request_id,
+            description=description,
         )
 
     def delete_event(
@@ -237,6 +256,8 @@ class GoogleCalendarOnboardingService:
         end_at: datetime.datetime,
         timezone: str,
         summary: str,
+        attendee_emails: list[str],
+        description: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         connection = self._get_connected_connection_with_fresh_access_token(tenant_id)
         calendar_id = connection.calendar_id
@@ -254,6 +275,8 @@ class GoogleCalendarOnboardingService:
             end_at=end_at,
             timezone=timezone,
             summary=summary,
+            attendee_emails=attendee_emails,
+            description=description,
         )
 
     def _finalize_connection(

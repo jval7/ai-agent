@@ -29,6 +29,7 @@ vitestModule.describe("SchedulingUseCase", () => {
       selectedSlotId: null,
       calendarEventId: null,
       paymentAmountCop: null,
+      paymentCurrency: "COP",
       paymentMethod: null,
       paymentStatus: "PENDING",
       paymentUpdatedAt: null,
@@ -100,6 +101,7 @@ vitestModule.describe("SchedulingUseCase", () => {
     });
     await useCase.updateBookedPayment("req-1", {
       paymentAmountCop: 150000,
+      paymentCurrency: "COP",
       paymentMethod: "TRANSFER",
       paymentStatus: "PAID"
     });

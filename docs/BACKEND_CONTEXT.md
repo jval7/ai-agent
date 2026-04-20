@@ -101,6 +101,14 @@ flowchart TD
 
 Nodos: 5 (`validate_transition`, `apply_transition`, `execute_side_effects`, `persist_transition`, `build_output`).
 
+## Invitaciones de Google Calendar al paciente
+Al crear, reprogramar o cancelar un evento en Google Calendar:
+- Se pasa el email del paciente en `attendees` y la query `sendUpdates=all`, de modo que **Google Calendar envía automáticamente la invitación/actualización/cancelación por correo al paciente desde la cuenta del profesional**.
+- El scope OAuth actual (`https://www.googleapis.com/auth/calendar`) es suficiente — no se requiere `gmail.send` ni verificación de Google.
+- Si la cita es virtual (`is_virtual=True` en manual, `appointment_modality=="VIRTUAL"` en chatbot), se añade `conferenceData.createRequest` con `conferenceSolutionKey.type=hangoutsMeet` y `conferenceDataVersion=1`; el `hangoutLink` se persiste como `meet_url` en la cita.
+- El email del paciente se valida con `pydantic.EmailStr` en la entidad `Patient`. El chatbot además valida formato via regex en `PatientProfileResolver` antes de crear el paciente.
+- Ver `src/adapters/outbound/google_calendar/google_calendar_provider_adapter.py` (`create_event`, `update_event`, `delete_event`).
+
 ## Logging y errores
 - Logging estructurado JSON en `stdout`.
 - Correlación por `X-Request-ID`:

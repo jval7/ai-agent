@@ -47,6 +47,7 @@ export interface SchedulingRequestSummary {
   selectedSlotId: string | null;
   calendarEventId: string | null;
   paymentAmountCop: number | null;
+  paymentCurrency: "COP" | "USD";
   paymentMethod: AppointmentPaymentMethod | null;
   paymentStatus: AppointmentPaymentStatus;
   paymentUpdatedAt: string | null;
@@ -89,6 +90,7 @@ export interface ResolvePaymentReviewInput {
   decision: "APPROVE" | "SEND_REMINDER";
   professionalNote: string | null;
   paymentAmountCop: number | null;
+  paymentCurrency: "COP" | "USD";
 }
 
 export interface ResolvePaymentReviewResult {
@@ -110,6 +112,7 @@ export interface CancelBookedSlotInput {
 
 export interface UpdateBookedSlotPaymentInput {
   paymentAmountCop: number;
+  paymentCurrency: "COP" | "USD";
   paymentMethod: AppointmentPaymentMethod;
   paymentStatus: AppointmentPaymentStatus;
 }

@@ -350,7 +350,6 @@ def test_compute_missing_fields_returns_empty_when_known_patient() -> None:
         last_name="Valderrama",
         email="jhon@example.com",
         age=33,
-        consultation_reason="ansiedad",
         location="Cali",
         phone="573127457050",
         created_at=NOW,

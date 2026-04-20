@@ -11,6 +11,7 @@ import src.adapters.outbound.inmemory.processed_webhook_event_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.task_scheduler_adapter as inmemory_task_scheduler_adapter
+import src.adapters.outbound.inmemory.tenant_repository_adapter as tenant_repository_adapter
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.conversation as conversation_entity
@@ -19,6 +20,7 @@ import src.domain.entities.message as message_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
+import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
@@ -70,6 +72,7 @@ def _build_new_components(
     clock: fake_adapters.FixedClock,
     whatsapp_provider: fake_adapters.FakeWhatsappProvider,
     id_generator: fake_adapters.SequenceIdGenerator,
+    google_service: google_calendar_onboarding_service.GoogleCalendarOnboardingService,
     sleep_fn: typing.Callable[[float], None] | None = None,
 ) -> dict[str, typing.Any]:
     """Builds the new refactored components for WebhookService."""
@@ -83,7 +86,7 @@ def _build_new_components(
         scheduling_svc=scheduling_svc,
         patient_repository=patient_repository,
         clock=clock,
-        professional_signature="Psi. Alejandra Escobar",
+        google_calendar_onboarding_service=google_service,
         sleep_seconds=effective_sleep,
     )
     handler_registry = tool_handler_registry.ToolHandlerRegistry(
@@ -201,11 +204,22 @@ def build_tool_calling_context(
     id_generator = fake_adapters.SequenceIdGenerator(id_values)
     clock = fake_adapters.FixedClock(now_value)
     google_provider = fake_adapters.FakeGoogleCalendarProvider()
+    tenant_repo = tenant_repository_adapter.InMemoryTenantRepositoryAdapter(store)
+    tenant_repo.save(
+        tenant_entity.Tenant(
+            id="tenant-1",
+            name="Test Clinic",
+            created_at=now_value,
+            updated_at=now_value,
+            professional_name="Test Professional",
+        )
+    )
     google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
         google_calendar_connection_repository=calendar_connection_repository,
         google_calendar_provider=google_provider,
         id_generator=id_generator,
         clock=clock,
+        tenant_repository=tenant_repo,
     )
     task_sched = inmemory_task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
     scheduling_use_case = scheduling_service.SchedulingService(
@@ -241,6 +255,7 @@ def build_tool_calling_context(
             clock,
             provider,
             id_generator,
+            google_service=google_service,
             sleep_fn=sleep_fn,
         ),
     )
@@ -433,7 +448,7 @@ def test_webhook_responds_when_awaiting_consultation_review() -> None:
 
 
 def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> None:
-    ctx = build_tool_calling_context(id_values=["in-msg-1", "out-msg-1"])
+    ctx = build_tool_calling_context(id_values=["in-msg-1", "conf-req-1", "out-msg-1"])
     now_value = ctx.clock.now()
     ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
@@ -503,7 +518,7 @@ def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> 
     assert saved_request.status == "BOOKED"
     assert saved_request.selected_slot_id == "slot-1"
     assert saved_request.calendar_event_id == "event-1"
-    assert ctx.google_provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+    assert ctx.google_provider.created_event_summaries == ["Test Professional/Jane Doe"]
     created_patient = ctx.patient_repository.get_by_whatsapp_user("tenant-1", "wa-user-1")
     assert created_patient is not None
     assert created_patient.location == "Bogota"
@@ -522,7 +537,7 @@ def test_webhook_confirm_slot_without_ids_auto_resolves_single_active_slot() -> 
 
 def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() -> None:
     ctx = build_tool_calling_context(
-        id_values=["in-msg-1", "out-msg-1"],
+        id_values=["in-msg-1", "conf-req-1", "out-msg-1"],
         now_value=_NOW + datetime.timedelta(minutes=20),
     )
     now_value = _NOW
@@ -666,7 +681,7 @@ def test_webhook_confirm_slot_resolves_slot_from_previous_user_choice_message() 
 
 
 def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_profile() -> None:
-    ctx = build_tool_calling_context(id_values=["in-msg-1", "out-msg-1"])
+    ctx = build_tool_calling_context(id_values=["in-msg-1", "conf-req-1", "out-msg-1"])
     now_value = ctx.clock.now()
     ctx.conversation_repository.save_conversation(
         conversation_entity.Conversation(
@@ -688,7 +703,6 @@ def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_
             last_name="Doe",
             email="jane@example.com",
             age=29,
-            consultation_reason="Ansiedad",
             location="Bogota",
             phone="573001112233",
             created_at=now_value,
@@ -747,7 +761,7 @@ def test_webhook_confirm_slot_uses_existing_patient_context_without_overwriting_
     saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
     assert saved_request is not None
     assert saved_request.status == "BOOKED"
-    assert ctx.google_provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+    assert ctx.google_provider.created_event_summaries == ["Test Professional/Jane Doe"]
     persisted_patient = ctx.patient_repository.get_by_whatsapp_user("tenant-1", "wa-user-1")
     assert persisted_patient is not None
     assert persisted_patient.first_name == "Jane"

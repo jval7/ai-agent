@@ -14,7 +14,10 @@ class ManualAppointmentDTO(pydantic.BaseModel):
     end_at: datetime.datetime
     timezone: str
     summary: str
+    is_virtual: bool
+    meet_url: str | None
     payment_amount_cop: int | None
+    payment_currency: typing.Literal["COP", "USD"]
     payment_method: typing.Literal["CASH", "TRANSFER"] | None
     payment_status: typing.Literal["PENDING", "PAID"]
     payment_updated_at: datetime.datetime | None
@@ -33,11 +36,22 @@ class CreateManualAppointmentDTO(pydantic.BaseModel):
     end_at: datetime.datetime
     timezone: str
     summary: str | None = None
+    is_virtual: bool = True
+    payment_amount_cop: int
+    payment_currency: typing.Literal["COP", "USD"] = "COP"
+    payment_status: typing.Literal["PENDING", "PAID"] = "PENDING"
+    payment_method: typing.Literal["CASH", "TRANSFER"] | None = None
 
     @pydantic.model_validator(mode="after")
     def validate_range(self) -> "CreateManualAppointmentDTO":
         if self.end_at <= self.start_at:
             raise ValueError("end_at must be greater than start_at")
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def validate_paid_requires_method(self) -> "CreateManualAppointmentDTO":
+        if self.payment_status == "PAID" and self.payment_method is None:
+            raise ValueError("payment_method is required when payment_status is PAID")
         return self
 
     @pydantic.field_validator("patient_whatsapp_user_id", "timezone")
@@ -47,6 +61,13 @@ class CreateManualAppointmentDTO(pydantic.BaseModel):
         if normalized_value == "":
             raise ValueError("manual appointment required text cannot be empty")
         return normalized_value
+
+    @pydantic.field_validator("payment_amount_cop")
+    @classmethod
+    def validate_payment_amount_cop(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("payment_amount_cop must be greater than zero")
+        return value
 
 
 class RescheduleManualAppointmentDTO(pydantic.BaseModel):
@@ -76,6 +97,7 @@ class CancelManualAppointmentDTO(pydantic.BaseModel):
 
 class UpdateManualAppointmentPaymentDTO(pydantic.BaseModel):
     payment_amount_cop: int
+    payment_currency: typing.Literal["COP", "USD"] = "COP"
     payment_method: typing.Literal["CASH", "TRANSFER"]
     payment_status: typing.Literal["PENDING", "PAID"]
 
