@@ -326,6 +326,9 @@ export function InboxPage() {
   >([]);
   const [slotPickerOpen, setSlotPickerOpen] = reactModule.useState(false);
   const [paymentAmountInput, setPaymentAmountInput] = reactModule.useState("");
+  const [paymentCurrencyDraft, setPaymentCurrencyDraft] = reactModule.useState<"COP" | "USD">(
+    "COP"
+  );
   const [reviewNoteInput, setReviewNoteInput] = reactModule.useState("");
   const sendMessageMutation = reactQueryModule.useMutation({
     mutationFn: (payload: { conversationId: string; messageText: string }) =>
@@ -369,6 +372,7 @@ export function InboxPage() {
       request: schedulingModel.SchedulingRequestSummary;
       decision: "APPROVE" | "SEND_REMINDER";
       paymentAmountCop: number | null;
+      paymentCurrency: "COP" | "USD";
       professionalNote: string | null;
     }) =>
       appContainer.schedulingUseCase.resolvePaymentReview(
@@ -377,11 +381,13 @@ export function InboxPage() {
         {
           decision: payload.decision,
           professionalNote: payload.professionalNote,
-          paymentAmountCop: payload.paymentAmountCop
+          paymentAmountCop: payload.paymentAmountCop,
+          paymentCurrency: payload.paymentCurrency
         }
       ),
     onSuccess: async () => {
       setPaymentAmountInput("");
+      setPaymentCurrencyDraft("COP");
       setReviewNoteInput("");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey }),
@@ -697,10 +703,26 @@ export function InboxPage() {
                       <input
                         className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs focus:border-brand-teal focus:outline-none"
                         onChange={(e) => setPaymentAmountInput(e.target.value)}
-                        placeholder="Monto COP (opcional)"
+                        placeholder={`Monto ${paymentCurrencyDraft} (opcional)`}
                         type="number"
                         value={paymentAmountInput}
                       />
+                      <div className="flex overflow-hidden rounded border border-slate-300 text-xs">
+                        {(["COP", "USD"] as const).map((currency) => (
+                          <button
+                            className={`w-10 py-1 font-semibold transition-colors ${
+                              paymentCurrencyDraft === currency
+                                ? "bg-brand-teal text-white"
+                                : "bg-white text-slate-600 hover:bg-slate-100"
+                            }`}
+                            key={currency}
+                            onClick={() => setPaymentCurrencyDraft(currency)}
+                            type="button"
+                          >
+                            {currency}
+                          </button>
+                        ))}
+                      </div>
                       <button
                         className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                         disabled={resolvePaymentMutation.isPending}
@@ -710,6 +732,7 @@ export function InboxPage() {
                             decision: "APPROVE",
                             paymentAmountCop:
                               paymentAmountInput !== "" ? parseInt(paymentAmountInput, 10) : null,
+                            paymentCurrency: paymentCurrencyDraft,
                             professionalNote: null
                           })
                         }
@@ -1252,13 +1275,31 @@ export function InboxPage() {
                   {selectedConversationRequest.status === "AWAITING_PAYMENT_CONFIRMATION" ? (
                     <div className="mt-2 space-y-2">
                       <p className="text-xs text-amber-800">Confirmar pago del paciente</p>
-                      <input
-                        className="w-full rounded border border-slate-300 px-2 py-1 text-xs focus:border-brand-teal focus:outline-none"
-                        onChange={(e) => setPaymentAmountInput(e.target.value)}
-                        placeholder="Monto COP (opcional)"
-                        type="number"
-                        value={paymentAmountInput}
-                      />
+                      <div className="flex gap-2">
+                        <input
+                          className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs focus:border-brand-teal focus:outline-none"
+                          onChange={(e) => setPaymentAmountInput(e.target.value)}
+                          placeholder={`Monto ${paymentCurrencyDraft} (opcional)`}
+                          type="number"
+                          value={paymentAmountInput}
+                        />
+                        <div className="flex overflow-hidden rounded border border-slate-300 text-xs">
+                          {(["COP", "USD"] as const).map((currency) => (
+                            <button
+                              className={`w-10 py-1 font-semibold transition-colors ${
+                                paymentCurrencyDraft === currency
+                                  ? "bg-brand-teal text-white"
+                                  : "bg-white text-slate-600 hover:bg-slate-100"
+                              }`}
+                              key={currency}
+                              onClick={() => setPaymentCurrencyDraft(currency)}
+                              type="button"
+                            >
+                              {currency}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <textarea
                         className="w-full rounded border border-slate-300 px-2 py-1 text-xs focus:border-brand-teal focus:outline-none"
                         onChange={(e) => setReviewNoteInput(e.target.value)}
@@ -1275,6 +1316,7 @@ export function InboxPage() {
                             decision: "APPROVE",
                             paymentAmountCop:
                               paymentAmountInput !== "" ? parseInt(paymentAmountInput, 10) : null,
+                            paymentCurrency: paymentCurrencyDraft,
                             professionalNote: reviewNoteInput.trim() || null
                           })
                         }

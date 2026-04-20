@@ -716,7 +716,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         body: JSON.stringify({
           decision: input.decision,
           professional_note: input.professionalNote,
-          payment_amount_cop: input.paymentAmountCop
+          payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency
         } satisfies httpTypes.ResolvePaymentReviewApiRequest)
       }
     );
@@ -776,6 +777,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         authRequired: true,
         body: JSON.stringify({
           payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency,
           payment_method: input.paymentMethod,
           payment_status: input.paymentStatus
         } satisfies httpTypes.UpdateBookedSlotPaymentApiRequest)
@@ -1127,6 +1129,7 @@ function mapSchedulingRequestSummary(
     selectedSlotId: payload.selected_slot_id,
     calendarEventId: payload.calendar_event_id,
     paymentAmountCop: payload.payment_amount_cop ?? null,
+    paymentCurrency: payload.payment_currency ?? "COP",
     paymentMethod: payload.payment_method ?? null,
     paymentStatus: payload.payment_status ?? "PENDING",
     paymentUpdatedAt: payload.payment_updated_at ?? null,

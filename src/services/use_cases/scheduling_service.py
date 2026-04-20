@@ -909,6 +909,7 @@ class SchedulingService:
         if input_dto.decision == "APPROVE":
             request.payment_status = "PAID"
             request.payment_amount_cop = input_dto.payment_amount_cop
+            request.payment_currency = input_dto.payment_currency
             request.payment_updated_at = now_value
             request.set_status("AWAITING_PATIENT_CHOICE", now_value)
 
@@ -1082,6 +1083,7 @@ class SchedulingService:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")
         now_value = self._clock.now()
         request.payment_amount_cop = input_dto.payment_amount_cop
+        request.payment_currency = input_dto.payment_currency
         request.payment_method = input_dto.payment_method
         request.payment_status = input_dto.payment_status
         request.payment_updated_at = now_value
@@ -1099,6 +1101,7 @@ class SchedulingService:
                         "payment_status": request.payment_status,
                         "payment_method": request.payment_method,
                         "payment_amount_cop": request.payment_amount_cop,
+                        "payment_currency": request.payment_currency,
                     },
                 )
             },
@@ -1569,6 +1572,7 @@ class SchedulingService:
             selected_slot_id=request.selected_slot_id,
             calendar_event_id=request.calendar_event_id,
             payment_amount_cop=request.payment_amount_cop,
+            payment_currency=request.payment_currency,
             payment_method=request.payment_method,
             payment_status=request.payment_status,
             payment_updated_at=request.payment_updated_at,

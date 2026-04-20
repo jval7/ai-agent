@@ -768,6 +768,7 @@ export function AgendaPage() {
       decision: "APPROVE" | "SEND_REMINDER";
       professionalNote: string | null;
       paymentAmountCop: number | null;
+      paymentCurrency: "COP" | "USD";
     }) => {
       return appContainer.schedulingUseCase.resolvePaymentReview(
         payload.request.conversationId,
@@ -775,7 +776,8 @@ export function AgendaPage() {
         {
           decision: payload.decision,
           professionalNote: payload.professionalNote,
-          paymentAmountCop: payload.paymentAmountCop
+          paymentAmountCop: payload.paymentAmountCop,
+          paymentCurrency: payload.paymentCurrency
         }
       );
     },
@@ -1663,7 +1665,7 @@ export function AgendaPage() {
                       : {
                           status: selectedBookedAppointment.request?.paymentStatus ?? null,
                           amountCop: selectedBookedAppointment.request?.paymentAmountCop ?? null,
-                          currency: "COP",
+                          currency: selectedBookedAppointment.request?.paymentCurrency ?? "COP",
                           category: selectedBookedAppointment.request?.paymentMethod ?? null
                         }
                   }
@@ -1702,6 +1704,8 @@ export function AgendaPage() {
                         requestId: selectedBookedAppointment.requestId,
                         input: {
                           paymentAmountCop: amountCop,
+                          paymentCurrency:
+                            selectedBookedAppointment.request?.paymentCurrency ?? "COP",
                           paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
                           paymentStatus: "PAID"
                         }
@@ -2009,7 +2013,8 @@ export function AgendaPage() {
                                 request: selectedRequest,
                                 decision: "SEND_REMINDER",
                                 professionalNote: null,
-                                paymentAmountCop: null
+                                paymentAmountCop: null,
+                                paymentCurrency: "COP"
                               });
                             }}
                             type="button"
@@ -2218,6 +2223,8 @@ export function AgendaPage() {
                                   requestId: selectedBookedBotRequest.requestId,
                                   input: {
                                     paymentAmountCop,
+                                    paymentCurrency:
+                                      selectedBookedBotRequest.paymentCurrency ?? "COP",
                                     paymentMethod: bookedPaymentFormState.paymentMethod,
                                     paymentStatus: bookedPaymentFormState.paymentStatus
                                   }
@@ -2307,7 +2314,7 @@ export function AgendaPage() {
                         : {
                             status: selectedBookedAppointment.request?.paymentStatus ?? null,
                             amountCop: selectedBookedAppointment.request?.paymentAmountCop ?? null,
-                            currency: "COP",
+                            currency: selectedBookedAppointment.request?.paymentCurrency ?? "COP",
                             category: selectedBookedAppointment.request?.paymentMethod ?? null
                           }
                     }
@@ -2346,6 +2353,8 @@ export function AgendaPage() {
                           requestId: selectedBookedAppointment.requestId,
                           input: {
                             paymentAmountCop: amountCop,
+                            paymentCurrency:
+                              selectedBookedAppointment.request?.paymentCurrency ?? "COP",
                             paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
                             paymentStatus: "PAID"
                           }

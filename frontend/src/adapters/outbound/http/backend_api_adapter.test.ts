@@ -199,6 +199,7 @@ vitestModule.describe("BackendApiAdapter", () => {
               selected_slot_id: null,
               calendar_event_id: null,
               payment_amount_cop: null,
+              payment_currency: "COP",
               payment_method: null,
               payment_status: "PENDING",
               payment_updated_at: null,
@@ -305,10 +306,12 @@ vitestModule.describe("BackendApiAdapter", () => {
         async ({ request }) => {
           const body = (await request.json()) as {
             payment_amount_cop: number;
+            payment_currency: "COP" | "USD";
             payment_method: "CASH" | "TRANSFER";
             payment_status: "PENDING" | "PAID";
           };
           vitestModule.expect(body.payment_amount_cop).toBe(80000);
+          vitestModule.expect(body.payment_currency).toBe("USD");
           vitestModule.expect(body.payment_method).toBe("CASH");
           vitestModule.expect(body.payment_status).toBe("PENDING");
           return mswModule.HttpResponse.json({
@@ -332,6 +335,7 @@ vitestModule.describe("BackendApiAdapter", () => {
             selected_slot_id: "slot-1",
             calendar_event_id: "event-1",
             payment_amount_cop: 80000,
+            payment_currency: "USD",
             payment_method: "CASH",
             payment_status: "PENDING",
             payment_updated_at: "2026-03-10T10:30:00Z",
@@ -383,6 +387,7 @@ vitestModule.describe("BackendApiAdapter", () => {
     });
     const bookedPaymentUpdate = await adapter.updateBookedSlotPayment("req-1", {
       paymentAmountCop: 80000,
+      paymentCurrency: "USD",
       paymentMethod: "CASH",
       paymentStatus: "PENDING"
     });
@@ -398,6 +403,7 @@ vitestModule.describe("BackendApiAdapter", () => {
     vitestModule.expect(submitResult.outboundMessageId).toBe("wamid-1");
     vitestModule.expect(manualPaymentUpdate.paymentStatus).toBe("PAID");
     vitestModule.expect(bookedPaymentUpdate.paymentAmountCop).toBe(80000);
+    vitestModule.expect(bookedPaymentUpdate.paymentCurrency).toBe("USD");
   });
 
   vitestModule.it("maps getTenantProfile and updateTenantProfile endpoints", async () => {

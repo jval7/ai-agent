@@ -643,6 +643,44 @@ def test_update_booked_payment_updates_request() -> None:
     assert reloaded.payment_status == "PAID"
 
 
+def test_update_booked_payment_persists_usd_currency() -> None:
+    service, repository, _, _ = build_service(["req-1"])
+    request = create_awaiting_review_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "BOOKED"
+    stored.selected_slot_id = "slot-1"
+    stored.calendar_event_id = "event-1"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="BOOKED",
+        )
+    ]
+    repository.save_request(stored)
+
+    updated = service.update_booked_payment(
+        tenant_id="tenant-1",
+        request_id=request.request_id,
+        input_dto=scheduling_dto.UpdateBookedSlotPaymentInputDTO(
+            payment_amount_cop=120,
+            payment_currency="USD",
+            payment_method="TRANSFER",
+            payment_status="PAID",
+        ),
+    )
+
+    assert updated.payment_amount_cop == 120
+    assert updated.payment_currency == "USD"
+    assert updated.payment_status == "PAID"
+    reloaded = repository.get_request_by_id("tenant-1", request.request_id)
+    assert reloaded is not None
+    assert reloaded.payment_currency == "USD"
+
+
 def test_update_booked_payment_dto_rejects_non_positive_amount() -> None:
     with pytest.raises(pydantic.ValidationError):
         scheduling_dto.UpdateBookedSlotPaymentInputDTO(

@@ -246,6 +246,7 @@ export interface SchedulingRequestSummaryApiResponse {
   selected_slot_id: string | null;
   calendar_event_id: string | null;
   payment_amount_cop: number | null;
+  payment_currency: "COP" | "USD";
   payment_method: "CASH" | "TRANSFER" | null;
   payment_status: "PENDING" | "PAID";
   payment_updated_at: string | null;
@@ -298,6 +299,7 @@ export interface ResolvePaymentReviewApiRequest {
   decision: "APPROVE" | "SEND_REMINDER";
   professional_note: string | null;
   payment_amount_cop: number | null;
+  payment_currency: "COP" | "USD";
 }
 
 export interface ResolvePaymentReviewApiResponse {
@@ -327,6 +329,7 @@ export interface CancelBookedSlotApiRequest {
 
 export interface UpdateBookedSlotPaymentApiRequest {
   payment_amount_cop: number;
+  payment_currency: "COP" | "USD";
   payment_method: "CASH" | "TRANSFER";
   payment_status: "PENDING" | "PAID";
 }

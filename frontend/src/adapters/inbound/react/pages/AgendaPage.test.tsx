@@ -1085,6 +1085,7 @@ vitestModule.describe("AgendaPage", () => {
       selectedSlotId: "slot-1",
       calendarEventId: "event-1",
       paymentAmountCop: 80000,
+      paymentCurrency: "COP" as const,
       paymentMethod: "CASH",
       paymentStatus: "PAID",
       paymentUpdatedAt: "2026-03-12T08:00:00Z",
@@ -1133,6 +1134,7 @@ vitestModule.describe("AgendaPage", () => {
             selectedSlotId: "slot-1",
             calendarEventId: "event-1",
             paymentAmountCop: null,
+            paymentCurrency: "COP" as const,
             paymentMethod: null,
             paymentStatus: "PENDING",
             paymentUpdatedAt: null,
@@ -1218,6 +1220,7 @@ vitestModule.describe("AgendaPage", () => {
     await testingLibraryReactModule.waitFor(() => {
       expect(updateBookedPaymentMock).toHaveBeenCalledWith("req-booked-1", {
         paymentAmountCop: 80000,
+        paymentCurrency: "COP",
         paymentMethod: "CASH",
         paymentStatus: "PAID"
       });
@@ -1258,6 +1261,7 @@ vitestModule.describe("AgendaPage", () => {
             selectedSlotId: "slot-1",
             calendarEventId: "event-1",
             paymentAmountCop: 100000,
+            paymentCurrency: "COP" as const,
             paymentMethod: "TRANSFER",
             paymentStatus: "PAID",
             paymentUpdatedAt: "2026-03-12T08:00:00Z",
