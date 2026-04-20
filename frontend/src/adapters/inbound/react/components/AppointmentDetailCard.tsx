@@ -3,6 +3,7 @@ import * as luxonModule from "luxon";
 export interface AppointmentDetailCardPayment {
   status: "PAID" | "PENDING" | null;
   amountCop: number | null;
+  currency?: "COP" | "USD" | null;
   category: string | null;
 }
 
@@ -154,7 +155,8 @@ export function AppointmentDetailCard({
           <div className="mt-3 space-y-1 text-sm text-slate-700">
             {payment.amountCop !== null ? (
               <p>
-                <span className="font-semibold">Valor:</span> {formatCopAmount(payment.amountCop)}
+                <span className="font-semibold">Valor:</span> {formatCopAmount(payment.amountCop)}{" "}
+                {payment.currency ?? "COP"}
               </p>
             ) : null}
             {payment.category !== null ? (

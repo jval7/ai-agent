@@ -549,7 +549,11 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
           end_at: input.endAt,
           timezone: input.timezone,
           summary: input.summary,
-          is_virtual: input.isVirtual
+          is_virtual: input.isVirtual,
+          payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency,
+          payment_status: input.paymentStatus,
+          payment_method: input.paymentMethod
         } satisfies httpTypes.CreateManualAppointmentApiRequest)
       }
     );
@@ -1062,6 +1066,7 @@ function mapManualAppointment(
     isVirtual: payload.is_virtual,
     meetUrl: payload.meet_url,
     paymentAmountCop: payload.payment_amount_cop ?? null,
+    paymentCurrency: payload.payment_currency ?? "COP",
     paymentMethod: payload.payment_method ?? null,
     paymentStatus: payload.payment_status ?? "PENDING",
     paymentUpdatedAt: payload.payment_updated_at ?? null,

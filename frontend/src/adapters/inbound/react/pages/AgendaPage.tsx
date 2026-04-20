@@ -7,6 +7,7 @@ import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as appointmentDetailCardModule from "@adapters/inbound/react/components/AppointmentDetailCard";
 import * as appointmentDrawerModule from "@adapters/inbound/react/components/AppointmentDrawer";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
+import { NewManualAppointmentModal } from "@adapters/inbound/react/components/NewManualAppointmentModal";
 import { NewPatientModal } from "@adapters/inbound/react/components/NewPatientModal";
 import * as slotPickerModule from "@adapters/inbound/react/components/SlotPicker";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
@@ -38,18 +39,13 @@ interface AgendaSection {
 const agendaSections: AgendaSection[] = [
   {
     id: "FINALIZED",
-    label: "Agenda e Historial",
+    label: "Agenda",
     statuses: [
       { status: "BOOKED", label: "Agendadas" },
       { status: "SESSION_CLOSED", label: "Cerradas" },
       { status: "CANCELLED", label: "Canceladas" },
       { status: "HUMAN_HANDOFF", label: "Human Handoff" }
     ]
-  },
-  {
-    id: "MANUAL_SCHEDULING",
-    label: "Agendamiento manual",
-    statuses: []
   },
   {
     id: "FINANCE",
@@ -450,12 +446,6 @@ export function AgendaPage() {
   const sectionCounts = reactModule.useMemo(() => {
     const counts: Record<string, number> = {};
     agendaSections.forEach((section) => {
-      if (section.id === "MANUAL_SCHEDULING") {
-        counts[section.id] = allManualAppointments.filter(
-          (appointment) => appointment.status === "SCHEDULED"
-        ).length;
-        return;
-      }
       if (section.id === "FINANCE") {
         const bookedCount = allRequests.filter(
           (request) => request.status === "BOOKED" || request.status === "SESSION_CLOSED"
@@ -479,15 +469,17 @@ export function AgendaPage() {
       counts[section.id] = sectionCount;
     });
     return counts;
-  }, [allManualAppointments, requestCountByStatus]);
+  }, [allManualAppointments, allRequests, requestCountByStatus]);
 
   const filteredRequests = reactModule.useMemo(() => {
     return allRequests.filter((request) => request.status === activeTab);
   }, [allRequests, activeTab]);
-  const isManualSchedulingSection = activeSectionId === "MANUAL_SCHEDULING";
   const isFinanceSection = activeSectionId === "FINANCE";
   const isFinalizedSection = activeSectionId === "FINALIZED";
   const isBookedTab = activeTab === "BOOKED";
+  // Legacy: manual scheduling is now handled by NewManualAppointmentModal
+  const isManualSchedulingSection = activeSectionId === "MANUAL_SCHEDULING";
+  const [isNewManualModalOpen, setIsNewManualModalOpen] = reactModule.useState(false);
 
   const manualSlotPickerMonthStart = luxonModule.DateTime.fromObject(
     { year: manualSlotPickerMonth.year, month: manualSlotPickerMonth.month, day: 1 },
@@ -504,10 +496,7 @@ export function AgendaPage() {
       manualSlotPickerMonthFromIso,
       manualSlotPickerMonthToIso
     ],
-    enabled:
-      isManualSchedulingSection &&
-      manualSlotPickerMonthFromIso !== null &&
-      manualSlotPickerMonthToIso !== null,
+    enabled: false,
     queryFn: () =>
       appContainer.schedulingUseCase.getAvailability(
         manualSlotPickerMonthFromIso!,
@@ -1190,7 +1179,7 @@ export function AgendaPage() {
 
         <div className="flex flex-col gap-4">
           {/* Mobile: bottom-tab-bar style grid */}
-          <div className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1 sm:hidden">
+          <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:hidden">
             {agendaSections.map((section) => {
               const isActive = activeSectionId === section.id;
               const count = sectionCounts[section.id] ?? 0;
@@ -1207,21 +1196,6 @@ export function AgendaPage() {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
-                    />
-                  </svg>
-                ),
-                MANUAL_SCHEDULING: (
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z"
                     />
                   </svg>
                 ),
@@ -1243,7 +1217,6 @@ export function AgendaPage() {
               };
               const shortLabels: Record<string, string> = {
                 FINALIZED: "Agenda",
-                MANUAL_SCHEDULING: "Manual",
                 FINANCE: "Finanzas"
               };
               return (
@@ -1338,7 +1311,7 @@ export function AgendaPage() {
         </div>
       </section>
 
-      {!isManualSchedulingSection && !isFinanceSection ? (
+      {!isFinanceSection ? (
         <section className="mt-4">
           <div
             className={["grid gap-4", isBookedTab ? "" : "lg:grid-cols-[320px_minmax(0,1fr)]"].join(
@@ -1358,12 +1331,23 @@ export function AgendaPage() {
                     mobileBookedStep !== "calendar" ? "hidden sm:block" : ""
                   ].join(" ")}
                 >
-                  <h3 className="text-sm font-semibold sm:text-base">
-                    Calendario de citas agendadas
-                  </h3>
-                  <p className="text-[11px] text-slate-500 sm:text-xs">
-                    Integra citas del chatbot y manuales. Toca un día para ver detalle.
-                  </p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold sm:text-base">
+                        Calendario de citas agendadas
+                      </h3>
+                      <p className="text-[11px] text-slate-500 sm:text-xs">
+                        Integra citas del chatbot y manuales. Toca un día para ver detalle.
+                      </p>
+                    </div>
+                    <button
+                      className="hidden shrink-0 rounded-lg bg-brand-teal px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover sm:block"
+                      onClick={() => setIsNewManualModalOpen(true)}
+                      type="button"
+                    >
+                      + Nueva cita manual
+                    </button>
+                  </div>
                 </header>
                 <div className="space-y-3 p-2 sm:p-3">
                   <div
@@ -1539,6 +1523,30 @@ export function AgendaPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Mobile FAB — only in calendar step */}
+                  {mobileBookedStep === "calendar" ? (
+                    <button
+                      aria-label="Nueva cita manual"
+                      className="fixed bottom-4 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-teal text-white shadow-lg transition-colors hover:bg-brand-teal-hover sm:hidden"
+                      onClick={() => setIsNewManualModalOpen(true)}
+                      type="button"
+                    >
+                      <svg
+                        className="h-7 w-7"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 4.5v15m7.5-7.5h-15"
+                        />
+                      </svg>
+                    </button>
+                  ) : null}
 
                   {/* Desktop full calendar */}
                   <div className="hidden sm:block">
@@ -1845,11 +1853,13 @@ export function AgendaPage() {
                       ? {
                           status: selectedBookedAppointment.manualAppointment.paymentStatus ?? null,
                           amountCop: selectedBookedAppointment.manualAppointment.paymentAmountCop,
+                          currency: selectedBookedAppointment.manualAppointment.paymentCurrency,
                           category: selectedBookedAppointment.manualAppointment.paymentMethod
                         }
                       : {
                           status: selectedBookedAppointment.request?.paymentStatus ?? null,
                           amountCop: selectedBookedAppointment.request?.paymentAmountCop ?? null,
+                          currency: "COP",
                           category: selectedBookedAppointment.request?.paymentMethod ?? null
                         }
                   }
@@ -2763,11 +2773,13 @@ export function AgendaPage() {
                             status:
                               selectedBookedAppointment.manualAppointment.paymentStatus ?? null,
                             amountCop: selectedBookedAppointment.manualAppointment.paymentAmountCop,
+                            currency: selectedBookedAppointment.manualAppointment.paymentCurrency,
                             category: selectedBookedAppointment.manualAppointment.paymentMethod
                           }
                         : {
                             status: selectedBookedAppointment.request?.paymentStatus ?? null,
                             amountCop: selectedBookedAppointment.request?.paymentAmountCop ?? null,
+                            currency: "COP",
                             category: selectedBookedAppointment.request?.paymentMethod ?? null
                           }
                     }
@@ -3589,7 +3601,11 @@ export function AgendaPage() {
                             manualAppointmentFormState.summary.trim() === ""
                               ? null
                               : manualAppointmentFormState.summary.trim(),
-                          isVirtual: manualAppointmentFormState.isVirtual
+                          isVirtual: manualAppointmentFormState.isVirtual,
+                          paymentAmountCop: 0,
+                          paymentCurrency: "COP",
+                          paymentStatus: "PENDING",
+                          paymentMethod: null
                         },
                         {
                           onSuccess: () => {
@@ -3804,7 +3820,11 @@ export function AgendaPage() {
                           manualAppointmentFormState.summary.trim() === ""
                             ? null
                             : manualAppointmentFormState.summary.trim(),
-                        isVirtual: manualAppointmentFormState.isVirtual
+                        isVirtual: manualAppointmentFormState.isVirtual,
+                        paymentAmountCop: 0,
+                        paymentCurrency: "COP",
+                        paymentStatus: "PENDING",
+                        paymentMethod: null
                       });
                     }}
                     type="button"
@@ -4408,6 +4428,13 @@ export function AgendaPage() {
           </article>
         </section>
       ) : null}
+      <NewManualAppointmentModal
+        isOpen={isNewManualModalOpen}
+        onClose={() => setIsNewManualModalOpen(false)}
+        onCreated={() => {
+          void queryClient.invalidateQueries({ queryKey: manualAppointmentsQueryKey });
+        }}
+      />
     </appShellModule.AppShell>
   );
 }

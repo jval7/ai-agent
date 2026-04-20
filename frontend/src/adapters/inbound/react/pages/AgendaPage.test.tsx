@@ -211,9 +211,9 @@ vitestModule.describe("AgendaPage", () => {
       renderAgendaPage(container);
 
       testingLibraryReactModule.fireEvent.click(
-        testingLibraryReactModule.screen.getByRole("button", {
-          name: /Agenda e Historial/
-        })
+        testingLibraryReactModule.screen.getAllByRole("button", {
+          name: /^Agenda$/
+        })[0]!
       );
 
       await testingLibraryReactModule.waitFor(() => {
@@ -340,6 +340,7 @@ vitestModule.describe("AgendaPage", () => {
             isVirtual: false,
             meetUrl: null,
             paymentAmountCop: null,
+            paymentCurrency: "COP" as const,
             paymentMethod: null,
             paymentStatus: "PENDING",
             paymentUpdatedAt: null,
@@ -354,9 +355,9 @@ vitestModule.describe("AgendaPage", () => {
     renderAgendaPage(container);
 
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agenda e Historial/
-      })
+      testingLibraryReactModule.screen.getAllByRole("button", {
+        name: /^Agenda$/
+      })[0]!
     );
 
     await testingLibraryReactModule.waitFor(() => {
@@ -436,14 +437,17 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
-    // Navigate to the manual scheduling section
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agendamiento manual/
-      })
-    );
+    // Open new manual appointment modal via "+ Nueva cita manual" button
+    const nuevaCitaButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+      name: /Nueva cita manual/i
+    });
+    testingLibraryReactModule.fireEvent.click(nuevaCitaButtons[0]!);
 
-    // Open new patient modal via the "+ Nuevo paciente" link
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Nueva cita manual")).toBeInTheDocument();
+    });
+
+    // Open new patient modal via the "+ Nuevo paciente" link inside the appointment modal
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", {
         name: /\+ Nuevo paciente/i
@@ -554,11 +558,15 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agendamiento manual/
-      })
-    );
+    // Open new manual appointment modal via "+ Nueva cita manual" button
+    const nuevaCitaButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+      name: /Nueva cita manual/i
+    });
+    testingLibraryReactModule.fireEvent.click(nuevaCitaButtons[0]!);
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Nueva cita manual")).toBeInTheDocument();
+    });
 
     testingLibraryReactModule.fireEvent.click(
       testingLibraryReactModule.screen.getByRole("button", {
@@ -626,7 +634,8 @@ vitestModule.describe("AgendaPage", () => {
       timezone: "America/Bogota",
       isVirtual: false,
       meetUrl: null,
-      paymentAmountCop: null,
+      paymentAmountCop: 120000,
+      paymentCurrency: "COP" as const,
       paymentMethod: null,
       paymentStatus: "PENDING",
       paymentUpdatedAt: null,
@@ -682,11 +691,15 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agendamiento manual/
-      })
-    );
+    // Open the new manual appointment modal via "+ Nueva cita manual" button
+    const nuevaCitaButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
+      name: /Nueva cita manual/i
+    });
+    testingLibraryReactModule.fireEvent.click(nuevaCitaButtons[0]!);
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Nueva cita manual")).toBeInTheDocument();
+    });
 
     await testingLibraryReactModule.waitFor(() => {
       expect(
@@ -696,41 +709,47 @@ vitestModule.describe("AgendaPage", () => {
       ).toBeInTheDocument();
     });
 
+    // Scope to the modal to avoid colliding with the page calendar
+    const modalEl = testingLibraryReactModule.screen.getByTestId("new-manual-appointment-modal");
+    const withinModal = testingLibraryReactModule.within(modalEl);
+
     // Select patient
-    const patientSelects = testingLibraryReactModule.screen.getAllByRole("combobox", {
-      name: /Paciente/i
+    const patientSelect = withinModal.getByRole("combobox", {
+      name: /Seleccionar paciente/i
     });
-    const patientSelect = patientSelects[0]!;
     testingLibraryReactModule.fireEvent.change(patientSelect, {
       target: { value: "wa-1" }
     });
     expect(patientSelect).toHaveValue("wa-1");
 
     // Click day 12 in the SlotPicker calendar (March 12 is future from mock now=March 1)
-    const dayButtons = testingLibraryReactModule.screen.getAllByRole("button", { name: "12" });
+    const dayButtons = withinModal.getAllByRole("button", { name: "12" });
     testingLibraryReactModule.fireEvent.click(dayButtons[0]!);
 
     // Click the 9 AM slot chip
     await testingLibraryReactModule.waitFor(() => {
-      expect(
-        testingLibraryReactModule.screen.getAllByRole("button", { name: "9 AM" })[0]
-      ).toBeInTheDocument();
+      expect(withinModal.getAllByRole("button", { name: "9 AM" })[0]).toBeInTheDocument();
     });
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getAllByRole("button", { name: "9 AM" })[0]!
+      withinModal.getAllByRole("button", { name: "9 AM" })[0]!
     );
 
     // Fill in the summary
     testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByLabelText(/^Motivo de consulta$/i),
+      withinModal.getByLabelText(/^Motivo de consulta$/i),
       {
         target: { value: "Cita manual" }
       }
     );
 
+    // Fill in the payment amount (required by the modal)
+    testingLibraryReactModule.fireEvent.change(withinModal.getByRole("spinbutton"), {
+      target: { value: "120000" }
+    });
+
     // Submit
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
+      withinModal.getByRole("button", {
         name: "Agendar cita"
       })
     );
@@ -846,9 +865,9 @@ vitestModule.describe("AgendaPage", () => {
     renderAgendaPage(container);
 
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /Agenda e Historial/
-      })
+      testingLibraryReactModule.screen.getAllByRole("button", {
+        name: /^Agenda$/
+      })[0]!
     );
 
     // Wait for data to load, then navigate to detail via mobile wizard
@@ -906,6 +925,7 @@ vitestModule.describe("AgendaPage", () => {
       isVirtual: false,
       meetUrl: null,
       paymentAmountCop: 120000,
+      paymentCurrency: "COP" as const,
       paymentMethod: "TRANSFER",
       paymentStatus: "PAID",
       paymentUpdatedAt: "2026-03-10T10:00:00Z",
@@ -968,6 +988,7 @@ vitestModule.describe("AgendaPage", () => {
             isVirtual: false,
             meetUrl: null,
             paymentAmountCop: null,
+            paymentCurrency: "COP" as const,
             paymentMethod: null,
             paymentStatus: "PENDING",
             paymentUpdatedAt: null,
@@ -983,7 +1004,7 @@ vitestModule.describe("AgendaPage", () => {
     renderAgendaPage(container);
 
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", { name: /Agenda e Historial/ })
+      testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
     );
 
     // Wait for calendar to load, then navigate to detail via mobile wizard
@@ -1156,7 +1177,7 @@ vitestModule.describe("AgendaPage", () => {
     renderAgendaPage(container);
 
     testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", { name: /Agenda e Historial/ })
+      testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
     );
 
     // Wait for calendar to load, then navigate to detail via mobile wizard
@@ -1297,6 +1318,7 @@ vitestModule.describe("AgendaPage", () => {
             timezone: "UTC",
             summary: "Cita manual",
             paymentAmountCop: null,
+            paymentCurrency: "COP" as const,
             paymentMethod: null,
             paymentStatus: "PENDING",
             paymentUpdatedAt: null,
