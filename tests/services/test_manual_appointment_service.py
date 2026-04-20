@@ -104,6 +104,7 @@ def test_create_manual_appointment_requires_existing_patient() -> None:
                 end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
                 timezone="America/Bogota",
                 summary=None,
+                payment_amount_cop=120000,
             ),
         )
 
@@ -132,6 +133,7 @@ def test_create_and_reschedule_manual_appointment() -> None:
             end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
             timezone="America/Bogota",
             summary=None,
+            payment_amount_cop=120000,
         ),
     )
 
@@ -181,6 +183,7 @@ def test_cancel_manual_appointment_marks_cancelled() -> None:
             end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
             timezone="America/Bogota",
             summary="Cita Jane",
+            payment_amount_cop=120000,
         ),
     )
 
@@ -221,6 +224,7 @@ def test_cancel_manual_appointment_keeps_consistency_on_google_error() -> None:
             end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
             timezone="America/Bogota",
             summary="Cita Jane",
+            payment_amount_cop=120000,
         ),
     )
     google_provider.delete_event_errors = [
@@ -258,6 +262,7 @@ def test_update_payment_updates_manual_scheduled_appointment() -> None:
             end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
             timezone="America/Bogota",
             summary="Cita Jane",
+            payment_amount_cop=120000,
         ),
     )
 
@@ -304,6 +309,7 @@ def test_update_payment_rejects_cancelled_manual_appointment() -> None:
             end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
             timezone="America/Bogota",
             summary="Cita Jane",
+            payment_amount_cop=120000,
         ),
     )
     service.cancel_appointment(
@@ -357,6 +363,7 @@ def test_create_virtual_appointment_passes_attendee_email_and_meet_flag() -> Non
             end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
             timezone="America/Bogota",
             is_virtual=True,
+            payment_amount_cop=120000,
         ),
     )
 
@@ -390,6 +397,7 @@ def test_create_presencial_appointment_passes_attendee_email_no_meet() -> None:
             end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
             timezone="America/Bogota",
             is_virtual=False,
+            payment_amount_cop=120000,
         ),
     )
 
@@ -423,6 +431,7 @@ def test_create_appointment_uses_professional_name_as_event_title() -> None:
             end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
             timezone="America/Bogota",
             summary="Ansiedad",
+            payment_amount_cop=120000,
         ),
     )
 
@@ -454,6 +463,7 @@ def test_create_appointment_falls_back_to_profesional_when_name_unavailable() ->
             end_at=datetime.datetime(2026, 1, 15, 11, 0, tzinfo=datetime.UTC),
             timezone="America/Bogota",
             summary="Ansiedad",
+            payment_amount_cop=120000,
         ),
     )
 
