@@ -32,11 +32,12 @@ export interface AppointmentDetailCardProps {
   successMessage: string | null;
 }
 
-function formatCopAmount(value: number): string {
-  return new Intl.NumberFormat("es-CO", {
+function formatAmount(value: number, currency: "COP" | "USD"): string {
+  const locale = currency === "USD" ? "en-US" : "es-CO";
+  return new Intl.NumberFormat(locale, {
     style: "currency",
-    currency: "COP",
-    maximumFractionDigits: 0
+    currency,
+    maximumFractionDigits: currency === "USD" ? 2 : 0
   }).format(value);
 }
 
@@ -79,6 +80,7 @@ export function AppointmentDetailCard({
 }: AppointmentDetailCardProps) {
   const isVirtual = modality === "VIRTUAL";
   const isPaid = payment.status === "PAID";
+  const paymentCurrency: "COP" | "USD" = payment.currency ?? "COP";
 
   return (
     <div className="space-y-5 px-5 py-5">
@@ -155,8 +157,8 @@ export function AppointmentDetailCard({
           <div className="mt-3 space-y-1 text-sm text-slate-700">
             {payment.amountCop !== null ? (
               <p>
-                <span className="font-semibold">Valor:</span> {formatCopAmount(payment.amountCop)}{" "}
-                {payment.currency ?? "COP"}
+                <span className="font-semibold">Valor:</span>{" "}
+                {formatAmount(payment.amountCop, paymentCurrency)}
               </p>
             ) : null}
             {payment.category !== null ? (
@@ -168,9 +170,9 @@ export function AppointmentDetailCard({
         ) : (
           <div className="mt-3 space-y-3">
             <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Valor (COP)
+              Valor ({paymentCurrency})
               <input
-                aria-label="Valor (COP)"
+                aria-label={`Valor (${paymentCurrency})`}
                 className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                 min={1}
                 onChange={(event) => {
@@ -192,8 +194,6 @@ export function AppointmentDetailCard({
               >
                 <option value="CASH">Efectivo</option>
                 <option value="TRANSFER">Transferencia</option>
-                <option value="CARD">Tarjeta</option>
-                <option value="OTHER">Otro</option>
               </select>
             </label>
             <div className="flex justify-end">

@@ -202,6 +202,7 @@ export interface CancelManualAppointmentApiRequest {
 
 export interface UpdateManualAppointmentPaymentApiRequest {
   payment_amount_cop: number;
+  payment_currency: "COP" | "USD";
   payment_method: "CASH" | "TRANSFER";
   payment_status: "PENDING" | "PAID";
 }

@@ -887,17 +887,12 @@ vitestModule.describe("AgendaPage", () => {
     });
     testingLibraryReactModule.fireEvent.click(timeButtons[0]!);
 
-    // AppointmentDetailCard is now shown; click "Cancelar cita" in ACCIONES to open cancel form
+    // AppointmentDetailCard is now shown; click "Cancelar cita" in ACCIONES
+    // (new behavior: single click triggers window.confirm() and cancels immediately)
     const cancelAccionesButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
       name: "Cancelar cita"
     });
     testingLibraryReactModule.fireEvent.click(cancelAccionesButtons[0]!);
-
-    // Cancel form appears; click the submit "Cancelar cita" button (second occurrence)
-    const allCancelButtons = await testingLibraryReactModule.screen.findAllByRole("button", {
-      name: "Cancelar cita"
-    });
-    testingLibraryReactModule.fireEvent.click(allCancelButtons[allCancelButtons.length - 1]!);
 
     await testingLibraryReactModule.waitFor(() => {
       expect(cancelBookedSlotMock).toHaveBeenCalledWith("req-booked-1", {
@@ -1057,6 +1052,7 @@ vitestModule.describe("AgendaPage", () => {
     await testingLibraryReactModule.waitFor(() => {
       expect(updateManualPaymentMock).toHaveBeenCalledWith("manual-1", {
         paymentAmountCop: 120000,
+        paymentCurrency: "COP",
         paymentMethod: "TRANSFER",
         paymentStatus: "PAID"
       });

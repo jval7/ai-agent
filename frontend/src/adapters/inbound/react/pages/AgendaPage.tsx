@@ -1335,6 +1335,10 @@ export function AgendaPage() {
                         {selectedDayAppointments.map((appointment) => {
                           const isSelectedAppointment =
                             appointment.itemKey === selectedBookedItemKey;
+                          const isVirtualAppointment =
+                            appointment.source === "MANUAL"
+                              ? (appointment.manualAppointment?.isVirtual ?? false)
+                              : appointment.request?.appointmentModality === "VIRTUAL";
                           return (
                             <button
                               className={[
@@ -1362,9 +1366,21 @@ export function AgendaPage() {
                                 <p className="text-xs">{appointment.patientDisplayName}</p>
                               ) : null}
                               <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
-                              <p className="text-[11px] uppercase text-slate-500">
-                                {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
-                              </p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span className="text-[11px] uppercase text-slate-500">
+                                  {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
+                                </span>
+                                <span
+                                  className={[
+                                    "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                    isVirtualAppointment
+                                      ? "bg-brand-accent-light text-brand-teal"
+                                      : "bg-slate-100 text-slate-600"
+                                  ].join(" ")}
+                                >
+                                  {isVirtualAppointment ? "Google Meet" : "Presencial"}
+                                </span>
+                              </div>
                             </button>
                           );
                         })}
@@ -1535,6 +1551,10 @@ export function AgendaPage() {
                           const isSelectedAppointment =
                             appointment.itemKey === selectedBookedItemKey;
                           const isChatbot = appointment.source === "BOT";
+                          const isVirtualAppointment =
+                            appointment.source === "MANUAL"
+                              ? (appointment.manualAppointment?.isVirtual ?? false)
+                              : appointment.request?.appointmentModality === "VIRTUAL";
                           return (
                             <button
                               className={[
@@ -1565,9 +1585,21 @@ export function AgendaPage() {
                                 <p className="text-xs">{appointment.patientDisplayName}</p>
                               ) : null}
                               <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
-                              <p className="text-[11px] uppercase text-slate-500">
-                                {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
-                              </p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                <span className="text-[11px] uppercase text-slate-500">
+                                  {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
+                                </span>
+                                <span
+                                  className={[
+                                    "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                    isVirtualAppointment
+                                      ? "bg-brand-accent-light text-brand-teal"
+                                      : "bg-slate-100 text-slate-600"
+                                  ].join(" ")}
+                                >
+                                  {isVirtualAppointment ? "Google Meet" : "Presencial"}
+                                </span>
+                              </div>
                             </button>
                           );
                         })}
@@ -1732,6 +1764,8 @@ export function AgendaPage() {
                         appointmentId: selectedBookedAppointment.manualAppointmentId,
                         input: {
                           paymentAmountCop: amountCop,
+                          paymentCurrency:
+                            selectedBookedAppointment.manualAppointment?.paymentCurrency ?? "COP",
                           paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
                           paymentStatus: "PAID"
                         }
@@ -1756,7 +1790,32 @@ export function AgendaPage() {
                     );
                   }}
                   onCancel={() => {
-                    setExpandedBookedAction(expandedBookedAction === "cancel" ? null : "cancel");
+                    if (selectedBookedAppointment === null) {
+                      return;
+                    }
+                    const isConfirmed = window.confirm("¿Seguro que quieres cancelar esta cita?");
+                    if (!isConfirmed) {
+                      return;
+                    }
+                    setLocalSubmitErrorMessage(null);
+                    setSubmitSuccessMessage(null);
+                    if (
+                      selectedBookedAppointment.source === "BOT" &&
+                      selectedBookedBotRequest !== null
+                    ) {
+                      cancelBookedSlotMutation.mutate({
+                        requestId: selectedBookedBotRequest.requestId,
+                        input: { reason: null }
+                      });
+                    } else if (
+                      selectedBookedAppointment.source === "MANUAL" &&
+                      selectedBookedAppointment.manualAppointmentId !== null
+                    ) {
+                      cancelManualAppointmentMutation.mutate({
+                        appointmentId: selectedBookedAppointment.manualAppointmentId,
+                        input: { reason: null }
+                      });
+                    }
                   }}
                   errorMessage={localSubmitErrorMessage ?? submitErrorMessage}
                   successMessage={submitSuccessMessage}
@@ -2025,86 +2084,6 @@ export function AgendaPage() {
                       </div>
                     </div>
                   ) : null}
-                </div>
-              ) : null}
-
-              {isBookedTab &&
-              selectedBookedAppointment !== null &&
-              expandedBookedAction === "cancel" ? (
-                <div className="rounded-lg border border-border-subtle p-3">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Motivo de cancelación (opcional)
-                    <textarea
-                      className="mt-1 min-h-20 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                      onChange={(event) => {
-                        const nextValue = event.target.value;
-                        setBookedAppointmentFormState((currentValue) => ({
-                          ...currentValue,
-                          cancelReason: nextValue
-                        }));
-                      }}
-                      value={bookedAppointmentFormState.cancelReason}
-                    />
-                  </label>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={
-                        cancelBookedSlotMutation.isPending ||
-                        cancelManualAppointmentMutation.isPending
-                      }
-                      onClick={() => {
-                        const isConfirmed = window.confirm(
-                          "¿Seguro que quieres cancelar esta cita?"
-                        );
-                        if (!isConfirmed) {
-                          return;
-                        }
-                        setLocalSubmitErrorMessage(null);
-                        setSubmitSuccessMessage(null);
-                        if (
-                          selectedBookedAppointment.source === "BOT" &&
-                          selectedBookedBotRequest !== null
-                        ) {
-                          cancelBookedSlotMutation.mutate({
-                            requestId: selectedBookedBotRequest.requestId,
-                            input: {
-                              reason:
-                                bookedAppointmentFormState.cancelReason.trim() === ""
-                                  ? null
-                                  : bookedAppointmentFormState.cancelReason.trim()
-                            }
-                          });
-                        } else if (
-                          selectedBookedAppointment.source === "MANUAL" &&
-                          selectedBookedAppointment.manualAppointmentId !== null
-                        ) {
-                          cancelManualAppointmentMutation.mutate({
-                            appointmentId: selectedBookedAppointment.manualAppointmentId,
-                            input: {
-                              reason:
-                                bookedAppointmentFormState.cancelReason.trim() === ""
-                                  ? null
-                                  : bookedAppointmentFormState.cancelReason.trim()
-                            }
-                          });
-                        }
-                      }}
-                      type="button"
-                    >
-                      {cancelBookedSlotMutation.isPending ||
-                      cancelManualAppointmentMutation.isPending
-                        ? "Cancelando..."
-                        : "Cancelar cita"}
-                    </button>
-                    <button
-                      className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                      onClick={() => setExpandedBookedAction(null)}
-                      type="button"
-                    >
-                      Cerrar
-                    </button>
-                  </div>
                 </div>
               ) : null}
 
@@ -2652,6 +2631,8 @@ export function AgendaPage() {
                           appointmentId: selectedBookedAppointment.manualAppointmentId,
                           input: {
                             paymentAmountCop: amountCop,
+                            paymentCurrency:
+                              selectedBookedAppointment.manualAppointment?.paymentCurrency ?? "COP",
                             paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
                             paymentStatus: "PAID"
                           }
@@ -2676,7 +2657,32 @@ export function AgendaPage() {
                       );
                     }}
                     onCancel={() => {
-                      setExpandedBookedAction(expandedBookedAction === "cancel" ? null : "cancel");
+                      if (selectedBookedAppointment === null) {
+                        return;
+                      }
+                      const isConfirmed = window.confirm("¿Seguro que quieres cancelar esta cita?");
+                      if (!isConfirmed) {
+                        return;
+                      }
+                      setLocalSubmitErrorMessage(null);
+                      setSubmitSuccessMessage(null);
+                      if (
+                        selectedBookedAppointment.source === "BOT" &&
+                        selectedBookedBotRequest !== null
+                      ) {
+                        cancelBookedSlotMutation.mutate({
+                          requestId: selectedBookedBotRequest.requestId,
+                          input: { reason: null }
+                        });
+                      } else if (
+                        selectedBookedAppointment.source === "MANUAL" &&
+                        selectedBookedAppointment.manualAppointmentId !== null
+                      ) {
+                        cancelManualAppointmentMutation.mutate({
+                          appointmentId: selectedBookedAppointment.manualAppointmentId,
+                          input: { reason: null }
+                        });
+                      }
                     }}
                     errorMessage={localSubmitErrorMessage ?? submitErrorMessage}
                     successMessage={submitSuccessMessage}

@@ -608,6 +608,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         authRequired: true,
         body: JSON.stringify({
           payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency ?? "COP",
           payment_method: input.paymentMethod,
           payment_status: input.paymentStatus
         } satisfies httpTypes.UpdateManualAppointmentPaymentApiRequest)
