@@ -5,8 +5,8 @@ export interface Patient {
   lastName: string;
   email: string;
   age: number;
-  consultationReason: string;
   location: string;
+  phonePrefix: string | null;
   phone: string;
   createdAt: string;
 }
@@ -17,8 +17,8 @@ export interface CreatePatientInput {
   lastName: string;
   email: string;
   age: number;
-  consultationReason: string;
   location: string;
+  phonePrefix: string | null;
   phone: string;
 }
 
@@ -27,7 +27,7 @@ export interface UpdatePatientInput {
   lastName: string;
   email: string;
   age: number;
-  consultationReason: string;
   location: string;
+  phonePrefix: string | null;
   phone: string;
 }

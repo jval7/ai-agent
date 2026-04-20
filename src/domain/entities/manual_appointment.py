@@ -14,7 +14,10 @@ class ManualAppointment(pydantic.BaseModel):
     end_at: datetime.datetime
     timezone: str
     summary: str
+    is_virtual: bool = True
+    meet_url: str | None = None
     payment_amount_cop: int | None = None
+    payment_currency: typing.Literal["COP", "USD"] = "COP"
     payment_method: typing.Literal["CASH", "TRANSFER"] | None = None
     payment_status: typing.Literal["PENDING", "PAID"] = "PENDING"
     payment_updated_at: datetime.datetime | None = None

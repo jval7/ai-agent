@@ -199,6 +199,7 @@ vitestModule.describe("BackendApiAdapter", () => {
               selected_slot_id: null,
               calendar_event_id: null,
               payment_amount_cop: null,
+              payment_currency: "COP",
               payment_method: null,
               payment_status: "PENDING",
               payment_updated_at: null,
@@ -224,8 +225,8 @@ vitestModule.describe("BackendApiAdapter", () => {
               last_name: "Doe",
               email: "jane@example.com",
               age: 29,
-              consultation_reason: "Ansiedad",
               location: "Bogota",
+              phone_prefix: null,
               phone: "573001112233",
               created_at: "2026-03-01T10:00:00Z"
             }
@@ -240,8 +241,8 @@ vitestModule.describe("BackendApiAdapter", () => {
           last_name: "Doe",
           email: "jane@example.com",
           age: 29,
-          consultation_reason: "Ansiedad",
           location: "Bogota",
+          phone_prefix: null,
           phone: "573001112233",
           created_at: "2026-03-01T10:00:00Z"
         });
@@ -305,10 +306,12 @@ vitestModule.describe("BackendApiAdapter", () => {
         async ({ request }) => {
           const body = (await request.json()) as {
             payment_amount_cop: number;
+            payment_currency: "COP" | "USD";
             payment_method: "CASH" | "TRANSFER";
             payment_status: "PENDING" | "PAID";
           };
           vitestModule.expect(body.payment_amount_cop).toBe(80000);
+          vitestModule.expect(body.payment_currency).toBe("USD");
           vitestModule.expect(body.payment_method).toBe("CASH");
           vitestModule.expect(body.payment_status).toBe("PENDING");
           return mswModule.HttpResponse.json({
@@ -332,6 +335,7 @@ vitestModule.describe("BackendApiAdapter", () => {
             selected_slot_id: "slot-1",
             calendar_event_id: "event-1",
             payment_amount_cop: 80000,
+            payment_currency: "USD",
             payment_method: "CASH",
             payment_status: "PENDING",
             payment_updated_at: "2026-03-10T10:30:00Z",
@@ -383,6 +387,7 @@ vitestModule.describe("BackendApiAdapter", () => {
     });
     const bookedPaymentUpdate = await adapter.updateBookedSlotPayment("req-1", {
       paymentAmountCop: 80000,
+      paymentCurrency: "USD",
       paymentMethod: "CASH",
       paymentStatus: "PENDING"
     });
@@ -398,6 +403,59 @@ vitestModule.describe("BackendApiAdapter", () => {
     vitestModule.expect(submitResult.outboundMessageId).toBe("wamid-1");
     vitestModule.expect(manualPaymentUpdate.paymentStatus).toBe("PAID");
     vitestModule.expect(bookedPaymentUpdate.paymentAmountCop).toBe(80000);
+    vitestModule.expect(bookedPaymentUpdate.paymentCurrency).toBe("USD");
+  });
+
+  vitestModule.it("maps getTenantProfile and updateTenantProfile endpoints", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/tenant/profile", ({ request }) => {
+        const authHeader = request.headers.get("authorization");
+        vitestModule.expect(authHeader).toBe("Bearer access-1");
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          name: "Ana Garcia",
+          professional_name: "Dra. Ana Garcia"
+        });
+      }),
+      mswModule.http.put("http://api.test/v1/tenant/profile", async ({ request }) => {
+        const body = (await request.json()) as { professional_name: string | null };
+        vitestModule.expect(body.professional_name).toBe("Dra. Ana M. Garcia");
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          name: "Ana Garcia",
+          professional_name: "Dra. Ana M. Garcia"
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const profile = await adapter.getTenantProfile();
+    vitestModule.expect(profile.tenantId).toBe("tenant-1");
+    vitestModule.expect(profile.name).toBe("Ana Garcia");
+    vitestModule.expect(profile.professionalName).toBe("Dra. Ana Garcia");
+
+    const updated = await adapter.updateTenantProfile({ professionalName: "Dra. Ana M. Garcia" });
+    vitestModule.expect(updated.professionalName).toBe("Dra. Ana M. Garcia");
+  });
+
+  vitestModule.it("maps null professional_name in getTenantProfile", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/tenant/profile", () => {
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          name: "Ana Garcia",
+          professional_name: null
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const profile = await adapter.getTenantProfile();
+    vitestModule.expect(profile.professionalName).toBeNull();
   });
 
   vitestModule.it("resets conversation messages with DELETE endpoint", async () => {
@@ -428,5 +486,64 @@ vitestModule.describe("BackendApiAdapter", () => {
     const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
 
     await adapter.removePatient("wa-1");
+  });
+
+  vitestModule.it("maps phone_prefix round-trip for create and get patient", async () => {
+    serverModule.server.use(
+      mswModule.http.post("http://api.test/v1/patients", async ({ request }) => {
+        const body = (await request.json()) as {
+          phone_prefix: string | null;
+          phone: string;
+        };
+        vitestModule.expect(body.phone_prefix).toBe("+57");
+        vitestModule.expect(body.phone).toBe("3001112233");
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          whatsapp_user_id: "573001112233",
+          first_name: "Jane",
+          last_name: "Doe",
+          email: "jane@example.com",
+          age: 29,
+          location: "Bogota",
+          phone_prefix: "+57",
+          phone: "3001112233",
+          created_at: "2026-03-01T10:00:00Z"
+        });
+      }),
+      mswModule.http.get("http://api.test/v1/patients/wa-null-prefix", () => {
+        return mswModule.HttpResponse.json({
+          tenant_id: "tenant-1",
+          whatsapp_user_id: "wa-null-prefix",
+          first_name: "Legacy",
+          last_name: "Patient",
+          email: "legacy@example.com",
+          age: 40,
+          location: "Cali",
+          phone_prefix: null,
+          phone: "573009998888",
+          created_at: "2025-01-01T00:00:00Z"
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const created = await adapter.createPatient({
+      whatsappUserId: "573001112233",
+      firstName: "Jane",
+      lastName: "Doe",
+      email: "jane@example.com",
+      age: 29,
+      location: "Bogota",
+      phonePrefix: "+57",
+      phone: "3001112233"
+    });
+    vitestModule.expect(created.phonePrefix).toBe("+57");
+    vitestModule.expect(created.phone).toBe("3001112233");
+
+    const legacy = await adapter.getPatient("wa-null-prefix");
+    vitestModule.expect(legacy.phonePrefix).toBeNull();
+    vitestModule.expect(legacy.phone).toBe("573009998888");
   });
 });

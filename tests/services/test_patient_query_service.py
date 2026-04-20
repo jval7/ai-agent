@@ -121,7 +121,6 @@ def test_list_patients_returns_sorted_items() -> None:
             last_name="Doe",
             email="jane@example.com",
             age=29,
-            consultation_reason="Ansiedad",
             location="Bogota",
             phone="573001112233",
             created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
@@ -135,7 +134,6 @@ def test_list_patients_returns_sorted_items() -> None:
             last_name="Smith",
             email="john@example.com",
             age=34,
-            consultation_reason="Sueno",
             location="Medellin",
             phone="573001445566",
             created_at=datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC),
@@ -159,7 +157,6 @@ def test_get_patient_returns_single_patient() -> None:
             last_name="Doe",
             email="jane@example.com",
             age=29,
-            consultation_reason="Ansiedad",
             location="Bogota",
             phone="573001112233",
             created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
@@ -183,7 +180,6 @@ def test_create_patient_persists_new_patient() -> None:
             last_name="Doe",
             email="jane@example.com",
             age=29,
-            consultation_reason="Ansiedad",
             location="Bogota",
             phone="573001112233",
         ),
@@ -205,7 +201,6 @@ def test_update_patient_overwrites_patient_data() -> None:
             last_name="Doe",
             email="jane@example.com",
             age=29,
-            consultation_reason="Ansiedad",
             location="Bogota",
             phone="573001112233",
             created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
@@ -220,7 +215,6 @@ def test_update_patient_overwrites_patient_data() -> None:
             last_name="Doe",
             email="jane.updated@example.com",
             age=30,
-            consultation_reason="Estrés",
             location="Cali",
             phone="573009998877",
         ),
@@ -231,6 +225,30 @@ def test_update_patient_overwrites_patient_data() -> None:
     stored_patient = repository.get_by_whatsapp_user("tenant-1", "wa-1")
     assert stored_patient is not None
     assert stored_patient.phone == "573009998877"
+
+
+def test_create_patient_with_phone_prefix_persists_and_returns_prefix() -> None:
+    service, repository, _, _, _ = build_service()
+
+    created_patient = service.create_patient(
+        claims=build_claims("professional"),
+        create_dto=patient_dto.CreatePatientDTO(
+            whatsapp_user_id="573001112233",
+            first_name="Carlos",
+            last_name="Perez",
+            email="carlos@example.com",
+            age=40,
+            location="Cali",
+            phone_prefix="+57",
+            phone="3001112233",
+        ),
+    )
+
+    assert created_patient.phone_prefix == "+57"
+    stored_patient = repository.get_by_whatsapp_user("tenant-1", "573001112233")
+    assert stored_patient is not None
+    assert stored_patient.phone_prefix == "+57"
+    assert stored_patient.phone == "3001112233"
 
 
 def test_delete_patient_requires_professional_role() -> None:
@@ -256,7 +274,6 @@ def test_delete_patient_removes_patient_for_tenant() -> None:
             last_name="Doe",
             email="jane@example.com",
             age=29,
-            consultation_reason="Ansiedad",
             location="Bogota",
             phone="573001112233",
             created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
@@ -270,7 +287,6 @@ def test_delete_patient_removes_patient_for_tenant() -> None:
             last_name="Smith",
             email="john@example.com",
             age=34,
-            consultation_reason="Insomnio",
             location="Medellin",
             phone="573001445566",
             created_at=datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC),

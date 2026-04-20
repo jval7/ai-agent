@@ -58,8 +58,8 @@ vitestModule.describe("ClientsPage", () => {
           lastName: "Smith",
           email: "john@example.com",
           age: 34,
-          consultationReason: "Insomnio",
           location: "Medellin",
+          phonePrefix: null,
           phone: "573001445566",
           createdAt: "2026-03-02T10:00:00Z"
         };
@@ -71,8 +71,8 @@ vitestModule.describe("ClientsPage", () => {
         lastName: "Doe",
         email: "jane@example.com",
         age: 29,
-        consultationReason: "Ansiedad",
         location: "Bogota",
+        phonePrefix: null,
         phone: "573001112233",
         createdAt: "2026-03-01T10:00:00Z"
       };
@@ -87,8 +87,8 @@ vitestModule.describe("ClientsPage", () => {
             lastName: "Doe",
             email: "jane@example.com",
             age: 29,
-            consultationReason: "Ansiedad",
             location: "Bogota",
+            phonePrefix: null,
             phone: "573001112233",
             createdAt: "2026-03-01T10:00:00Z"
           },
@@ -99,8 +99,8 @@ vitestModule.describe("ClientsPage", () => {
             lastName: "Smith",
             email: "john@example.com",
             age: 34,
-            consultationReason: "Insomnio",
             location: "Medellin",
+            phonePrefix: null,
             phone: "573001445566",
             createdAt: "2026-03-02T10:00:00Z"
           }
@@ -122,7 +122,6 @@ vitestModule.describe("ClientsPage", () => {
     testingLibraryReactModule.fireEvent.click(johnButton);
 
     await testingLibraryReactModule.waitFor(() => {
-      expect(testingLibraryReactModule.screen.getByText("Insomnio")).toBeInTheDocument();
       expect(testingLibraryReactModule.screen.getByText("Medellin")).toBeInTheDocument();
     });
     expect(getPatientMock).toHaveBeenCalledWith("wa-2");
@@ -141,8 +140,8 @@ vitestModule.describe("ClientsPage", () => {
             lastName: "Doe",
             email: "jane@example.com",
             age: 29,
-            consultationReason: "Ansiedad",
             location: "Bogota",
+            phonePrefix: null,
             phone: "573001112233",
             createdAt: "2026-03-01T10:00:00Z"
           }
@@ -154,8 +153,8 @@ vitestModule.describe("ClientsPage", () => {
           lastName: "Doe",
           email: "jane@example.com",
           age: 29,
-          consultationReason: "Ansiedad",
           location: "Bogota",
+          phonePrefix: null,
           phone: "573001112233",
           createdAt: "2026-03-01T10:00:00Z"
         })),
@@ -178,5 +177,48 @@ vitestModule.describe("ClientsPage", () => {
       expect(removePatientMock).toHaveBeenCalledWith("wa-1");
     });
     expect(confirmSpy).toHaveBeenCalledTimes(1);
+  });
+
+  vitestModule.it("displays phone with prefix when phonePrefix is set", async () => {
+    const container = {
+      patientUseCase: {
+        listPatients: vitestModule.vi.fn(async () => [
+          {
+            tenantId: "tenant-1",
+            whatsappUserId: "wa-prefix-1",
+            firstName: "Maria",
+            lastName: "Lopez",
+            email: "maria@example.com",
+            age: 35,
+            location: "Bogota",
+            phonePrefix: "+57",
+            phone: "3001112233",
+            createdAt: "2026-03-01T10:00:00Z"
+          }
+        ]),
+        getPatient: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          whatsappUserId: "wa-prefix-1",
+          firstName: "Maria",
+          lastName: "Lopez",
+          email: "maria@example.com",
+          age: 35,
+          location: "Bogota",
+          phonePrefix: "+57",
+          phone: "3001112233",
+          createdAt: "2026-03-01T10:00:00Z"
+        }))
+      }
+    };
+
+    renderClientsPage(container);
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText("Maria Lopez")).toBeInTheDocument();
+    });
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(testingLibraryReactModule.screen.getByText(/\+57 3001112233/)).toBeInTheDocument();
+    });
   });
 });

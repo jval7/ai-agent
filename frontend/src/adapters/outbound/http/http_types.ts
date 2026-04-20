@@ -119,8 +119,8 @@ export interface PatientApiResponse {
   last_name: string;
   email: string;
   age: number;
-  consultation_reason: string;
   location: string;
+  phone_prefix: string | null;
   phone: string;
   created_at: string;
 }
@@ -135,8 +135,8 @@ export interface CreatePatientApiRequest {
   last_name: string;
   email: string;
   age: number;
-  consultation_reason: string;
   location: string;
+  phone_prefix: string | null;
   phone: string;
 }
 
@@ -145,8 +145,8 @@ export interface UpdatePatientApiRequest {
   last_name: string;
   email: string;
   age: number;
-  consultation_reason: string;
   location: string;
+  phone_prefix: string | null;
   phone: string;
 }
 
@@ -160,7 +160,10 @@ export interface ManualAppointmentApiResponse {
   end_at: string;
   timezone: string;
   summary: string;
+  is_virtual: boolean;
+  meet_url: string | null;
   payment_amount_cop: number | null;
+  payment_currency: "COP" | "USD" | null;
   payment_method: "CASH" | "TRANSFER" | null;
   payment_status: "PENDING" | "PAID";
   payment_updated_at: string | null;
@@ -179,6 +182,11 @@ export interface CreateManualAppointmentApiRequest {
   end_at: string;
   timezone: string;
   summary: string | null;
+  is_virtual: boolean;
+  payment_amount_cop: number;
+  payment_currency: "COP" | "USD";
+  payment_status: "PENDING" | "PAID";
+  payment_method: "CASH" | "TRANSFER" | null;
 }
 
 export interface RescheduleManualAppointmentApiRequest {
@@ -194,6 +202,7 @@ export interface CancelManualAppointmentApiRequest {
 
 export interface UpdateManualAppointmentPaymentApiRequest {
   payment_amount_cop: number;
+  payment_currency: "COP" | "USD";
   payment_method: "CASH" | "TRANSFER";
   payment_status: "PENDING" | "PAID";
 }
@@ -237,6 +246,7 @@ export interface SchedulingRequestSummaryApiResponse {
   selected_slot_id: string | null;
   calendar_event_id: string | null;
   payment_amount_cop: number | null;
+  payment_currency: "COP" | "USD";
   payment_method: "CASH" | "TRANSFER" | null;
   payment_status: "PENDING" | "PAID";
   payment_updated_at: string | null;
@@ -289,6 +299,7 @@ export interface ResolvePaymentReviewApiRequest {
   decision: "APPROVE" | "SEND_REMINDER";
   professional_note: string | null;
   payment_amount_cop: number | null;
+  payment_currency: "COP" | "USD";
 }
 
 export interface ResolvePaymentReviewApiResponse {
@@ -318,6 +329,7 @@ export interface CancelBookedSlotApiRequest {
 
 export interface UpdateBookedSlotPaymentApiRequest {
   payment_amount_cop: number;
+  payment_currency: "COP" | "USD";
   payment_method: "CASH" | "TRANSFER";
   payment_status: "PENDING" | "PAID";
 }
@@ -363,4 +375,14 @@ export interface CreateTemplateApiRequest {
   category: string;
   language: string;
   components: TemplateComponentApiResponse[];
+}
+
+export interface TenantProfileResponse {
+  tenant_id: string;
+  name: string;
+  professional_name: string | null;
+}
+
+export interface UpdateTenantProfileRequest {
+  professional_name: string | null;
 }

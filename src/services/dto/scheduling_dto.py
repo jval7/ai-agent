@@ -34,6 +34,7 @@ class SchedulingRequestSummaryDTO(pydantic.BaseModel):
     selected_slot_id: str | None
     calendar_event_id: str | None
     payment_amount_cop: int | None
+    payment_currency: typing.Literal["COP", "USD"] = "COP"
     payment_method: typing.Literal["CASH", "TRANSFER"] | None
     payment_status: typing.Literal["PENDING", "PAID"]
     payment_updated_at: datetime.datetime | None
@@ -103,6 +104,8 @@ class ConfirmSelectedSlotInputDTO(pydantic.BaseModel):
     request_id: str
     slot_id: str
     event_summary: str
+    attendee_emails: list[str] = []
+    description: str | None = None
 
 
 class ConfirmSelectedSlotToolInputDTO(pydantic.BaseModel):
@@ -161,6 +164,7 @@ class PaymentReviewDecisionDTO(pydantic.BaseModel):
     decision: typing.Literal["APPROVE", "SEND_REMINDER"]
     professional_note: str | None = None
     payment_amount_cop: int | None = None
+    payment_currency: typing.Literal["COP", "USD"] = "COP"
 
     @pydantic.model_validator(mode="after")
     def validate_payment_amount_required_on_approve(self) -> "PaymentReviewDecisionDTO":
@@ -179,6 +183,7 @@ class PaymentReviewDecisionResponseDTO(pydantic.BaseModel):
 
 class UpdateBookedSlotPaymentInputDTO(pydantic.BaseModel):
     payment_amount_cop: int
+    payment_currency: typing.Literal["COP", "USD"] = "COP"
     payment_method: typing.Literal["CASH", "TRANSFER"]
     payment_status: typing.Literal["PENDING", "PAID"]
 
