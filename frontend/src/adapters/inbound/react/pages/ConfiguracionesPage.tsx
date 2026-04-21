@@ -5,7 +5,6 @@ import * as reactRouterDomModule from "react-router-dom";
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
-import * as officialTemplateCardModule from "@adapters/inbound/react/components/OfficialTemplateCard";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
 import * as uiErrorModule from "@shared/http/ui_error";
@@ -182,41 +181,79 @@ export function ConfiguracionesPage() {
     (s) => s.kind === "ATTENDANCE"
   );
   const paymentStatus = (officialTemplateStatusQuery.data ?? []).find((s) => s.kind === "PAYMENT");
-  const attendanceApproved = attendanceStatus?.metaStatus === "APPROVED";
+  const reminderSetupState: "loading" | "not_configured" | "preparing" | "active" | "broken" =
+    (() => {
+      if (attendanceStatus === undefined || paymentStatus === undefined) return "loading";
+      if (
+        attendanceStatus.metaStatus === "NOT_CREATED" &&
+        paymentStatus.metaStatus === "NOT_CREATED"
+      ) {
+        return "not_configured";
+      }
+      if (attendanceStatus.metaStatus === "PENDING" || paymentStatus.metaStatus === "PENDING") {
+        return "preparing";
+      }
+      if (attendanceStatus.metaStatus === "APPROVED") {
+        return "active";
+      }
+      return "broken";
+    })();
 
-  const [activatingKind, setActivatingKind] = reactModule.useState<"ATTENDANCE" | "PAYMENT" | null>(
-    null
-  );
-  const [deactivatingKind, setDeactivatingKind] = reactModule.useState<
-    "ATTENDANCE" | "PAYMENT" | null
-  >(null);
-
-  const activateMutation = reactQueryModule.useMutation({
-    mutationFn: (kind: "ATTENDANCE" | "PAYMENT") => {
-      setActivatingKind(kind);
-      return appContainer.whatsappTemplateUseCase.activateOfficialTemplate(kind);
-    },
+  const retryKindMutation = reactQueryModule.useMutation({
+    mutationFn: (kind: "ATTENDANCE" | "PAYMENT") =>
+      appContainer.whatsappTemplateUseCase.activateOfficialTemplate(kind),
     onSuccess: async () => {
-      setActivatingKind(null);
       await queryClient.invalidateQueries({ queryKey: officialTemplateStatusQueryKey });
-    },
-    onError: () => {
-      setActivatingKind(null);
     }
   });
 
-  const deactivateMutation = reactQueryModule.useMutation({
-    mutationFn: (kind: "ATTENDANCE" | "PAYMENT") => {
-      setDeactivatingKind(kind);
-      return appContainer.whatsappTemplateUseCase.deactivateOfficialTemplate(kind);
+  const activateAllMutation = reactQueryModule.useMutation({
+    mutationFn: async () => {
+      await appContainer.whatsappTemplateUseCase.activateOfficialTemplate("ATTENDANCE");
+      try {
+        await appContainer.whatsappTemplateUseCase.activateOfficialTemplate("PAYMENT");
+      } catch {
+        // PAYMENT es opcional — si falla, seguimos con ATTENDANCE.
+      }
+      const fresh = await appContainer.agentUseCase.getAgentSettings();
+      return appContainer.agentUseCase.updateAgentSettings({
+        messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+        appointmentReminderEnabled: true,
+        appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore ?? 1,
+        appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
+        appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName
+      });
     },
     onSuccess: async () => {
-      setDeactivatingKind(null);
       await queryClient.invalidateQueries({ queryKey: officialTemplateStatusQueryKey });
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+    }
+  });
+
+  const deactivateAllMutation = reactQueryModule.useMutation({
+    mutationFn: async () => {
+      try {
+        await appContainer.whatsappTemplateUseCase.deactivateOfficialTemplate("ATTENDANCE");
+      } catch {
+        // Best-effort.
+      }
+      try {
+        await appContainer.whatsappTemplateUseCase.deactivateOfficialTemplate("PAYMENT");
+      } catch {
+        // Best-effort.
+      }
+      const fresh = await appContainer.agentUseCase.getAgentSettings();
+      return appContainer.agentUseCase.updateAgentSettings({
+        messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null
+      });
     },
-    onError: () => {
-      setDeactivatingKind(null);
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: officialTemplateStatusQueryKey });
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
     }
   });
 
@@ -278,11 +315,28 @@ export function ConfiguracionesPage() {
     promptQuery.error
   ]);
 
+  const daysBeforeTimeoutRef = reactModule.useRef<number | null>(null);
+  const handleDaysBeforeChange = (event: reactModule.ChangeEvent<HTMLInputElement>) => {
+    const parsed = Number(event.target.value);
+    if (Number.isNaN(parsed) || parsed < 1 || parsed > 7) {
+      setReminderDaysBefore(parsed);
+      return;
+    }
+    setReminderDaysBefore(parsed);
+    if (daysBeforeTimeoutRef.current !== null) {
+      window.clearTimeout(daysBeforeTimeoutRef.current);
+    }
+    daysBeforeTimeoutRef.current = window.setTimeout(() => {
+      settingsMutation.mutate();
+    }, 800);
+  };
+
   const settingsErrorMessage = uiErrorModule.resolveUiErrorMessage([
     settingsMutation.error,
     settingsQuery.error,
-    activateMutation.error,
-    deactivateMutation.error,
+    activateAllMutation.error,
+    deactivateAllMutation.error,
+    retryKindMutation.error,
     officialTemplateStatusQuery.error
   ]);
 
@@ -628,90 +682,175 @@ export function ConfiguracionesPage() {
             />
           </div>
 
-          {/* Recordatorio de cita */}
+          {/* Recordatorios automaticos */}
           <div className="mt-6 border-t border-border-subtle pt-6">
-            <h4 className="text-sm font-semibold text-brand-ink">Recordatorio de cita</h4>
+            <h4 className="text-sm font-semibold text-brand-ink">Recordatorios automáticos</h4>
             <p className="mt-0.5 text-xs text-slate-500">
-              Envia un mensaje de plantilla al paciente antes de su cita para recordarle confirmar.
+              Enviamos un mensaje de WhatsApp al paciente antes de su cita.
             </p>
 
-            {/* Official template cards */}
-            <div className="mt-4 space-y-3">
-              {attendanceStatus !== undefined ? (
-                <officialTemplateCardModule.OfficialTemplateCard
-                  isMutating={activatingKind === "ATTENDANCE" || deactivatingKind === "ATTENDANCE"}
-                  kind="ATTENDANCE"
-                  onActivate={() => {
-                    activateMutation.mutate("ATTENDANCE");
-                  }}
-                  onDeactivate={() => {
-                    deactivateMutation.mutate("ATTENDANCE");
-                  }}
-                  status={attendanceStatus}
-                />
-              ) : null}
-              {paymentStatus !== undefined ? (
-                <officialTemplateCardModule.OfficialTemplateCard
-                  isMutating={activatingKind === "PAYMENT" || deactivatingKind === "PAYMENT"}
-                  kind="PAYMENT"
-                  onActivate={() => {
-                    activateMutation.mutate("PAYMENT");
-                  }}
-                  onDeactivate={() => {
-                    deactivateMutation.mutate("PAYMENT");
-                  }}
-                  status={paymentStatus}
-                />
-              ) : null}
-            </div>
+            {reminderSetupState === "loading" ? (
+              <p className="mt-4 text-xs text-slate-400">Cargando…</p>
+            ) : null}
 
-            <div className="mt-4 flex items-center gap-3">
-              <label
-                className={[
-                  "relative inline-flex cursor-pointer items-center",
-                  !attendanceApproved ? "opacity-50" : ""
-                ].join(" ")}
-                htmlFor="reminder-toggle"
-              >
-                <input
-                  checked={reminderEnabled}
-                  className="peer sr-only"
-                  disabled={!attendanceApproved}
-                  id="reminder-toggle"
-                  onChange={(e) => {
-                    setReminderEnabled(e.target.checked);
-                  }}
-                  type="checkbox"
-                />
-                <div className="h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-brand-teal peer-checked:after:translate-x-full peer-focus:ring-2 peer-focus:ring-brand-teal/20" />
-              </label>
-              <span className="text-sm text-slate-700">
-                {reminderEnabled ? "Activado" : "Desactivado"}
-              </span>
-              {!attendanceApproved ? (
-                <span className="text-xs text-slate-400">
-                  Activa la plantilla de asistencia para habilitar recordatorios.
-                </span>
-              ) : null}
-            </div>
-
-            {reminderEnabled ? (
+            {reminderSetupState === "not_configured" ? (
               <div className="mt-4">
-                <label className="block text-sm font-medium text-slate-700" htmlFor="reminder-days">
-                  Dias antes de la cita
-                </label>
-                <input
-                  className="mt-1 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                  id="reminder-days"
-                  max={7}
-                  min={1}
-                  onChange={(e) => {
-                    setReminderDaysBefore(Number(e.target.value));
+                <button
+                  className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={activateAllMutation.isPending}
+                  onClick={() => {
+                    activateAllMutation.mutate();
                   }}
-                  step={1}
-                  type="number"
-                  value={reminderDaysBefore}
-                />
+                  type="button"
+                >
+                  {activateAllMutation.isPending ? "Activando…" : "Activar recordatorios"}
+                </button>
+                <p className="mt-2 text-xs text-slate-500">
+                  WhatsApp debe aprobar los mensajes antes de empezar a enviarlos. Suele tardar unos
+                  minutos.
+                </p>
+              </div>
+            ) : null}
+
+            {reminderSetupState === "preparing" ? (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-medium text-amber-900">Preparando los recordatorios…</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  WhatsApp está revisando los mensajes. Puede tardar unos minutos. Podés cerrar esta
+                  página y volver más tarde.
+                </p>
+                <button
+                  className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={deactivateAllMutation.isPending}
+                  onClick={() => {
+                    deactivateAllMutation.mutate();
+                  }}
+                  type="button"
+                >
+                  {deactivateAllMutation.isPending ? "Cancelando…" : "Cancelar"}
+                </button>
+              </div>
+            ) : null}
+
+            {reminderSetupState === "active" ? (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label
+                    className="block text-sm font-medium text-slate-700"
+                    htmlFor="reminder-days"
+                  >
+                    ¿Cuántos días antes enviamos el recordatorio?
+                  </label>
+                  <input
+                    className="mt-1 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                    id="reminder-days"
+                    max={7}
+                    min={1}
+                    onChange={handleDaysBeforeChange}
+                    step={1}
+                    type="number"
+                    value={reminderDaysBefore}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Se guarda automáticamente. Entre 1 y 7 días.
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-border-subtle bg-slate-50 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Así lo recibe el paciente que ya pagó
+                  </p>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                    Hola Juan García, te recordamos tu cita agendada para el 15/01/2026 10:00. Te
+                    esperamos. Responde este mensaje si necesitas reagendar.
+                  </p>
+                </div>
+
+                {paymentStatus?.metaStatus === "APPROVED" ? (
+                  <div className="rounded-xl border border-border-subtle bg-slate-50 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Así lo recibe el paciente que aún no pagó
+                    </p>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-700">
+                      Hola Juan García, te recordamos tu cita agendada para el 15/01/2026 10:00. Aún
+                      no hemos recibido tu pago; por favor recuerda pagarlo antes de la cita para
+                      confirmarla.
+                    </p>
+                  </div>
+                ) : null}
+
+                {paymentStatus?.metaStatus === "REJECTED" ||
+                paymentStatus?.metaStatus === "DISABLED" ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    <p className="font-medium">
+                      No podemos recordarle a quien aún no pagó su cita.
+                    </p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      WhatsApp rechazó ese mensaje.
+                      {paymentStatus.rejectionReason !== null
+                        ? ` Motivo: ${paymentStatus.rejectionReason}`
+                        : ""}
+                    </p>
+                    <button
+                      className="mt-3 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={retryKindMutation.isPending}
+                      onClick={() => {
+                        retryKindMutation.mutate("PAYMENT");
+                      }}
+                      type="button"
+                    >
+                      {retryKindMutation.isPending ? "Reintentando…" : "Reintentar"}
+                    </button>
+                  </div>
+                ) : null}
+
+                <div>
+                  <button
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={deactivateAllMutation.isPending}
+                    onClick={() => {
+                      deactivateAllMutation.mutate();
+                    }}
+                    type="button"
+                  >
+                    {deactivateAllMutation.isPending ? "Desactivando…" : "Desactivar recordatorios"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {reminderSetupState === "broken" ? (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+                <p className="font-medium">No pudimos activar los recordatorios.</p>
+                <p className="mt-1 text-xs text-red-800">
+                  WhatsApp rechazó el mensaje principal.
+                  {attendanceStatus?.rejectionReason !== null &&
+                  attendanceStatus?.rejectionReason !== undefined
+                    ? ` Motivo: ${attendanceStatus.rejectionReason}`
+                    : ""}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={retryKindMutation.isPending}
+                    onClick={() => {
+                      retryKindMutation.mutate("ATTENDANCE");
+                    }}
+                    type="button"
+                  >
+                    {retryKindMutation.isPending ? "Reintentando…" : "Reintentar"}
+                  </button>
+                  <button
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={deactivateAllMutation.isPending}
+                    onClick={() => {
+                      deactivateAllMutation.mutate();
+                    }}
+                    type="button"
+                  >
+                    {deactivateAllMutation.isPending ? "Desactivando…" : "Desactivar"}
+                  </button>
+                </div>
               </div>
             ) : null}
           </div>
