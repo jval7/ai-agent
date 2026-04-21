@@ -40,6 +40,7 @@ class SchedulingRequest(pydantic.BaseModel):
     selected_slot_id: str | None
     calendar_event_id: str | None
     payment_amount_cop: int | None = None
+    payment_currency: typing.Literal["COP", "USD"] = "COP"
     payment_method: typing.Literal["CASH", "TRANSFER"] | None = None
     payment_status: typing.Literal["PENDING", "PAID"] = "PENDING"
     payment_updated_at: datetime.datetime | None = None

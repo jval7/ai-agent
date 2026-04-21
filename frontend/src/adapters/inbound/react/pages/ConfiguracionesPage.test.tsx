@@ -37,7 +37,7 @@ function renderConfiguracionesPage(container: unknown, path = "/configuraciones"
   );
 }
 
-function buildContainer() {
+function buildContainer(overrides: Record<string, unknown> = {}) {
   return {
     onboardingUseCase: {
       getWhatsappConnectionStatus: vitestModule.vi.fn(async () => ({
@@ -99,7 +99,20 @@ function buildContainer() {
       ]),
       activateOfficialTemplate: vitestModule.vi.fn(async () => undefined),
       deactivateOfficialTemplate: vitestModule.vi.fn(async () => undefined)
-    }
+    },
+    tenantUseCase: {
+      getProfile: vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        name: "Ana Garcia",
+        professionalName: "Dra. Ana Garcia"
+      })),
+      updateProfile: vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        name: "Ana Garcia",
+        professionalName: "Dra. Ana M. Garcia"
+      }))
+    },
+    ...overrides
   };
 }
 
@@ -124,6 +137,11 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
+    const conexionesTab = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Conexiones"
+    });
+    testingLibraryReactModule.fireEvent.click(conexionesTab);
+
     const googleButton = await testingLibraryReactModule.screen.findByRole("button", {
       name: "Conectar Google Calendar"
     });
@@ -131,6 +149,83 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     await testingLibraryReactModule.waitFor(() => {
       expect(assignSpy).toHaveBeenCalledWith("https://google.test/oauth");
+    });
+  });
+
+  vitestModule.it("renders Perfil tab by default and shows professional name input", async () => {
+    const container = buildContainer();
+
+    renderConfiguracionesPage(container);
+
+    const input = await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
+    vitestModule.expect(input).toBeInTheDocument();
+    await testingLibraryReactModule.waitFor(() => {
+      vitestModule.expect((input as HTMLInputElement).value).toBe("Dra. Ana Garcia");
+    });
+  });
+
+  vitestModule.it("shows empty input when professionalName is null", async () => {
+    const container = buildContainer({
+      tenantUseCase: {
+        getProfile: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          name: "Ana Garcia",
+          professionalName: null
+        })),
+        updateProfile: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          name: "Ana Garcia",
+          professionalName: null
+        }))
+      }
+    });
+
+    renderConfiguracionesPage(container);
+
+    const input = await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
+    vitestModule.expect((input as HTMLInputElement).value).toBe("");
+  });
+
+  vitestModule.it("submits updated professional name and shows success banner", async () => {
+    const updateProfileMock = vitestModule.vi.fn(async () => ({
+      tenantId: "tenant-1",
+      name: "Ana Garcia",
+      professionalName: "Dra. Ana M. Garcia"
+    }));
+    const container = buildContainer({
+      tenantUseCase: {
+        getProfile: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          name: "Ana Garcia",
+          professionalName: "Dra. Ana Garcia"
+        })),
+        updateProfile: updateProfileMock
+      }
+    });
+
+    renderConfiguracionesPage(container);
+
+    const input = await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
+    await testingLibraryReactModule.waitFor(() => {
+      vitestModule.expect((input as HTMLInputElement).value).toBe("Dra. Ana Garcia");
+    });
+    testingLibraryReactModule.fireEvent.change(input, {
+      target: { value: "Dra. Ana M. Garcia" }
+    });
+
+    const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
+    testingLibraryReactModule.fireEvent.click(saveButton);
+
+    await testingLibraryReactModule.waitFor(() => {
+      vitestModule.expect(updateProfileMock).toHaveBeenCalledWith({
+        professionalName: "Dra. Ana M. Garcia"
+      });
+    });
+
+    await testingLibraryReactModule.waitFor(() => {
+      vitestModule
+        .expect(testingLibraryReactModule.screen.getByText("Perfil actualizado."))
+        .toBeInTheDocument();
     });
   });
 

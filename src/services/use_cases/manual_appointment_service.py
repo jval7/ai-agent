@@ -62,14 +62,23 @@ class ManualAppointmentService:
         if patient is None:
             raise service_exceptions.EntityNotFoundError("patient not found")
 
+        motivo = self._normalize_text(create_dto.summary)
         summary = self._resolve_summary(create_dto.summary, patient)
+        event_title = self._build_event_title(
+            tenant_id=claims.tenant_id,
+            patient=patient,
+        )
         event = self._google_calendar_onboarding_service.create_event(
             tenant_id=claims.tenant_id,
             start_at=create_dto.start_at,
             end_at=create_dto.end_at,
-            summary=summary,
+            summary=event_title,
+            attendee_emails=[patient.email],
+            with_meet=create_dto.is_virtual,
+            description=motivo,
         )
         now_value = self._clock.now()
+        payment_updated_at = now_value if create_dto.payment_status == "PAID" else None
         appointment = manual_appointment_entity.ManualAppointment(
             id=self._id_generator.new_id(),
             tenant_id=claims.tenant_id,
@@ -80,6 +89,13 @@ class ManualAppointmentService:
             end_at=create_dto.end_at,
             timezone=create_dto.timezone,
             summary=summary,
+            is_virtual=create_dto.is_virtual,
+            meet_url=event.meet_url,
+            payment_amount_cop=create_dto.payment_amount_cop,
+            payment_currency=create_dto.payment_currency,
+            payment_method=create_dto.payment_method,
+            payment_status=create_dto.payment_status,
+            payment_updated_at=payment_updated_at,
             created_at=now_value,
             updated_at=now_value,
             cancelled_at=None,
@@ -131,13 +147,25 @@ class ManualAppointmentService:
 
         summary = self._normalize_text(input_dto.summary)
         resolved_summary = summary if summary is not None else appointment.summary
+        reschedule_patient = self._patient_repository.get_by_whatsapp_user(
+            claims.tenant_id, appointment.patient_whatsapp_user_id
+        )
+        reschedule_attendee_emails = (
+            [reschedule_patient.email] if reschedule_patient is not None else []
+        )
+        reschedule_event_title = self._build_event_title(
+            tenant_id=claims.tenant_id,
+            patient=reschedule_patient,
+        )
         updated_event = self._google_calendar_onboarding_service.update_event(
             tenant_id=claims.tenant_id,
             event_id=appointment.calendar_event_id,
             start_at=input_dto.start_at,
             end_at=input_dto.end_at,
             timezone=input_dto.timezone,
-            summary=resolved_summary,
+            summary=reschedule_event_title,
+            attendee_emails=reschedule_attendee_emails,
+            description=resolved_summary,
         )
         if self._reminder_service is not None:
             self._reminder_service.cancel_reminders_for_source(
@@ -256,6 +284,7 @@ class ManualAppointmentService:
 
         now_value = self._clock.now()
         appointment.payment_amount_cop = input_dto.payment_amount_cop
+        appointment.payment_currency = input_dto.payment_currency
         appointment.payment_method = input_dto.payment_method
         appointment.payment_status = input_dto.payment_status
         appointment.payment_updated_at = now_value
@@ -292,6 +321,22 @@ class ManualAppointmentService:
             },
         )
         return self._to_dto(appointment)
+
+    def _build_event_title(
+        self,
+        tenant_id: str,
+        patient: patient_entity.Patient | None,
+    ) -> str:
+        professional_name = self._google_calendar_onboarding_service.get_professional_name(
+            tenant_id
+        )
+        if not professional_name:
+            professional_name = "Profesional"
+        if patient is not None:
+            patient_full_name = f"{patient.first_name} {patient.last_name}"
+        else:
+            patient_full_name = "Paciente"
+        return f"{professional_name}/{patient_full_name}"
 
     def _resolve_summary(
         self,
@@ -333,7 +378,10 @@ class ManualAppointmentService:
             end_at=appointment.end_at,
             timezone=appointment.timezone,
             summary=appointment.summary,
+            is_virtual=appointment.is_virtual,
+            meet_url=appointment.meet_url,
             payment_amount_cop=appointment.payment_amount_cop,
+            payment_currency=appointment.payment_currency,
             payment_method=appointment.payment_method,
             payment_status=appointment.payment_status,
             payment_updated_at=appointment.payment_updated_at,

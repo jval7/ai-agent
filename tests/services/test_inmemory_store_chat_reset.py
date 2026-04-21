@@ -75,7 +75,6 @@ def test_chat_reset_clears_operational_data_but_keeps_integrations() -> None:
         last_name="Doe",
         email="jane@example.com",
         age=29,
-        consultation_reason="Ansiedad",
         location="Bogota",
         phone="573001112233",
         created_at=now_value,

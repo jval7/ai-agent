@@ -8,6 +8,7 @@ import type * as onboardingModel from "@domain/models/onboarding";
 import type * as patientModel from "@domain/models/patient";
 import type * as scheduledReminderModel from "@domain/models/scheduled_reminder";
 import type * as schedulingModel from "@domain/models/scheduling";
+import type * as tenantModel from "@domain/models/tenant";
 import type * as whatsappModel from "@domain/models/whatsapp";
 import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 import type * as backendApiPort from "@ports/backend_api_port";
@@ -480,8 +481,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         last_name: input.lastName,
         email: input.email,
         age: input.age,
-        consultation_reason: input.consultationReason,
         location: input.location,
+        phone_prefix: input.phonePrefix,
         phone: input.phone
       } satisfies httpTypes.CreatePatientApiRequest)
     });
@@ -502,8 +503,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
           last_name: input.lastName,
           email: input.email,
           age: input.age,
-          consultation_reason: input.consultationReason,
           location: input.location,
+          phone_prefix: input.phonePrefix,
           phone: input.phone
         } satisfies httpTypes.UpdatePatientApiRequest)
       }
@@ -548,7 +549,12 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
           start_at: input.startAt,
           end_at: input.endAt,
           timezone: input.timezone,
-          summary: input.summary
+          summary: input.summary,
+          is_virtual: input.isVirtual,
+          payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency,
+          payment_status: input.paymentStatus,
+          payment_method: input.paymentMethod
         } satisfies httpTypes.CreateManualAppointmentApiRequest)
       }
     );
@@ -603,6 +609,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         authRequired: true,
         body: JSON.stringify({
           payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency ?? "COP",
           payment_method: input.paymentMethod,
           payment_status: input.paymentStatus
         } satisfies httpTypes.UpdateManualAppointmentPaymentApiRequest)
@@ -710,7 +717,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         body: JSON.stringify({
           decision: input.decision,
           professional_note: input.professionalNote,
-          payment_amount_cop: input.paymentAmountCop
+          payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency
         } satisfies httpTypes.ResolvePaymentReviewApiRequest)
       }
     );
@@ -770,6 +778,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         authRequired: true,
         body: JSON.stringify({
           payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency,
           payment_method: input.paymentMethod,
           payment_status: input.paymentStatus
         } satisfies httpTypes.UpdateBookedSlotPaymentApiRequest)
@@ -804,6 +813,27 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       authRequired: true,
       body: JSON.stringify({ sandbox_enabled: enabled })
     });
+  }
+
+  async getTenantProfile(): Promise<tenantModel.TenantProfile> {
+    const payload = await this.request<httpTypes.TenantProfileResponse>("/v1/tenant/profile", {
+      method: "GET",
+      authRequired: true
+    });
+    return mapTenantProfile(payload);
+  }
+
+  async updateTenantProfile(
+    input: tenantModel.UpdateTenantProfileInput
+  ): Promise<tenantModel.TenantProfile> {
+    const payload = await this.request<httpTypes.TenantProfileResponse>("/v1/tenant/profile", {
+      method: "PUT",
+      authRequired: true,
+      body: JSON.stringify({
+        professional_name: input.professionalName
+      } satisfies httpTypes.UpdateTenantProfileRequest)
+    });
+    return mapTenantProfile(payload);
   }
 
   async listWhatsappTemplates(): Promise<whatsappTemplateModel.WhatsappTemplate[]> {
@@ -1053,8 +1083,8 @@ function mapPatient(payload: httpTypes.PatientApiResponse): patientModel.Patient
     lastName: payload.last_name,
     email: payload.email,
     age: payload.age,
-    consultationReason: payload.consultation_reason,
     location: payload.location,
+    phonePrefix: payload.phone_prefix ?? null,
     phone: payload.phone,
     createdAt: payload.created_at
   };
@@ -1073,7 +1103,10 @@ function mapManualAppointment(
     endAt: payload.end_at,
     timezone: payload.timezone,
     summary: payload.summary,
+    isVirtual: payload.is_virtual,
+    meetUrl: payload.meet_url,
     paymentAmountCop: payload.payment_amount_cop ?? null,
+    paymentCurrency: payload.payment_currency ?? "COP",
     paymentMethod: payload.payment_method ?? null,
     paymentStatus: payload.payment_status ?? "PENDING",
     paymentUpdatedAt: payload.payment_updated_at ?? null,
@@ -1114,6 +1147,14 @@ function mapOfficialTemplateStatus(raw: {
   };
 }
 
+function mapTenantProfile(payload: httpTypes.TenantProfileResponse): tenantModel.TenantProfile {
+  return {
+    tenantId: payload.tenant_id,
+    name: payload.name,
+    professionalName: payload.professional_name
+  };
+}
+
 function mapSchedulingRequestSummary(
   payload: httpTypes.SchedulingRequestSummaryApiResponse
 ): schedulingModel.SchedulingRequestSummary {
@@ -1139,6 +1180,7 @@ function mapSchedulingRequestSummary(
     selectedSlotId: payload.selected_slot_id,
     calendarEventId: payload.calendar_event_id,
     paymentAmountCop: payload.payment_amount_cop ?? null,
+    paymentCurrency: payload.payment_currency ?? "COP",
     paymentMethod: payload.payment_method ?? null,
     paymentStatus: payload.payment_status ?? "PENDING",
     paymentUpdatedAt: payload.payment_updated_at ?? null,

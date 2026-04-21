@@ -218,7 +218,6 @@ def test_process_payload_injects_known_patient_context_into_system_prompt() -> N
         last_name="Doe",
         email="jane@example.com",
         age=29,
-        consultation_reason="Ansiedad",
         location="Bogota",
         phone="573001112233",
         created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),

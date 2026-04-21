@@ -35,6 +35,7 @@ class GoogleCalendarEventDTO(pydantic.BaseModel):
     event_id: str
     start_at: datetime.datetime
     end_at: datetime.datetime
+    meet_url: str | None = None
 
 
 class GoogleCalendarConnectionStatusDTO(pydantic.BaseModel):

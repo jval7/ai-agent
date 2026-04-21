@@ -231,7 +231,7 @@ def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
         ),
     )
 
@@ -242,7 +242,7 @@ def test_confirm_selected_slot_marks_conflict_when_busy() -> None:
 
 
 def test_confirm_selected_slot_creates_event_when_available() -> None:
-    service, repository, provider, _ = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1", "conf-req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -264,17 +264,17 @@ def test_confirm_selected_slot_creates_event_when_available() -> None:
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
         ),
     )
 
     assert result.status == "BOOKED"
     assert result.calendar_event_id == "event-1"
-    assert provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+    assert provider.created_event_summaries == ["Test Professional/Jane Doe"]
 
 
 def test_confirm_selected_slot_archives_active_chat_messages_into_subsession() -> None:
-    service, repository, _, _ = build_service(["req-1"])
+    service, repository, _, _ = build_service(["req-1", "conf-req-1"])
     conversation_repository = service._conversation_repository
     conversation_repository.save_message(
         message_entity.Message(
@@ -321,7 +321,7 @@ def test_confirm_selected_slot_archives_active_chat_messages_into_subsession() -
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
         ),
     )
 
@@ -352,7 +352,7 @@ def test_confirm_selected_slot_archives_active_chat_messages_into_subsession() -
 
 
 def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None:
-    service, repository, provider, _ = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1", "conf-req-1"])
     provider.create_event_errors = [
         service_exceptions.ExternalProviderError(
             "google calendar create event failed (status=409, detail=conflict)"
@@ -379,7 +379,7 @@ def test_confirm_selected_slot_treats_google_conflict_as_slot_conflict() -> None
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
         ),
     )
 
@@ -466,7 +466,7 @@ def test_select_slot_for_confirmation_switches_selected_slot() -> None:
 
 
 def test_confirm_selected_slot_accepts_selected_slot_status() -> None:
-    service, repository, provider, _ = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1", "conf-req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -489,12 +489,12 @@ def test_confirm_selected_slot_accepts_selected_slot_status() -> None:
         input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
             request_id=request.request_id,
             slot_id="slot-1",
-            event_summary="Jane Doe/ Psi. Alejandra Escobar",
+            event_summary="Test Professional/Jane Doe",
         ),
     )
 
     assert result.status == "BOOKED"
-    assert provider.created_event_summaries == ["Jane Doe/ Psi. Alejandra Escobar"]
+    assert provider.created_event_summaries == ["Test Professional/Jane Doe"]
 
 
 def test_reschedule_booked_slot_updates_booked_request() -> None:
@@ -643,6 +643,44 @@ def test_update_booked_payment_updates_request() -> None:
     assert reloaded.payment_status == "PAID"
 
 
+def test_update_booked_payment_persists_usd_currency() -> None:
+    service, repository, _, _ = build_service(["req-1"])
+    request = create_awaiting_review_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "BOOKED"
+    stored.selected_slot_id = "slot-1"
+    stored.calendar_event_id = "event-1"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="BOOKED",
+        )
+    ]
+    repository.save_request(stored)
+
+    updated = service.update_booked_payment(
+        tenant_id="tenant-1",
+        request_id=request.request_id,
+        input_dto=scheduling_dto.UpdateBookedSlotPaymentInputDTO(
+            payment_amount_cop=120,
+            payment_currency="USD",
+            payment_method="TRANSFER",
+            payment_status="PAID",
+        ),
+    )
+
+    assert updated.payment_amount_cop == 120
+    assert updated.payment_currency == "USD"
+    assert updated.payment_status == "PAID"
+    reloaded = repository.get_request_by_id("tenant-1", request.request_id)
+    assert reloaded is not None
+    assert reloaded.payment_currency == "USD"
+
+
 def test_update_booked_payment_dto_rejects_non_positive_amount() -> None:
     with pytest.raises(pydantic.ValidationError):
         scheduling_dto.UpdateBookedSlotPaymentInputDTO(
@@ -656,7 +694,7 @@ def test_update_booked_payment_dto_rejects_non_positive_amount() -> None:
 
 
 def test_auto_close_task_scheduled_on_booking() -> None:
-    service, repository, provider, task_sched = build_service(["req-1"])
+    service, repository, provider, task_sched = build_service(["req-1", "conf-req-1"])
     request_id = _book_request(service, repository, provider)
     assert len(task_sched.scheduled_tasks) == 1
     task = task_sched.scheduled_tasks[0]
@@ -666,7 +704,7 @@ def test_auto_close_task_scheduled_on_booking() -> None:
 
 
 def test_auto_close_closes_booked_request() -> None:
-    service, repository, provider, _ = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1", "conf-req-1"])
     request_id = _book_request(service, repository, provider)
     result = service.auto_close_booked_request("tenant-1", request_id)
     assert result == {"status": "SESSION_CLOSED", "action": "closed"}
@@ -676,7 +714,7 @@ def test_auto_close_closes_booked_request() -> None:
 
 
 def test_auto_close_skips_non_booked_request() -> None:
-    service, repository, provider, _ = build_service(["req-1"])
+    service, repository, provider, _ = build_service(["req-1", "conf-req-1"])
     request_id = _book_request(service, repository, provider)
     stored = repository.get_request_by_id("tenant-1", request_id)
     assert stored is not None
@@ -693,7 +731,7 @@ def test_auto_close_raises_for_missing_request() -> None:
 
 
 def test_auto_close_task_failure_does_not_break_booking() -> None:
-    service, repository, _provider, task_sched = build_service(["req-1"])
+    service, repository, _provider, task_sched = build_service(["req-1", "conf-req-1"])
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
@@ -727,3 +765,71 @@ def test_auto_close_task_failure_does_not_break_booking() -> None:
     reloaded = repository.get_request_by_id("tenant-1", request.request_id)
     assert reloaded is not None
     assert reloaded.status == "BOOKED"
+
+
+def test_confirm_slot_virtual_modality_passes_with_meet_true() -> None:
+    service, repository, provider, _ = build_service(["req-1", "conf-req-1"])
+    request = create_awaiting_review_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "AWAITING_PATIENT_CHOICE"
+    stored.appointment_modality = "VIRTUAL"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="PROPOSED",
+        )
+    ]
+    repository.save_request(stored)
+
+    result = service.confirm_selected_slot_and_create_event(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
+            request_id=request.request_id,
+            slot_id="slot-1",
+            event_summary="Test Professional/Jane Doe",
+            attendee_emails=["jane@example.com"],
+        ),
+    )
+
+    assert result.status == "BOOKED"
+    assert provider.last_create_with_meet == [True]
+    assert provider.last_create_attendee_emails == [["jane@example.com"]]
+
+
+def test_confirm_slot_presencial_modality_passes_with_meet_false() -> None:
+    service, repository, provider, _ = build_service(["req-1", "conf-req-1"])
+    request = create_awaiting_review_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "AWAITING_PATIENT_CHOICE"
+    stored.appointment_modality = "PRESENCIAL"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="PROPOSED",
+        )
+    ]
+    repository.save_request(stored)
+
+    result = service.confirm_selected_slot_and_create_event(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
+            request_id=request.request_id,
+            slot_id="slot-1",
+            event_summary="Test Professional/Jane Doe",
+            attendee_emails=["jane@example.com"],
+        ),
+    )
+
+    assert result.status == "BOOKED"
+    assert provider.last_create_with_meet == [False]
+    assert provider.last_create_attendee_emails == [["jane@example.com"]]

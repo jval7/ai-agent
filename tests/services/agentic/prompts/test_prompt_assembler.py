@@ -17,7 +17,6 @@ def _build_patient() -> patient_entity.Patient:
         last_name="Garcia",
         email="maria@test.com",
         age=30,
-        consultation_reason="Ansiedad",
         location="Bogota",
         phone="+573001234567",
         created_at=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),

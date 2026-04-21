@@ -102,7 +102,12 @@ export function ClientsPage() {
                     <p className="mt-1 text-xs text-slate-600">
                       WhatsApp: {patient.whatsappUserId}
                     </p>
-                    <p className="text-xs text-slate-600">Telefono: {patient.phone}</p>
+                    <p className="text-xs text-slate-600">
+                      Telefono:{" "}
+                      {patient.phonePrefix !== null && patient.phonePrefix !== ""
+                        ? `${patient.phonePrefix} ${patient.phone}`
+                        : patient.phone}
+                    </p>
                     <p className="text-xs text-slate-600">Ubicacion: {patient.location}</p>
                     <p className="mt-1 text-[11px] text-slate-500">
                       Creado: {dateUtilsModule.formatDateTime(patient.createdAt)}
@@ -134,17 +139,17 @@ export function ClientsPage() {
                     <strong>WhatsApp ID:</strong> {patientDetailQuery.data.whatsappUserId}
                   </p>
                   <p>
-                    <strong>Telefono:</strong> {patientDetailQuery.data.phone}
+                    <strong>Telefono:</strong>{" "}
+                    {patientDetailQuery.data.phonePrefix !== null &&
+                    patientDetailQuery.data.phonePrefix !== ""
+                      ? `${patientDetailQuery.data.phonePrefix} ${patientDetailQuery.data.phone}`
+                      : patientDetailQuery.data.phone}
                   </p>
                   <p>
                     <strong>Email:</strong> {patientDetailQuery.data.email}
                   </p>
                   <p>
                     <strong>Edad:</strong> {patientDetailQuery.data.age}
-                  </p>
-                  <p>
-                    <strong>Motivo de consulta:</strong>{" "}
-                    {patientDetailQuery.data.consultationReason}
                   </p>
                   <p>
                     <strong>Ubicacion:</strong> {patientDetailQuery.data.location}

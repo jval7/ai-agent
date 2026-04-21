@@ -159,7 +159,6 @@ def _seed_patient(
             last_name="Doe",
             email="jane@example.com",
             age=30,
-            consultation_reason="Ansiedad",
             location="Bogota",
             phone="573001112233",
             created_at=_NOW,
@@ -184,9 +183,9 @@ def _seed_profile_with_templates(
 
 
 def test_update_payment_pending_to_paid_triggers_template_swap() -> None:
-    # IDs: appt-1, reminder-1 (payment), reminder-2 (attendance after swap)
+    # IDs: conference-req-1 (gcal), appt-1, reminder-1 (payment), reminder-2 (attendance after swap)
     appointment_svc, _, agent_profile_repo, reminder_repo, patient_repo, _ = _build_context(
-        ["appt-1", "reminder-1", "reminder-2"]
+        ["conference-req-1", "appt-1", "reminder-1", "reminder-2"]
     )
     _seed_patient(patient_repo)
     _seed_profile_with_templates(agent_profile_repo)
@@ -199,6 +198,7 @@ def test_update_payment_pending_to_paid_triggers_template_swap() -> None:
             end_at=_APPT_FAR_END,
             timezone="America/Bogota",
             summary="Cita Jane",
+            payment_amount_cop=100000,
         ),
     )
 
@@ -233,7 +233,7 @@ def test_update_payment_pending_to_paid_triggers_template_swap() -> None:
 def test_update_payment_no_swap_when_already_paid() -> None:
     """If payment_status was already PAID, no swap triggered."""
     appointment_svc, _, agent_profile_repo, reminder_repo, patient_repo, _ = _build_context(
-        ["appt-1", "reminder-1"]
+        ["conference-req-1", "appt-1", "reminder-1"]
     )
     _seed_patient(patient_repo)
     _seed_profile_with_templates(agent_profile_repo)
@@ -246,6 +246,7 @@ def test_update_payment_no_swap_when_already_paid() -> None:
             end_at=_APPT_FAR_END,
             timezone="America/Bogota",
             summary="Cita Jane",
+            payment_amount_cop=100000,
         ),
     )
 

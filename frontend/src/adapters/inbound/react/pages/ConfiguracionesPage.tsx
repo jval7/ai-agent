@@ -18,6 +18,7 @@ const onboardingStatusQueryKey = ["onboarding-status"] as const;
 const promptQueryKey = ["system-prompt"] as const;
 const settingsQueryKey = ["agent-settings"] as const;
 const officialTemplateStatusQueryKey = ["official-template-status"] as const;
+const tenantProfileQueryKey = ["tenant-profile"] as const;
 
 function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   if (status === undefined) {
@@ -33,9 +34,10 @@ function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   return <statusBadgeModule.StatusBadge label="DISCONNECTED" tone="danger" />;
 }
 
-type ConfigTab = "conexiones" | "prompt" | "ajustes";
+type ConfigTab = "perfil" | "conexiones" | "prompt" | "ajustes";
 
 const CONFIG_TABS: { id: ConfigTab; label: string }[] = [
+  { id: "perfil", label: "Perfil" },
   { id: "conexiones", label: "Conexiones" },
   { id: "prompt", label: "System Prompt" },
   { id: "ajustes", label: "Ajustes del agente" }
@@ -50,7 +52,7 @@ export function ConfiguracionesPage() {
     [location.search]
   );
 
-  const [activeTab, setActiveTab] = reactModule.useState<ConfigTab>("conexiones");
+  const [activeTab, setActiveTab] = reactModule.useState<ConfigTab>("perfil");
 
   // --- Onboarding queries ---
   const whatsappConnectionQuery = reactQueryModule.useQuery({
@@ -234,6 +236,43 @@ export function ConfiguracionesPage() {
     }
   });
 
+  // --- Tenant profile ---
+  const profileQuery = reactQueryModule.useQuery({
+    queryKey: tenantProfileQueryKey,
+    queryFn: () => appContainer.tenantUseCase.getProfile()
+  });
+
+  const [profileDraft, setProfileDraft] = reactModule.useState({ professionalName: "" });
+  const [profileSuccessMessage, setProfileSuccessMessage] = reactModule.useState<string | null>(
+    null
+  );
+
+  reactModule.useEffect(() => {
+    if (profileQuery.data !== undefined) {
+      setProfileDraft({ professionalName: profileQuery.data.professionalName ?? "" });
+    }
+  }, [profileQuery.data]);
+
+  const profileMutation = reactQueryModule.useMutation({
+    mutationFn: () =>
+      appContainer.tenantUseCase.updateProfile({
+        professionalName: profileDraft.professionalName.trim() || null
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantProfileQueryKey });
+      setProfileSuccessMessage("Perfil actualizado.");
+    }
+  });
+
+  const profileErrorMessage = uiErrorModule.resolveUiErrorMessage([
+    profileMutation.error,
+    profileQuery.error
+  ]);
+
+  const savedProfessionalName = profileQuery.data?.professionalName ?? null;
+  const profileDraftTrimmed = profileDraft.professionalName.trim() || null;
+  const isProfileDirty = profileDraftTrimmed !== savedProfessionalName;
+
   const promptErrorMessage = uiErrorModule.resolveUiErrorMessage([
     updateMutation.error,
     promptQuery.error
@@ -290,6 +329,63 @@ export function ConfiguracionesPage() {
           </button>
         ))}
       </nav>
+
+      {/* --- Perfil --- */}
+      {activeTab === "perfil" ? (
+        <section className="mt-6 max-w-2xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+          <h3 className="text-xl font-semibold text-brand-ink">Perfil del profesional</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Este nombre aparece en los titulos de los eventos de Google Calendar cuando agendas una
+            cita.
+          </p>
+
+          <div className="mt-6">
+            <label className="block text-sm font-medium text-slate-700" htmlFor="professional-name">
+              Nombre del profesional
+            </label>
+            <input
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={profileQuery.isLoading}
+              id="professional-name"
+              maxLength={80}
+              onChange={(e) => {
+                setProfileDraft({ professionalName: e.target.value });
+                setProfileSuccessMessage(null);
+              }}
+              placeholder="Ej. Dra. Ana Garcia"
+              type="text"
+              value={profileDraft.professionalName}
+            />
+            <p className="mt-1.5 text-xs text-slate-500">
+              Formato del titulo en Calendar: {"{tu nombre}"}/{"{nombre del paciente}"}. Si dejas
+              este campo vacio se usara "Profesional" por defecto.
+            </p>
+          </div>
+
+          {profileSuccessMessage !== null ? (
+            <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {profileSuccessMessage}
+            </div>
+          ) : null}
+
+          {profileErrorMessage !== null ? (
+            <errorBannerModule.ErrorBanner className="mt-3" message={profileErrorMessage} />
+          ) : null}
+
+          <div className="mt-6 flex justify-end">
+            <button
+              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={profileMutation.isPending || profileQuery.isLoading || !isProfileDirty}
+              onClick={() => {
+                profileMutation.mutate();
+              }}
+              type="button"
+            >
+              {profileMutation.isPending ? "Guardando..." : "Guardar"}
+            </button>
+          </div>
+        </section>
+      ) : null}
 
       {/* --- Conexiones --- */}
       {activeTab === "conexiones" ? (

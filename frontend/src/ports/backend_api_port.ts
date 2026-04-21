@@ -8,6 +8,7 @@ import type * as onboardingModel from "@domain/models/onboarding";
 import type * as patientModel from "@domain/models/patient";
 import type * as scheduledReminderModel from "@domain/models/scheduled_reminder";
 import type * as schedulingModel from "@domain/models/scheduling";
+import type * as tenantModel from "@domain/models/tenant";
 import type * as whatsappModel from "@domain/models/whatsapp";
 import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 
@@ -119,6 +120,11 @@ export interface BackendApiPort {
     input: schedulingModel.UpdateBookedSlotPaymentInput
   ): Promise<schedulingModel.SchedulingRequestSummary>;
   closeSession(conversationId: string): Promise<{ status: string }>;
+
+  getTenantProfile(): Promise<tenantModel.TenantProfile>;
+  updateTenantProfile(
+    input: tenantModel.UpdateTenantProfileInput
+  ): Promise<tenantModel.TenantProfile>;
 
   getDevFeatures(): Promise<{ enabled: boolean; sandbox_enabled: boolean | null }>;
   updateSandboxMode(enabled: boolean): Promise<{ sandbox_enabled: boolean }>;

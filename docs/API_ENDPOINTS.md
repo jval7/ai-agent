@@ -371,14 +371,15 @@ Este documento describe qué hace cada endpoint del backend.
       "last_name": "Doe",
       "email": "jane@example.com",
       "age": 29,
-      "consultation_reason": "Ansiedad",
       "location": "Bogota",
+      "phone_prefix": "+57",
       "phone": "573001234567",
       "created_at": "2026-03-02T00:44:28Z"
     }
   ]
 }
 ```
+- `phone_prefix` es `string | null` (opcional). El chatbot no lo captura separado, por lo que pacientes creados por el bot tienen `null`. Pacientes creados desde el panel manual lo traen requerido.
 
 ### `GET /v1/patients/{whatsapp_user_id}`
 - Auth: sí (owner)
@@ -392,8 +393,8 @@ Este documento describe qué hace cada endpoint del backend.
   "last_name": "Doe",
   "email": "jane@example.com",
   "age": 29,
-  "consultation_reason": "Ansiedad",
   "location": "Bogota",
+  "phone_prefix": "+57",
   "phone": "573001234567",
   "created_at": "2026-03-02T00:44:28Z"
 }
@@ -410,11 +411,12 @@ Este documento describe qué hace cada endpoint del backend.
   "last_name": "Doe",
   "email": "jane@example.com",
   "age": 29,
-  "consultation_reason": "Ansiedad",
   "location": "Bogota",
+  "phone_prefix": "+57",
   "phone": "573001234567"
 }
 ```
+- `phone_prefix`: opcional en el backend (`string | null`), requerido en la UI del panel manual.
 - Response body: igual que `GET /v1/patients/{whatsapp_user_id}`.
 
 ### `PUT /v1/patients/{whatsapp_user_id}`
@@ -590,7 +592,9 @@ Este documento describe qué hace cada endpoint del backend.
       "payment_updated_at": null,
       "created_at": "2026-03-15T10:00:00Z",
       "updated_at": "2026-03-15T10:00:00Z",
-      "cancelled_at": null
+      "cancelled_at": null,
+      "is_virtual": true,
+      "meet_url": "https://meet.google.com/abc-defg-hij"
     }
   ]
 }
@@ -598,7 +602,7 @@ Este documento describe qué hace cada endpoint del backend.
 
 ### `POST /v1/manual-appointments`
 - Auth: sí
-- Qué hace: crea una cita manual con evento en Google Calendar.
+- Qué hace: crea una cita manual con evento en Google Calendar. El paciente recibe una invitación por correo desde la cuenta del profesional (vía `sendUpdates=all`). Si `is_virtual` es true, el evento incluye link de Google Meet.
 - Request body:
 ```json
 {
@@ -606,11 +610,13 @@ Este documento describe qué hace cada endpoint del backend.
   "start_at": "2026-03-20T09:00:00-05:00",
   "end_at": "2026-03-20T10:00:00-05:00",
   "timezone": "America/Bogota",
-  "summary": "Consulta inicial"
+  "summary": "Consulta inicial",
+  "is_virtual": true
 }
 ```
+- `is_virtual` (opcional, default `true`): si `true`, el evento incluye un link de Google Meet que se genera automáticamente.
 - Validación: `end_at` debe ser posterior a `start_at`.
-- Response: `201 Created` con el objeto de cita completo.
+- Response: `201 Created` con el objeto de cita completo, incluyendo `is_virtual` y `meet_url` (el `meet_url` es `null` si la cita es presencial).
 
 ### `PUT /v1/manual-appointments/{appointment_id}/reschedule`
 - Auth: sí
