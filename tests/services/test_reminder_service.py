@@ -1,4 +1,5 @@
 import datetime
+import zoneinfo
 
 import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.inmemory.scheduled_reminder_repository_adapter as scheduled_reminder_repository_adapter
@@ -184,6 +185,64 @@ def test_maybe_schedule_skips_when_payment_template_missing_for_pending() -> Non
 
     assert reminder_repo.list_by_tenant("tenant-1") == []
     assert task_sched.scheduled_tasks == []
+
+
+# ---------------------------------------------------------------------------
+# reminder_scheduled_for computation (hora 12pm Bogota, no domingos)
+# ---------------------------------------------------------------------------
+
+
+def test_maybe_schedule_forces_noon_bogota_and_shifts_sunday_to_saturday() -> None:
+    """Cita lunes → base es domingo → corre a sábado 12pm Bogota."""
+    profile = _make_profile(attendance_name="appointment_reminder_attendance", days_before=1)
+    service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
+
+    # Cita lunes 2026-01-05 10am Bogota (= 15:00 UTC).
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 5, 10, 0, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-monday",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Jane",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+    )
+
+    reminders = reminder_repo.list_by_tenant("tenant-1")
+    assert len(reminders) == 1
+    scheduled_for = reminders[0].reminder_scheduled_for.astimezone(bogota)
+    assert scheduled_for == datetime.datetime(2026, 1, 3, 12, 0, tzinfo=bogota)  # Sábado 12pm
+    assert scheduled_for.weekday() == 5  # Saturday
+
+
+def test_maybe_schedule_forces_noon_bogota_when_no_sunday_shift_needed() -> None:
+    """Cita viernes → base es miércoles → se queda miércoles 12pm Bogota."""
+    profile = _make_profile(attendance_name="appointment_reminder_attendance", days_before=2)
+    service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    # Cita viernes 2026-01-09 07:30 Bogota (hora arbitraria temprana).
+    appointment = datetime.datetime(2026, 1, 9, 7, 30, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-friday",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Jane",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+    )
+
+    reminders = reminder_repo.list_by_tenant("tenant-1")
+    assert len(reminders) == 1
+    scheduled_for = reminders[0].reminder_scheduled_for.astimezone(bogota)
+    # Miércoles 2026-01-07 12:00 Bogota (no domingo, solo normaliza la hora).
+    assert scheduled_for == datetime.datetime(2026, 1, 7, 12, 0, tzinfo=bogota)
+    assert scheduled_for.weekday() == 2  # Wednesday
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import datetime
 import typing
+import zoneinfo
 
 import src.domain.entities.scheduled_reminder as scheduled_reminder_entity
 import src.domain.official_reminder_templates as official_reminder_templates
@@ -16,6 +17,13 @@ import src.services.dto.scheduled_reminder_dto as scheduled_reminder_dto
 import src.services.exceptions as service_exceptions
 
 logger = app_logs.get_logger(__name__)
+
+# Business rule: reminders are sent at noon local time in Bogota, and never on
+# Sundays. When the naive shifted datetime falls on a Sunday, we move it back
+# one day so the message lands on Saturday instead.
+_REMINDER_TIMEZONE = zoneinfo.ZoneInfo("America/Bogota")
+_REMINDER_HOUR_LOCAL = 12
+_SUNDAY_WEEKDAY = 6
 
 
 class ReminderService(reminder_service_port.ReminderServicePort):
@@ -77,7 +85,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
 
         template_language = "es"
         now_value = self._clock.now()
-        reminder_datetime = appointment_start_at - datetime.timedelta(days=days_before)
+        reminder_datetime = _compute_reminder_datetime(appointment_start_at, days_before)
         delay_seconds = int((reminder_datetime - now_value).total_seconds())
 
         if delay_seconds <= 0:
@@ -441,3 +449,28 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             status=reminder.status,
             created_at=reminder.created_at,
         )
+
+
+def _compute_reminder_datetime(
+    appointment_start_at: datetime.datetime,
+    days_before: int,
+) -> datetime.datetime:
+    """Compute the moment to send the reminder.
+
+    Rules:
+    - Send ``days_before`` days before the appointment.
+    - Force the local (America/Bogota) time to 12:00 so reminders never go out
+      at odd hours regardless of when the appointment itself is.
+    - Never land on a Sunday: if the computed date is Sunday, move it one day
+      earlier so it lands on Saturday instead.
+    """
+    shifted = appointment_start_at - datetime.timedelta(days=days_before)
+    local_datetime = shifted.astimezone(_REMINDER_TIMEZONE).replace(
+        hour=_REMINDER_HOUR_LOCAL,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if local_datetime.weekday() == _SUNDAY_WEEKDAY:
+        local_datetime = local_datetime - datetime.timedelta(days=1)
+    return local_datetime
