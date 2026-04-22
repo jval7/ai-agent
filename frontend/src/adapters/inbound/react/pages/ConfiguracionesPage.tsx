@@ -4,6 +4,8 @@ import * as reactRouterDomModule from "react-router-dom";
 
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
+import * as billingDisclosureModalModule from "@adapters/inbound/react/components/BillingDisclosureModal";
+import * as billingPreflightModalModule from "@adapters/inbound/react/components/BillingPreflightModal";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
@@ -162,6 +164,9 @@ export function ConfiguracionesPage() {
 
   const [debounceDelay, setDebounceDelay] = reactModule.useState(0);
   const [reminderDaysBefore, setReminderDaysBefore] = reactModule.useState(1);
+  const [activationStep, setActivationStep] = reactModule.useState<
+    "idle" | "disclosure" | "preflight"
+  >("idle");
 
   reactModule.useEffect(() => {
     if (settingsQuery.data !== undefined) {
@@ -716,7 +721,7 @@ export function ConfiguracionesPage() {
                   className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={activateAllMutation.isPending}
                   onClick={() => {
-                    activateAllMutation.mutate();
+                    setActivationStep("disclosure");
                   }}
                   type="button"
                 >
@@ -728,6 +733,27 @@ export function ConfiguracionesPage() {
                 </p>
               </div>
             ) : null}
+
+            <billingDisclosureModalModule.BillingDisclosureModal
+              isOpen={activationStep === "disclosure"}
+              onCancel={() => {
+                setActivationStep("idle");
+              }}
+              onContinue={() => {
+                setActivationStep("preflight");
+              }}
+            />
+            <billingPreflightModalModule.BillingPreflightModal
+              defaultPhoneNumber={settingsQuery.data?.reminderBillingTestPhoneNumber ?? ""}
+              isOpen={activationStep === "preflight"}
+              onCancel={() => {
+                setActivationStep("idle");
+              }}
+              onSuccess={() => {
+                setActivationStep("idle");
+                activateAllMutation.mutate();
+              }}
+            />
 
             {reminderSetupState === "preparing" ? (
               <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">

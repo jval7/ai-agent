@@ -65,6 +65,7 @@ import src.services.use_cases.scheduling_service as scheduling_service
 import src.services.use_cases.tag_service as tag_service
 import src.services.use_cases.tenant_profile_service as tenant_profile_service
 import src.services.use_cases.webhook_service as webhook_service
+import src.services.use_cases.whatsapp_billing_service as whatsapp_billing_service
 import src.services.use_cases.whatsapp_onboarding_service as whatsapp_onboarding_service
 import src.services.use_cases.whatsapp_template_service as whatsapp_template_service
 
@@ -263,6 +264,12 @@ class AppContainer:
             agent_profile_repository=self.agent_profile_repository,
             clock=self.clock_adapter,
             reminder_service=self.reminder_service,
+        )
+        self.whatsapp_billing_service = whatsapp_billing_service.WhatsappBillingService(
+            whatsapp_provider=self.whatsapp_provider_adapter,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
+            agent_profile_repository=self.agent_profile_repository,
+            clock=self.clock_adapter,
         )
         self.scheduling_service = scheduling_service.SchedulingService(
             scheduling_repository=self.scheduling_repository,

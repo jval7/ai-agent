@@ -200,6 +200,84 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
 
         return outbound_message_id
 
+    def send_hello_world_preflight(
+        self,
+        access_token: str,
+        phone_number_id: str,
+        recipient_phone_e164: str,
+    ) -> str:
+        messages_url = (
+            f"https://graph.facebook.com/{self._settings.meta_api_version}"
+            f"/{phone_number_id}/messages"
+        )
+        headers = {"Authorization": f"Bearer {access_token}"}
+        recipient_normalized = recipient_phone_e164.lstrip("+")
+        body = {
+            "messaging_product": "whatsapp",
+            "to": recipient_normalized,
+            "type": "template",
+            "template": {
+                "name": "hello_world",
+                "language": {"code": "en_US"},
+                "components": [],
+            },
+        }
+
+        try:
+            response = self._client.post(messages_url, headers=headers, json=body)
+        except httpx.TimeoutException as error:
+            raise service_exceptions.WhatsappPreflightError(
+                "timeout while sending billing preflight to whatsapp"
+            ) from error
+        except httpx.RequestError as error:
+            raise service_exceptions.WhatsappPreflightError(
+                "network error while sending billing preflight to whatsapp"
+            ) from error
+
+        if response.is_success:
+            try:
+                payload = response.json()
+            except json.JSONDecodeError as error:
+                raise service_exceptions.WhatsappPreflightError(
+                    "invalid response while sending billing preflight to whatsapp"
+                ) from error
+            messages = payload.get("messages") if isinstance(payload, dict) else None
+            if isinstance(messages, list) and messages and isinstance(messages[0], dict):
+                outbound_id = messages[0].get("id")
+                if isinstance(outbound_id, str) and outbound_id:
+                    return outbound_id
+            raise service_exceptions.WhatsappPreflightError(
+                "meta did not return outbound message id for billing preflight"
+            )
+
+        # Error path: parse Meta's structured error to surface code 131042 distinctly.
+        meta_error_code: int | None = None
+        meta_error_message: str = ""
+        try:
+            error_payload = response.json()
+        except json.JSONDecodeError:
+            error_payload = None
+        if isinstance(error_payload, dict):
+            error_obj = error_payload.get("error")
+            if isinstance(error_obj, dict):
+                raw_code = error_obj.get("code")
+                if isinstance(raw_code, int):
+                    meta_error_code = raw_code
+                raw_message = error_obj.get("message")
+                if isinstance(raw_message, str):
+                    meta_error_message = raw_message
+
+        if meta_error_code == 131042:
+            raise service_exceptions.WhatsappBillingNotConfiguredError(
+                meta_error_message
+                or "whatsapp business account is missing a payment method (meta error 131042)"
+            )
+        raise service_exceptions.WhatsappPreflightError(
+            meta_error_message
+            or f"meta rejected billing preflight with status {response.status_code}",
+            meta_error_code=meta_error_code,
+        )
+
     def parse_incoming_message_events(
         self, payload: dict[str, typing.Any]
     ) -> list[webhook_dto.IncomingMessageEventDTO]:

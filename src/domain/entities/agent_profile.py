@@ -12,6 +12,7 @@ class AgentProfile(pydantic.BaseModel):
     appointment_reminder_days_before: int | None = None
     appointment_reminder_attendance_template_name: str | None = None
     appointment_reminder_payment_template_name: str | None = None
+    reminder_billing_test_phone_number: str | None = None
     updated_at: datetime.datetime
 
     @pydantic.field_validator("system_prompt")

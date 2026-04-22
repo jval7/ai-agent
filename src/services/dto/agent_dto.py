@@ -62,3 +62,4 @@ class AgentSettingsResponseDTO(pydantic.BaseModel):
     appointment_reminder_days_before: int | None
     appointment_reminder_attendance_template_name: str | None
     appointment_reminder_payment_template_name: str | None
+    reminder_billing_test_phone_number: str | None
