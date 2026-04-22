@@ -161,13 +161,11 @@ export function ConfiguracionesPage() {
   });
 
   const [debounceDelay, setDebounceDelay] = reactModule.useState(0);
-  const [reminderEnabled, setReminderEnabled] = reactModule.useState(false);
   const [reminderDaysBefore, setReminderDaysBefore] = reactModule.useState(1);
 
   reactModule.useEffect(() => {
     if (settingsQuery.data !== undefined) {
       setDebounceDelay(settingsQuery.data.messageDebounceDelaySeconds);
-      setReminderEnabled(settingsQuery.data.appointmentReminderEnabled);
       setReminderDaysBefore(settingsQuery.data.appointmentReminderDaysBefore ?? 1);
     }
   }, [settingsQuery.data]);
@@ -257,12 +255,14 @@ export function ConfiguracionesPage() {
     }
   });
 
+  const isReminderActive = reminderSetupState === "active";
+
   const settingsMutation = reactQueryModule.useMutation({
     mutationFn: () =>
       appContainer.agentUseCase.updateAgentSettings({
         messageDebounceDelaySeconds: debounceDelay,
-        appointmentReminderEnabled: reminderEnabled,
-        appointmentReminderDaysBefore: reminderEnabled ? reminderDaysBefore : null,
+        appointmentReminderEnabled: isReminderActive,
+        appointmentReminderDaysBefore: isReminderActive ? reminderDaysBefore : null,
         appointmentReminderAttendanceTemplateName:
           settingsQuery.data?.appointmentReminderAttendanceTemplateName ?? null,
         appointmentReminderPaymentTemplateName:
@@ -272,6 +272,32 @@ export function ConfiguracionesPage() {
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
     }
   });
+
+  // Auto-heal: si la UI muestra "active" (Meta APPROVED) pero el backend
+  // quedó con enabled=false por flujos previos, sincronizamos el profile.
+  const autoHealAppliedRef = reactModule.useRef(false);
+  reactModule.useEffect(() => {
+    if (
+      !autoHealAppliedRef.current &&
+      isReminderActive &&
+      settingsQuery.data !== undefined &&
+      !settingsQuery.data.appointmentReminderEnabled &&
+      settingsQuery.data.appointmentReminderAttendanceTemplateName !== null
+    ) {
+      autoHealAppliedRef.current = true;
+      const fresh = settingsQuery.data;
+      void appContainer.agentUseCase
+        .updateAgentSettings({
+          messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+          appointmentReminderEnabled: true,
+          appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore ?? 1,
+          appointmentReminderAttendanceTemplateName:
+            fresh.appointmentReminderAttendanceTemplateName,
+          appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName
+        })
+        .then(() => queryClient.invalidateQueries({ queryKey: settingsQueryKey }));
+    }
+  }, [isReminderActive, settingsQuery.data, appContainer.agentUseCase, queryClient]);
 
   // --- Tenant profile ---
   const profileQuery = reactQueryModule.useQuery({
