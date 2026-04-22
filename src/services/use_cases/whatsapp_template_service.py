@@ -141,23 +141,35 @@ class WhatsappTemplateService:
             raise service_exceptions.InvalidStateError("whatsapp connection is missing credentials")
 
         template_def = official_reminder_templates.get(kind)
-        create_request = whatsapp_template_dto.CreateTemplateRequestDTO(
-            name=template_def.name,
-            category=template_def.category,
-            language=template_def.language,
-            components=[
-                whatsapp_template_dto.TemplateComponentDTO(
-                    type="BODY",
-                    text=template_def.body_text,
-                    example_values=template_def.example_values,
-                )
-            ],
-        )
-        created = self._whatsapp_provider.create_message_template(
+
+        # Idempotent: if the template already exists in Meta, reuse its status
+        # instead of re-submitting (Meta approval is slow; re-submission would
+        # fail with "template already exists").
+        existing_templates = self._whatsapp_provider.list_message_templates(
             access_token=connection.access_token,
             waba_id=connection.business_account_id,
-            template=create_request,
         )
+        existing = next((tpl for tpl in existing_templates if tpl.name == template_def.name), None)
+        if existing is None:
+            create_request = whatsapp_template_dto.CreateTemplateRequestDTO(
+                name=template_def.name,
+                category=template_def.category,
+                language=template_def.language,
+                components=[
+                    whatsapp_template_dto.TemplateComponentDTO(
+                        type="BODY",
+                        text=template_def.body_text,
+                        example_values=template_def.example_values,
+                    )
+                ],
+            )
+            created_status = self._whatsapp_provider.create_message_template(
+                access_token=connection.access_token,
+                waba_id=connection.business_account_id,
+                template=create_request,
+            ).status
+        else:
+            created_status = existing.status
 
         # Persist template name in AgentProfile.
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
@@ -187,7 +199,7 @@ class WhatsappTemplateService:
             },
         )
 
-        meta_status = self._map_meta_status(created.status)
+        meta_status = self._map_meta_status(created_status)
         return whatsapp_template_dto.OfficialTemplateStatusDTO(
             kind=kind,
             name=template_def.name,
@@ -200,49 +212,28 @@ class WhatsappTemplateService:
         tenant_id: str,
         kind: official_reminder_templates.OfficialReminderKind,
     ) -> None:
+        """Stops sending reminders for this kind without touching the Meta template.
+
+        Cancels any pending Cloud Tasks so that scheduled reminders do not fire,
+        but keeps the template name in the profile and the template in Meta. This
+        enables a fast re-activation (no re-submission / re-approval) which is
+        critical during testing since Meta approval can take minutes-to-hours.
+
+        The caller (frontend) is responsible for setting
+        ``appointment_reminder_enabled=False`` in the AgentProfile via
+        ``update_agent_settings``.
+        """
         template_def = official_reminder_templates.get(kind)
 
         # Cancel any pending reminders with this template name.
         self._reminder_service.cancel_reminders_by_template(tenant_id, template_def.name)
-
-        # Clear the template name from AgentProfile.
-        agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
-        if agent_profile is not None:
-            now_value = self._clock.now()
-            if kind == "ATTENDANCE":
-                agent_profile.appointment_reminder_attendance_template_name = None
-            else:
-                agent_profile.appointment_reminder_payment_template_name = None
-            agent_profile.updated_at = now_value
-            self._agent_profile_repository.save(agent_profile)
-
-        # Attempt to delete from Meta; if it fails, log and continue.
-        connection = self._whatsapp_connection_repository.get_by_tenant_id(tenant_id)
-        if (
-            connection is not None
-            and connection.status == "CONNECTED"
-            and connection.access_token is not None
-            and connection.business_account_id is not None
-        ):
-            try:
-                self._whatsapp_provider.delete_message_template(
-                    access_token=connection.access_token,
-                    waba_id=connection.business_account_id,
-                    template_name=template_def.name,
-                )
-            except service_exceptions.ExternalProviderError:
-                logger.warning(
-                    "whatsapp.templates.official.delete_meta_failed",
-                    extra={"tenant_id": tenant_id, "kind": kind},
-                    exc_info=True,
-                )
 
         logger.info(
             "whatsapp.templates.official.deactivated",
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="whatsapp.templates.official.deactivated",
-                    message="official template deactivated",
+                    message="official template deactivated (meta template preserved)",
                     data={"tenant_id": tenant_id, "kind": kind},
                 )
             },

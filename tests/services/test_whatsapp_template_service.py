@@ -151,8 +151,8 @@ def test_activate_official_template_raises_when_profile_not_found() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_deactivate_cancels_pending_reminders_and_clears_profile_name() -> None:
-    template_svc, reminder_svc, agent_profile_repo, _, reminder_repo, _ = _build_context()
+def test_deactivate_cancels_pending_reminders_but_preserves_meta_and_profile_name() -> None:
+    template_svc, reminder_svc, agent_profile_repo, _, reminder_repo, wa_provider = _build_context()
     attendance_name = official_reminder_templates.OFFICIAL_REMINDER_TEMPLATES["ATTENDANCE"].name
     _seed_profile(agent_profile_repo, attendance_name=attendance_name)
 
@@ -179,16 +179,72 @@ def test_deactivate_cancels_pending_reminders_and_clears_profile_name() -> None:
     pending_before = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
     assert len(pending_before) == 1
 
+    delete_calls: list[str] = []
+    wa_provider.delete_message_template = (  # type: ignore[method-assign]
+        lambda access_token, waba_id, template_name: delete_calls.append(template_name)
+    )
+
     template_svc.deactivate_official_template("tenant-1", "ATTENDANCE")
 
     # Reminder should be cancelled.
     cancelled = reminder_repo.list_by_tenant("tenant-1", status="CANCELLED")
     assert len(cancelled) == 1
 
-    # Profile should have no attendance template.
+    # Template name must remain in profile (preserves fast re-activation).
     updated_profile = agent_profile_repo.get_by_tenant_id("tenant-1")
     assert updated_profile is not None
-    assert updated_profile.appointment_reminder_attendance_template_name is None
+    assert updated_profile.appointment_reminder_attendance_template_name == attendance_name
+
+    # Meta template must not be deleted.
+    assert delete_calls == []
+
+
+def test_activate_official_template_is_idempotent_when_template_exists_in_meta() -> None:
+    template_svc, _, agent_profile_repo, _, _, wa_provider = _build_context()
+    attendance_name = official_reminder_templates.OFFICIAL_REMINDER_TEMPLATES["ATTENDANCE"].name
+    _seed_profile(agent_profile_repo)
+
+    import src.services.dto.whatsapp_template_dto as whatsapp_template_dto
+
+    # Meta already has the template APPROVED.
+    wa_provider.list_message_templates = lambda access_token, waba_id: [  # type: ignore[method-assign]
+        whatsapp_template_dto.TemplateDTO(
+            id="tmpl-1",
+            name=attendance_name,
+            category="UTILITY",
+            language="es",
+            status="APPROVED",
+            components=[],
+        )
+    ]
+    create_calls: list[str] = []
+
+    def _fake_create(
+        access_token: str,
+        waba_id: str,
+        template: whatsapp_template_dto.CreateTemplateRequestDTO,
+    ) -> whatsapp_template_dto.TemplateDTO:
+        create_calls.append(template.name)
+        return whatsapp_template_dto.TemplateDTO(
+            id="tmpl-new",
+            name=template.name,
+            category=template.category,
+            language=template.language,
+            status="PENDING",
+            components=[],
+        )
+
+    wa_provider.create_message_template = _fake_create  # type: ignore[method-assign]
+
+    result = template_svc.activate_official_template("tenant-1", "ATTENDANCE")
+
+    # Create must not be called because template already exists in Meta.
+    assert create_calls == []
+    assert result.meta_status == "APPROVED"
+
+    updated_profile = agent_profile_repo.get_by_tenant_id("tenant-1")
+    assert updated_profile is not None
+    assert updated_profile.appointment_reminder_attendance_template_name == attendance_name
 
 
 # ---------------------------------------------------------------------------

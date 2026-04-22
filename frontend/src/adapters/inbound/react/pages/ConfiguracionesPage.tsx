@@ -181,20 +181,33 @@ export function ConfiguracionesPage() {
   const paymentStatus = (officialTemplateStatusQuery.data ?? []).find((s) => s.kind === "PAYMENT");
   const reminderSetupState: "loading" | "not_configured" | "preparing" | "active" | "broken" =
     (() => {
-      if (attendanceStatus === undefined || paymentStatus === undefined) return "loading";
       if (
-        attendanceStatus.metaStatus === "NOT_CREATED" &&
-        paymentStatus.metaStatus === "NOT_CREATED"
+        attendanceStatus === undefined ||
+        paymentStatus === undefined ||
+        settingsQuery.data === undefined
       ) {
-        return "not_configured";
+        return "loading";
       }
       if (attendanceStatus.metaStatus === "PENDING" || paymentStatus.metaStatus === "PENDING") {
         return "preparing";
       }
-      if (attendanceStatus.metaStatus === "APPROVED") {
+      if (
+        attendanceStatus.metaStatus === "REJECTED" ||
+        attendanceStatus.metaStatus === "DISABLED"
+      ) {
+        return "broken";
+      }
+      if (
+        attendanceStatus.metaStatus === "APPROVED" &&
+        settingsQuery.data.appointmentReminderEnabled
+      ) {
         return "active";
       }
-      return "broken";
+      // Meta APPROVED + enabled=false → el usuario pausó los recordatorios;
+      // mostramos el mismo estado que "nunca configurado" para que el botón
+      // "Activar recordatorios" los vuelva a encender de forma instantánea
+      // (el backend es idempotente: reusa las plantillas ya aprobadas).
+      return "not_configured";
     })();
 
   const retryKindMutation = reactQueryModule.useMutation({
@@ -230,6 +243,8 @@ export function ConfiguracionesPage() {
 
   const deactivateAllMutation = reactQueryModule.useMutation({
     mutationFn: async () => {
+      // El backend solo cancela Cloud Tasks pending; mantiene plantillas en
+      // Meta y en el profile para re-activación rápida.
       try {
         await appContainer.whatsappTemplateUseCase.deactivateOfficialTemplate("ATTENDANCE");
       } catch {
@@ -244,9 +259,11 @@ export function ConfiguracionesPage() {
       return appContainer.agentUseCase.updateAgentSettings({
         messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
         appointmentReminderEnabled: false,
-        appointmentReminderDaysBefore: null,
-        appointmentReminderAttendanceTemplateName: null,
-        appointmentReminderPaymentTemplateName: null
+        // Preservamos los template names y el días_before para que la próxima
+        // activación reuse todo sin tocar Meta.
+        appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore,
+        appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
+        appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName
       });
     },
     onSuccess: async () => {
@@ -272,32 +289,6 @@ export function ConfiguracionesPage() {
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
     }
   });
-
-  // Auto-heal: si la UI muestra "active" (Meta APPROVED) pero el backend
-  // quedó con enabled=false por flujos previos, sincronizamos el profile.
-  const autoHealAppliedRef = reactModule.useRef(false);
-  reactModule.useEffect(() => {
-    if (
-      !autoHealAppliedRef.current &&
-      isReminderActive &&
-      settingsQuery.data !== undefined &&
-      !settingsQuery.data.appointmentReminderEnabled &&
-      settingsQuery.data.appointmentReminderAttendanceTemplateName !== null
-    ) {
-      autoHealAppliedRef.current = true;
-      const fresh = settingsQuery.data;
-      void appContainer.agentUseCase
-        .updateAgentSettings({
-          messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
-          appointmentReminderEnabled: true,
-          appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore ?? 1,
-          appointmentReminderAttendanceTemplateName:
-            fresh.appointmentReminderAttendanceTemplateName,
-          appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName
-        })
-        .then(() => queryClient.invalidateQueries({ queryKey: settingsQueryKey }));
-    }
-  }, [isReminderActive, settingsQuery.data, appContainer.agentUseCase, queryClient]);
 
   // --- Tenant profile ---
   const profileQuery = reactQueryModule.useQuery({
