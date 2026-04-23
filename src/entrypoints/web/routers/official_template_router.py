@@ -39,12 +39,10 @@ def activate_official_template(
 @router.post("/{kind}/deactivate", status_code=204)
 def deactivate_official_template(
     kind: official_reminder_templates.OfficialReminderKind,
-    hard: bool = False,
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> None:
     container.whatsapp_template_service.deactivate_official_template(
         tenant_id=claims.tenant_id,
         kind=kind,
-        hard=hard,
     )

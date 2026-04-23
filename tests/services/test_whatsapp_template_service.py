@@ -151,7 +151,7 @@ def test_activate_official_template_raises_when_profile_not_found() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_deactivate_cancels_pending_reminders_but_preserves_meta_and_profile_name() -> None:
+def test_deactivate_cancels_pending_reminders_clears_profile_but_preserves_meta() -> None:
     template_svc, reminder_svc, agent_profile_repo, _, reminder_repo, wa_provider = _build_context()
     attendance_name = official_reminder_templates.OFFICIAL_REMINDER_TEMPLATES["ATTENDANCE"].name
     _seed_profile(agent_profile_repo, attendance_name=attendance_name)
@@ -186,38 +186,17 @@ def test_deactivate_cancels_pending_reminders_but_preserves_meta_and_profile_nam
 
     template_svc.deactivate_official_template("tenant-1", "ATTENDANCE")
 
-    # Reminder should be cancelled.
+    # Pending reminder must be cancelled.
     cancelled = reminder_repo.list_by_tenant("tenant-1", status="CANCELLED")
     assert len(cancelled) == 1
 
-    # Template name must remain in profile (preserves fast re-activation).
-    updated_profile = agent_profile_repo.get_by_tenant_id("tenant-1")
-    assert updated_profile is not None
-    assert updated_profile.appointment_reminder_attendance_template_name == attendance_name
-
-    # Meta template must not be deleted.
-    assert delete_calls == []
-
-
-def test_deactivate_hard_deletes_meta_template_and_clears_profile_name() -> None:
-    template_svc, _, agent_profile_repo, _, _, wa_provider = _build_context()
-    attendance_name = official_reminder_templates.OFFICIAL_REMINDER_TEMPLATES["ATTENDANCE"].name
-    _seed_profile(agent_profile_repo, attendance_name=attendance_name)
-
-    delete_calls: list[str] = []
-    wa_provider.delete_message_template = (  # type: ignore[method-assign]
-        lambda access_token, waba_id, template_name: delete_calls.append(template_name)
-    )
-
-    template_svc.deactivate_official_template("tenant-1", "ATTENDANCE", hard=True)
-
-    # Meta template must be deleted (abort review semantics).
-    assert delete_calls == [attendance_name]
-
-    # Profile name must be cleared so UI forces re-activation.
+    # Template name must be cleared so the UI renders NOT_CREATED and the
+    # user can re-activate cleanly. Meta template is preserved (the user
+    # has to delete it manually from the Plantillas tab if desired).
     updated_profile = agent_profile_repo.get_by_tenant_id("tenant-1")
     assert updated_profile is not None
     assert updated_profile.appointment_reminder_attendance_template_name is None
+    assert delete_calls == []
 
 
 def test_activate_official_template_is_idempotent_when_template_exists_in_meta() -> None:
@@ -313,17 +292,24 @@ def test_list_official_status_returns_meta_status_when_template_exists_in_meta()
 
 
 # ---------------------------------------------------------------------------
-# delete_template — guard for official active
+# delete_template — allowed for any template; clears profile name if official
 # ---------------------------------------------------------------------------
 
 
-def test_delete_template_rejects_official_attendance_when_active() -> None:
+def test_delete_template_allows_official_and_clears_profile_name() -> None:
     template_svc, _, agent_profile_repo, _, _, _ = _build_context()
     attendance_name = official_reminder_templates.OFFICIAL_REMINDER_TEMPLATES["ATTENDANCE"].name
     _seed_profile(agent_profile_repo, attendance_name=attendance_name)
 
-    with pytest.raises(service_exceptions.OfficialTemplateActiveError):
-        template_svc.delete_template("tenant-1", attendance_name)
+    # Should not raise — deletion of official active templates is now allowed
+    # (they're deleted from the Plantillas tab in the UI).
+    template_svc.delete_template("tenant-1", attendance_name)
+
+    # Profile name must be cleared so the UI reflects the deletion and
+    # reminder_service does not try to send via a dead template.
+    updated_profile = agent_profile_repo.get_by_tenant_id("tenant-1")
+    assert updated_profile is not None
+    assert updated_profile.appointment_reminder_attendance_template_name is None
 
 
 def test_delete_template_allows_non_official_template() -> None:

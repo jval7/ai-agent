@@ -250,21 +250,19 @@ export function ConfiguracionesPage() {
   });
 
   const deactivateAllMutation = reactQueryModule.useMutation({
-    mutationFn: async (options?: { hard: boolean }) => {
-      const hard = options?.hard ?? false;
-      // hard=false (Desactivar en estado activo): el backend solo cancela
-      //   Cloud Tasks pending; mantiene plantillas en Meta y en el profile
-      //   para re-activación rápida.
-      // hard=true (Cancelar en estado preparando): el backend también borra
-      //   la plantilla de Meta y limpia el name del profile, abortando el
-      //   review y dejando el slot listo para re-activar desde cero.
+    mutationFn: async () => {
+      // Cancelar/Desactivar NO tocan Meta — solo cancelan Cloud Tasks
+      // pending y limpian los template names locales (el backend ya lo
+      // hace en deactivate_official_template) para que la UI vuelva a
+      // "Sin configurar". Las plantillas quedan en Meta; se borran
+      // manualmente desde la tab Plantillas.
       try {
-        await appContainer.whatsappTemplateUseCase.deactivateOfficialTemplate("ATTENDANCE", hard);
+        await appContainer.whatsappTemplateUseCase.deactivateOfficialTemplate("ATTENDANCE");
       } catch {
         // Best-effort.
       }
       try {
-        await appContainer.whatsappTemplateUseCase.deactivateOfficialTemplate("PAYMENT", hard);
+        await appContainer.whatsappTemplateUseCase.deactivateOfficialTemplate("PAYMENT");
       } catch {
         // Best-effort.
       }
@@ -272,15 +270,9 @@ export function ConfiguracionesPage() {
       return appContainer.agentUseCase.updateAgentSettings({
         messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
         appointmentReminderEnabled: false,
-        // Preservamos días_before aunque hard=true borre los names en backend;
-        // el settings update ignora template names cuando enabled=false.
         appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore,
-        appointmentReminderAttendanceTemplateName: hard
-          ? null
-          : fresh.appointmentReminderAttendanceTemplateName,
-        appointmentReminderPaymentTemplateName: hard
-          ? null
-          : fresh.appointmentReminderPaymentTemplateName,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
         paymentDetailsText: fresh.paymentDetailsText
       });
     },
@@ -780,7 +772,7 @@ export function ConfiguracionesPage() {
                   className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={deactivateAllMutation.isPending}
                   onClick={() => {
-                    deactivateAllMutation.mutate({ hard: true });
+                    deactivateAllMutation.mutate();
                   }}
                   type="button"
                 >
@@ -896,7 +888,7 @@ export function ConfiguracionesPage() {
                     className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={deactivateAllMutation.isPending}
                     onClick={() => {
-                      deactivateAllMutation.mutate({ hard: false });
+                      deactivateAllMutation.mutate();
                     }}
                     type="button"
                   >
@@ -931,7 +923,7 @@ export function ConfiguracionesPage() {
                     className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={deactivateAllMutation.isPending}
                     onClick={() => {
-                      deactivateAllMutation.mutate({ hard: false });
+                      deactivateAllMutation.mutate();
                     }}
                     type="button"
                   >

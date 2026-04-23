@@ -86,19 +86,24 @@ class WhatsappTemplateService:
         return template
 
     def delete_template(self, tenant_id: str, template_name: str) -> None:
-        # Guard: reject deletion of an activated official template.
+        # If the deleted template happens to be an activated official one,
+        # also clear its name from the AgentProfile so the UI stays in sync
+        # (future reminders would fail otherwise by pointing to a dead
+        # template). No guard — the user is allowed to delete anything
+        # from the Plantillas tab.
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
         if agent_profile is not None:
-            activated_names: set[str] = set()
-            if agent_profile.appointment_reminder_attendance_template_name is not None:
-                activated_names.add(agent_profile.appointment_reminder_attendance_template_name)
-            if agent_profile.appointment_reminder_payment_template_name is not None:
-                activated_names.add(agent_profile.appointment_reminder_payment_template_name)
-            if template_name in activated_names:
-                raise service_exceptions.OfficialTemplateActiveError(
-                    f"template '{template_name}' is an activated official template; "
-                    "deactivate it from Settings before deleting"
-                )
+            now_value = self._clock.now()
+            profile_changed = False
+            if agent_profile.appointment_reminder_attendance_template_name == template_name:
+                agent_profile.appointment_reminder_attendance_template_name = None
+                profile_changed = True
+            if agent_profile.appointment_reminder_payment_template_name == template_name:
+                agent_profile.appointment_reminder_payment_template_name = None
+                profile_changed = True
+            if profile_changed:
+                agent_profile.updated_at = now_value
+                self._agent_profile_repository.save(agent_profile)
 
         connection = self._whatsapp_connection_repository.get_by_tenant_id(tenant_id)
         if connection is None:
@@ -211,23 +216,17 @@ class WhatsappTemplateService:
         self,
         tenant_id: str,
         kind: official_reminder_templates.OfficialReminderKind,
-        hard: bool = False,
     ) -> None:
         """Stops sending reminders for this kind.
 
-        Two semantics controlled by ``hard``:
+        - Cancels any pending Cloud Tasks.
+        - Clears the template name from the AgentProfile so the UI
+          renders the kind as NOT_CREATED and a fresh activation flow
+          is available.
+        - NEVER touches Meta. The template stays in the WABA; the user
+          can delete it manually from the Plantillas tab if they want.
 
-        - ``hard=False`` (default, used while reminders are active): cancel
-          any pending Cloud Tasks but keep the template in Meta and the
-          template name in the profile, so a later re-activation is instant
-          and does not trigger a fresh Meta review.
-        - ``hard=True`` (used to abort a pending Meta review): also delete
-          the template from Meta and clear the template name from the
-          profile. This is what the UI calls "Cancelar" while templates
-          are in ``preparing`` state — the user wants the review aborted
-          and a clean slate.
-
-        The caller (frontend) is still responsible for setting
+        The caller (frontend) is responsible for setting
         ``appointment_reminder_enabled=False`` in the AgentProfile via
         ``update_agent_settings``.
         """
@@ -236,51 +235,26 @@ class WhatsappTemplateService:
         # Cancel any pending reminders with this template name.
         self._reminder_service.cancel_reminders_by_template(tenant_id, template_def.name)
 
-        if hard:
-            # Abort the Meta review / remove the APPROVED template entirely.
-            connection = self._whatsapp_connection_repository.get_by_tenant_id(tenant_id)
-            if (
-                connection is not None
-                and connection.status == "CONNECTED"
-                and connection.access_token is not None
-                and connection.business_account_id is not None
-            ):
-                try:
-                    self._whatsapp_provider.delete_message_template(
-                        access_token=connection.access_token,
-                        waba_id=connection.business_account_id,
-                        template_name=template_def.name,
-                    )
-                except service_exceptions.ExternalProviderError:
-                    logger.warning(
-                        "whatsapp.templates.official.delete_meta_failed",
-                        extra={"tenant_id": tenant_id, "kind": kind},
-                        exc_info=True,
-                    )
-
-            # Clear the template name from the profile so the UI renders as
-            # NOT_CREATED and the user can re-activate from scratch.
-            agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
-            if agent_profile is not None:
-                now_value = self._clock.now()
-                if kind == "ATTENDANCE":
-                    agent_profile.appointment_reminder_attendance_template_name = None
-                else:
-                    agent_profile.appointment_reminder_payment_template_name = None
-                agent_profile.updated_at = now_value
-                self._agent_profile_repository.save(agent_profile)
+        # Clear the template name from the profile so the UI renders as
+        # NOT_CREATED and the user can re-activate (the Meta template may
+        # still be alive; our activation is idempotent and will reuse it).
+        agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+        if agent_profile is not None:
+            now_value = self._clock.now()
+            if kind == "ATTENDANCE":
+                agent_profile.appointment_reminder_attendance_template_name = None
+            else:
+                agent_profile.appointment_reminder_payment_template_name = None
+            agent_profile.updated_at = now_value
+            self._agent_profile_repository.save(agent_profile)
 
         logger.info(
             "whatsapp.templates.official.deactivated",
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="whatsapp.templates.official.deactivated",
-                    message=(
-                        "official template deactivated (hard: meta deleted)"
-                        if hard
-                        else "official template deactivated (meta template preserved)"
-                    ),
-                    data={"tenant_id": tenant_id, "kind": kind, "hard": hard},
+                    message="official template deactivated (meta template preserved)",
+                    data={"tenant_id": tenant_id, "kind": kind},
                 )
             },
         )

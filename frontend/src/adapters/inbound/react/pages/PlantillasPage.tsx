@@ -5,15 +5,11 @@ import * as appContainerContextModule from "@adapters/inbound/react/app/AppConta
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
-import * as apiErrorModule from "@shared/http/api_error";
 import * as uiErrorModule from "@shared/http/ui_error";
 
 const templatesQueryKey = ["whatsapp-templates"] as const;
 
-const OFFICIAL_TEMPLATE_NAMES = new Set([
-  "appointment_reminder_attendance",
-  "appointment_reminder_payment"
-]);
+const OFFICIAL_TEMPLATE_NAMES = new Set(["aviso_cita_confirmada", "aviso_pago_pendiente"]);
 
 const CATEGORIES = ["MARKETING", "UTILITY", "AUTHENTICATION"] as const;
 const LANGUAGES = [
@@ -72,9 +68,6 @@ export function PlantillasPage() {
   const queryClient = reactQueryModule.useQueryClient();
 
   const [isModalOpen, setIsModalOpen] = reactModule.useState(false);
-  const [deleteConflictMessage, setDeleteConflictMessage] = reactModule.useState<string | null>(
-    null
-  );
   const [formName, setFormName] = reactModule.useState("");
   const [formCategory, setFormCategory] = reactModule.useState<string>("MARKETING");
   const [formLanguage, setFormLanguage] = reactModule.useState<string>("es");
@@ -131,25 +124,13 @@ export function PlantillasPage() {
   const deleteMutation = reactQueryModule.useMutation({
     mutationFn: (name: string) => appContainer.whatsappTemplateUseCase.deleteTemplate(name),
     onSuccess: async () => {
-      setDeleteConflictMessage(null);
       await queryClient.invalidateQueries({ queryKey: templatesQueryKey });
-    },
-    onError: (error: unknown) => {
-      if (error instanceof apiErrorModule.ApiError && error.statusCode === 409) {
-        setDeleteConflictMessage(error.message);
-      }
     }
   });
 
-  const deleteNonConflictError =
-    deleteMutation.error instanceof apiErrorModule.ApiError &&
-    deleteMutation.error.statusCode === 409
-      ? null
-      : deleteMutation.error;
-
   const listErrorMessage = uiErrorModule.resolveUiErrorMessage([
     templatesQuery.error,
-    deleteNonConflictError
+    deleteMutation.error
   ]);
 
   const createErrorMessage = uiErrorModule.resolveUiErrorMessage([createMutation.error]);
@@ -190,12 +171,6 @@ export function PlantillasPage() {
 
       {listErrorMessage !== null ? (
         <errorBannerModule.ErrorBanner className="mb-4" message={listErrorMessage} />
-      ) : null}
-
-      {deleteConflictMessage !== null ? (
-        <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          {deleteConflictMessage} — Desactívala desde Ajustes antes de eliminarla.
-        </div>
       ) : null}
 
       {templatesQuery.isLoading ? (
@@ -254,25 +229,16 @@ export function PlantillasPage() {
                     <td className="px-6 py-4 text-sm text-slate-600">{template.language}</td>
                     <td className="px-6 py-4 text-sm">{buildStatusBadge(template.status)}</td>
                     <td className="px-6 py-4 text-right">
-                      {isOfficial ? (
-                        <span
-                          className="cursor-default text-sm text-slate-400"
-                          title="Desactívala desde Ajustes"
-                        >
-                          Eliminar
-                        </span>
-                      ) : (
-                        <button
-                          className="text-sm font-medium text-red-600 transition-colors hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => {
-                            deleteMutation.mutate(template.name);
-                          }}
-                          type="button"
-                        >
-                          Eliminar
-                        </button>
-                      )}
+                      <button
+                        className="text-sm font-medium text-red-600 transition-colors hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => {
+                          deleteMutation.mutate(template.name);
+                        }}
+                        type="button"
+                      >
+                        Eliminar
+                      </button>
                     </td>
                   </tr>
                 );

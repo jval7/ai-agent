@@ -26,10 +26,6 @@ class ExternalProviderError(ServiceError):
     """Raised when external adapter cannot complete operation."""
 
 
-class OfficialTemplateActiveError(ServiceError):
-    """Raised when attempting to delete an official template that is currently activated."""
-
-
 class WhatsappBillingNotConfiguredError(ServiceError):
     """Raised when Meta rejects a template send because the WABA has no payment method configured.
 

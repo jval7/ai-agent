@@ -75,17 +75,6 @@ def register_exception_handlers(app: fastapi.FastAPI) -> None:
             content={"detail": str(error)},
         )
 
-    @app.exception_handler(service_exceptions.OfficialTemplateActiveError)
-    async def handle_official_template_active_error(
-        request: fastapi.Request,
-        error: service_exceptions.OfficialTemplateActiveError,
-    ) -> fastapi_responses.JSONResponse:
-        return _build_json_response(
-            request=request,
-            status_code=409,
-            content={"detail": str(error)},
-        )
-
     @app.exception_handler(service_exceptions.ExternalProviderError)
     async def handle_external_provider_error(
         request: fastapi.Request,

@@ -17,7 +17,7 @@ class OfficialReminderTemplate(pydantic.BaseModel):
 OFFICIAL_REMINDER_TEMPLATES: dict[OfficialReminderKind, OfficialReminderTemplate] = {
     "ATTENDANCE": OfficialReminderTemplate(
         kind="ATTENDANCE",
-        name="recordatorio_de_asistencia",
+        name="aviso_cita_confirmada",
         language="es",
         category="UTILITY",
         body_text=(
@@ -33,7 +33,7 @@ OFFICIAL_REMINDER_TEMPLATES: dict[OfficialReminderKind, OfficialReminderTemplate
     ),
     "PAYMENT": OfficialReminderTemplate(
         kind="PAYMENT",
-        name="recordatorio_de_pago",
+        name="aviso_pago_pendiente",
         language="es",
         category="UTILITY",
         body_text=(
