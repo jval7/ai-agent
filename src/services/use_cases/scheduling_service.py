@@ -1,6 +1,7 @@
 import datetime
 import typing
 
+import src.domain.entities.message as message_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.infra.logs as app_logs
@@ -8,9 +9,12 @@ import src.ports.agent_workflow_port as agent_workflow_port
 import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
+import src.ports.manual_appointment_repository_port as manual_appointment_repository_port
 import src.ports.patient_repository_port as patient_repository_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.ports.task_scheduler_port as task_scheduler_port
+import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
+import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.workflow_engine as workflow_engine
 import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.scheduling_dto as scheduling_dto
@@ -85,6 +89,13 @@ class SchedulingService:
         tag_service: tag_service_module.TagService | None = None,
         reminder_service: reminder_service_module.ReminderService | None = None,
         patient_repository: patient_repository_port.PatientRepositoryPort | None = None,
+        manual_appointment_repository: (
+            manual_appointment_repository_port.ManualAppointmentRepositoryPort | None
+        ) = None,
+        whatsapp_provider: whatsapp_provider_port.WhatsappProviderPort | None = None,
+        whatsapp_connection_repository: (
+            whatsapp_connection_repository_port.WhatsappConnectionRepositoryPort | None
+        ) = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
         self._conversation_repository = conversation_repository
@@ -96,6 +107,9 @@ class SchedulingService:
         self._tag_service = tag_service
         self._reminder_service = reminder_service
         self._patient_repository = patient_repository
+        self._manual_appointment_repository = manual_appointment_repository
+        self._whatsapp_provider = whatsapp_provider
+        self._whatsapp_connection_repository = whatsapp_connection_repository
         self._agent_workflow: agent_workflow_port.AgentWorkflowPort
         if agent_workflow is None:
             self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
@@ -909,11 +923,20 @@ class SchedulingService:
 
         now_value = self._clock.now()
         if input_dto.decision == "APPROVE":
-            request.payment_status = "PAID"
-            request.payment_amount_cop = input_dto.payment_amount_cop
-            request.payment_currency = input_dto.payment_currency
-            request.payment_updated_at = now_value
-            request.set_status("AWAITING_PATIENT_CHOICE", now_value)
+            if (
+                request.source_appointment_id is not None
+                and request.source_appointment_kind is not None
+            ):
+                # Reminder-reply flow: the appointment already exists and is BOOKED.
+                # Mark the source as PAID, close this synthetic request, and notify patient.
+                self._approve_payment_from_reminder(request, input_dto, now_value)
+            else:
+                # Original scheduling flow: transition to slot selection.
+                request.payment_status = "PAID"
+                request.payment_amount_cop = input_dto.payment_amount_cop
+                request.payment_currency = input_dto.payment_currency
+                request.payment_updated_at = now_value
+                request.set_status("AWAITING_PATIENT_CHOICE", now_value)
 
         if input_dto.professional_note is not None:
             request.professional_note = input_dto.professional_note
@@ -942,6 +965,136 @@ class SchedulingService:
             },
         )
         return self._to_summary_dto(request)
+
+    def _approve_payment_from_reminder(
+        self,
+        request: scheduling_request_entity.SchedulingRequest,
+        input_dto: scheduling_dto.PaymentReviewDecisionDTO,
+        now_value: datetime.datetime,
+    ) -> None:
+        """Handle payment approval for a synthetic reminder-reply SchedulingRequest.
+
+        Marks the source appointment as PAID, closes the synthetic request, and
+        sends a freeform confirmation message to the patient via WhatsApp.
+        All operations are best-effort after the first: failures are logged but
+        do not bubble up to the caller — the payment approval must not fail just
+        because a side-effect went wrong.
+        """
+        source_id = request.source_appointment_id
+        source_kind = request.source_appointment_kind
+        tenant_id = request.tenant_id
+
+        # 1. Update payment_status on the source appointment.
+        if source_kind == "MANUAL_APPOINTMENT":
+            if self._manual_appointment_repository is not None:
+                source_appt = self._manual_appointment_repository.get_by_id(
+                    tenant_id, source_id or ""
+                )
+                if source_appt is None:
+                    logger.warning(
+                        "scheduling.approve_reminder_payment.source_not_found",
+                        extra={
+                            "tenant_id": tenant_id,
+                            "source_kind": source_kind,
+                            "source_id": source_id,
+                        },
+                    )
+                else:
+                    source_appt.payment_status = "PAID"
+                    source_appt.payment_amount_cop = input_dto.payment_amount_cop
+                    source_appt.payment_currency = input_dto.payment_currency
+                    source_appt.payment_updated_at = now_value
+                    source_appt.updated_at = now_value
+                    self._manual_appointment_repository.save(source_appt)
+        elif source_kind == "SCHEDULING_REQUEST":
+            source_req = self._scheduling_repository.get_request_by_id(tenant_id, source_id or "")
+            if source_req is None:
+                logger.warning(
+                    "scheduling.approve_reminder_payment.source_not_found",
+                    extra={
+                        "tenant_id": tenant_id,
+                        "source_kind": source_kind,
+                        "source_id": source_id,
+                    },
+                )
+            else:
+                source_req.payment_status = "PAID"
+                source_req.payment_amount_cop = input_dto.payment_amount_cop
+                source_req.payment_currency = input_dto.payment_currency
+                source_req.payment_updated_at = now_value
+                source_req.updated_at = now_value
+                self._scheduling_repository.save_request(source_req)
+
+        # 2. Close the synthetic request.
+        request.set_status("SESSION_CLOSED", now_value)
+        self._archive_conversation_subsession_manual_close(
+            tenant_id=tenant_id,
+            conversation_id=request.conversation_id,
+            now_value=now_value,
+        )
+
+        # 3. Send freeform confirmation to the patient.
+        if self._whatsapp_provider is not None and self._whatsapp_connection_repository is not None:
+            connection = self._whatsapp_connection_repository.get_by_tenant_id(tenant_id)
+            if (
+                connection is None
+                or connection.access_token is None
+                or connection.phone_number_id is None
+            ):
+                logger.warning(
+                    "scheduling.approve_reminder_payment.whatsapp_not_connected",
+                    extra={"tenant_id": tenant_id},
+                )
+            else:
+                patient_first_name = request.patient_first_name or "Paciente"
+                confirmation_text = (
+                    f"¡Listo {patient_first_name}! Tu pago fue confirmado ✅ "
+                    "Te esperamos para tu cita. 🙌"
+                )
+                try:
+                    provider_message_id = self._whatsapp_provider.send_text_message(
+                        access_token=connection.access_token,
+                        phone_number_id=connection.phone_number_id,
+                        whatsapp_user_id=request.whatsapp_user_id,
+                        text=confirmation_text,
+                    )
+                    # 4. Persist the outbound message.
+                    outbound_msg = message_entity.Message(
+                        id=self._id_generator.new_id(),
+                        conversation_id=request.conversation_id,
+                        tenant_id=tenant_id,
+                        direction="OUTBOUND",
+                        role="assistant",
+                        content=confirmation_text,
+                        provider_message_id=provider_message_id,
+                        created_at=now_value,
+                    )
+                    self._conversation_repository.save_message(outbound_msg)
+                except service_exceptions.ExternalProviderError:
+                    logger.warning(
+                        "scheduling.approve_reminder_payment.whatsapp_send_failed",
+                        extra={
+                            "tenant_id": tenant_id,
+                            "request_id": request.id,
+                        },
+                        exc_info=True,
+                    )
+
+        logger.info(
+            "scheduling.approve_reminder_payment.done",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.approve_reminder_payment.done",
+                    message="reminder payment approved: source marked PAID, session closed",
+                    data={
+                        "tenant_id": tenant_id,
+                        "synthetic_request_id": request.id,
+                        "source_kind": source_kind,
+                        "source_id": source_id,
+                    },
+                )
+            },
+        )
 
     def _reschedule_booked_slot_impl(
         self,
@@ -1236,6 +1389,65 @@ class SchedulingService:
             "status": "SESSION_CLOSED",
         }
 
+    def close_attendance_confirmation(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> dict[str, str]:
+        """Close the session immediately when the patient confirms attendance.
+
+        Finds the active AWAITING_ATTENDANCE_CONFIRMATION request for the
+        conversation, archives the subsession via manual-close, and transitions
+        the request to SESSION_CLOSED.  Returns a no-op result if no such
+        request exists (idempotent).
+        """
+        request_list = self._scheduling_repository.list_requests_by_conversation(
+            tenant_id,
+            conversation_id,
+        )
+        attendance_request = self._find_latest_request_by_statuses(
+            requests=request_list,
+            statuses=("AWAITING_ATTENDANCE_CONFIRMATION",),
+        )
+        if attendance_request is None:
+            logger.info(
+                "scheduling.close_attendance_skipped",
+                extra={
+                    "tenant_id": tenant_id,
+                    "conversation_id": conversation_id,
+                },
+            )
+            return {"status": "skipped", "action": "no_active_attendance_request"}
+
+        now_value = self._clock.now()
+        self._archive_conversation_subsession_manual_close(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            now_value=now_value,
+        )
+        attendance_request.set_status("SESSION_CLOSED", now_value)
+        self._scheduling_repository.save_request(attendance_request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status="SESSION_CLOSED",
+        )
+        logger.info(
+            "scheduling.attendance_confirmed_session_closed",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.attendance_confirmed_session_closed",
+                    message="patient confirmed attendance; session closed immediately",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "request_id": attendance_request.id,
+                    },
+                )
+            },
+        )
+        return {"status": "SESSION_CLOSED", "action": "closed"}
+
     def auto_close_booked_request(
         self,
         tenant_id: str,
@@ -1245,7 +1457,7 @@ class SchedulingService:
         if request is None:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")
 
-        if request.status != "BOOKED":
+        if request.status not in ("BOOKED", "AWAITING_ATTENDANCE_CONFIRMATION"):
             logger.info(
                 "scheduling.auto_close_skipped",
                 extra={
@@ -1256,13 +1468,21 @@ class SchedulingService:
             return {"status": request.status, "action": "skipped"}
 
         now_value = self._clock.now()
-        self._archive_conversation_subsession_after_booking(
-            tenant_id=tenant_id,
-            conversation_id=request.conversation_id,
-            scheduling_request_id=request.id,
-            calendar_event_id=request.calendar_event_id or "",
-            now_value=now_value,
-        )
+        if request.status == "BOOKED":
+            self._archive_conversation_subsession_after_booking(
+                tenant_id=tenant_id,
+                conversation_id=request.conversation_id,
+                scheduling_request_id=request.id,
+                calendar_event_id=request.calendar_event_id or "",
+                now_value=now_value,
+            )
+        else:
+            # AWAITING_ATTENDANCE_CONFIRMATION: reminder-reply request with no calendar event.
+            self._archive_conversation_subsession_manual_close(
+                tenant_id=tenant_id,
+                conversation_id=request.conversation_id,
+                now_value=now_value,
+            )
         request.set_status("SESSION_CLOSED", now_value)
         self._scheduling_repository.save_request(request)
         self._sync_tags_after_status_change(

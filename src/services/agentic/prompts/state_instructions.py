@@ -76,6 +76,19 @@ def _instructions_for_state(
             "Solo usa handoff_to_human si el paciente dice explicitamente que NO puede pagar "
             "y necesita hablar con alguien para buscar una alternativa.",
         ]
+    if runtime_context.state == "AWAITING_ATTENDANCE_CONFIRMATION":
+        return [
+            "Flujo actual: recordatorio de asistencia enviado, esperando respuesta del paciente.",
+            "Cuando el paciente confirme que asistira (mensajes como 'confirmo', 'listo', 'ahi estare', 'si voy', 'gracias'), "
+            "responde con un agradecimiento corto (ej. 'Perfecto, te esperamos') Y llama a la tool confirm_attendance_received. "
+            "Ambas cosas en el mismo turno: texto de respuesta + llamada a la tool.",
+            "Puedes responder preguntas generales del paciente: informacion del consultorio, "
+            "horarios, direccion, preparacion para la cita u otros datos generales.",
+            "Si el paciente dice que NO puede asistir o pide reagendar/cancelar su cita, "
+            "usa handoff_to_human — el bot no gestiona cambios de citas ya reservadas.",
+            "No solicites confirmacion de nuevo si el paciente ya respondio.",
+            "No avances ningun flujo de agendamiento en este estado.",
+        ]
     if runtime_context.state == "POST_BOOKING_FOLLOWUP":
         return [
             "Flujo actual: la cita fue reservada exitosamente. Sigue las instrucciones de post_booking del system prompt.",
