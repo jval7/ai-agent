@@ -319,6 +319,28 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
   async deleteWhatsappTemplate(_name: string): Promise<void> {
     return;
   }
+
+  async listOfficialTemplateStatus(): Promise<whatsappTemplateModel.OfficialTemplateStatus[]> {
+    throw new Error("not used");
+  }
+
+  async activateOfficialTemplate(
+    _kind: whatsappTemplateModel.OfficialReminderKind
+  ): Promise<whatsappTemplateModel.OfficialTemplateStatus> {
+    throw new Error("not used");
+  }
+
+  async deactivateOfficialTemplate(
+    _kind: whatsappTemplateModel.OfficialReminderKind
+  ): Promise<void> {
+    return;
+  }
+
+  async sendBillingPreflight(
+    _phoneNumber: string
+  ): Promise<{ ok: boolean; recipientPhoneNumber: string }> {
+    throw new Error("not used");
+  }
 }
 
 vitestModule.describe("AuthUseCase", () => {

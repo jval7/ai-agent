@@ -10,7 +10,7 @@ logger = app_logs.get_logger(__name__)
 def _build_json_response(
     request: fastapi.Request,
     status_code: int,
-    content: dict[str, str],
+    content: dict[str, object],
 ) -> fastapi_responses.JSONResponse:
     response = fastapi_responses.JSONResponse(status_code=status_code, content=content)
     request_id = app_logs.get_request_id()
@@ -84,6 +84,40 @@ def register_exception_handlers(app: fastapi.FastAPI) -> None:
             request=request,
             status_code=502,
             content={"detail": str(error)},
+        )
+
+    @app.exception_handler(service_exceptions.WhatsappBillingNotConfiguredError)
+    async def handle_whatsapp_billing_not_configured_error(
+        request: fastapi.Request,
+        error: service_exceptions.WhatsappBillingNotConfiguredError,
+    ) -> fastapi_responses.JSONResponse:
+        return _build_json_response(
+            request=request,
+            status_code=402,
+            content={
+                "detail": {
+                    "code": "WHATSAPP_BILLING_NOT_CONFIGURED",
+                    "meta_error_code": 131042,
+                    "message": str(error),
+                }
+            },
+        )
+
+    @app.exception_handler(service_exceptions.WhatsappPreflightError)
+    async def handle_whatsapp_preflight_error(
+        request: fastapi.Request,
+        error: service_exceptions.WhatsappPreflightError,
+    ) -> fastapi_responses.JSONResponse:
+        return _build_json_response(
+            request=request,
+            status_code=502,
+            content={
+                "detail": {
+                    "code": "WHATSAPP_PREFLIGHT_FAILED",
+                    "meta_error_code": error.meta_error_code,
+                    "message": str(error),
+                }
+            },
         )
 
     @app.exception_handler(Exception)

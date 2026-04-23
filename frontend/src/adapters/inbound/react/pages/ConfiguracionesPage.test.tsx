@@ -73,9 +73,40 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
       })),
       updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
       getAgentSettings: vitestModule.vi.fn(async () => ({
-        messageDebounceDelaySeconds: 5
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        reminderBillingTestPhoneNumber: null,
+        paymentDetailsText: null
       })),
       updateAgentSettings: vitestModule.vi.fn(async () => undefined)
+    },
+    whatsappTemplateUseCase: {
+      listOfficialTemplateStatus: vitestModule.vi.fn(async () => [
+        {
+          kind: "ATTENDANCE",
+          name: "appointment_reminder_attendance",
+          metaStatus: "NOT_CREATED",
+          rejectionReason: null
+        },
+        {
+          kind: "PAYMENT",
+          name: "appointment_reminder_payment",
+          metaStatus: "NOT_CREATED",
+          rejectionReason: null
+        }
+      ]),
+      activateOfficialTemplate: vitestModule.vi.fn(async () => undefined),
+      deactivateOfficialTemplate: vitestModule.vi.fn(async () => undefined)
+    },
+    whatsappBillingUseCase: {
+      runPreflight: vitestModule.vi.fn(async (phone: string) => ({
+        ok: true,
+        recipientPhoneNumber: phone
+      }))
     },
     tenantUseCase: {
       getProfile: vitestModule.vi.fn(async () => ({
@@ -220,5 +251,86 @@ vitestModule.describe("ConfiguracionesPage", () => {
       ).toBeInTheDocument();
       expect(testingLibraryReactModule.screen.getByText(/status=502/)).toBeInTheDocument();
     });
+  });
+
+  vitestModule.it("opens disclosure modal first and chains preflight + activate flow", async () => {
+    const container = buildContainer();
+
+    renderConfiguracionesPage(container);
+
+    const ajustesTab = await testingLibraryReactModule.screen.findByRole("button", {
+      name: /Ajustes del agente/i
+    });
+    testingLibraryReactModule.fireEvent.click(ajustesTab);
+
+    const activateButton = await testingLibraryReactModule.screen.findByRole("button", {
+      name: /Activar recordatorios/i
+    });
+    testingLibraryReactModule.fireEvent.click(activateButton);
+
+    const continueButton = await testingLibraryReactModule.screen.findByRole("button", {
+      name: /Ya configuré el método de pago/i
+    });
+    vitestModule
+      .expect(
+        (container.whatsappTemplateUseCase.activateOfficialTemplate as vitestModule.Mock).mock.calls
+          .length
+      )
+      .toBe(0);
+    vitestModule
+      .expect(
+        (container.whatsappBillingUseCase.runPreflight as vitestModule.Mock).mock.calls.length
+      )
+      .toBe(0);
+
+    testingLibraryReactModule.fireEvent.click(continueButton);
+
+    const phoneInput =
+      await testingLibraryReactModule.screen.findByLabelText(/Tu número de WhatsApp/i);
+    testingLibraryReactModule.fireEvent.change(phoneInput, {
+      target: { value: "+573009998877" }
+    });
+
+    const verifyButton = testingLibraryReactModule.screen.getByRole("button", {
+      name: /Verificar/i
+    });
+    testingLibraryReactModule.fireEvent.click(verifyButton);
+
+    await testingLibraryReactModule.waitFor(() => {
+      vitestModule
+        .expect(container.whatsappBillingUseCase.runPreflight)
+        .toHaveBeenCalledWith("+573009998877");
+    });
+    await testingLibraryReactModule.waitFor(() => {
+      vitestModule
+        .expect(container.whatsappTemplateUseCase.activateOfficialTemplate)
+        .toHaveBeenCalledWith("ATTENDANCE");
+    });
+  });
+
+  vitestModule.it("blocks activation when disclosure modal is cancelled", async () => {
+    const container = buildContainer();
+
+    renderConfiguracionesPage(container);
+
+    const ajustesTab = await testingLibraryReactModule.screen.findByRole("button", {
+      name: /Ajustes del agente/i
+    });
+    testingLibraryReactModule.fireEvent.click(ajustesTab);
+
+    const activateButton = await testingLibraryReactModule.screen.findByRole("button", {
+      name: /Activar recordatorios/i
+    });
+    testingLibraryReactModule.fireEvent.click(activateButton);
+
+    const cancelButton = await testingLibraryReactModule.screen.findByRole("button", {
+      name: /^Cancelar$/i
+    });
+    testingLibraryReactModule.fireEvent.click(cancelButton);
+
+    vitestModule.expect(container.whatsappBillingUseCase.runPreflight).not.toHaveBeenCalled();
+    vitestModule
+      .expect(container.whatsappTemplateUseCase.activateOfficialTemplate)
+      .not.toHaveBeenCalled();
   });
 });

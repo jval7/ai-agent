@@ -10,8 +10,10 @@ class AgentProfile(pydantic.BaseModel):
     message_debounce_delay_seconds: int = 0
     appointment_reminder_enabled: bool = False
     appointment_reminder_days_before: int | None = None
-    appointment_reminder_template_name: str | None = None
-    appointment_reminder_template_language: str = "es"
+    appointment_reminder_attendance_template_name: str | None = None
+    appointment_reminder_payment_template_name: str | None = None
+    reminder_billing_test_phone_number: str | None = None
+    payment_details_text: str | None = None
     updated_at: datetime.datetime
 
     @pydantic.field_validator("system_prompt")
@@ -43,8 +45,8 @@ class AgentProfile(pydantic.BaseModel):
                 raise ValueError(
                     "appointment_reminder_days_before is required when reminder is enabled"
                 )
-            if self.appointment_reminder_template_name is None:
+            if self.appointment_reminder_attendance_template_name is None:
                 raise ValueError(
-                    "appointment_reminder_template_name is required when reminder is enabled"
+                    "appointment_reminder_attendance_template_name is required when reminder is enabled"
                 )
         return self

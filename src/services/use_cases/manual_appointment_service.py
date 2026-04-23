@@ -109,6 +109,8 @@ class ManualAppointmentService:
                 patient_whatsapp_user_id=appointment.patient_whatsapp_user_id,
                 patient_name=patient.first_name,
                 appointment_start_at=appointment.start_at,
+                payment_status=appointment.payment_status,
+                appointment_modality="VIRTUAL" if appointment.is_virtual else "PRESENCIAL",
             )
         logger.info(
             "manual_appointment.created",
@@ -192,6 +194,8 @@ class ManualAppointmentService:
                 patient_whatsapp_user_id=appointment.patient_whatsapp_user_id,
                 patient_name=patient_name,
                 appointment_start_at=appointment.start_at,
+                payment_status=appointment.payment_status,
+                appointment_modality="VIRTUAL" if appointment.is_virtual else "PRESENCIAL",
             )
         logger.info(
             "manual_appointment.rescheduled",
@@ -278,6 +282,8 @@ class ManualAppointmentService:
         if appointment.status != "SCHEDULED":
             raise service_exceptions.InvalidStateError("manual appointment is not scheduled")
 
+        previous_payment_status = appointment.payment_status
+
         now_value = self._clock.now()
         appointment.payment_amount_cop = input_dto.payment_amount_cop
         appointment.payment_currency = input_dto.payment_currency
@@ -286,6 +292,20 @@ class ManualAppointmentService:
         appointment.payment_updated_at = now_value
         appointment.updated_at = now_value
         self._manual_appointment_repository.save(appointment)
+
+        # If payment transitioned PENDING → PAID, swap the reminder template.
+        if (
+            previous_payment_status == "PENDING"
+            and input_dto.payment_status == "PAID"
+            and self._reminder_service is not None
+        ):
+            self._reminder_service.swap_template_for_source(
+                tenant_id=claims.tenant_id,
+                source_type="MANUAL_APPOINTMENT",
+                source_id=appointment.id,
+                new_kind="ATTENDANCE",
+            )
+
         logger.info(
             "manual_appointment.payment_updated",
             extra={

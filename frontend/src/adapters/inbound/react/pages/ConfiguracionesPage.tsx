@@ -4,6 +4,8 @@ import * as reactRouterDomModule from "react-router-dom";
 
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
+import * as billingDisclosureModalModule from "@adapters/inbound/react/components/BillingDisclosureModal";
+import * as billingPreflightModalModule from "@adapters/inbound/react/components/BillingPreflightModal";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
@@ -16,6 +18,7 @@ const googleCalendarConnectionQueryKey = ["google-calendar-connection"] as const
 const onboardingStatusQueryKey = ["onboarding-status"] as const;
 const promptQueryKey = ["system-prompt"] as const;
 const settingsQueryKey = ["agent-settings"] as const;
+const officialTemplateStatusQueryKey = ["official-template-status"] as const;
 const tenantProfileQueryKey = ["tenant-profile"] as const;
 
 function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
@@ -160,35 +163,138 @@ export function ConfiguracionesPage() {
   });
 
   const [debounceDelay, setDebounceDelay] = reactModule.useState(0);
-  const [reminderEnabled, setReminderEnabled] = reactModule.useState(false);
   const [reminderDaysBefore, setReminderDaysBefore] = reactModule.useState(1);
-  const [reminderTemplateName, setReminderTemplateName] = reactModule.useState("");
-  const [reminderTemplateLanguage, setReminderTemplateLanguage] = reactModule.useState("es");
+  const [paymentDetailsText, setPaymentDetailsText] = reactModule.useState("");
+  const [activationStep, setActivationStep] = reactModule.useState<
+    "idle" | "disclosure" | "preflight"
+  >("idle");
 
   reactModule.useEffect(() => {
     if (settingsQuery.data !== undefined) {
       setDebounceDelay(settingsQuery.data.messageDebounceDelaySeconds);
-      setReminderEnabled(settingsQuery.data.appointmentReminderEnabled);
       setReminderDaysBefore(settingsQuery.data.appointmentReminderDaysBefore ?? 1);
-      setReminderTemplateName(settingsQuery.data.appointmentReminderTemplateName ?? "");
-      setReminderTemplateLanguage(settingsQuery.data.appointmentReminderTemplateLanguage);
+      setPaymentDetailsText(settingsQuery.data.paymentDetailsText ?? "");
     }
   }, [settingsQuery.data]);
 
-  const templatesQuery = reactQueryModule.useQuery({
-    queryKey: ["whatsapp-templates"],
-    queryFn: () => appContainer.whatsappTemplateUseCase.listTemplates()
+  const officialTemplateStatusQuery = reactQueryModule.useQuery({
+    queryKey: officialTemplateStatusQueryKey,
+    queryFn: () => appContainer.whatsappTemplateUseCase.listOfficialTemplateStatus()
   });
-  const approvedTemplates = (templatesQuery.data ?? []).filter((t) => t.status === "APPROVED");
+
+  const attendanceStatus = (officialTemplateStatusQuery.data ?? []).find(
+    (s) => s.kind === "ATTENDANCE"
+  );
+  const paymentStatus = (officialTemplateStatusQuery.data ?? []).find((s) => s.kind === "PAYMENT");
+  const reminderSetupState: "loading" | "not_configured" | "preparing" | "active" | "broken" =
+    (() => {
+      if (
+        attendanceStatus === undefined ||
+        paymentStatus === undefined ||
+        settingsQuery.data === undefined
+      ) {
+        return "loading";
+      }
+      if (attendanceStatus.metaStatus === "PENDING" || paymentStatus.metaStatus === "PENDING") {
+        return "preparing";
+      }
+      if (
+        attendanceStatus.metaStatus === "REJECTED" ||
+        attendanceStatus.metaStatus === "DISABLED"
+      ) {
+        return "broken";
+      }
+      if (
+        attendanceStatus.metaStatus === "APPROVED" &&
+        settingsQuery.data.appointmentReminderEnabled
+      ) {
+        return "active";
+      }
+      // Meta APPROVED + enabled=false → el usuario pausó los recordatorios;
+      // mostramos el mismo estado que "nunca configurado" para que el botón
+      // "Activar recordatorios" los vuelva a encender de forma instantánea
+      // (el backend es idempotente: reusa las plantillas ya aprobadas).
+      return "not_configured";
+    })();
+
+  const retryKindMutation = reactQueryModule.useMutation({
+    mutationFn: (kind: "ATTENDANCE" | "PAYMENT") =>
+      appContainer.whatsappTemplateUseCase.activateOfficialTemplate(kind),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: officialTemplateStatusQueryKey });
+    }
+  });
+
+  const activateAllMutation = reactQueryModule.useMutation({
+    mutationFn: async () => {
+      await appContainer.whatsappTemplateUseCase.activateOfficialTemplate("ATTENDANCE");
+      try {
+        await appContainer.whatsappTemplateUseCase.activateOfficialTemplate("PAYMENT");
+      } catch {
+        // PAYMENT es opcional — si falla, seguimos con ATTENDANCE.
+      }
+      const fresh = await appContainer.agentUseCase.getAgentSettings();
+      return appContainer.agentUseCase.updateAgentSettings({
+        messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+        appointmentReminderEnabled: true,
+        appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore ?? 1,
+        appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
+        appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName,
+        paymentDetailsText: fresh.paymentDetailsText
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: officialTemplateStatusQueryKey });
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+    }
+  });
+
+  const deactivateAllMutation = reactQueryModule.useMutation({
+    mutationFn: async () => {
+      // Cancelar/Desactivar NO tocan Meta — solo cancelan Cloud Tasks
+      // pending y limpian los template names locales (el backend ya lo
+      // hace en deactivate_official_template) para que la UI vuelva a
+      // "Sin configurar". Las plantillas quedan en Meta; se borran
+      // manualmente desde la tab Plantillas.
+      try {
+        await appContainer.whatsappTemplateUseCase.deactivateOfficialTemplate("ATTENDANCE");
+      } catch {
+        // Best-effort.
+      }
+      try {
+        await appContainer.whatsappTemplateUseCase.deactivateOfficialTemplate("PAYMENT");
+      } catch {
+        // Best-effort.
+      }
+      const fresh = await appContainer.agentUseCase.getAgentSettings();
+      return appContainer.agentUseCase.updateAgentSettings({
+        messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        paymentDetailsText: fresh.paymentDetailsText
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: officialTemplateStatusQueryKey });
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+    }
+  });
+
+  const isReminderActive = reminderSetupState === "active";
 
   const settingsMutation = reactQueryModule.useMutation({
     mutationFn: () =>
       appContainer.agentUseCase.updateAgentSettings({
         messageDebounceDelaySeconds: debounceDelay,
-        appointmentReminderEnabled: reminderEnabled,
-        appointmentReminderDaysBefore: reminderEnabled ? reminderDaysBefore : null,
-        appointmentReminderTemplateName: reminderEnabled ? reminderTemplateName : null,
-        appointmentReminderTemplateLanguage: reminderTemplateLanguage
+        appointmentReminderEnabled: isReminderActive,
+        appointmentReminderDaysBefore: isReminderActive ? reminderDaysBefore : null,
+        appointmentReminderAttendanceTemplateName:
+          settingsQuery.data?.appointmentReminderAttendanceTemplateName ?? null,
+        appointmentReminderPaymentTemplateName:
+          settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null,
+        paymentDetailsText: paymentDetailsText.trim() === "" ? null : paymentDetailsText
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
@@ -237,9 +343,29 @@ export function ConfiguracionesPage() {
     promptQuery.error
   ]);
 
+  const daysBeforeTimeoutRef = reactModule.useRef<number | null>(null);
+  const handleDaysBeforeChange = (event: reactModule.ChangeEvent<HTMLInputElement>) => {
+    const parsed = Number(event.target.value);
+    if (Number.isNaN(parsed) || parsed < 1 || parsed > 7) {
+      setReminderDaysBefore(parsed);
+      return;
+    }
+    setReminderDaysBefore(parsed);
+    if (daysBeforeTimeoutRef.current !== null) {
+      window.clearTimeout(daysBeforeTimeoutRef.current);
+    }
+    daysBeforeTimeoutRef.current = window.setTimeout(() => {
+      settingsMutation.mutate();
+    }, 800);
+  };
+
   const settingsErrorMessage = uiErrorModule.resolveUiErrorMessage([
     settingsMutation.error,
-    settingsQuery.error
+    settingsQuery.error,
+    activateAllMutation.error,
+    deactivateAllMutation.error,
+    retryKindMutation.error,
+    officialTemplateStatusQuery.error
   ]);
 
   return (
@@ -584,86 +710,225 @@ export function ConfiguracionesPage() {
             />
           </div>
 
-          {/* Recordatorio de cita */}
+          {/* Recordatorios automaticos */}
           <div className="mt-6 border-t border-border-subtle pt-6">
-            <h4 className="text-sm font-semibold text-brand-ink">Recordatorio de cita</h4>
+            <h4 className="text-sm font-semibold text-brand-ink">Recordatorios automáticos</h4>
             <p className="mt-0.5 text-xs text-slate-500">
-              Envia un mensaje de plantilla al paciente antes de su cita para recordarle confirmar.
+              Enviamos un mensaje de WhatsApp al paciente antes de su cita.
             </p>
 
-            <div className="mt-3 flex items-center gap-3">
-              <label
-                className="relative inline-flex cursor-pointer items-center"
-                htmlFor="reminder-toggle"
-              >
-                <input
-                  checked={reminderEnabled}
-                  className="peer sr-only"
-                  id="reminder-toggle"
-                  onChange={(e) => {
-                    setReminderEnabled(e.target.checked);
-                  }}
-                  type="checkbox"
-                />
-                <div className="h-6 w-11 rounded-full bg-slate-200 after:absolute after:left-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all after:content-[''] peer-checked:bg-brand-teal peer-checked:after:translate-x-full peer-focus:ring-2 peer-focus:ring-brand-teal/20" />
-              </label>
-              <span className="text-sm text-slate-700">
-                {reminderEnabled ? "Activado" : "Desactivado"}
-              </span>
-            </div>
+            {reminderSetupState === "loading" ? (
+              <p className="mt-4 text-xs text-slate-400">Cargando…</p>
+            ) : null}
 
-            {reminderEnabled ? (
+            {reminderSetupState === "not_configured" ? (
+              <div className="mt-4">
+                <button
+                  className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={activateAllMutation.isPending}
+                  onClick={() => {
+                    setActivationStep("disclosure");
+                  }}
+                  type="button"
+                >
+                  {activateAllMutation.isPending ? "Activando…" : "Activar recordatorios"}
+                </button>
+                <p className="mt-2 text-xs text-slate-500">
+                  WhatsApp debe aprobar los mensajes antes de empezar a enviarlos. Suele tardar unos
+                  minutos.
+                </p>
+              </div>
+            ) : null}
+
+            <billingDisclosureModalModule.BillingDisclosureModal
+              isOpen={activationStep === "disclosure"}
+              onCancel={() => {
+                setActivationStep("idle");
+              }}
+              onContinue={() => {
+                setActivationStep("preflight");
+              }}
+            />
+            <billingPreflightModalModule.BillingPreflightModal
+              defaultPhoneNumber={settingsQuery.data?.reminderBillingTestPhoneNumber ?? ""}
+              isOpen={activationStep === "preflight"}
+              onCancel={() => {
+                setActivationStep("idle");
+              }}
+              onSuccess={() => {
+                setActivationStep("idle");
+                activateAllMutation.mutate();
+              }}
+            />
+
+            {reminderSetupState === "preparing" ? (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-medium text-amber-900">Preparando los recordatorios…</p>
+                <p className="mt-1 text-xs text-amber-800">
+                  WhatsApp está revisando los mensajes. Puede tardar unos minutos. Podés cerrar esta
+                  página y volver más tarde.
+                </p>
+                <button
+                  className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={deactivateAllMutation.isPending}
+                  onClick={() => {
+                    deactivateAllMutation.mutate();
+                  }}
+                  type="button"
+                >
+                  {deactivateAllMutation.isPending ? "Cancelando…" : "Cancelar"}
+                </button>
+              </div>
+            ) : null}
+
+            {reminderSetupState === "active" ? (
               <div className="mt-4 space-y-4">
                 <div>
                   <label
                     className="block text-sm font-medium text-slate-700"
                     htmlFor="reminder-days"
                   >
-                    Dias antes de la cita
+                    ¿Cuántos días antes enviamos el recordatorio?
                   </label>
                   <input
                     className="mt-1 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     id="reminder-days"
                     max={7}
                     min={1}
-                    onChange={(e) => {
-                      setReminderDaysBefore(Number(e.target.value));
-                    }}
+                    onChange={handleDaysBeforeChange}
                     step={1}
                     type="number"
                     value={reminderDaysBefore}
                   />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Se guarda automáticamente. Entre 1 y 7 días.
+                  </p>
                 </div>
+
+                <div className="rounded-xl border border-border-subtle bg-slate-50 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Así lo recibe el paciente que ya pagó
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                    Hola Juan García feliz día, te envío la confirmación de la sesión de mañana
+                    miércoles 22 de abril a la 1 pm de forma virtual por Google Meet, más detalles
+                    en el correo de agendamiento de google calendar.
+                  </p>
+                </div>
+
+                {paymentStatus?.metaStatus === "APPROVED" ? (
+                  <div className="rounded-xl border border-border-subtle bg-slate-50 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Así lo recibe el paciente que aún no pagó
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                      {`Hola Juan García feliz día, recuerda que para la confirmación de tu sesión el lunes 8 de noviembre de 2026 a las 10 am debes realizar el pago por los siguientes canales: ${
+                        paymentDetailsText.trim() === ""
+                          ? "(configura tus datos de pago abajo)"
+                          : paymentDetailsText
+                      }. Envía tu comprobante al chat antes de tu sesión.`}
+                    </p>
+                  </div>
+                ) : null}
 
                 <div>
                   <label
                     className="block text-sm font-medium text-slate-700"
-                    htmlFor="reminder-template"
+                    htmlFor="payment-details"
                   >
-                    Plantilla de recordatorio
+                    Datos de pago
                   </label>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Solo se muestran plantillas aprobadas por Meta.
+                    Se incluyen en el recordatorio cuando la cita aún no fue pagada. Ej.: Nequi,
+                    Bancolombia, un link.
                   </p>
-                  <select
-                    className="mt-1 w-full max-w-xs rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    id="reminder-template"
-                    onChange={(e) => {
-                      const selected = approvedTemplates.find((t) => t.name === e.target.value);
-                      setReminderTemplateName(e.target.value);
-                      if (selected !== undefined) {
-                        setReminderTemplateLanguage(selected.language);
-                      }
+                  <textarea
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                    id="payment-details"
+                    onBlur={() => {
+                      settingsMutation.mutate();
                     }}
-                    value={reminderTemplateName}
+                    onChange={(e) => {
+                      setPaymentDetailsText(e.target.value);
+                    }}
+                    placeholder="Nequi: 300 123 4567&#10;Bancolombia ahorros 1234-5678-9012"
+                    rows={3}
+                    value={paymentDetailsText}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Se guarda cuando sales del campo.</p>
+                </div>
+
+                {paymentStatus?.metaStatus === "REJECTED" ||
+                paymentStatus?.metaStatus === "DISABLED" ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    <p className="font-medium">
+                      No podemos recordarle a quien aún no pagó su cita.
+                    </p>
+                    <p className="mt-1 text-xs text-amber-800">
+                      WhatsApp rechazó ese mensaje.
+                      {paymentStatus.rejectionReason !== null
+                        ? ` Motivo: ${paymentStatus.rejectionReason}`
+                        : ""}
+                    </p>
+                    <button
+                      className="mt-3 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={retryKindMutation.isPending}
+                      onClick={() => {
+                        retryKindMutation.mutate("PAYMENT");
+                      }}
+                      type="button"
+                    >
+                      {retryKindMutation.isPending ? "Reintentando…" : "Reintentar"}
+                    </button>
+                  </div>
+                ) : null}
+
+                <div>
+                  <button
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={deactivateAllMutation.isPending}
+                    onClick={() => {
+                      deactivateAllMutation.mutate();
+                    }}
+                    type="button"
                   >
-                    <option value="">Seleccionar plantilla...</option>
-                    {approvedTemplates.map((t) => (
-                      <option key={t.name} value={t.name}>
-                        {t.name} ({t.language})
-                      </option>
-                    ))}
-                  </select>
+                    {deactivateAllMutation.isPending ? "Desactivando…" : "Desactivar recordatorios"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {reminderSetupState === "broken" ? (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+                <p className="font-medium">No pudimos activar los recordatorios.</p>
+                <p className="mt-1 text-xs text-red-800">
+                  WhatsApp rechazó el mensaje principal.
+                  {attendanceStatus?.rejectionReason !== null &&
+                  attendanceStatus?.rejectionReason !== undefined
+                    ? ` Motivo: ${attendanceStatus.rejectionReason}`
+                    : ""}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={retryKindMutation.isPending}
+                    onClick={() => {
+                      retryKindMutation.mutate("ATTENDANCE");
+                    }}
+                    type="button"
+                  >
+                    {retryKindMutation.isPending ? "Reintentando…" : "Reintentar"}
+                  </button>
+                  <button
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={deactivateAllMutation.isPending}
+                    onClick={() => {
+                      deactivateAllMutation.mutate();
+                    }}
+                    type="button"
+                  >
+                    {deactivateAllMutation.isPending ? "Desactivando…" : "Desactivar"}
+                  </button>
                 </div>
               </div>
             ) : null}
@@ -676,9 +941,7 @@ export function ConfiguracionesPage() {
           <div className="mt-4 flex gap-3">
             <button
               className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={
-                settingsMutation.isPending || settingsQuery.isLoading || templatesQuery.isLoading
-              }
+              disabled={settingsMutation.isPending || settingsQuery.isLoading}
               onClick={() => {
                 settingsMutation.mutate();
               }}
