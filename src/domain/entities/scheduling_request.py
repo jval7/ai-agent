@@ -48,6 +48,10 @@ class SchedulingRequest(pydantic.BaseModel):
     # Reference to the appointment that triggered this reminder-reply request.
     # Set when the request is created via reminder pre-positioning.
     source_appointment_id: str | None = None
+    # Kind of the source appointment, used to know which repository to update on payment approval.
+    source_appointment_kind: typing.Literal["MANUAL_APPOINTMENT", "SCHEDULING_REQUEST"] | None = (
+        None
+    )
     created_at: datetime.datetime
     updated_at: datetime.datetime
 

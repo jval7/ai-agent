@@ -286,6 +286,9 @@ class AppContainer:
             tag_service=self.tag_service,
             reminder_service=self.reminder_service,
             patient_repository=self.patient_repository,
+            manual_appointment_repository=self.manual_appointment_repository,
+            whatsapp_provider=self.whatsapp_provider_adapter,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
         )
         self.scheduling_inbox_service = scheduling_inbox_service.SchedulingInboxService(
             scheduling_repository=self.scheduling_repository,

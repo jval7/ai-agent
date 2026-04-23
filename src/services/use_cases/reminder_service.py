@@ -532,6 +532,15 @@ class ReminderService(reminder_service_port.ReminderServicePort):
 
         # Create a lightweight new SchedulingRequest in the reminder-reply state.
         new_request_id = self._id_generator.new_id()
+        # Map reminder.source_type to the Literal used by SchedulingRequest.
+        source_kind: typing.Literal["MANUAL_APPOINTMENT", "SCHEDULING_REQUEST"] | None
+        if reminder.source_type == "MANUAL_APPOINTMENT":
+            source_kind = "MANUAL_APPOINTMENT"
+        elif reminder.source_type == "SCHEDULING_REQUEST":
+            source_kind = "SCHEDULING_REQUEST"
+        else:
+            source_kind = None
+
         new_request = scheduling_request_entity.SchedulingRequest(
             id=new_request_id,
             tenant_id=tenant_id,
@@ -548,6 +557,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             selected_slot_id=None,
             calendar_event_id=None,
             source_appointment_id=reminder.source_id,
+            source_appointment_kind=source_kind,
             created_at=now_value,
             updated_at=now_value,
         )
