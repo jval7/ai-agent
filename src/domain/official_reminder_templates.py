@@ -39,8 +39,7 @@ OFFICIAL_REMINDER_TEMPLATES: dict[OfficialReminderKind, OfficialReminderTemplate
         body_text=(
             "Hola {{1}} feliz día, recuerda que para la confirmación de tu sesión "
             "{{2}} debes realizar el pago por los siguientes canales: {{3}}. "
-            "Envía tu comprobante al chat antes de tu sesión. Pregunta por nuestros "
-            "paquetes 👌🏻"
+            "Envía tu comprobante al chat antes de tu sesión."
         ),
         example_values=[
             "Juan García",

@@ -825,7 +825,7 @@ export function ConfiguracionesPage() {
                         paymentDetailsText.trim() === ""
                           ? "(configura tus datos de pago abajo)"
                           : paymentDetailsText
-                      }. Envía tu comprobante al chat antes de tu sesión. Pregunta por nuestros paquetes 👌🏻`}
+                      }. Envía tu comprobante al chat antes de tu sesión.`}
                     </p>
                   </div>
                 ) : null}
