@@ -76,6 +76,16 @@ class RuntimeContextResolver:
                 selected_slot_id=latest_open_request.selected_slot_id,
                 enabled_tool_names=self._enabled_tools_for_state("AWAITING_PAYMENT_CONFIRMATION"),
             )
+        if request_status == "AWAITING_ATTENDANCE_CONFIRMATION":
+            return RuntimePromptContext(
+                state="AWAITING_ATTENDANCE_CONFIRMATION",
+                request_id=latest_open_request.request_id,
+                request_status=request_status,
+                appointment_modality=latest_open_request.appointment_modality,
+                enabled_tool_names=self._enabled_tools_for_state(
+                    "AWAITING_ATTENDANCE_CONFIRMATION"
+                ),
+            )
         if request_status == "AWAITING_CONSULTATION_REVIEW":
             return RuntimePromptContext(
                 state="AWAITING_CONSULTATION_REVIEW",
@@ -123,6 +133,7 @@ class RuntimeContextResolver:
                 "AWAITING_CONSULTATION_REVIEW",
                 "AWAITING_PATIENT_CHOICE",
                 "AWAITING_PAYMENT_CONFIRMATION",
+                "AWAITING_ATTENDANCE_CONFIRMATION",
                 "BOOKED",
             ):
                 return request
@@ -170,6 +181,10 @@ class RuntimeContextResolver:
             return [
                 "handoff_to_human",
                 "cancel_active_scheduling_request",
+            ]
+        if state == "AWAITING_ATTENDANCE_CONFIRMATION":
+            return [
+                "handoff_to_human",
             ]
         if state == "COLLECTING_CONFIRMATION_DATA":
             return [

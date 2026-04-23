@@ -2,11 +2,15 @@ import datetime
 import zoneinfo
 
 import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
+import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.inmemory.scheduled_reminder_repository_adapter as scheduled_reminder_repository_adapter
+import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.task_scheduler_adapter as task_scheduler_adapter
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.domain.entities.agent_profile as agent_profile_entity
+import src.domain.entities.conversation as conversation_entity
+import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.domain.official_reminder_templates as official_reminder_templates
 import src.services.use_cases.reminder_service as reminder_service_module
@@ -66,6 +70,62 @@ def _build_service(
         clock=clock,
     )
     return service, agent_profile_repo, reminder_repo, task_sched, wa_provider
+
+
+def _build_service_with_conversation_repos(
+    id_values: list[str],
+    agent_profile: agent_profile_entity.AgentProfile | None = None,
+) -> tuple[
+    reminder_service_module.ReminderService,
+    scheduled_reminder_repository_adapter.InMemoryScheduledReminderRepositoryAdapter,
+    scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
+    conversation_repository_adapter.InMemoryConversationRepositoryAdapter,
+    fake_adapters.FakeWhatsappProvider,
+]:
+    store = in_memory_store.InMemoryStore()
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    wa_connection_repo = (
+        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
+    )
+    reminder_repo = (
+        scheduled_reminder_repository_adapter.InMemoryScheduledReminderRepositoryAdapter()
+    )
+    scheduling_repo = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
+    conversation_repo = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(store)
+    task_sched = task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
+    wa_provider = fake_adapters.FakeWhatsappProvider()
+    clock = fake_adapters.FixedClock(_NOW)
+    id_gen = fake_adapters.SequenceIdGenerator(id_values)
+
+    wa_connection_repo.save(
+        whatsapp_connection_entity.WhatsappConnection(
+            tenant_id="tenant-1",
+            phone_number_id="phone-1",
+            business_account_id="business-1",
+            access_token="wa-token-1",
+            status="CONNECTED",
+            embedded_signup_state=None,
+            updated_at=_NOW,
+        )
+    )
+
+    if agent_profile is not None:
+        agent_profile_repo.save(agent_profile)
+
+    service = reminder_service_module.ReminderService(
+        scheduled_reminder_repository=reminder_repo,
+        agent_profile_repository=agent_profile_repo,
+        whatsapp_connection_repository=wa_connection_repo,
+        whatsapp_provider=wa_provider,
+        task_scheduler=task_sched,
+        id_generator=id_gen,
+        clock=clock,
+        scheduling_repository=scheduling_repo,
+        conversation_repository=conversation_repo,
+    )
+    return service, reminder_repo, scheduling_repo, conversation_repo, wa_provider
 
 
 def _make_profile(
@@ -534,3 +594,204 @@ def test_execute_reminder_payment_fails_when_details_missing() -> None:
     failed = reminder_repo.list_by_tenant("tenant-1", status="FAILED")
     assert len(failed) == 1
     assert failed[0].failure_reason == "payment_details_not_configured"
+
+
+# ---------------------------------------------------------------------------
+# execute_reminder — pre-positioning conversation state
+# ---------------------------------------------------------------------------
+
+
+def _setup_conversation(
+    conversation_repo: conversation_repository_adapter.InMemoryConversationRepositoryAdapter,
+) -> None:
+    """Create a minimal conversation so the reminder service can pre-position state."""
+    conversation_repo.save_conversation(
+        conversation_entity.Conversation(
+            id="conv-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            started_at=_NOW,
+            updated_at=_NOW,
+            last_message_preview=None,
+            message_ids=[],
+            control_mode="AI",
+        )
+    )
+
+
+def test_execute_reminder_attendance_creates_awaiting_attendance_request() -> None:
+    """After sending an ATTENDANCE reminder, a new AWAITING_ATTENDANCE_CONFIRMATION request is created."""
+    profile = _build_profile_with_payment_details()
+    # IDs: reminder-1 (maybe_schedule), new_request-1, outbound_msg-1 (pre-position)
+    service, reminder_repo, scheduling_repo, conversation_repo, _ = (
+        _build_service_with_conversation_repos(
+            ["reminder-1", "new-request-1", "outbound-msg-1"], agent_profile=profile
+        )
+    )
+    _setup_conversation(conversation_repo)
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="SCHEDULING_REQUEST",
+        source_id="sched-req-original",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Juan",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+        appointment_modality="VIRTUAL",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    assert len(pending) == 1
+
+    result = service.execute_reminder("tenant-1", pending[0].id)
+
+    assert result["status"] == "sent"
+
+    # New SchedulingRequest should be created in the right state.
+    requests = scheduling_repo.list_requests_by_conversation("tenant-1", "conv-1")
+    assert len(requests) == 1
+    new_req = requests[0]
+    assert new_req.status == "AWAITING_ATTENDANCE_CONFIRMATION"
+    assert new_req.source_appointment_id == "sched-req-original"
+
+    # An outbound message should be persisted in the conversation.
+    messages = conversation_repo.list_messages("tenant-1", "conv-1")
+    assert len(messages) == 1
+    assert messages[0].direction == "OUTBOUND"
+    assert messages[0].role == "assistant"
+    assert "Juan" in messages[0].content
+
+
+def test_execute_reminder_payment_creates_awaiting_payment_request() -> None:
+    """After sending a PAYMENT reminder, a new AWAITING_PAYMENT_CONFIRMATION request is created."""
+    profile = _build_profile_with_payment_details(payment_details_text="Nequi 300 111 2222")
+    # IDs: reminder-1 (maybe_schedule), new_request-1, outbound_msg-1 (pre-position)
+    service, reminder_repo, scheduling_repo, conversation_repo, _ = (
+        _build_service_with_conversation_repos(
+            ["reminder-1", "new-request-1", "outbound-msg-1"], agent_profile=profile
+        )
+    )
+    _setup_conversation(conversation_repo)
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="SCHEDULING_REQUEST",
+        source_id="sched-req-original",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Maria",
+        appointment_start_at=appointment,
+        payment_status="PENDING",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+
+    result = service.execute_reminder("tenant-1", pending[0].id)
+
+    assert result["status"] == "sent"
+
+    requests = scheduling_repo.list_requests_by_conversation("tenant-1", "conv-1")
+    assert len(requests) == 1
+    new_req = requests[0]
+    assert new_req.status == "AWAITING_PAYMENT_CONFIRMATION"
+    assert new_req.source_appointment_id == "sched-req-original"
+
+    messages = conversation_repo.list_messages("tenant-1", "conv-1")
+    assert len(messages) == 1
+    assert messages[0].direction == "OUTBOUND"
+
+
+def test_execute_reminder_archives_existing_open_requests() -> None:
+    """Pre-positioning archives open scheduling requests before creating the new one."""
+    profile = _build_profile_with_payment_details()
+    # IDs: reminder-1 (maybe_schedule), new_request-1, outbound_msg-1 (pre-position)
+    service, reminder_repo, scheduling_repo, conversation_repo, _ = (
+        _build_service_with_conversation_repos(
+            ["reminder-1", "new-request-1", "outbound-msg-1"], agent_profile=profile
+        )
+    )
+    _setup_conversation(conversation_repo)
+
+    # Pre-seed an open scheduling request.
+    existing_request = scheduling_request_entity.SchedulingRequest(
+        id="existing-req-1",
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        request_kind="INITIAL",
+        status="BOOKED",
+        round_number=1,
+        patient_preference_note=None,
+        rejection_summary=None,
+        professional_note=None,
+        slots=[],
+        slot_options_map={},
+        selected_slot_id=None,
+        calendar_event_id=None,
+        created_at=_NOW,
+        updated_at=_NOW,
+    )
+    scheduling_repo.save_request(existing_request)
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Pedro",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+        appointment_modality="PRESENCIAL",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+
+    service.execute_reminder("tenant-1", pending[0].id)
+
+    # The old BOOKED request should now be CANCELLED.
+    archived = scheduling_repo.get_request_by_id("tenant-1", "existing-req-1")
+    assert archived is not None
+    assert archived.status == "CANCELLED"
+
+    # A new AWAITING_ATTENDANCE_CONFIRMATION request should exist.
+    all_requests = scheduling_repo.list_requests_by_conversation("tenant-1", "conv-1")
+    new_requests = [r for r in all_requests if r.status == "AWAITING_ATTENDANCE_CONFIRMATION"]
+    assert len(new_requests) == 1
+
+
+def test_execute_reminder_skips_pre_position_when_no_conversation() -> None:
+    """If no conversation exists for the patient, pre-positioning is skipped gracefully."""
+    profile = _build_profile_with_payment_details()
+    service, reminder_repo, scheduling_repo, _conversation_repo, _wa_provider = (
+        _build_service_with_conversation_repos(
+            ["reminder-1", "new-request-1", "outbound-msg-1"], agent_profile=profile
+        )
+    )
+    # No conversation is set up — patient is unknown.
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-unknown",
+        patient_name="Unknown",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+
+    # Should still send the reminder without raising.
+    result = service.execute_reminder("tenant-1", pending[0].id)
+
+    assert result["status"] == "sent"
+    # No scheduling request created (no conversation).
+    assert scheduling_repo.list_requests_by_tenant("tenant-1") == []

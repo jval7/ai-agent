@@ -2,14 +2,18 @@ import datetime
 import typing
 import zoneinfo
 
+import src.domain.entities.message as message_entity
 import src.domain.entities.scheduled_reminder as scheduled_reminder_entity
+import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.official_reminder_templates as official_reminder_templates
 import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.clock_port as clock_port
+import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.reminder_service_port as reminder_service_port
 import src.ports.scheduled_reminder_repository_port as scheduled_reminder_repository_port
+import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.ports.task_scheduler_port as task_scheduler_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
@@ -41,6 +45,10 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         task_scheduler: task_scheduler_port.TaskSchedulerPort,
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
+        scheduling_repository: scheduling_repository_port.SchedulingRepositoryPort | None = None,
+        conversation_repository: (
+            conversation_repository_port.ConversationRepositoryPort | None
+        ) = None,
     ) -> None:
         self._scheduled_reminder_repository = scheduled_reminder_repository
         self._agent_profile_repository = agent_profile_repository
@@ -49,6 +57,8 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         self._task_scheduler = task_scheduler
         self._id_generator = id_generator
         self._clock = clock
+        self._scheduling_repository = scheduling_repository
+        self._conversation_repository = conversation_repository
 
     def maybe_schedule_reminder(
         self,
@@ -238,6 +248,19 @@ class ReminderService(reminder_service_port.ReminderServicePort):
                 )
             },
         )
+
+        # Pre-position conversation state so the bot handles patient replies correctly.
+        if self._scheduling_repository is not None and self._conversation_repository is not None:
+            rendered_body = _render_template_body(body_parameters)
+            self._pre_position_conversation_state(
+                tenant_id=tenant_id,
+                reminder=reminder,
+                template_kind=template_kind,
+                rendered_body=rendered_body,
+                outbound_message_id=message_id,
+                now_value=now_value,
+            )
+
         return {"status": "sent", "message_id": message_id}
 
     def cancel_reminders_for_source(
@@ -448,6 +471,126 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             items=[self._to_dto(item) for item in sorted_reminders]
         )
 
+    def _pre_position_conversation_state(
+        self,
+        tenant_id: str,
+        reminder: scheduled_reminder_entity.ScheduledReminder,
+        template_kind: official_reminder_templates.OfficialReminderKind | None,
+        rendered_body: str,
+        outbound_message_id: str,
+        now_value: datetime.datetime,
+    ) -> None:
+        """Archive all open scheduling requests and create a new one to receive the patient reply.
+
+        This method is best-effort: errors are logged but never surface to the caller so a
+        failure here does NOT re-mark the reminder as failed (the WA message was already sent).
+        """
+        assert self._scheduling_repository is not None
+        assert self._conversation_repository is not None
+
+        # Resolve the conversation for this patient.
+        conversation = self._conversation_repository.get_conversation_by_whatsapp_user(
+            tenant_id, reminder.patient_whatsapp_user_id
+        )
+        if conversation is None:
+            logger.warning(
+                "reminder.pre_position.no_conversation",
+                extra={
+                    "reminder_id": reminder.id,
+                    "whatsapp_user_id": reminder.patient_whatsapp_user_id,
+                },
+            )
+            return
+
+        # Archive (mark CANCELLED) every open scheduling request for this conversation.
+        open_requests = self._scheduling_repository.list_requests_by_conversation(
+            tenant_id, conversation.id
+        )
+        _open_statuses = frozenset(
+            {
+                "AWAITING_CONSULTATION_REVIEW",
+                "AWAITING_CONSULTATION_DETAILS",
+                "AWAITING_PATIENT_CHOICE",
+                "AWAITING_PAYMENT_CONFIRMATION",
+                "AWAITING_ATTENDANCE_CONFIRMATION",
+                "BOOKED",
+            }
+        )
+        for open_request in open_requests:
+            if open_request.status in _open_statuses:
+                open_request.set_status("CANCELLED", now_value)
+                open_request.professional_note = "archived_by_reminder_send"
+                self._scheduling_repository.save_request(open_request)
+
+        # Determine new status from template kind.
+        if template_kind == "ATTENDANCE":
+            new_status: typing.Literal[
+                "AWAITING_ATTENDANCE_CONFIRMATION", "AWAITING_PAYMENT_CONFIRMATION"
+            ] = "AWAITING_ATTENDANCE_CONFIRMATION"
+        else:
+            new_status = "AWAITING_PAYMENT_CONFIRMATION"
+
+        # Create a lightweight new SchedulingRequest in the reminder-reply state.
+        new_request_id = self._id_generator.new_id()
+        new_request = scheduling_request_entity.SchedulingRequest(
+            id=new_request_id,
+            tenant_id=tenant_id,
+            conversation_id=conversation.id,
+            whatsapp_user_id=reminder.patient_whatsapp_user_id,
+            request_kind="RETRY",
+            status=new_status,
+            round_number=len(open_requests) + 1,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            slots=[],
+            slot_options_map={},
+            selected_slot_id=None,
+            calendar_event_id=None,
+            source_appointment_id=reminder.source_id,
+            created_at=now_value,
+            updated_at=now_value,
+        )
+        self._scheduling_repository.save_request(new_request)
+
+        # Persist the rendered template text as an outbound assistant message so
+        # the LLM has context when the patient replies.
+        outbound_msg_id = self._id_generator.new_id()
+        outbound_message = message_entity.Message(
+            id=outbound_msg_id,
+            conversation_id=conversation.id,
+            tenant_id=tenant_id,
+            direction="OUTBOUND",
+            role="assistant",
+            content=rendered_body,
+            provider_message_id=outbound_message_id,
+            created_at=now_value,
+        )
+        self._conversation_repository.save_message(outbound_message)
+
+        # Update the conversation preview so the UI reflects the last outbound message.
+        conversation.append_message(outbound_msg_id, rendered_body, now_value)
+        self._conversation_repository.save_conversation(conversation)
+
+        logger.info(
+            "reminder.pre_position.done",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="reminder.pre_position.done",
+                    message="conversation pre-positioned after reminder send",
+                    data={
+                        "reminder_id": reminder.id,
+                        "new_request_id": new_request_id,
+                        "new_status": new_status,
+                        "conversation_id": conversation.id,
+                        "archived_count": sum(
+                            1 for r in open_requests if r.status in _open_statuses
+                        ),
+                    },
+                )
+            },
+        )
+
     def _mark_reminder_failed(
         self, reminder: scheduled_reminder_entity.ScheduledReminder, reason: str
     ) -> None:
@@ -481,6 +624,15 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             status=reminder.status,
             created_at=reminder.created_at,
         )
+
+
+def _render_template_body(body_parameters: list[str]) -> str:
+    """Join body parameters into a plain-text representation of the reminder.
+
+    This is stored as the outbound message in the conversation so the LLM has
+    context when the patient replies to the reminder.
+    """
+    return " | ".join(body_parameters)
 
 
 def _format_modality_text(

@@ -11,6 +11,7 @@ import src.adapters.outbound.inmemory.task_scheduler_adapter as task_scheduler_a
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.domain.entities.message as message_entity
+import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.services.dto.google_calendar_dto as google_calendar_dto
 import src.services.dto.scheduling_dto as scheduling_dto
@@ -833,3 +834,102 @@ def test_confirm_slot_presencial_modality_passes_with_meet_false() -> None:
     assert result.status == "BOOKED"
     assert provider.last_create_with_meet == [False]
     assert provider.last_create_attendee_emails == [["jane@example.com"]]
+
+
+# ---------------------------------------------------------------------------
+# confirm_attendance_and_schedule_close
+# ---------------------------------------------------------------------------
+
+
+def _seed_attendance_confirmation_request(
+    scheduling_repo: scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
+) -> str:
+    """Insert an AWAITING_ATTENDANCE_CONFIRMATION request directly into the repo."""
+    request = scheduling_request_entity.SchedulingRequest(
+        id="attend-req-1",
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        request_kind="RETRY",
+        status="AWAITING_ATTENDANCE_CONFIRMATION",
+        round_number=2,
+        patient_preference_note=None,
+        rejection_summary=None,
+        professional_note=None,
+        slots=[],
+        slot_options_map={},
+        selected_slot_id=None,
+        calendar_event_id=None,
+        source_appointment_id="original-sched-req-1",
+        created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+    )
+    scheduling_repo.save_request(request)
+    return request.id
+
+
+def test_confirm_attendance_schedules_auto_close() -> None:
+    service, scheduling_repo, _, task_sched = build_service(["req-1"])
+    request_id = _seed_attendance_confirmation_request(scheduling_repo)
+
+    result = service.confirm_attendance_and_schedule_close(
+        tenant_id="tenant-1",
+        scheduling_request_id=request_id,
+    )
+
+    assert result["status"] == "AWAITING_ATTENDANCE_CONFIRMATION"
+    assert result["action"] == "auto_close_scheduled"
+    # An auto-close Cloud Task should have been enqueued.
+    assert len(task_sched.scheduled_tasks) == 1
+    assert task_sched.scheduled_tasks[0]["scheduling_request_id"] == request_id
+
+
+def test_confirm_attendance_skips_if_wrong_status() -> None:
+    """If the request is not in AWAITING_ATTENDANCE_CONFIRMATION, the method is a no-op."""
+    service, scheduling_repo, _, task_sched = build_service(["req-1"])
+    # Create a BOOKED request (different status).
+    request = scheduling_request_entity.SchedulingRequest(
+        id="booked-req-1",
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        request_kind="INITIAL",
+        status="BOOKED",
+        round_number=1,
+        patient_preference_note=None,
+        rejection_summary=None,
+        professional_note=None,
+        slots=[],
+        slot_options_map={},
+        selected_slot_id=None,
+        calendar_event_id=None,
+        created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+    )
+    scheduling_repo.save_request(request)
+
+    result = service.confirm_attendance_and_schedule_close(
+        tenant_id="tenant-1",
+        scheduling_request_id="booked-req-1",
+    )
+
+    assert result["action"] == "skipped"
+    assert task_sched.scheduled_tasks == []
+
+
+def test_auto_close_booked_request_handles_attendance_confirmation_status() -> None:
+    """auto_close_booked_request closes AWAITING_ATTENDANCE_CONFIRMATION requests via manual-close archival."""
+    service, scheduling_repo, _, _ = build_service(["req-1"])
+    request_id = _seed_attendance_confirmation_request(scheduling_repo)
+
+    result = service.auto_close_booked_request(
+        tenant_id="tenant-1",
+        scheduling_request_id=request_id,
+    )
+
+    assert result["status"] == "SESSION_CLOSED"
+    assert result["action"] == "closed"
+
+    closed = scheduling_repo.get_request_by_id("tenant-1", request_id)
+    assert closed is not None
+    assert closed.status == "SESSION_CLOSED"

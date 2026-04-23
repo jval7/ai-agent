@@ -257,6 +257,8 @@ class AppContainer:
             task_scheduler=self.task_scheduler,
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
+            scheduling_repository=self.scheduling_repository,
+            conversation_repository=self.conversation_repository,
         )
         self.whatsapp_template_service = whatsapp_template_service.WhatsappTemplateService(
             whatsapp_provider=self.whatsapp_provider_adapter,

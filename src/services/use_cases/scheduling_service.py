@@ -1236,6 +1236,47 @@ class SchedulingService:
             "status": "SESSION_CLOSED",
         }
 
+    def confirm_attendance_and_schedule_close(
+        self,
+        tenant_id: str,
+        scheduling_request_id: str,
+    ) -> dict[str, str]:
+        """Acknowledge attendance confirmation and enqueue a 1h auto-close task.
+
+        Called when a patient explicitly confirms they will attend their appointment.
+        Transitions the request to SESSION_CLOSED after a short delay so the
+        conversation is neatly archived without requiring manual intervention.
+        """
+        request = self._scheduling_repository.get_request_by_id(tenant_id, scheduling_request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+
+        if request.status != "AWAITING_ATTENDANCE_CONFIRMATION":
+            logger.info(
+                "scheduling.confirm_attendance_skipped",
+                extra={
+                    "request_id": scheduling_request_id,
+                    "current_status": request.status,
+                },
+            )
+            return {"status": request.status, "action": "skipped"}
+
+        self._schedule_auto_close_task(tenant_id, scheduling_request_id)
+        logger.info(
+            "scheduling.attendance_confirmed",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.attendance_confirmed",
+                    message="patient confirmed attendance; auto-close task enqueued",
+                    data={
+                        "tenant_id": tenant_id,
+                        "request_id": scheduling_request_id,
+                    },
+                )
+            },
+        )
+        return {"status": "AWAITING_ATTENDANCE_CONFIRMATION", "action": "auto_close_scheduled"}
+
     def auto_close_booked_request(
         self,
         tenant_id: str,
@@ -1245,7 +1286,7 @@ class SchedulingService:
         if request is None:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")
 
-        if request.status != "BOOKED":
+        if request.status not in ("BOOKED", "AWAITING_ATTENDANCE_CONFIRMATION"):
             logger.info(
                 "scheduling.auto_close_skipped",
                 extra={
@@ -1256,13 +1297,21 @@ class SchedulingService:
             return {"status": request.status, "action": "skipped"}
 
         now_value = self._clock.now()
-        self._archive_conversation_subsession_after_booking(
-            tenant_id=tenant_id,
-            conversation_id=request.conversation_id,
-            scheduling_request_id=request.id,
-            calendar_event_id=request.calendar_event_id or "",
-            now_value=now_value,
-        )
+        if request.status == "BOOKED":
+            self._archive_conversation_subsession_after_booking(
+                tenant_id=tenant_id,
+                conversation_id=request.conversation_id,
+                scheduling_request_id=request.id,
+                calendar_event_id=request.calendar_event_id or "",
+                now_value=now_value,
+            )
+        else:
+            # AWAITING_ATTENDANCE_CONFIRMATION: reminder-reply request with no calendar event.
+            self._archive_conversation_subsession_manual_close(
+                tenant_id=tenant_id,
+                conversation_id=request.conversation_id,
+                now_value=now_value,
+            )
         request.set_status("SESSION_CLOSED", now_value)
         self._scheduling_repository.save_request(request)
         self._sync_tags_after_status_change(

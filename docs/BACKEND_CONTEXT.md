@@ -44,6 +44,19 @@ Referencia completa de endpoints con schemas: ver `docs/API_ENDPOINTS.md`.
 
 Dominios funcionales: Auth, Agent (prompt + settings), WhatsApp Onboarding, Google Calendar, Webhooks, Conversations (mensajes + control mode), Patients (CRUD), Blacklist, Manual Appointments, Scheduling Requests, Onboarding status, Dev tools.
 
+### Routing de respuestas a recordatorios (reminder-reply routing)
+Al enviar un recordatorio WA (`execute_reminder`), el `ReminderService` pre-posiciona el estado de la conversación:
+1. Archiva (cancela) todas las `SchedulingRequest` abiertas del paciente.
+2. Crea una nueva `SchedulingRequest` con estado según el tipo de recordatorio:
+   - Template ATTENDANCE → `AWAITING_ATTENDANCE_CONFIRMATION` (nuevo).
+   - Template PAYMENT → `AWAITING_PAYMENT_CONFIRMATION` (existente).
+3. Persiste el texto renderizado del recordatorio como mensaje `OUTBOUND/assistant` en la conversación.
+4. El `RuntimeContextResolver` enruta `AWAITING_ATTENDANCE_CONFIRMATION` al estado homónimo del LLM.
+5. El `SchedulingService.confirm_attendance_and_schedule_close()` encola un Cloud Task de auto-cierre (1h) cuando el paciente confirma asistencia.
+6. `auto_close_booked_request` también cierra requests en `AWAITING_ATTENDANCE_CONFIRMATION` (usa archivado manual-close, no booking-close).
+- Campo `source_appointment_id` en `SchedulingRequest`: referencia al appointment original que disparó el recordatorio.
+- `ReminderService` recibe ahora `scheduling_repository` y `conversation_repository` como dependencias opcionales (wired en `container.py`).
+
 Admin local (sin endpoint HTTP): `make create-professional`, `make delete-professional`.
 
 ## Lógica clave en webhook
