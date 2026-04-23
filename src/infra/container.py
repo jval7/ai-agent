@@ -39,6 +39,7 @@ import src.services.agentic.runtime_context_resolver as runtime_context_resolver
 import src.services.agentic.tool_calling_orchestrator as tool_calling_orchestrator_mod
 import src.services.agentic.tool_handlers.cancel_request_handler as cancel_request_handler
 import src.services.agentic.tool_handlers.close_session_handler as close_session_handler
+import src.services.agentic.tool_handlers.confirm_attendance_received_handler as confirm_attendance_received_handler
 import src.services.agentic.tool_handlers.confirm_slot_handler as confirm_slot_handler
 import src.services.agentic.tool_handlers.handoff_handler as handoff_handler
 import src.services.agentic.tool_handlers.patient_profile_resolver as patient_profile_resolver
@@ -65,6 +66,7 @@ import src.services.use_cases.scheduling_service as scheduling_service
 import src.services.use_cases.tag_service as tag_service
 import src.services.use_cases.tenant_profile_service as tenant_profile_service
 import src.services.use_cases.webhook_service as webhook_service
+import src.services.use_cases.whatsapp_billing_service as whatsapp_billing_service
 import src.services.use_cases.whatsapp_onboarding_service as whatsapp_onboarding_service
 import src.services.use_cases.whatsapp_template_service as whatsapp_template_service
 
@@ -216,10 +218,6 @@ class AppContainer:
             meta_app_id=self.settings.meta_app_id,
             meta_config_id=self.settings.meta_config_id,
         )
-        self.whatsapp_template_service = whatsapp_template_service.WhatsappTemplateService(
-            whatsapp_provider=self.whatsapp_provider_adapter,
-            whatsapp_connection_repository=self.whatsapp_connection_repository,
-        )
         self.tenant_profile_service = tenant_profile_service.TenantProfileService(
             tenant_repository=self.tenant_repository,
             clock=self.clock_adapter,
@@ -260,6 +258,21 @@ class AppContainer:
             task_scheduler=self.task_scheduler,
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
+            scheduling_repository=self.scheduling_repository,
+            conversation_repository=self.conversation_repository,
+        )
+        self.whatsapp_template_service = whatsapp_template_service.WhatsappTemplateService(
+            whatsapp_provider=self.whatsapp_provider_adapter,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
+            agent_profile_repository=self.agent_profile_repository,
+            clock=self.clock_adapter,
+            reminder_service=self.reminder_service,
+        )
+        self.whatsapp_billing_service = whatsapp_billing_service.WhatsappBillingService(
+            whatsapp_provider=self.whatsapp_provider_adapter,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
+            agent_profile_repository=self.agent_profile_repository,
+            clock=self.clock_adapter,
         )
         self.scheduling_service = scheduling_service.SchedulingService(
             scheduling_repository=self.scheduling_repository,
@@ -273,6 +286,9 @@ class AppContainer:
             tag_service=self.tag_service,
             reminder_service=self.reminder_service,
             patient_repository=self.patient_repository,
+            manual_appointment_repository=self.manual_appointment_repository,
+            whatsapp_provider=self.whatsapp_provider_adapter,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
         )
         self.scheduling_inbox_service = scheduling_inbox_service.SchedulingInboxService(
             scheduling_repository=self.scheduling_repository,
@@ -309,6 +325,9 @@ class AppContainer:
                     conversation_repository=self.conversation_repository,
                 ),
                 close_session_handler.CloseSessionHandler(
+                    scheduling_svc=self.scheduling_service,
+                ),
+                confirm_attendance_received_handler.ConfirmAttendanceReceivedHandler(
                     scheduling_svc=self.scheduling_service,
                 ),
                 cancel_request_handler.CancelActiveRequestHandler(

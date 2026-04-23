@@ -4,9 +4,12 @@ import * as reactQueryModule from "@tanstack/react-query";
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
+import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as uiErrorModule from "@shared/http/ui_error";
 
 const templatesQueryKey = ["whatsapp-templates"] as const;
+
+const OFFICIAL_TEMPLATE_NAMES = new Set(["aviso_cita_confirmada", "aviso_pago_pendiente"]);
 
 const CATEGORIES = ["MARKETING", "UTILITY", "AUTHENTICATION"] as const;
 const LANGUAGES = [
@@ -212,26 +215,34 @@ export function PlantillasPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
-              {templates.map((template) => (
-                <tr key={template.id} className="transition-colors hover:bg-slate-50">
-                  <td className="px-6 py-4 text-sm font-medium text-brand-ink">{template.name}</td>
-                  <td className="px-6 py-4 text-sm">{buildCategoryBadge(template.category)}</td>
-                  <td className="px-6 py-4 text-sm text-slate-600">{template.language}</td>
-                  <td className="px-6 py-4 text-sm">{buildStatusBadge(template.status)}</td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      className="text-sm font-medium text-red-600 transition-colors hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={deleteMutation.isPending}
-                      onClick={() => {
-                        deleteMutation.mutate(template.name);
-                      }}
-                      type="button"
-                    >
-                      Eliminar
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {templates.map((template) => {
+                const isOfficial = OFFICIAL_TEMPLATE_NAMES.has(template.name);
+                return (
+                  <tr key={template.id} className="transition-colors hover:bg-slate-50">
+                    <td className="px-6 py-4 text-sm font-medium text-brand-ink">
+                      <span className="mr-2">{template.name}</span>
+                      {isOfficial ? (
+                        <statusBadgeModule.StatusBadge label="OFICIAL" tone="info" />
+                      ) : null}
+                    </td>
+                    <td className="px-6 py-4 text-sm">{buildCategoryBadge(template.category)}</td>
+                    <td className="px-6 py-4 text-sm text-slate-600">{template.language}</td>
+                    <td className="px-6 py-4 text-sm">{buildStatusBadge(template.status)}</td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        className="text-sm font-medium text-red-600 transition-colors hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => {
+                          deleteMutation.mutate(template.name);
+                        }}
+                        type="button"
+                      >
+                        Eliminar
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

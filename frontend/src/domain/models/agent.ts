@@ -8,14 +8,17 @@ export interface AgentSettings {
   messageDebounceDelaySeconds: number;
   appointmentReminderEnabled: boolean;
   appointmentReminderDaysBefore: number | null;
-  appointmentReminderTemplateName: string | null;
-  appointmentReminderTemplateLanguage: string;
+  appointmentReminderAttendanceTemplateName: string | null;
+  appointmentReminderPaymentTemplateName: string | null;
+  reminderBillingTestPhoneNumber: string | null;
+  paymentDetailsText: string | null;
 }
 
 export interface UpdateAgentSettingsInput {
   messageDebounceDelaySeconds: number;
   appointmentReminderEnabled: boolean;
   appointmentReminderDaysBefore: number | null;
-  appointmentReminderTemplateName: string | null;
-  appointmentReminderTemplateLanguage: string;
+  appointmentReminderAttendanceTemplateName: string | null;
+  appointmentReminderPaymentTemplateName: string | null;
+  paymentDetailsText: string | null;
 }

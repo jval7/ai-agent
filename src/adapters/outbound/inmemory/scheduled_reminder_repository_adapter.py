@@ -66,3 +66,21 @@ class InMemoryScheduledReminderRepositoryAdapter(
                 scheduled_reminder_entity.ScheduledReminder.model_validate(reminder.model_dump())
             )
         return result
+
+    def list_pending_by_template(
+        self,
+        tenant_id: str,
+        template_name: str,
+    ) -> list[scheduled_reminder_entity.ScheduledReminder]:
+        result: list[scheduled_reminder_entity.ScheduledReminder] = []
+        for reminder in self._reminders:
+            if reminder.tenant_id != tenant_id:
+                continue
+            if reminder.template_name != template_name:
+                continue
+            if reminder.status != "PENDING":
+                continue
+            result.append(
+                scheduled_reminder_entity.ScheduledReminder.model_validate(reminder.model_dump())
+            )
+        return result

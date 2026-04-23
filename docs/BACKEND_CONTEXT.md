@@ -25,7 +25,7 @@ Ver sección "Reglas de Ingeniería Backend" en `CLAUDE.md` (fuente canónica).
   - `workflow_runtime_adapter.py`: adapter que implementa `ConversationWorkflowRuntimePort`, delega a los componentes anteriores.
   - `prompt_builder.py`: `RuntimePromptBuilder` — orquesta el build completo del prompt llamando todas las `PromptSection`.
 
-  - `tool_registry.py`: `ToolDefinitionRegistry` — define schemas de tools para function calling del LLM (8 tools, incluyendo `select_proposed_slot` y `reject_proposed_slots`).
+  - `tool_registry.py`: `ToolDefinitionRegistry` — define schemas de tools para function calling del LLM (9 tools, incluyendo `select_proposed_slot`, `reject_proposed_slots` y `confirm_attendance_received`).
   - `workflow_engine.py`: `LangGraphAgentWorkflowEngine` — entry point que ejecuta `ConversationGraph` y `SchedulingTransitionGraph`.
   - `state_models.py`: modelos de estado — `RuntimePromptContext`, `ConversationGraphState`, `SchedulingTransitionGraphState`.
   - `tool_handlers/patient_profile_resolver.py`: helper que resuelve datos de perfil del paciente para `confirm_slot_handler`.
@@ -43,6 +43,19 @@ Ver sección "Reglas de Ingeniería Backend" en `CLAUDE.md` (fuente canónica).
 Referencia completa de endpoints con schemas: ver `docs/API_ENDPOINTS.md`.
 
 Dominios funcionales: Auth, Agent (prompt + settings), WhatsApp Onboarding, Google Calendar, Webhooks, Conversations (mensajes + control mode), Patients (CRUD), Blacklist, Manual Appointments, Scheduling Requests, Onboarding status, Dev tools.
+
+### Routing de respuestas a recordatorios (reminder-reply routing)
+Al enviar un recordatorio WA (`execute_reminder`), el `ReminderService` pre-posiciona el estado de la conversación:
+1. Archiva (cancela) todas las `SchedulingRequest` abiertas del paciente.
+2. Crea una nueva `SchedulingRequest` con estado según el tipo de recordatorio:
+   - Template ATTENDANCE → `AWAITING_ATTENDANCE_CONFIRMATION` (nuevo).
+   - Template PAYMENT → `AWAITING_PAYMENT_CONFIRMATION` (existente).
+3. Persiste el texto renderizado del recordatorio como mensaje `OUTBOUND/assistant` en la conversación.
+4. El `RuntimeContextResolver` enruta `AWAITING_ATTENDANCE_CONFIRMATION` al estado homónimo del LLM.
+5. Cuando el paciente confirma asistencia, el LLM llama la tool `confirm_attendance_received` (tool handler: `ConfirmAttendanceReceivedHandler`), que invoca `SchedulingService.close_attendance_confirmation()` para cerrar la sesión **inmediatamente** (sin delay, sin Cloud Task). Tools habilitadas en este estado: `confirm_attendance_received`, `handoff_to_human`.
+6. `auto_close_booked_request` también cierra requests en `AWAITING_ATTENDANCE_CONFIRMATION` (usa archivado manual-close, no booking-close).
+- Campo `source_appointment_id` en `SchedulingRequest`: referencia al appointment original que disparó el recordatorio.
+- `ReminderService` recibe ahora `scheduling_repository` y `conversation_repository` como dependencias opcionales (wired en `container.py`).
 
 Admin local (sin endpoint HTTP): `make create-professional`, `make delete-professional`.
 

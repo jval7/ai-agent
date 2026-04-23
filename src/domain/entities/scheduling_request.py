@@ -17,6 +17,7 @@ class SchedulingRequest(pydantic.BaseModel):
         "AWAITING_CONSULTATION_DETAILS",
         "AWAITING_PATIENT_CHOICE",
         "AWAITING_PAYMENT_CONFIRMATION",
+        "AWAITING_ATTENDANCE_CONFIRMATION",
         "CONSULTATION_REJECTED",
         "CANCELLED",
         "BOOKED",
@@ -44,6 +45,13 @@ class SchedulingRequest(pydantic.BaseModel):
     payment_method: typing.Literal["CASH", "TRANSFER"] | None = None
     payment_status: typing.Literal["PENDING", "PAID"] = "PENDING"
     payment_updated_at: datetime.datetime | None = None
+    # Reference to the appointment that triggered this reminder-reply request.
+    # Set when the request is created via reminder pre-positioning.
+    source_appointment_id: str | None = None
+    # Kind of the source appointment, used to know which repository to update on payment approval.
+    source_appointment_kind: typing.Literal["MANUAL_APPOINTMENT", "SCHEDULING_REQUEST"] | None = (
+        None
+    )
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -80,6 +88,7 @@ class SchedulingRequest(pydantic.BaseModel):
             "AWAITING_CONSULTATION_DETAILS",
             "AWAITING_PATIENT_CHOICE",
             "AWAITING_PAYMENT_CONFIRMATION",
+            "AWAITING_ATTENDANCE_CONFIRMATION",
             "CONSULTATION_REJECTED",
             "CANCELLED",
             "BOOKED",

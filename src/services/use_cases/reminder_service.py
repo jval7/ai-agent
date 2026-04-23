@@ -1,22 +1,37 @@
 import datetime
 import typing
+import zoneinfo
 
+import src.domain.entities.message as message_entity
 import src.domain.entities.scheduled_reminder as scheduled_reminder_entity
+import src.domain.entities.scheduling_request as scheduling_request_entity
+import src.domain.official_reminder_templates as official_reminder_templates
 import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.clock_port as clock_port
+import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
+import src.ports.reminder_service_port as reminder_service_port
 import src.ports.scheduled_reminder_repository_port as scheduled_reminder_repository_port
+import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.ports.task_scheduler_port as task_scheduler_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.scheduled_reminder_dto as scheduled_reminder_dto
 import src.services.exceptions as service_exceptions
+import src.services.reminder_date_formatter as reminder_date_formatter
 
 logger = app_logs.get_logger(__name__)
 
+# Business rule: reminders are sent at noon local time in Bogota, and never on
+# Sundays. When the naive shifted datetime falls on a Sunday, we move it back
+# one day so the message lands on Saturday instead.
+_REMINDER_TIMEZONE = zoneinfo.ZoneInfo("America/Bogota")
+_REMINDER_HOUR_LOCAL = 12
+_SUNDAY_WEEKDAY = 6
 
-class ReminderService:
+
+class ReminderService(reminder_service_port.ReminderServicePort):
     def __init__(
         self,
         scheduled_reminder_repository: (
@@ -30,6 +45,10 @@ class ReminderService:
         task_scheduler: task_scheduler_port.TaskSchedulerPort,
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
+        scheduling_repository: scheduling_repository_port.SchedulingRepositoryPort | None = None,
+        conversation_repository: (
+            conversation_repository_port.ConversationRepositoryPort | None
+        ) = None,
     ) -> None:
         self._scheduled_reminder_repository = scheduled_reminder_repository
         self._agent_profile_repository = agent_profile_repository
@@ -38,6 +57,8 @@ class ReminderService:
         self._task_scheduler = task_scheduler
         self._id_generator = id_generator
         self._clock = clock
+        self._scheduling_repository = scheduling_repository
+        self._conversation_repository = conversation_repository
 
     def maybe_schedule_reminder(
         self,
@@ -47,18 +68,36 @@ class ReminderService:
         patient_whatsapp_user_id: str,
         patient_name: str,
         appointment_start_at: datetime.datetime,
+        payment_status: typing.Literal["PAID", "PENDING"],
+        appointment_modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None = None,
     ) -> None:
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
         if agent_profile is None or not agent_profile.appointment_reminder_enabled:
             return
         days_before = agent_profile.appointment_reminder_days_before
-        template_name = agent_profile.appointment_reminder_template_name
-        template_language = agent_profile.appointment_reminder_template_language
-        if days_before is None or template_name is None:
+        if days_before is None:
             return
 
+        # Select template based on payment_status.
+        if payment_status == "PAID":
+            template_name = agent_profile.appointment_reminder_attendance_template_name
+        else:
+            template_name = agent_profile.appointment_reminder_payment_template_name
+
+        if template_name is None:
+            logger.info(
+                "reminder.skipped_no_template",
+                extra={
+                    "source_type": source_type,
+                    "source_id": source_id,
+                    "payment_status": payment_status,
+                },
+            )
+            return
+
+        template_language = "es"
         now_value = self._clock.now()
-        reminder_datetime = appointment_start_at - datetime.timedelta(days=days_before)
+        reminder_datetime = _compute_reminder_datetime(appointment_start_at, days_before)
         delay_seconds = int((reminder_datetime - now_value).total_seconds())
 
         if delay_seconds <= 0:
@@ -84,6 +123,7 @@ class ReminderService:
             reminder_scheduled_for=reminder_datetime,
             template_name=template_name,
             template_language=template_language,
+            appointment_modality=appointment_modality,
             status="PENDING",
             created_at=now_value,
             updated_at=now_value,
@@ -147,8 +187,35 @@ class ReminderService:
             self._mark_reminder_failed(reminder, "whatsapp_missing_credentials")
             raise service_exceptions.InvalidStateError("whatsapp missing credentials")
 
-        appointment_date_str = reminder.appointment_start_at.strftime("%d/%m/%Y %H:%M")
-        body_parameters = [reminder.patient_name, appointment_date_str]
+        now_value = self._clock.now()
+        natural_date = reminder_date_formatter.format_natural_date(
+            reminder.appointment_start_at,
+            now_value,
+        )
+        template_kind = official_reminder_templates.by_name(reminder.template_name)
+
+        if template_kind == "ATTENDANCE":
+            modality_text = _format_modality_text(reminder.appointment_modality)
+            body_parameters = [reminder.patient_name, natural_date, modality_text]
+        elif template_kind == "PAYMENT":
+            payment_details = (
+                (agent_profile.payment_details_text or "").strip()
+                if agent_profile.payment_details_text is not None
+                else ""
+            )
+            if not payment_details:
+                self._mark_reminder_failed(reminder, "payment_details_not_configured")
+                logger.warning(
+                    "reminder.payment_details_missing",
+                    extra={"reminder_id": reminder_id, "tenant_id": tenant_id},
+                )
+                return {"status": "skipped", "reason": "payment_details_missing"}
+            body_parameters = [reminder.patient_name, natural_date, payment_details]
+        else:
+            # Legacy or custom template: fall back to the previous 2-parameter shape
+            # so pre-migration reminders don't explode.
+            legacy_date = reminder.appointment_start_at.strftime("%d/%m/%Y %H:%M")
+            body_parameters = [reminder.patient_name, legacy_date]
 
         try:
             message_id = self._whatsapp_provider.send_template_message(
@@ -163,7 +230,6 @@ class ReminderService:
             self._mark_reminder_failed(reminder, str(exc))
             raise
 
-        now_value = self._clock.now()
         reminder.status = "SENT"
         reminder.sent_at = now_value
         reminder.updated_at = now_value
@@ -182,6 +248,19 @@ class ReminderService:
                 )
             },
         )
+
+        # Pre-position conversation state so the bot handles patient replies correctly.
+        if self._scheduling_repository is not None and self._conversation_repository is not None:
+            rendered_body = _render_template_body(body_parameters)
+            self._pre_position_conversation_state(
+                tenant_id=tenant_id,
+                reminder=reminder,
+                template_kind=template_kind,
+                rendered_body=rendered_body,
+                outbound_message_id=message_id,
+                now_value=now_value,
+            )
+
         return {"status": "sent", "message_id": message_id}
 
     def cancel_reminders_for_source(
@@ -218,6 +297,171 @@ class ReminderService:
                 },
             )
 
+    def cancel_reminders_by_template(self, tenant_id: str, template_name: str) -> None:
+        pending_reminders = self._scheduled_reminder_repository.list_pending_by_template(
+            tenant_id, template_name
+        )
+        for reminder in pending_reminders:
+            if reminder.cloud_task_name is not None:
+                try:
+                    self._task_scheduler.cancel_task(reminder.cloud_task_name)
+                except service_exceptions.ExternalProviderError:
+                    logger.warning(
+                        "reminder.cloud_task_cancel_failed",
+                        extra={
+                            "reminder_id": reminder.id,
+                            "cloud_task_name": reminder.cloud_task_name,
+                        },
+                        exc_info=True,
+                    )
+            self._mark_reminder_cancelled(reminder, "template_deactivated")
+
+        if pending_reminders:
+            logger.info(
+                "reminder.cancelled_by_template",
+                extra={
+                    "template_name": template_name,
+                    "cancelled_count": len(pending_reminders),
+                },
+            )
+
+    def swap_template_for_source(
+        self,
+        tenant_id: str,
+        source_type: typing.Literal["SCHEDULING_REQUEST", "MANUAL_APPOINTMENT"],
+        source_id: str,
+        new_kind: official_reminder_templates.OfficialReminderKind,
+    ) -> None:
+        agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+        if agent_profile is None:
+            logger.info(
+                "reminder.swap_skipped_no_profile",
+                extra={"tenant_id": tenant_id, "source_id": source_id},
+            )
+            return
+
+        if new_kind == "ATTENDANCE":
+            new_template_name = agent_profile.appointment_reminder_attendance_template_name
+        else:
+            new_template_name = agent_profile.appointment_reminder_payment_template_name
+
+        if new_template_name is None:
+            logger.info(
+                "reminder.swap_skipped_no_template",
+                extra={"tenant_id": tenant_id, "source_id": source_id, "new_kind": new_kind},
+            )
+            return
+
+        pending_reminders = self._scheduled_reminder_repository.list_pending_by_source(
+            tenant_id, source_type, source_id
+        )
+
+        # Preserve reminder_scheduled_for and appointment_start_at from the first pending reminder.
+        reminder_scheduled_for: datetime.datetime | None = None
+        appointment_start_at: datetime.datetime | None = None
+        patient_whatsapp_user_id: str | None = None
+        patient_name: str | None = None
+        appointment_modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None = None
+
+        for reminder in pending_reminders:
+            reminder_scheduled_for = reminder.reminder_scheduled_for
+            appointment_start_at = reminder.appointment_start_at
+            patient_whatsapp_user_id = reminder.patient_whatsapp_user_id
+            patient_name = reminder.patient_name
+            appointment_modality = reminder.appointment_modality
+            # Cancel each pending reminder.
+            if reminder.cloud_task_name is not None:
+                try:
+                    self._task_scheduler.cancel_task(reminder.cloud_task_name)
+                except service_exceptions.ExternalProviderError:
+                    logger.warning(
+                        "reminder.cloud_task_cancel_failed",
+                        extra={
+                            "reminder_id": reminder.id,
+                            "cloud_task_name": reminder.cloud_task_name,
+                        },
+                        exc_info=True,
+                    )
+            self._mark_reminder_cancelled(reminder, "payment_status_changed")
+
+        if reminder_scheduled_for is None or appointment_start_at is None:
+            logger.info(
+                "reminder.swap_skipped_no_pending",
+                extra={"tenant_id": tenant_id, "source_id": source_id},
+            )
+            return
+
+        logger.info(
+            "reminder.swap_triggered",
+            extra={
+                "source_type": source_type,
+                "source_id": source_id,
+                "new_kind": new_kind,
+                "cancelled_count": len(pending_reminders),
+            },
+        )
+
+        # Enqueue a new reminder with the new template preserving reminder_scheduled_for.
+        now_value = self._clock.now()
+        delay_seconds = int((reminder_scheduled_for - now_value).total_seconds())
+        if delay_seconds <= 0:
+            logger.info(
+                "reminder.swap_skipped_too_close",
+                extra={"tenant_id": tenant_id, "source_id": source_id},
+            )
+            return
+
+        new_reminder_id = self._id_generator.new_id()
+        new_reminder = scheduled_reminder_entity.ScheduledReminder(
+            id=new_reminder_id,
+            tenant_id=tenant_id,
+            source_type=source_type,
+            source_id=source_id,
+            patient_whatsapp_user_id=patient_whatsapp_user_id or "",
+            patient_name=patient_name or "Paciente",
+            appointment_start_at=appointment_start_at,
+            reminder_scheduled_for=reminder_scheduled_for,
+            template_name=new_template_name,
+            template_language="es",
+            appointment_modality=appointment_modality,
+            status="PENDING",
+            created_at=now_value,
+            updated_at=now_value,
+        )
+
+        try:
+            task_name = self._task_scheduler.schedule_appointment_reminder(
+                tenant_id=tenant_id,
+                reminder_id=new_reminder_id,
+                delay_seconds=delay_seconds,
+            )
+            new_reminder.cloud_task_name = task_name
+        except service_exceptions.ExternalProviderError:
+            logger.warning(
+                "reminder.swap_task_enqueue_failed",
+                extra={"new_reminder_id": new_reminder_id, "source_id": source_id},
+                exc_info=True,
+            )
+            return
+
+        self._scheduled_reminder_repository.save(new_reminder)
+        logger.info(
+            "reminder.scheduled",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="reminder.scheduled",
+                    message="appointment reminder scheduled (swap)",
+                    data={
+                        "reminder_id": new_reminder_id,
+                        "source_type": source_type,
+                        "source_id": source_id,
+                        "delay_seconds": delay_seconds,
+                        "template_name": new_template_name,
+                    },
+                )
+            },
+        )
+
     def list_reminders(
         self, tenant_id: str, status: str | None = None
     ) -> scheduled_reminder_dto.ScheduledReminderListResponseDTO:
@@ -225,6 +469,136 @@ class ReminderService:
         sorted_reminders = sorted(reminders, key=lambda item: item.created_at, reverse=True)
         return scheduled_reminder_dto.ScheduledReminderListResponseDTO(
             items=[self._to_dto(item) for item in sorted_reminders]
+        )
+
+    def _pre_position_conversation_state(
+        self,
+        tenant_id: str,
+        reminder: scheduled_reminder_entity.ScheduledReminder,
+        template_kind: official_reminder_templates.OfficialReminderKind | None,
+        rendered_body: str,
+        outbound_message_id: str,
+        now_value: datetime.datetime,
+    ) -> None:
+        """Archive all open scheduling requests and create a new one to receive the patient reply.
+
+        This method is best-effort: errors are logged but never surface to the caller so a
+        failure here does NOT re-mark the reminder as failed (the WA message was already sent).
+        """
+        assert self._scheduling_repository is not None
+        assert self._conversation_repository is not None
+
+        # Resolve the conversation for this patient.
+        conversation = self._conversation_repository.get_conversation_by_whatsapp_user(
+            tenant_id, reminder.patient_whatsapp_user_id
+        )
+        if conversation is None:
+            logger.warning(
+                "reminder.pre_position.no_conversation",
+                extra={
+                    "reminder_id": reminder.id,
+                    "whatsapp_user_id": reminder.patient_whatsapp_user_id,
+                },
+            )
+            return
+
+        # Archive (mark CANCELLED) every open scheduling request for this conversation.
+        open_requests = self._scheduling_repository.list_requests_by_conversation(
+            tenant_id, conversation.id
+        )
+        _open_statuses = frozenset(
+            {
+                "AWAITING_CONSULTATION_REVIEW",
+                "AWAITING_CONSULTATION_DETAILS",
+                "AWAITING_PATIENT_CHOICE",
+                "AWAITING_PAYMENT_CONFIRMATION",
+                "AWAITING_ATTENDANCE_CONFIRMATION",
+                "BOOKED",
+            }
+        )
+        for open_request in open_requests:
+            if open_request.status in _open_statuses:
+                open_request.set_status("CANCELLED", now_value)
+                open_request.professional_note = "archived_by_reminder_send"
+                self._scheduling_repository.save_request(open_request)
+
+        # Determine new status from template kind.
+        if template_kind == "ATTENDANCE":
+            new_status: typing.Literal[
+                "AWAITING_ATTENDANCE_CONFIRMATION", "AWAITING_PAYMENT_CONFIRMATION"
+            ] = "AWAITING_ATTENDANCE_CONFIRMATION"
+        else:
+            new_status = "AWAITING_PAYMENT_CONFIRMATION"
+
+        # Create a lightweight new SchedulingRequest in the reminder-reply state.
+        new_request_id = self._id_generator.new_id()
+        # Map reminder.source_type to the Literal used by SchedulingRequest.
+        source_kind: typing.Literal["MANUAL_APPOINTMENT", "SCHEDULING_REQUEST"] | None
+        if reminder.source_type == "MANUAL_APPOINTMENT":
+            source_kind = "MANUAL_APPOINTMENT"
+        elif reminder.source_type == "SCHEDULING_REQUEST":
+            source_kind = "SCHEDULING_REQUEST"
+        else:
+            source_kind = None
+
+        new_request = scheduling_request_entity.SchedulingRequest(
+            id=new_request_id,
+            tenant_id=tenant_id,
+            conversation_id=conversation.id,
+            whatsapp_user_id=reminder.patient_whatsapp_user_id,
+            request_kind="RETRY",
+            status=new_status,
+            round_number=len(open_requests) + 1,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            slots=[],
+            slot_options_map={},
+            selected_slot_id=None,
+            calendar_event_id=None,
+            source_appointment_id=reminder.source_id,
+            source_appointment_kind=source_kind,
+            created_at=now_value,
+            updated_at=now_value,
+        )
+        self._scheduling_repository.save_request(new_request)
+
+        # Persist the rendered template text as an outbound assistant message so
+        # the LLM has context when the patient replies.
+        outbound_msg_id = self._id_generator.new_id()
+        outbound_message = message_entity.Message(
+            id=outbound_msg_id,
+            conversation_id=conversation.id,
+            tenant_id=tenant_id,
+            direction="OUTBOUND",
+            role="assistant",
+            content=rendered_body,
+            provider_message_id=outbound_message_id,
+            created_at=now_value,
+        )
+        self._conversation_repository.save_message(outbound_message)
+
+        # Update the conversation preview so the UI reflects the last outbound message.
+        conversation.append_message(outbound_msg_id, rendered_body, now_value)
+        self._conversation_repository.save_conversation(conversation)
+
+        logger.info(
+            "reminder.pre_position.done",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="reminder.pre_position.done",
+                    message="conversation pre-positioned after reminder send",
+                    data={
+                        "reminder_id": reminder.id,
+                        "new_request_id": new_request_id,
+                        "new_status": new_status,
+                        "conversation_id": conversation.id,
+                        "archived_count": sum(
+                            1 for r in open_requests if r.status in _open_statuses
+                        ),
+                    },
+                )
+            },
         )
 
     def _mark_reminder_failed(
@@ -260,3 +634,50 @@ class ReminderService:
             status=reminder.status,
             created_at=reminder.created_at,
         )
+
+
+def _render_template_body(body_parameters: list[str]) -> str:
+    """Join body parameters into a plain-text representation of the reminder.
+
+    This is stored as the outbound message in the conversation so the LLM has
+    context when the patient replies to the reminder.
+    """
+    return " | ".join(body_parameters)
+
+
+def _format_modality_text(
+    modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None,
+) -> str:
+    """Render the modality placeholder for the ATTENDANCE template.
+
+    Defaults to ``"presencial"`` when the modality is unknown, which is the
+    safer fallback: we avoid promising a Meet link that may not exist.
+    """
+    if modality == "VIRTUAL":
+        return "virtual por Google Meet"
+    return "presencial"
+
+
+def _compute_reminder_datetime(
+    appointment_start_at: datetime.datetime,
+    days_before: int,
+) -> datetime.datetime:
+    """Compute the moment to send the reminder.
+
+    Rules:
+    - Send ``days_before`` days before the appointment.
+    - Force the local (America/Bogota) time to 12:00 so reminders never go out
+      at odd hours regardless of when the appointment itself is.
+    - Never land on a Sunday: if the computed date is Sunday, move it one day
+      earlier so it lands on Saturday instead.
+    """
+    shifted = appointment_start_at - datetime.timedelta(days=days_before)
+    local_datetime = shifted.astimezone(_REMINDER_TIMEZONE).replace(
+        hour=_REMINDER_HOUR_LOCAL,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if local_datetime.weekday() == _SUNDAY_WEEKDAY:
+        local_datetime = local_datetime - datetime.timedelta(days=1)
+    return local_datetime
