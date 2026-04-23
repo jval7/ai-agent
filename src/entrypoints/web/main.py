@@ -23,6 +23,7 @@ import src.entrypoints.web.routers.settings_router as settings_router
 import src.entrypoints.web.routers.tag_router as tag_router
 import src.entrypoints.web.routers.tenant_router as tenant_router
 import src.entrypoints.web.routers.webhook_router as webhook_router
+import src.entrypoints.web.routers.whatsapp_billing_router as whatsapp_billing_router
 import src.entrypoints.web.routers.whatsapp_router as whatsapp_router
 import src.entrypoints.web.routers.whatsapp_template_router as whatsapp_template_router
 import src.infra.container as app_container
@@ -54,6 +55,7 @@ def create_app() -> fastapi.FastAPI:
     app.include_router(blacklist_router.router)
     app.include_router(whatsapp_router.router)
     app.include_router(whatsapp_template_router.router)
+    app.include_router(whatsapp_billing_router.router)
     app.include_router(official_template_router.router)
     app.include_router(google_calendar_router.router)
     app.include_router(onboarding_router.router)

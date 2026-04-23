@@ -335,6 +335,12 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
   ): Promise<void> {
     return;
   }
+
+  async sendBillingPreflight(
+    _phoneNumber: string
+  ): Promise<{ ok: boolean; recipientPhoneNumber: string }> {
+    throw new Error("not used");
+  }
 }
 
 vitestModule.describe("AuthUseCase", () => {

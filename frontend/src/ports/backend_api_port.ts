@@ -10,6 +10,7 @@ import type * as scheduledReminderModel from "@domain/models/scheduled_reminder"
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as tenantModel from "@domain/models/tenant";
 import type * as whatsappModel from "@domain/models/whatsapp";
+import type * as whatsappBillingModel from "@domain/models/whatsapp_billing";
 import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 
 export interface BackendApiPort {
@@ -140,4 +141,6 @@ export interface BackendApiPort {
     kind: whatsappTemplateModel.OfficialReminderKind
   ): Promise<whatsappTemplateModel.OfficialTemplateStatus>;
   deactivateOfficialTemplate(kind: whatsappTemplateModel.OfficialReminderKind): Promise<void>;
+
+  sendBillingPreflight(phoneNumber: string): Promise<whatsappBillingModel.BillingPreflightResult>;
 }

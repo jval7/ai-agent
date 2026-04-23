@@ -10,6 +10,7 @@ import type * as scheduledReminderModel from "@domain/models/scheduled_reminder"
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as tenantModel from "@domain/models/tenant";
 import type * as whatsappModel from "@domain/models/whatsapp";
+import type * as whatsappBillingModel from "@domain/models/whatsapp_billing";
 import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 import type * as backendApiPort from "@ports/backend_api_port";
 import type * as tokenSessionPort from "@ports/token_session_port";
@@ -103,6 +104,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointment_reminder_days_before: number | null;
       appointment_reminder_attendance_template_name: string | null;
       appointment_reminder_payment_template_name: string | null;
+      reminder_billing_test_phone_number: string | null;
     }>("/v1/agent/settings", { method: "GET", authRequired: true });
     return {
       tenantId: raw.tenant_id,
@@ -110,7 +112,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointmentReminderEnabled: raw.appointment_reminder_enabled,
       appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
       appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
-      appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name
+      appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name,
+      reminderBillingTestPhoneNumber: raw.reminder_billing_test_phone_number
     };
   }
 
@@ -124,6 +127,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointment_reminder_days_before: number | null;
       appointment_reminder_attendance_template_name: string | null;
       appointment_reminder_payment_template_name: string | null;
+      reminder_billing_test_phone_number: string | null;
     }>("/v1/agent/settings", {
       method: "PUT",
       authRequired: true,
@@ -142,7 +146,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointmentReminderEnabled: raw.appointment_reminder_enabled,
       appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
       appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
-      appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name
+      appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name,
+      reminderBillingTestPhoneNumber: raw.reminder_billing_test_phone_number
     };
   }
 
@@ -906,6 +911,23 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return mapOfficialTemplateStatus(raw);
   }
 
+  async sendBillingPreflight(
+    phoneNumber: string
+  ): Promise<whatsappBillingModel.BillingPreflightResult> {
+    const raw = await this.request<{
+      ok: boolean;
+      recipient_phone_number: string;
+    }>("/v1/whatsapp/billing/preflight", {
+      method: "POST",
+      authRequired: true,
+      body: JSON.stringify({ recipient_phone_number: phoneNumber })
+    });
+    return {
+      ok: raw.ok,
+      recipientPhoneNumber: raw.recipient_phone_number
+    };
+  }
+
   async deactivateOfficialTemplate(
     kind: whatsappTemplateModel.OfficialReminderKind
   ): Promise<void> {
@@ -1034,9 +1056,11 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       return new apiErrorModule.ApiError(response.status, fallbackMessage, resolvedRequestId);
     }
 
-    let payload: Partial<httpTypes.ApiErrorResponse>;
+    let payload: Partial<httpTypes.ApiErrorResponse> & { detail?: unknown };
     try {
-      payload = (await response.json()) as Partial<httpTypes.ApiErrorResponse>;
+      payload = (await response.json()) as Partial<httpTypes.ApiErrorResponse> & {
+        detail?: unknown;
+      };
     } catch (error: unknown) {
       if (error instanceof SyntaxError) {
         return new apiErrorModule.ApiError(response.status, fallbackMessage, resolvedRequestId);
@@ -1048,11 +1072,29 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       typeof payload.request_id === "string" ? normalizeRequestId(payload.request_id) : null;
     const finalRequestId = requestIdFromBody ?? resolvedRequestId;
 
-    if (typeof payload.detail !== "string" || payload.detail.trim() === "") {
-      return new apiErrorModule.ApiError(response.status, fallbackMessage, finalRequestId);
+    const detail = payload.detail;
+    if (typeof detail === "string") {
+      const trimmed = detail.trim();
+      if (trimmed === "") {
+        return new apiErrorModule.ApiError(response.status, fallbackMessage, finalRequestId);
+      }
+      return new apiErrorModule.ApiError(response.status, detail, finalRequestId, detail);
     }
-
-    return new apiErrorModule.ApiError(response.status, payload.detail, finalRequestId);
+    if (detail !== null && typeof detail === "object") {
+      const detailObject = detail as Record<string, unknown>;
+      const detailMessage = detailObject["message"];
+      const messageFromDetail =
+        typeof detailMessage === "string" && detailMessage.trim() !== ""
+          ? detailMessage
+          : fallbackMessage;
+      return new apiErrorModule.ApiError(
+        response.status,
+        messageFromDetail,
+        finalRequestId,
+        detailObject
+      );
+    }
+    return new apiErrorModule.ApiError(response.status, fallbackMessage, finalRequestId);
   }
 }
 
