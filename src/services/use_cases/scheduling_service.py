@@ -1236,46 +1236,64 @@ class SchedulingService:
             "status": "SESSION_CLOSED",
         }
 
-    def confirm_attendance_and_schedule_close(
+    def close_attendance_confirmation(
         self,
         tenant_id: str,
-        scheduling_request_id: str,
+        conversation_id: str,
     ) -> dict[str, str]:
-        """Acknowledge attendance confirmation and enqueue a 1h auto-close task.
+        """Close the session immediately when the patient confirms attendance.
 
-        Called when a patient explicitly confirms they will attend their appointment.
-        Transitions the request to SESSION_CLOSED after a short delay so the
-        conversation is neatly archived without requiring manual intervention.
+        Finds the active AWAITING_ATTENDANCE_CONFIRMATION request for the
+        conversation, archives the subsession via manual-close, and transitions
+        the request to SESSION_CLOSED.  Returns a no-op result if no such
+        request exists (idempotent).
         """
-        request = self._scheduling_repository.get_request_by_id(tenant_id, scheduling_request_id)
-        if request is None:
-            raise service_exceptions.EntityNotFoundError("scheduling request not found")
-
-        if request.status != "AWAITING_ATTENDANCE_CONFIRMATION":
+        request_list = self._scheduling_repository.list_requests_by_conversation(
+            tenant_id,
+            conversation_id,
+        )
+        attendance_request = self._find_latest_request_by_statuses(
+            requests=request_list,
+            statuses=("AWAITING_ATTENDANCE_CONFIRMATION",),
+        )
+        if attendance_request is None:
             logger.info(
-                "scheduling.confirm_attendance_skipped",
+                "scheduling.close_attendance_skipped",
                 extra={
-                    "request_id": scheduling_request_id,
-                    "current_status": request.status,
+                    "tenant_id": tenant_id,
+                    "conversation_id": conversation_id,
                 },
             )
-            return {"status": request.status, "action": "skipped"}
+            return {"status": "skipped", "action": "no_active_attendance_request"}
 
-        self._schedule_auto_close_task(tenant_id, scheduling_request_id)
+        now_value = self._clock.now()
+        self._archive_conversation_subsession_manual_close(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            now_value=now_value,
+        )
+        attendance_request.set_status("SESSION_CLOSED", now_value)
+        self._scheduling_repository.save_request(attendance_request)
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status="SESSION_CLOSED",
+        )
         logger.info(
-            "scheduling.attendance_confirmed",
+            "scheduling.attendance_confirmed_session_closed",
             extra={
                 "event_data": app_logs.build_log_event(
-                    event_name="scheduling.attendance_confirmed",
-                    message="patient confirmed attendance; auto-close task enqueued",
+                    event_name="scheduling.attendance_confirmed_session_closed",
+                    message="patient confirmed attendance; session closed immediately",
                     data={
                         "tenant_id": tenant_id,
-                        "request_id": scheduling_request_id,
+                        "conversation_id": conversation_id,
+                        "request_id": attendance_request.id,
                     },
                 )
             },
         )
-        return {"status": "AWAITING_ATTENDANCE_CONFIRMATION", "action": "auto_close_scheduled"}
+        return {"status": "SESSION_CLOSED", "action": "closed"}
 
     def auto_close_booked_request(
         self,

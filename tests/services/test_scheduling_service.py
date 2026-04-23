@@ -837,7 +837,7 @@ def test_confirm_slot_presencial_modality_passes_with_meet_false() -> None:
 
 
 # ---------------------------------------------------------------------------
-# confirm_attendance_and_schedule_close
+# close_attendance_confirmation
 # ---------------------------------------------------------------------------
 
 
@@ -868,26 +868,28 @@ def _seed_attendance_confirmation_request(
     return request.id
 
 
-def test_confirm_attendance_schedules_auto_close() -> None:
-    service, scheduling_repo, _, task_sched = build_service(["req-1"])
+def test_close_attendance_confirmation_closes_session_immediately() -> None:
+    """close_attendance_confirmation transitions request to SESSION_CLOSED right away."""
+    service, scheduling_repo, _, _ = build_service(["req-1"])
     request_id = _seed_attendance_confirmation_request(scheduling_repo)
 
-    result = service.confirm_attendance_and_schedule_close(
+    result = service.close_attendance_confirmation(
         tenant_id="tenant-1",
-        scheduling_request_id=request_id,
+        conversation_id="conv-1",
     )
 
-    assert result["status"] == "AWAITING_ATTENDANCE_CONFIRMATION"
-    assert result["action"] == "auto_close_scheduled"
-    # An auto-close Cloud Task should have been enqueued.
-    assert len(task_sched.scheduled_tasks) == 1
-    assert task_sched.scheduled_tasks[0]["scheduling_request_id"] == request_id
+    assert result["status"] == "SESSION_CLOSED"
+    assert result["action"] == "closed"
+
+    closed = scheduling_repo.get_request_by_id("tenant-1", request_id)
+    assert closed is not None
+    assert closed.status == "SESSION_CLOSED"
 
 
-def test_confirm_attendance_skips_if_wrong_status() -> None:
-    """If the request is not in AWAITING_ATTENDANCE_CONFIRMATION, the method is a no-op."""
-    service, scheduling_repo, _, task_sched = build_service(["req-1"])
-    # Create a BOOKED request (different status).
+def test_close_attendance_confirmation_skips_when_no_matching_request() -> None:
+    """If no AWAITING_ATTENDANCE_CONFIRMATION request exists, returns a no-op result."""
+    service, scheduling_repo, _, _ = build_service(["req-1"])
+    # Seed a BOOKED request (different status — should not match).
     request = scheduling_request_entity.SchedulingRequest(
         id="booked-req-1",
         tenant_id="tenant-1",
@@ -908,13 +910,16 @@ def test_confirm_attendance_skips_if_wrong_status() -> None:
     )
     scheduling_repo.save_request(request)
 
-    result = service.confirm_attendance_and_schedule_close(
+    result = service.close_attendance_confirmation(
         tenant_id="tenant-1",
-        scheduling_request_id="booked-req-1",
+        conversation_id="conv-1",
     )
 
-    assert result["action"] == "skipped"
-    assert task_sched.scheduled_tasks == []
+    assert result["status"] == "skipped"
+    # The BOOKED request must not have been touched.
+    unchanged = scheduling_repo.get_request_by_id("tenant-1", "booked-req-1")
+    assert unchanged is not None
+    assert unchanged.status == "BOOKED"
 
 
 def test_auto_close_booked_request_handles_attendance_confirmation_status() -> None:

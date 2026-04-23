@@ -206,6 +206,20 @@ class ToolDefinitionRegistry:
                     "additionalProperties": False,
                 },
             ),
+            llm_dto.FunctionDeclarationDTO(
+                name="confirm_attendance_received",
+                description=(
+                    "Llama esta tool cuando el paciente confirma que asistira a su cita "
+                    "(mensajes como 'confirmo', 'listo', 'ahi estare', 'si voy', 'gracias'). "
+                    "Cierra la sesion de inmediato."
+                ),
+                parameters_json_schema={
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                    "additionalProperties": False,
+                },
+            ),
         ]
 
         if enabled_tool_names is None:

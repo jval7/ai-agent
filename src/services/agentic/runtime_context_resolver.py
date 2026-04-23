@@ -184,6 +184,7 @@ class RuntimeContextResolver:
             ]
         if state == "AWAITING_ATTENDANCE_CONFIRMATION":
             return [
+                "confirm_attendance_received",
                 "handoff_to_human",
             ]
         if state == "COLLECTING_CONFIRMATION_DATA":

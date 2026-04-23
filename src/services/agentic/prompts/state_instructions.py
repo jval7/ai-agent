@@ -79,8 +79,9 @@ def _instructions_for_state(
     if runtime_context.state == "AWAITING_ATTENDANCE_CONFIRMATION":
         return [
             "Flujo actual: recordatorio de asistencia enviado, esperando respuesta del paciente.",
-            "Si el paciente confirma que asistira (ej: 'ahi estare', 'confirmo', 'si', 'gracias'), "
-            "responde cordialmente y cierra el tema. No inicies un nuevo agendamiento.",
+            "Cuando el paciente confirme que asistira (mensajes como 'confirmo', 'listo', 'ahi estare', 'si voy', 'gracias'), "
+            "responde con un agradecimiento corto (ej. 'Perfecto, te esperamos') Y llama a la tool confirm_attendance_received. "
+            "Ambas cosas en el mismo turno: texto de respuesta + llamada a la tool.",
             "Puedes responder preguntas generales del paciente: informacion del consultorio, "
             "horarios, direccion, preparacion para la cita u otros datos generales.",
             "Si el paciente dice que NO puede asistir o pide reagendar/cancelar su cita, "
