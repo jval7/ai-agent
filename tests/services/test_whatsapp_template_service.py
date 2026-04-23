@@ -199,6 +199,27 @@ def test_deactivate_cancels_pending_reminders_but_preserves_meta_and_profile_nam
     assert delete_calls == []
 
 
+def test_deactivate_hard_deletes_meta_template_and_clears_profile_name() -> None:
+    template_svc, _, agent_profile_repo, _, _, wa_provider = _build_context()
+    attendance_name = official_reminder_templates.OFFICIAL_REMINDER_TEMPLATES["ATTENDANCE"].name
+    _seed_profile(agent_profile_repo, attendance_name=attendance_name)
+
+    delete_calls: list[str] = []
+    wa_provider.delete_message_template = (  # type: ignore[method-assign]
+        lambda access_token, waba_id, template_name: delete_calls.append(template_name)
+    )
+
+    template_svc.deactivate_official_template("tenant-1", "ATTENDANCE", hard=True)
+
+    # Meta template must be deleted (abort review semantics).
+    assert delete_calls == [attendance_name]
+
+    # Profile name must be cleared so UI forces re-activation.
+    updated_profile = agent_profile_repo.get_by_tenant_id("tenant-1")
+    assert updated_profile is not None
+    assert updated_profile.appointment_reminder_attendance_template_name is None
+
+
 def test_activate_official_template_is_idempotent_when_template_exists_in_meta() -> None:
     template_svc, _, agent_profile_repo, _, _, wa_provider = _build_context()
     attendance_name = official_reminder_templates.OFFICIAL_REMINDER_TEMPLATES["ATTENDANCE"].name

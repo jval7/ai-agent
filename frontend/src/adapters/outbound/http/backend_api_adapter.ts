@@ -934,9 +934,11 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
   }
 
   async deactivateOfficialTemplate(
-    kind: whatsappTemplateModel.OfficialReminderKind
+    kind: whatsappTemplateModel.OfficialReminderKind,
+    hard = false
   ): Promise<void> {
-    await this.request<void>(`/v1/whatsapp/templates/official/${kind}/deactivate`, {
+    const query = hard ? "?hard=true" : "";
+    await this.request<void>(`/v1/whatsapp/templates/official/${kind}/deactivate${query}`, {
       method: "POST",
       authRequired: true
     });

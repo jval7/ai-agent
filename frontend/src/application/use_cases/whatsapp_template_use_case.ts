@@ -31,8 +31,9 @@ export class WhatsappTemplateUseCase {
   }
 
   async deactivateOfficialTemplate(
-    kind: whatsappTemplateModel.OfficialReminderKind
+    kind: whatsappTemplateModel.OfficialReminderKind,
+    hard = false
   ): Promise<void> {
-    return this.api.deactivateOfficialTemplate(kind);
+    return this.api.deactivateOfficialTemplate(kind, hard);
   }
 }

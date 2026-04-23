@@ -211,15 +211,23 @@ class WhatsappTemplateService:
         self,
         tenant_id: str,
         kind: official_reminder_templates.OfficialReminderKind,
+        hard: bool = False,
     ) -> None:
-        """Stops sending reminders for this kind without touching the Meta template.
+        """Stops sending reminders for this kind.
 
-        Cancels any pending Cloud Tasks so that scheduled reminders do not fire,
-        but keeps the template name in the profile and the template in Meta. This
-        enables a fast re-activation (no re-submission / re-approval) which is
-        critical during testing since Meta approval can take minutes-to-hours.
+        Two semantics controlled by ``hard``:
 
-        The caller (frontend) is responsible for setting
+        - ``hard=False`` (default, used while reminders are active): cancel
+          any pending Cloud Tasks but keep the template in Meta and the
+          template name in the profile, so a later re-activation is instant
+          and does not trigger a fresh Meta review.
+        - ``hard=True`` (used to abort a pending Meta review): also delete
+          the template from Meta and clear the template name from the
+          profile. This is what the UI calls "Cancelar" while templates
+          are in ``preparing`` state — the user wants the review aborted
+          and a clean slate.
+
+        The caller (frontend) is still responsible for setting
         ``appointment_reminder_enabled=False`` in the AgentProfile via
         ``update_agent_settings``.
         """
@@ -228,13 +236,51 @@ class WhatsappTemplateService:
         # Cancel any pending reminders with this template name.
         self._reminder_service.cancel_reminders_by_template(tenant_id, template_def.name)
 
+        if hard:
+            # Abort the Meta review / remove the APPROVED template entirely.
+            connection = self._whatsapp_connection_repository.get_by_tenant_id(tenant_id)
+            if (
+                connection is not None
+                and connection.status == "CONNECTED"
+                and connection.access_token is not None
+                and connection.business_account_id is not None
+            ):
+                try:
+                    self._whatsapp_provider.delete_message_template(
+                        access_token=connection.access_token,
+                        waba_id=connection.business_account_id,
+                        template_name=template_def.name,
+                    )
+                except service_exceptions.ExternalProviderError:
+                    logger.warning(
+                        "whatsapp.templates.official.delete_meta_failed",
+                        extra={"tenant_id": tenant_id, "kind": kind},
+                        exc_info=True,
+                    )
+
+            # Clear the template name from the profile so the UI renders as
+            # NOT_CREATED and the user can re-activate from scratch.
+            agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+            if agent_profile is not None:
+                now_value = self._clock.now()
+                if kind == "ATTENDANCE":
+                    agent_profile.appointment_reminder_attendance_template_name = None
+                else:
+                    agent_profile.appointment_reminder_payment_template_name = None
+                agent_profile.updated_at = now_value
+                self._agent_profile_repository.save(agent_profile)
+
         logger.info(
             "whatsapp.templates.official.deactivated",
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="whatsapp.templates.official.deactivated",
-                    message="official template deactivated (meta template preserved)",
-                    data={"tenant_id": tenant_id, "kind": kind},
+                    message=(
+                        "official template deactivated (hard: meta deleted)"
+                        if hard
+                        else "official template deactivated (meta template preserved)"
+                    ),
+                    data={"tenant_id": tenant_id, "kind": kind, "hard": hard},
                 )
             },
         )

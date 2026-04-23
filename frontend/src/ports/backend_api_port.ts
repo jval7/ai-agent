@@ -140,7 +140,10 @@ export interface BackendApiPort {
   activateOfficialTemplate(
     kind: whatsappTemplateModel.OfficialReminderKind
   ): Promise<whatsappTemplateModel.OfficialTemplateStatus>;
-  deactivateOfficialTemplate(kind: whatsappTemplateModel.OfficialReminderKind): Promise<void>;
+  deactivateOfficialTemplate(
+    kind: whatsappTemplateModel.OfficialReminderKind,
+    hard?: boolean
+  ): Promise<void>;
 
   sendBillingPreflight(phoneNumber: string): Promise<whatsappBillingModel.BillingPreflightResult>;
 }
