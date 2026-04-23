@@ -79,7 +79,8 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
-        reminderBillingTestPhoneNumber: null
+        reminderBillingTestPhoneNumber: null,
+        paymentDetailsText: null
       })),
       updateAgentSettings: vitestModule.vi.fn(async () => undefined)
     },

@@ -83,6 +83,7 @@ class AgentService:
                 appointment_reminder_attendance_template_name=None,
                 appointment_reminder_payment_template_name=None,
                 reminder_billing_test_phone_number=None,
+                payment_details_text=None,
             )
         return agent_dto.AgentSettingsResponseDTO(
             tenant_id=tenant_id,
@@ -92,6 +93,7 @@ class AgentService:
             appointment_reminder_attendance_template_name=agent_profile.appointment_reminder_attendance_template_name,
             appointment_reminder_payment_template_name=agent_profile.appointment_reminder_payment_template_name,
             reminder_billing_test_phone_number=agent_profile.reminder_billing_test_phone_number,
+            payment_details_text=agent_profile.payment_details_text,
         )
 
     def update_agent_settings(
@@ -118,6 +120,7 @@ class AgentService:
             appointment_reminder_attendance_template_name=update_dto.appointment_reminder_attendance_template_name,
             appointment_reminder_payment_template_name=update_dto.appointment_reminder_payment_template_name,
             reminder_billing_test_phone_number=existing_billing_phone,
+            payment_details_text=update_dto.payment_details_text,
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
@@ -129,4 +132,5 @@ class AgentService:
             appointment_reminder_attendance_template_name=agent_profile.appointment_reminder_attendance_template_name,
             appointment_reminder_payment_template_name=agent_profile.appointment_reminder_payment_template_name,
             reminder_billing_test_phone_number=agent_profile.reminder_billing_test_phone_number,
+            payment_details_text=agent_profile.payment_details_text,
         )

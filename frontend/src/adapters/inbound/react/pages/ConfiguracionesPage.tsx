@@ -164,6 +164,7 @@ export function ConfiguracionesPage() {
 
   const [debounceDelay, setDebounceDelay] = reactModule.useState(0);
   const [reminderDaysBefore, setReminderDaysBefore] = reactModule.useState(1);
+  const [paymentDetailsText, setPaymentDetailsText] = reactModule.useState("");
   const [activationStep, setActivationStep] = reactModule.useState<
     "idle" | "disclosure" | "preflight"
   >("idle");
@@ -172,6 +173,7 @@ export function ConfiguracionesPage() {
     if (settingsQuery.data !== undefined) {
       setDebounceDelay(settingsQuery.data.messageDebounceDelaySeconds);
       setReminderDaysBefore(settingsQuery.data.appointmentReminderDaysBefore ?? 1);
+      setPaymentDetailsText(settingsQuery.data.paymentDetailsText ?? "");
     }
   }, [settingsQuery.data]);
 
@@ -237,7 +239,8 @@ export function ConfiguracionesPage() {
         appointmentReminderEnabled: true,
         appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore ?? 1,
         appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
-        appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName
+        appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName,
+        paymentDetailsText: fresh.paymentDetailsText
       });
     },
     onSuccess: async () => {
@@ -268,7 +271,8 @@ export function ConfiguracionesPage() {
         // activación reuse todo sin tocar Meta.
         appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore,
         appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
-        appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName
+        appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName,
+        paymentDetailsText: fresh.paymentDetailsText
       });
     },
     onSuccess: async () => {
@@ -288,7 +292,8 @@ export function ConfiguracionesPage() {
         appointmentReminderAttendanceTemplateName:
           settingsQuery.data?.appointmentReminderAttendanceTemplateName ?? null,
         appointmentReminderPaymentTemplateName:
-          settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null
+          settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null,
+        paymentDetailsText: paymentDetailsText.trim() === "" ? null : paymentDetailsText
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
@@ -803,9 +808,10 @@ export function ConfiguracionesPage() {
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     Así lo recibe el paciente que ya pagó
                   </p>
-                  <p className="mt-2 text-sm leading-relaxed text-slate-700">
-                    Hola Juan García, te recordamos tu cita agendada para el 15/01/2026 10:00. Te
-                    esperamos. Responde este mensaje si necesitas reagendar.
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                    Hola Juan García feliz día, te envío la confirmación de la sesión de mañana
+                    miércoles 22 de abril a la 1 pm de forma virtual por Google Meet, más detalles
+                    en el correo de agendamiento de google calendar.
                   </p>
                 </div>
 
@@ -814,13 +820,42 @@ export function ConfiguracionesPage() {
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       Así lo recibe el paciente que aún no pagó
                     </p>
-                    <p className="mt-2 text-sm leading-relaxed text-slate-700">
-                      Hola Juan García, te recordamos tu cita agendada para el 15/01/2026 10:00. Aún
-                      no hemos recibido tu pago; por favor recuerda pagarlo antes de la cita para
-                      confirmarla.
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+                      {`Hola Juan García feliz día, recuerda que para la confirmación de tu sesión el lunes 8 de noviembre de 2026 a las 10 am debes realizar el pago por los siguientes canales: ${
+                        paymentDetailsText.trim() === ""
+                          ? "(configura tus datos de pago abajo)"
+                          : paymentDetailsText
+                      }. Envía tu comprobante al chat antes de tu sesión. Pregunta por nuestros paquetes 👌🏻`}
                     </p>
                   </div>
                 ) : null}
+
+                <div>
+                  <label
+                    className="block text-sm font-medium text-slate-700"
+                    htmlFor="payment-details"
+                  >
+                    Datos de pago
+                  </label>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Se incluyen en el recordatorio cuando la cita aún no fue pagada. Ej.: Nequi,
+                    Bancolombia, un link.
+                  </p>
+                  <textarea
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                    id="payment-details"
+                    onBlur={() => {
+                      settingsMutation.mutate();
+                    }}
+                    onChange={(e) => {
+                      setPaymentDetailsText(e.target.value);
+                    }}
+                    placeholder="Nequi: 300 123 4567&#10;Bancolombia ahorros 1234-5678-9012"
+                    rows={3}
+                    value={paymentDetailsText}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Se guarda cuando sales del campo.</p>
+                </div>
 
                 {paymentStatus?.metaStatus === "REJECTED" ||
                 paymentStatus?.metaStatus === "DISABLED" ? (

@@ -284,7 +284,11 @@ class WhatsappTemplateService:
                 else:
                     persisted_name = agent_profile.appointment_reminder_payment_template_name
 
-            if persisted_name is None:
+            # If the persisted name does not match the current canonical name,
+            # treat it as NOT_CREATED so the UI forces a re-activation under
+            # the new canonical name. This covers renames of official
+            # templates between releases.
+            if persisted_name is None or persisted_name != template_def.name:
                 items.append(
                     whatsapp_template_dto.OfficialTemplateStatusDTO(
                         kind=kind,
@@ -300,7 +304,7 @@ class WhatsappTemplateService:
                 items.append(
                     whatsapp_template_dto.OfficialTemplateStatusDTO(
                         kind=kind,
-                        name=persisted_name,
+                        name=template_def.name,
                         meta_status="NOT_CREATED",
                         rejection_reason=None,
                     )

@@ -69,6 +69,7 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
     def __init__(self) -> None:
         self.credential_by_code: dict[str, whatsapp_dto.EmbeddedSignupCredentialsDTO] = {}
         self.sent_messages: list[dict[str, str]] = []
+        self.sent_template_body_parameters: list[list[str]] = []
         self.events: list[webhook_dto.IncomingMessageEventDTO] = []
         self.waba_subscriptions: list[dict[str, str]] = []
         self.phone_registrations: list[dict[str, str]] = []
@@ -190,6 +191,7 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
             "language_code": language_code,
         }
         self.sent_messages.append(payload)
+        self.sent_template_body_parameters.append(list(body_parameters))
         return f"outbound-template-{len(self.sent_messages)}"
 
     def send_hello_world_preflight(

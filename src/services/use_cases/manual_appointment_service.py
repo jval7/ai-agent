@@ -110,6 +110,7 @@ class ManualAppointmentService:
                 patient_name=patient.first_name,
                 appointment_start_at=appointment.start_at,
                 payment_status=appointment.payment_status,
+                appointment_modality="VIRTUAL" if appointment.is_virtual else "PRESENCIAL",
             )
         logger.info(
             "manual_appointment.created",
@@ -194,6 +195,7 @@ class ManualAppointmentService:
                 patient_name=patient_name,
                 appointment_start_at=appointment.start_at,
                 payment_status=appointment.payment_status,
+                appointment_modality="VIRTUAL" if appointment.is_virtual else "PRESENCIAL",
             )
         logger.info(
             "manual_appointment.rescheduled",

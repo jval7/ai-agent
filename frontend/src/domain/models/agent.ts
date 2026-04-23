@@ -11,6 +11,7 @@ export interface AgentSettings {
   appointmentReminderAttendanceTemplateName: string | null;
   appointmentReminderPaymentTemplateName: string | null;
   reminderBillingTestPhoneNumber: string | null;
+  paymentDetailsText: string | null;
 }
 
 export interface UpdateAgentSettingsInput {
@@ -19,4 +20,5 @@ export interface UpdateAgentSettingsInput {
   appointmentReminderDaysBefore: number | null;
   appointmentReminderAttendanceTemplateName: string | null;
   appointmentReminderPaymentTemplateName: string | null;
+  paymentDetailsText: string | null;
 }

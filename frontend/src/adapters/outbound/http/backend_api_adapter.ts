@@ -105,6 +105,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointment_reminder_attendance_template_name: string | null;
       appointment_reminder_payment_template_name: string | null;
       reminder_billing_test_phone_number: string | null;
+      payment_details_text: string | null;
     }>("/v1/agent/settings", { method: "GET", authRequired: true });
     return {
       tenantId: raw.tenant_id,
@@ -113,7 +114,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
       appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
       appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name,
-      reminderBillingTestPhoneNumber: raw.reminder_billing_test_phone_number
+      reminderBillingTestPhoneNumber: raw.reminder_billing_test_phone_number,
+      paymentDetailsText: raw.payment_details_text
     };
   }
 
@@ -128,6 +130,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointment_reminder_attendance_template_name: string | null;
       appointment_reminder_payment_template_name: string | null;
       reminder_billing_test_phone_number: string | null;
+      payment_details_text: string | null;
     }>("/v1/agent/settings", {
       method: "PUT",
       authRequired: true,
@@ -137,7 +140,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         appointment_reminder_days_before: input.appointmentReminderDaysBefore,
         appointment_reminder_attendance_template_name:
           input.appointmentReminderAttendanceTemplateName,
-        appointment_reminder_payment_template_name: input.appointmentReminderPaymentTemplateName
+        appointment_reminder_payment_template_name: input.appointmentReminderPaymentTemplateName,
+        payment_details_text: input.paymentDetailsText
       })
     });
     return {
@@ -147,7 +151,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
       appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
       appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name,
-      reminderBillingTestPhoneNumber: raw.reminder_billing_test_phone_number
+      reminderBillingTestPhoneNumber: raw.reminder_billing_test_phone_number,
+      paymentDetailsText: raw.payment_details_text
     };
   }
 

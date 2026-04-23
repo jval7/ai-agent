@@ -15,6 +15,7 @@ import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repo
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.scheduled_reminder_dto as scheduled_reminder_dto
 import src.services.exceptions as service_exceptions
+import src.services.reminder_date_formatter as reminder_date_formatter
 
 logger = app_logs.get_logger(__name__)
 
@@ -58,6 +59,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         patient_name: str,
         appointment_start_at: datetime.datetime,
         payment_status: typing.Literal["PAID", "PENDING"],
+        appointment_modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None = None,
     ) -> None:
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
         if agent_profile is None or not agent_profile.appointment_reminder_enabled:
@@ -111,6 +113,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             reminder_scheduled_for=reminder_datetime,
             template_name=template_name,
             template_language=template_language,
+            appointment_modality=appointment_modality,
             status="PENDING",
             created_at=now_value,
             updated_at=now_value,
@@ -174,8 +177,35 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             self._mark_reminder_failed(reminder, "whatsapp_missing_credentials")
             raise service_exceptions.InvalidStateError("whatsapp missing credentials")
 
-        appointment_date_str = reminder.appointment_start_at.strftime("%d/%m/%Y %H:%M")
-        body_parameters = [reminder.patient_name, appointment_date_str]
+        now_value = self._clock.now()
+        natural_date = reminder_date_formatter.format_natural_date(
+            reminder.appointment_start_at,
+            now_value,
+        )
+        template_kind = official_reminder_templates.by_name(reminder.template_name)
+
+        if template_kind == "ATTENDANCE":
+            modality_text = _format_modality_text(reminder.appointment_modality)
+            body_parameters = [reminder.patient_name, natural_date, modality_text]
+        elif template_kind == "PAYMENT":
+            payment_details = (
+                (agent_profile.payment_details_text or "").strip()
+                if agent_profile.payment_details_text is not None
+                else ""
+            )
+            if not payment_details:
+                self._mark_reminder_failed(reminder, "payment_details_not_configured")
+                logger.warning(
+                    "reminder.payment_details_missing",
+                    extra={"reminder_id": reminder_id, "tenant_id": tenant_id},
+                )
+                return {"status": "skipped", "reason": "payment_details_missing"}
+            body_parameters = [reminder.patient_name, natural_date, payment_details]
+        else:
+            # Legacy or custom template: fall back to the previous 2-parameter shape
+            # so pre-migration reminders don't explode.
+            legacy_date = reminder.appointment_start_at.strftime("%d/%m/%Y %H:%M")
+            body_parameters = [reminder.patient_name, legacy_date]
 
         try:
             message_id = self._whatsapp_provider.send_template_message(
@@ -190,7 +220,6 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             self._mark_reminder_failed(reminder, str(exc))
             raise
 
-        now_value = self._clock.now()
         reminder.status = "SENT"
         reminder.sent_at = now_value
         reminder.updated_at = now_value
@@ -309,12 +338,14 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         appointment_start_at: datetime.datetime | None = None
         patient_whatsapp_user_id: str | None = None
         patient_name: str | None = None
+        appointment_modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None = None
 
         for reminder in pending_reminders:
             reminder_scheduled_for = reminder.reminder_scheduled_for
             appointment_start_at = reminder.appointment_start_at
             patient_whatsapp_user_id = reminder.patient_whatsapp_user_id
             patient_name = reminder.patient_name
+            appointment_modality = reminder.appointment_modality
             # Cancel each pending reminder.
             if reminder.cloud_task_name is not None:
                 try:
@@ -369,6 +400,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             reminder_scheduled_for=reminder_scheduled_for,
             template_name=new_template_name,
             template_language="es",
+            appointment_modality=appointment_modality,
             status="PENDING",
             created_at=now_value,
             updated_at=now_value,
@@ -449,6 +481,19 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             status=reminder.status,
             created_at=reminder.created_at,
         )
+
+
+def _format_modality_text(
+    modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None,
+) -> str:
+    """Render the modality placeholder for the ATTENDANCE template.
+
+    Defaults to ``"presencial"`` when the modality is unknown, which is the
+    safer fallback: we avoid promising a Meet link that may not exist.
+    """
+    if modality == "VIRTUAL":
+        return "virtual por Google Meet"
+    return "presencial"
 
 
 def _compute_reminder_datetime(

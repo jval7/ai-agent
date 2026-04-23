@@ -737,6 +737,7 @@ class SchedulingService:
                 patient_name=request.patient_first_name or "Paciente",
                 appointment_start_at=selected_slot.start_at,
                 payment_status="PAID",
+                appointment_modality=request.appointment_modality,
             )
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="BOOKED",
@@ -1004,6 +1005,7 @@ class SchedulingService:
                 patient_name=request.patient_first_name or "Paciente",
                 appointment_start_at=input_dto.start_at,
                 payment_status="PAID",
+                appointment_modality=request.appointment_modality,
             )
         logger.info(
             "scheduling.booked_slot_rescheduled",

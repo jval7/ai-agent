@@ -8,6 +8,7 @@ import src.adapters.outbound.inmemory.task_scheduler_adapter as task_scheduler_a
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
+import src.domain.official_reminder_templates as official_reminder_templates
 import src.services.use_cases.reminder_service as reminder_service_module
 import tests.fakes.fake_adapters as fake_adapters
 
@@ -369,3 +370,167 @@ def test_cancel_reminders_by_template_cancels_all_pending_with_that_template() -
     assert all(r.failure_reason == "template_deactivated" for r in cancelled)
     assert len(pending_after) == 1
     assert pending_after[0].template_name == "appointment_reminder_attendance"
+
+
+# ---------------------------------------------------------------------------
+# execute_reminder — body_parameters por kind
+# ---------------------------------------------------------------------------
+
+
+_ATTENDANCE_CANONICAL_NAME = official_reminder_templates.OFFICIAL_REMINDER_TEMPLATES[
+    "ATTENDANCE"
+].name
+_PAYMENT_CANONICAL_NAME = official_reminder_templates.OFFICIAL_REMINDER_TEMPLATES["PAYMENT"].name
+
+
+def _build_profile_with_payment_details(
+    payment_details_text: str | None = "Nequi 300 / Bancolombia 12345",
+) -> agent_profile_entity.AgentProfile:
+    return agent_profile_entity.AgentProfile(
+        tenant_id="tenant-1",
+        system_prompt="prompt",
+        appointment_reminder_enabled=True,
+        appointment_reminder_days_before=1,
+        appointment_reminder_attendance_template_name=_ATTENDANCE_CANONICAL_NAME,
+        appointment_reminder_payment_template_name=_PAYMENT_CANONICAL_NAME,
+        payment_details_text=payment_details_text,
+        updated_at=_NOW,
+    )
+
+
+def test_execute_reminder_attendance_builds_natural_date_and_modality_virtual() -> None:
+    profile = _build_profile_with_payment_details()
+    service, _, reminder_repo, _, wa_provider = _build_service(
+        ["reminder-1"], agent_profile=profile
+    )
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)  # Saturday
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Juan",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+        appointment_modality="VIRTUAL",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    assert len(pending) == 1
+    reminder_id = pending[0].id
+
+    result = service.execute_reminder("tenant-1", reminder_id)
+    assert result["status"] == "sent"
+
+    assert len(wa_provider.sent_messages) == 1
+    sent = wa_provider.sent_messages[0]
+    body = wa_provider.sent_template_body_parameters[0]
+    assert sent["template_name"] == _ATTENDANCE_CANONICAL_NAME
+    assert body[0] == "Juan"
+    # days_diff from _NOW (2026-01-01) to the reminder_scheduled_for (Saturday 2026-01-02 12pm Bogota)
+    # isn't what we assert — we only check the modality mapping.
+    assert body[2] == "virtual por Google Meet"
+
+
+def test_execute_reminder_attendance_maps_presencial_and_missing_modality() -> None:
+    profile = _build_profile_with_payment_details()
+    service, _, reminder_repo, _, wa_provider = _build_service(
+        ["reminder-1", "reminder-2"], agent_profile=profile
+    )
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Ana",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+        appointment_modality="PRESENCIAL",
+    )
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-2",
+        patient_whatsapp_user_id="wa-user-2",
+        patient_name="Luis",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+        appointment_modality=None,
+    )
+
+    pending = sorted(reminder_repo.list_by_tenant("tenant-1", status="PENDING"), key=lambda r: r.id)
+    assert len(pending) == 2
+
+    service.execute_reminder("tenant-1", pending[0].id)
+    service.execute_reminder("tenant-1", pending[1].id)
+
+    presencial_body, fallback_body = wa_provider.sent_template_body_parameters
+    assert presencial_body[2] == "presencial"
+    # None modality fallback: also "presencial" (safer default).
+    assert fallback_body[2] == "presencial"
+
+
+def test_execute_reminder_payment_injects_payment_details_from_profile() -> None:
+    profile = _build_profile_with_payment_details(
+        payment_details_text="Nequi 300 111 2222\nBancolombia ahorros 9999-8888"
+    )
+    service, _, reminder_repo, _, wa_provider = _build_service(
+        ["reminder-1"], agent_profile=profile
+    )
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Sofía",
+        appointment_start_at=appointment,
+        payment_status="PENDING",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    service.execute_reminder("tenant-1", pending[0].id)
+
+    sent = wa_provider.sent_messages[0]
+    body = wa_provider.sent_template_body_parameters[0]
+    assert sent["template_name"] == _PAYMENT_CANONICAL_NAME
+    assert body[0] == "Sofía"
+    assert body[2] == "Nequi 300 111 2222\nBancolombia ahorros 9999-8888"
+
+
+def test_execute_reminder_payment_fails_when_details_missing() -> None:
+    profile = _build_profile_with_payment_details(payment_details_text=None)
+    service, _, reminder_repo, _, wa_provider = _build_service(
+        ["reminder-1"], agent_profile=profile
+    )
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Jane",
+        appointment_start_at=appointment,
+        payment_status="PENDING",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    result = service.execute_reminder("tenant-1", pending[0].id)
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "payment_details_missing"
+    assert wa_provider.sent_messages == []
+
+    failed = reminder_repo.list_by_tenant("tenant-1", status="FAILED")
+    assert len(failed) == 1
+    assert failed[0].failure_reason == "payment_details_not_configured"
