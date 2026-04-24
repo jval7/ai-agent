@@ -80,9 +80,22 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
         reminderBillingTestPhoneNumber: null,
-        paymentDetailsText: null
+        paymentDetailsText: null,
+        officeLocation: null,
+        virtualSessionInstructions: null
       })),
-      updateAgentSettings: vitestModule.vi.fn(async () => undefined)
+      updateAgentSettings: vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        reminderBillingTestPhoneNumber: null,
+        paymentDetailsText: null,
+        officeLocation: null,
+        virtualSessionInstructions: null
+      }))
     },
     whatsappTemplateUseCase: {
       listOfficialTemplateStatus: vitestModule.vi.fn(async () => [
@@ -332,5 +345,406 @@ vitestModule.describe("ConfiguracionesPage", () => {
     vitestModule
       .expect(container.whatsappTemplateUseCase.activateOfficialTemplate)
       .not.toHaveBeenCalled();
+  });
+
+  // --- Consultorio tab tests ---
+
+  vitestModule.it(
+    "renders Consultorio tab with initial office location data from backend",
+    async () => {
+      const container = buildContainer({
+        agentUseCase: {
+          getSystemPrompt: vitestModule.vi.fn(async () => ({
+            systemPrompt: "You are a helpful assistant"
+          })),
+          updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+          getAgentSettings: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            messageDebounceDelaySeconds: 5,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: null,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            reminderBillingTestPhoneNumber: null,
+            paymentDetailsText: null,
+            officeLocation: {
+              address: "Calle 5 # 38-25, Cali",
+              arrivalInstructions: "Llegar 20 minutos antes con cedula fisica",
+              accessNotes: "Edificio azul, piso 3"
+            },
+            virtualSessionInstructions: "El link de Google Meet llega al correo 24h antes."
+          })),
+          updateAgentSettings: vitestModule.vi.fn(async () => undefined)
+        }
+      });
+
+      renderConfiguracionesPage(container);
+
+      const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
+        name: "Consultorio"
+      });
+      testingLibraryReactModule.fireEvent.click(consultorioTab);
+
+      const addressInput = await testingLibraryReactModule.screen.findByLabelText(
+        "Direccion del consultorio"
+      );
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect((addressInput as HTMLInputElement).value).toBe("Calle 5 # 38-25, Cali");
+      });
+
+      const arrivalInput =
+        testingLibraryReactModule.screen.getByLabelText("Indicaciones de llegada");
+      vitestModule
+        .expect((arrivalInput as HTMLTextAreaElement).value)
+        .toBe("Llegar 20 minutos antes con cedula fisica");
+
+      const accessInput = testingLibraryReactModule.screen.getByLabelText("Notas de acceso");
+      vitestModule.expect((accessInput as HTMLTextAreaElement).value).toBe("Edificio azul, piso 3");
+
+      const virtualInput = testingLibraryReactModule.screen.getByLabelText(
+        "Instrucciones para sesiones virtuales"
+      );
+      vitestModule
+        .expect((virtualInput as HTMLTextAreaElement).value)
+        .toBe("El link de Google Meet llega al correo 24h antes.");
+    }
+  );
+
+  vitestModule.it(
+    "submits office_location with all fields when address and sub-fields are filled",
+    async () => {
+      const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        reminderBillingTestPhoneNumber: null,
+        paymentDetailsText: null,
+        officeLocation: {
+          address: "Calle 5 # 38-25, Cali",
+          arrivalInstructions: "Llegar 20 minutos antes",
+          accessNotes: "Piso 3"
+        },
+        virtualSessionInstructions: null
+      }));
+      const container = buildContainer({
+        agentUseCase: {
+          getSystemPrompt: vitestModule.vi.fn(async () => ({
+            systemPrompt: ""
+          })),
+          updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+          getAgentSettings: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            messageDebounceDelaySeconds: 5,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: null,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            reminderBillingTestPhoneNumber: null,
+            paymentDetailsText: null,
+            officeLocation: null,
+            virtualSessionInstructions: null
+          })),
+          updateAgentSettings: updateAgentSettingsMock
+        }
+      });
+
+      renderConfiguracionesPage(container);
+
+      const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
+        name: "Consultorio"
+      });
+      testingLibraryReactModule.fireEvent.click(consultorioTab);
+
+      const addressInput = await testingLibraryReactModule.screen.findByLabelText(
+        "Direccion del consultorio"
+      );
+      testingLibraryReactModule.fireEvent.change(addressInput, {
+        target: { value: "Calle 5 # 38-25, Cali" }
+      });
+
+      const arrivalInput =
+        testingLibraryReactModule.screen.getByLabelText("Indicaciones de llegada");
+      testingLibraryReactModule.fireEvent.change(arrivalInput, {
+        target: { value: "Llegar 20 minutos antes" }
+      });
+
+      const accessInput = testingLibraryReactModule.screen.getByLabelText("Notas de acceso");
+      testingLibraryReactModule.fireEvent.change(accessInput, {
+        target: { value: "Piso 3" }
+      });
+
+      const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
+      testingLibraryReactModule.fireEvent.click(saveButton);
+
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
+          vitestModule.expect.objectContaining({
+            officeLocation: {
+              address: "Calle 5 # 38-25, Cali",
+              arrivalInstructions: "Llegar 20 minutos antes",
+              accessNotes: "Piso 3"
+            }
+          })
+        );
+      });
+    }
+  );
+
+  vitestModule.it(
+    "submits office_location with only address when arrival/access are empty",
+    async () => {
+      const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        reminderBillingTestPhoneNumber: null,
+        paymentDetailsText: null,
+        officeLocation: {
+          address: "Calle 5 # 38-25, Cali",
+          arrivalInstructions: null,
+          accessNotes: null
+        },
+        virtualSessionInstructions: null
+      }));
+      const container = buildContainer({
+        agentUseCase: {
+          getSystemPrompt: vitestModule.vi.fn(async () => ({ systemPrompt: "" })),
+          updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+          getAgentSettings: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            messageDebounceDelaySeconds: 5,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: null,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            reminderBillingTestPhoneNumber: null,
+            paymentDetailsText: null,
+            officeLocation: null,
+            virtualSessionInstructions: null
+          })),
+          updateAgentSettings: updateAgentSettingsMock
+        }
+      });
+
+      renderConfiguracionesPage(container);
+
+      const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
+        name: "Consultorio"
+      });
+      testingLibraryReactModule.fireEvent.click(consultorioTab);
+
+      const addressInput = await testingLibraryReactModule.screen.findByLabelText(
+        "Direccion del consultorio"
+      );
+      testingLibraryReactModule.fireEvent.change(addressInput, {
+        target: { value: "Calle 5 # 38-25, Cali" }
+      });
+
+      const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
+      testingLibraryReactModule.fireEvent.click(saveButton);
+
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
+          vitestModule.expect.objectContaining({
+            officeLocation: {
+              address: "Calle 5 # 38-25, Cali",
+              arrivalInstructions: null,
+              accessNotes: null
+            }
+          })
+        );
+      });
+    }
+  );
+
+  vitestModule.it(
+    "sends office_location null when address is empty even if arrival_instructions is filled",
+    async () => {
+      // UX decision: address is mandatory for office_location. Leaving address
+      // blank while filling arrival_instructions discards the sub-fields silently
+      // (no orphaned data is stored). This avoids confusing the backend with an
+      // office_location that has no address.
+      const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        reminderBillingTestPhoneNumber: null,
+        paymentDetailsText: null,
+        officeLocation: null,
+        virtualSessionInstructions: null
+      }));
+      const container = buildContainer({
+        agentUseCase: {
+          getSystemPrompt: vitestModule.vi.fn(async () => ({ systemPrompt: "" })),
+          updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+          getAgentSettings: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            messageDebounceDelaySeconds: 5,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: null,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            reminderBillingTestPhoneNumber: null,
+            paymentDetailsText: null,
+            officeLocation: null,
+            virtualSessionInstructions: null
+          })),
+          updateAgentSettings: updateAgentSettingsMock
+        }
+      });
+
+      renderConfiguracionesPage(container);
+
+      const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
+        name: "Consultorio"
+      });
+      testingLibraryReactModule.fireEvent.click(consultorioTab);
+
+      // Leave address empty, fill arrival_instructions
+      const arrivalInput =
+        await testingLibraryReactModule.screen.findByLabelText("Indicaciones de llegada");
+      testingLibraryReactModule.fireEvent.change(arrivalInput, {
+        target: { value: "Llegar 20 minutos antes" }
+      });
+
+      const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
+      testingLibraryReactModule.fireEvent.click(saveButton);
+
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
+          vitestModule.expect.objectContaining({
+            officeLocation: null
+          })
+        );
+      });
+    }
+  );
+
+  vitestModule.it("sends virtual_session_instructions null when field is empty", async () => {
+    const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
+      tenantId: "tenant-1",
+      messageDebounceDelaySeconds: 5,
+      appointmentReminderEnabled: false,
+      appointmentReminderDaysBefore: null,
+      appointmentReminderAttendanceTemplateName: null,
+      appointmentReminderPaymentTemplateName: null,
+      reminderBillingTestPhoneNumber: null,
+      paymentDetailsText: null,
+      officeLocation: null,
+      virtualSessionInstructions: null
+    }));
+    const container = buildContainer({
+      agentUseCase: {
+        getSystemPrompt: vitestModule.vi.fn(async () => ({ systemPrompt: "" })),
+        updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+        getAgentSettings: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          messageDebounceDelaySeconds: 5,
+          appointmentReminderEnabled: false,
+          appointmentReminderDaysBefore: null,
+          appointmentReminderAttendanceTemplateName: null,
+          appointmentReminderPaymentTemplateName: null,
+          reminderBillingTestPhoneNumber: null,
+          paymentDetailsText: null,
+          officeLocation: null,
+          virtualSessionInstructions: null
+        })),
+        updateAgentSettings: updateAgentSettingsMock
+      }
+    });
+
+    renderConfiguracionesPage(container);
+
+    const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Consultorio"
+    });
+    testingLibraryReactModule.fireEvent.click(consultorioTab);
+
+    // Verify virtual instructions field exists and is empty, then save
+    const virtualInput = await testingLibraryReactModule.screen.findByLabelText(
+      "Instrucciones para sesiones virtuales"
+    );
+    vitestModule.expect((virtualInput as HTMLTextAreaElement).value).toBe("");
+
+    const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
+    testingLibraryReactModule.fireEvent.click(saveButton);
+
+    await testingLibraryReactModule.waitFor(() => {
+      vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
+        vitestModule.expect.objectContaining({
+          virtualSessionInstructions: null
+        })
+      );
+    });
+  });
+
+  vitestModule.it("shows success banner after saving office data", async () => {
+    const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
+      tenantId: "tenant-1",
+      messageDebounceDelaySeconds: 5,
+      appointmentReminderEnabled: false,
+      appointmentReminderDaysBefore: null,
+      appointmentReminderAttendanceTemplateName: null,
+      appointmentReminderPaymentTemplateName: null,
+      reminderBillingTestPhoneNumber: null,
+      paymentDetailsText: null,
+      officeLocation: {
+        address: "Calle 5 # 38-25, Cali",
+        arrivalInstructions: null,
+        accessNotes: null
+      },
+      virtualSessionInstructions: null
+    }));
+    const container = buildContainer({
+      agentUseCase: {
+        getSystemPrompt: vitestModule.vi.fn(async () => ({ systemPrompt: "" })),
+        updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+        getAgentSettings: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          messageDebounceDelaySeconds: 5,
+          appointmentReminderEnabled: false,
+          appointmentReminderDaysBefore: null,
+          appointmentReminderAttendanceTemplateName: null,
+          appointmentReminderPaymentTemplateName: null,
+          reminderBillingTestPhoneNumber: null,
+          paymentDetailsText: null,
+          officeLocation: null,
+          virtualSessionInstructions: null
+        })),
+        updateAgentSettings: updateAgentSettingsMock
+      }
+    });
+
+    renderConfiguracionesPage(container);
+
+    const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Consultorio"
+    });
+    testingLibraryReactModule.fireEvent.click(consultorioTab);
+
+    const addressInput = await testingLibraryReactModule.screen.findByLabelText(
+      "Direccion del consultorio"
+    );
+    testingLibraryReactModule.fireEvent.change(addressInput, {
+      target: { value: "Calle 5 # 38-25, Cali" }
+    });
+
+    const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
+    testingLibraryReactModule.fireEvent.click(saveButton);
+
+    await testingLibraryReactModule.waitFor(() => {
+      vitestModule
+        .expect(testingLibraryReactModule.screen.getByText("Datos del consultorio guardados."))
+        .toBeInTheDocument();
+    });
   });
 });

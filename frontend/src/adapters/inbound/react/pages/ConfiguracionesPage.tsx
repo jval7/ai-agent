@@ -35,13 +35,14 @@ function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   return <statusBadgeModule.StatusBadge label="DISCONNECTED" tone="danger" />;
 }
 
-type ConfigTab = "perfil" | "conexiones" | "prompt" | "ajustes";
+type ConfigTab = "perfil" | "conexiones" | "prompt" | "ajustes" | "consultorio";
 
 const CONFIG_TABS: { id: ConfigTab; label: string }[] = [
   { id: "perfil", label: "Perfil" },
   { id: "conexiones", label: "Conexiones" },
   { id: "prompt", label: "System Prompt" },
-  { id: "ajustes", label: "Ajustes del agente" }
+  { id: "ajustes", label: "Ajustes del agente" },
+  { id: "consultorio", label: "Consultorio" }
 ];
 
 export function ConfiguracionesPage() {
@@ -165,6 +166,10 @@ export function ConfiguracionesPage() {
   const [debounceDelay, setDebounceDelay] = reactModule.useState(0);
   const [reminderDaysBefore, setReminderDaysBefore] = reactModule.useState(1);
   const [paymentDetailsText, setPaymentDetailsText] = reactModule.useState("");
+  const [officeAddress, setOfficeAddress] = reactModule.useState("");
+  const [officeArrivalInstructions, setOfficeArrivalInstructions] = reactModule.useState("");
+  const [officeAccessNotes, setOfficeAccessNotes] = reactModule.useState("");
+  const [virtualSessionInstructions, setVirtualSessionInstructions] = reactModule.useState("");
   const [activationStep, setActivationStep] = reactModule.useState<
     "idle" | "disclosure" | "preflight"
   >("idle");
@@ -174,6 +179,10 @@ export function ConfiguracionesPage() {
       setDebounceDelay(settingsQuery.data.messageDebounceDelaySeconds);
       setReminderDaysBefore(settingsQuery.data.appointmentReminderDaysBefore ?? 1);
       setPaymentDetailsText(settingsQuery.data.paymentDetailsText ?? "");
+      setOfficeAddress(settingsQuery.data.officeLocation?.address ?? "");
+      setOfficeArrivalInstructions(settingsQuery.data.officeLocation?.arrivalInstructions ?? "");
+      setOfficeAccessNotes(settingsQuery.data.officeLocation?.accessNotes ?? "");
+      setVirtualSessionInstructions(settingsQuery.data.virtualSessionInstructions ?? "");
     }
   }, [settingsQuery.data]);
 
@@ -240,7 +249,9 @@ export function ConfiguracionesPage() {
         appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore ?? 1,
         appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
         appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName,
-        paymentDetailsText: fresh.paymentDetailsText
+        paymentDetailsText: fresh.paymentDetailsText,
+        officeLocation: fresh.officeLocation,
+        virtualSessionInstructions: fresh.virtualSessionInstructions
       });
     },
     onSuccess: async () => {
@@ -273,7 +284,9 @@ export function ConfiguracionesPage() {
         appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore,
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
-        paymentDetailsText: fresh.paymentDetailsText
+        paymentDetailsText: fresh.paymentDetailsText,
+        officeLocation: fresh.officeLocation,
+        virtualSessionInstructions: fresh.virtualSessionInstructions
       });
     },
     onSuccess: async () => {
@@ -294,12 +307,59 @@ export function ConfiguracionesPage() {
           settingsQuery.data?.appointmentReminderAttendanceTemplateName ?? null,
         appointmentReminderPaymentTemplateName:
           settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null,
-        paymentDetailsText: paymentDetailsText.trim() === "" ? null : paymentDetailsText
+        paymentDetailsText: paymentDetailsText.trim() === "" ? null : paymentDetailsText,
+        officeLocation: settingsQuery.data?.officeLocation ?? null,
+        virtualSessionInstructions: settingsQuery.data?.virtualSessionInstructions ?? null
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
     }
   });
+
+  const buildOfficeLocationInput = () => {
+    const trimmedAddress = officeAddress.trim();
+    if (trimmedAddress === "") {
+      // No address → no office_location (discard any filled sub-fields to avoid orphaned data)
+      return null;
+    }
+    return {
+      address: trimmedAddress,
+      arrivalInstructions:
+        officeArrivalInstructions.trim() === "" ? null : officeArrivalInstructions.trim(),
+      accessNotes: officeAccessNotes.trim() === "" ? null : officeAccessNotes.trim()
+    };
+  };
+
+  const [officeSuccessMessage, setOfficeSuccessMessage] = reactModule.useState<string | null>(null);
+
+  const officeSettingsMutation = reactQueryModule.useMutation({
+    mutationFn: () => {
+      const officeLocationInput = buildOfficeLocationInput();
+      const virtualInstructions =
+        virtualSessionInstructions.trim() === "" ? null : virtualSessionInstructions.trim();
+      return appContainer.agentUseCase.updateAgentSettings({
+        messageDebounceDelaySeconds: settingsQuery.data?.messageDebounceDelaySeconds ?? 0,
+        appointmentReminderEnabled: settingsQuery.data?.appointmentReminderEnabled ?? false,
+        appointmentReminderDaysBefore: settingsQuery.data?.appointmentReminderDaysBefore ?? null,
+        appointmentReminderAttendanceTemplateName:
+          settingsQuery.data?.appointmentReminderAttendanceTemplateName ?? null,
+        appointmentReminderPaymentTemplateName:
+          settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null,
+        paymentDetailsText: settingsQuery.data?.paymentDetailsText ?? null,
+        officeLocation: officeLocationInput,
+        virtualSessionInstructions: virtualInstructions
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+      setOfficeSuccessMessage("Datos del consultorio guardados.");
+    }
+  });
+
+  const officeErrorMessage = uiErrorModule.resolveUiErrorMessage([
+    officeSettingsMutation.error,
+    settingsQuery.error
+  ]);
 
   // --- Tenant profile ---
   const profileQuery = reactQueryModule.useQuery({
@@ -680,6 +740,140 @@ export function ConfiguracionesPage() {
               type="button"
             >
               {updateMutation.isPending ? "Guardando..." : "Guardar prompt"}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {/* --- Consultorio --- */}
+      {activeTab === "consultorio" ? (
+        <section className="mt-6 max-w-2xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+          <h3 className="text-xl font-semibold text-brand-ink">Datos del consultorio</h3>
+          <p className="mt-1 text-sm text-slate-600">
+            Esta informacion se incluye automaticamente en los mensajes de confirmacion de citas y
+            en los eventos de Google Calendar.
+          </p>
+
+          {/* Presencial */}
+          <div className="mt-6 space-y-4">
+            <h4 className="text-sm font-semibold text-brand-ink">Citas presenciales</h4>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700" htmlFor="office-address">
+                Direccion del consultorio
+              </label>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Si dejas este campo vacio, no se guardaran datos presenciales (ni indicaciones ni
+                notas de acceso).
+              </p>
+              <input
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={settingsQuery.isLoading}
+                id="office-address"
+                maxLength={200}
+                onChange={(e) => {
+                  setOfficeAddress(e.target.value);
+                  setOfficeSuccessMessage(null);
+                }}
+                placeholder="Ej. Calle 5 # 38-25, Cali"
+                type="text"
+                value={officeAddress}
+              />
+            </div>
+
+            <div>
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor="office-arrival-instructions"
+              >
+                Indicaciones de llegada
+              </label>
+              <textarea
+                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={settingsQuery.isLoading}
+                id="office-arrival-instructions"
+                onChange={(e) => {
+                  setOfficeArrivalInstructions(e.target.value);
+                  setOfficeSuccessMessage(null);
+                }}
+                placeholder="Ej. Llegar 20 minutos antes con cedula fisica"
+                rows={2}
+                value={officeArrivalInstructions}
+              />
+            </div>
+
+            <div>
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor="office-access-notes"
+              >
+                Notas de acceso
+              </label>
+              <textarea
+                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={settingsQuery.isLoading}
+                id="office-access-notes"
+                onChange={(e) => {
+                  setOfficeAccessNotes(e.target.value);
+                  setOfficeSuccessMessage(null);
+                }}
+                placeholder="Ej. Edificio azul, piso 3, recepcion al ingresar"
+                rows={2}
+                value={officeAccessNotes}
+              />
+            </div>
+          </div>
+
+          {/* Virtual */}
+          <div className="mt-6 space-y-4 border-t border-border-subtle pt-6">
+            <h4 className="text-sm font-semibold text-brand-ink">Citas virtuales</h4>
+
+            <div>
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor="virtual-session-instructions"
+              >
+                Instrucciones para sesiones virtuales
+              </label>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Se incluye en mensajes de confirmacion de citas virtuales. Si lo dejas vacio, no se
+                enviaran instrucciones virtuales.
+              </p>
+              <textarea
+                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={settingsQuery.isLoading}
+                id="virtual-session-instructions"
+                onChange={(e) => {
+                  setVirtualSessionInstructions(e.target.value);
+                  setOfficeSuccessMessage(null);
+                }}
+                placeholder="Ej. El link de Google Meet llega en la invitacion al correo 24h antes."
+                rows={3}
+                value={virtualSessionInstructions}
+              />
+            </div>
+          </div>
+
+          {officeSuccessMessage !== null ? (
+            <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              {officeSuccessMessage}
+            </div>
+          ) : null}
+
+          {officeErrorMessage !== null ? (
+            <errorBannerModule.ErrorBanner className="mt-3" message={officeErrorMessage} />
+          ) : null}
+
+          <div className="mt-6 flex justify-end">
+            <button
+              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={officeSettingsMutation.isPending || settingsQuery.isLoading}
+              onClick={() => {
+                officeSettingsMutation.mutate();
+              }}
+              type="button"
+            >
+              {officeSettingsMutation.isPending ? "Guardando..." : "Guardar"}
             </button>
           </div>
         </section>

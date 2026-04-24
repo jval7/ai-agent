@@ -106,6 +106,12 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointment_reminder_payment_template_name: string | null;
       reminder_billing_test_phone_number: string | null;
       payment_details_text: string | null;
+      office_location: {
+        address: string;
+        arrival_instructions: string | null;
+        access_notes: string | null;
+      } | null;
+      virtual_session_instructions: string | null;
     }>("/v1/agent/settings", { method: "GET", authRequired: true });
     return {
       tenantId: raw.tenant_id,
@@ -115,7 +121,16 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
       appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name,
       reminderBillingTestPhoneNumber: raw.reminder_billing_test_phone_number,
-      paymentDetailsText: raw.payment_details_text
+      paymentDetailsText: raw.payment_details_text,
+      officeLocation:
+        raw.office_location !== null && raw.office_location !== undefined
+          ? {
+              address: raw.office_location.address,
+              arrivalInstructions: raw.office_location.arrival_instructions,
+              accessNotes: raw.office_location.access_notes
+            }
+          : null,
+      virtualSessionInstructions: raw.virtual_session_instructions ?? null
     };
   }
 
@@ -131,6 +146,12 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointment_reminder_payment_template_name: string | null;
       reminder_billing_test_phone_number: string | null;
       payment_details_text: string | null;
+      office_location: {
+        address: string;
+        arrival_instructions: string | null;
+        access_notes: string | null;
+      } | null;
+      virtual_session_instructions: string | null;
     }>("/v1/agent/settings", {
       method: "PUT",
       authRequired: true,
@@ -141,7 +162,16 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         appointment_reminder_attendance_template_name:
           input.appointmentReminderAttendanceTemplateName,
         appointment_reminder_payment_template_name: input.appointmentReminderPaymentTemplateName,
-        payment_details_text: input.paymentDetailsText
+        payment_details_text: input.paymentDetailsText,
+        office_location:
+          input.officeLocation !== null
+            ? {
+                address: input.officeLocation.address,
+                arrival_instructions: input.officeLocation.arrivalInstructions,
+                access_notes: input.officeLocation.accessNotes
+              }
+            : null,
+        virtual_session_instructions: input.virtualSessionInstructions
       })
     });
     return {
@@ -152,7 +182,16 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
       appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name,
       reminderBillingTestPhoneNumber: raw.reminder_billing_test_phone_number,
-      paymentDetailsText: raw.payment_details_text
+      paymentDetailsText: raw.payment_details_text,
+      officeLocation:
+        raw.office_location !== null && raw.office_location !== undefined
+          ? {
+              address: raw.office_location.address,
+              arrivalInstructions: raw.office_location.arrival_instructions,
+              accessNotes: raw.office_location.access_notes
+            }
+          : null,
+      virtualSessionInstructions: raw.virtual_session_instructions ?? null
     };
   }
 
