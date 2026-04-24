@@ -4,6 +4,30 @@ import src.ports.clock_port as clock_port
 import src.services.dto.agent_dto as agent_dto
 
 
+def _office_location_to_dto(
+    office_location: agent_profile_entity.OfficeLocation | None,
+) -> agent_dto.OfficeLocationDTO | None:
+    if office_location is None:
+        return None
+    return agent_dto.OfficeLocationDTO(
+        address=office_location.address,
+        arrival_instructions=office_location.arrival_instructions,
+        access_notes=office_location.access_notes,
+    )
+
+
+def _office_location_dto_to_entity(
+    dto: agent_dto.OfficeLocationDTO | None,
+) -> agent_profile_entity.OfficeLocation | None:
+    if dto is None:
+        return None
+    return agent_profile_entity.OfficeLocation(
+        address=dto.address,
+        arrival_instructions=dto.arrival_instructions,
+        access_notes=dto.access_notes,
+    )
+
+
 class AgentService:
     def __init__(
         self,
@@ -64,6 +88,14 @@ class AgentService:
                 if existing_profile is not None
                 else None
             ),
+            office_location=(
+                existing_profile.office_location if existing_profile is not None else None
+            ),
+            virtual_session_instructions=(
+                existing_profile.virtual_session_instructions
+                if existing_profile is not None
+                else None
+            ),
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
@@ -84,6 +116,8 @@ class AgentService:
                 appointment_reminder_payment_template_name=None,
                 reminder_billing_test_phone_number=None,
                 payment_details_text=None,
+                office_location=None,
+                virtual_session_instructions=None,
             )
         return agent_dto.AgentSettingsResponseDTO(
             tenant_id=tenant_id,
@@ -94,6 +128,8 @@ class AgentService:
             appointment_reminder_payment_template_name=agent_profile.appointment_reminder_payment_template_name,
             reminder_billing_test_phone_number=agent_profile.reminder_billing_test_phone_number,
             payment_details_text=agent_profile.payment_details_text,
+            office_location=_office_location_to_dto(agent_profile.office_location),
+            virtual_session_instructions=agent_profile.virtual_session_instructions,
         )
 
     def update_agent_settings(
@@ -121,6 +157,8 @@ class AgentService:
             appointment_reminder_payment_template_name=update_dto.appointment_reminder_payment_template_name,
             reminder_billing_test_phone_number=existing_billing_phone,
             payment_details_text=update_dto.payment_details_text,
+            office_location=_office_location_dto_to_entity(update_dto.office_location),
+            virtual_session_instructions=update_dto.virtual_session_instructions,
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
@@ -133,4 +171,6 @@ class AgentService:
             appointment_reminder_payment_template_name=agent_profile.appointment_reminder_payment_template_name,
             reminder_billing_test_phone_number=agent_profile.reminder_billing_test_phone_number,
             payment_details_text=agent_profile.payment_details_text,
+            office_location=_office_location_to_dto(agent_profile.office_location),
+            virtual_session_instructions=agent_profile.virtual_session_instructions,
         )

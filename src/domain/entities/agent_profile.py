@@ -4,6 +4,20 @@ import typing
 import pydantic
 
 
+class OfficeLocation(pydantic.BaseModel):
+    address: str
+    arrival_instructions: str | None = None
+    access_notes: str | None = None
+
+    @pydantic.field_validator("address")
+    @classmethod
+    def validate_address(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("office_location.address cannot be empty")
+        return normalized
+
+
 class AgentProfile(pydantic.BaseModel):
     tenant_id: str
     system_prompt: str
@@ -14,6 +28,8 @@ class AgentProfile(pydantic.BaseModel):
     appointment_reminder_payment_template_name: str | None = None
     reminder_billing_test_phone_number: str | None = None
     payment_details_text: str | None = None
+    office_location: OfficeLocation | None = None
+    virtual_session_instructions: str | None = None
     updated_at: datetime.datetime
 
     @pydantic.field_validator("system_prompt")
@@ -30,6 +46,16 @@ class AgentProfile(pydantic.BaseModel):
         if value < 0 or value > 30:
             raise ValueError("message_debounce_delay_seconds must be between 0 and 30")
         return value
+
+    @pydantic.field_validator("virtual_session_instructions")
+    @classmethod
+    def validate_virtual_session_instructions(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        return normalized
 
     @pydantic.field_validator("appointment_reminder_days_before")
     @classmethod
