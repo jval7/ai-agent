@@ -10,7 +10,6 @@ export interface AgentSettings {
   appointmentReminderDaysBefore: number | null;
   appointmentReminderAttendanceTemplateName: string | null;
   appointmentReminderPaymentTemplateName: string | null;
-  reminderBillingTestPhoneNumber: string | null;
   paymentDetailsText: string | null;
 }
 

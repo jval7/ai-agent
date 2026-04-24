@@ -75,8 +75,6 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
         self.phone_registrations: list[dict[str, str]] = []
         self.should_fail_subscription = False
         self.should_fail_phone_registration = False
-        self.preflight_calls: list[dict[str, str]] = []
-        self.preflight_errors: list[Exception] = []
 
     def build_embedded_signup_url(self, state: str) -> str:
         return f"https://example.test/embedded?state={state}"
@@ -193,22 +191,6 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
         self.sent_messages.append(payload)
         self.sent_template_body_parameters.append(list(body_parameters))
         return f"outbound-template-{len(self.sent_messages)}"
-
-    def send_hello_world_preflight(
-        self,
-        access_token: str,
-        phone_number_id: str,
-        recipient_phone_e164: str,
-    ) -> str:
-        if self.preflight_errors:
-            raise self.preflight_errors.pop(0)
-        payload = {
-            "access_token": access_token,
-            "phone_number_id": phone_number_id,
-            "recipient_phone_e164": recipient_phone_e164,
-        }
-        self.preflight_calls.append(payload)
-        return f"preflight-{len(self.preflight_calls)}"
 
 
 class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarProviderPort):

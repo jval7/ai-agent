@@ -79,7 +79,6 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
-        reminderBillingTestPhoneNumber: null,
         paymentDetailsText: null
       })),
       updateAgentSettings: vitestModule.vi.fn(async () => undefined)
@@ -101,12 +100,6 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
       ]),
       activateOfficialTemplate: vitestModule.vi.fn(async () => undefined),
       deactivateOfficialTemplate: vitestModule.vi.fn(async () => undefined)
-    },
-    whatsappBillingUseCase: {
-      runPreflight: vitestModule.vi.fn(async (phone: string) => ({
-        ok: true,
-        recipientPhoneNumber: phone
-      }))
     },
     tenantUseCase: {
       getProfile: vitestModule.vi.fn(async () => ({

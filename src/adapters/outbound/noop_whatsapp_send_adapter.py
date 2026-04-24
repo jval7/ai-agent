@@ -124,23 +124,3 @@ class NoopWhatsappSendAdapter(whatsapp_provider_port.WhatsappProviderPort):
             },
         )
         return synthetic_id
-
-    def send_hello_world_preflight(
-        self,
-        access_token: str,
-        phone_number_id: str,
-        recipient_phone_e164: str,
-    ) -> str:
-        if not self._settings.whatsapp_outbound_noop:
-            return self._delegate.send_hello_world_preflight(
-                access_token, phone_number_id, recipient_phone_e164
-            )
-        synthetic_id = f"noop-preflight-{uuid.uuid4().hex[:12]}"
-        logger.info(
-            "noop_whatsapp_billing_preflight",
-            extra={
-                "recipient_phone_number": recipient_phone_e164,
-                "synthetic_message_id": synthetic_id,
-            },
-        )
-        return synthetic_id
