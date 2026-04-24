@@ -1,3 +1,5 @@
+import typing
+
 import src.domain.entities.manual_appointment as manual_appointment_entity
 import src.domain.entities.patient as patient_entity
 import src.infra.logs as app_logs
@@ -9,6 +11,7 @@ import src.services.constants as service_constants
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.manual_appointment_dto as manual_appointment_dto
 import src.services.exceptions as service_exceptions
+import src.services.use_cases.event_description_builder as event_description_builder_mod
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.reminder_service as reminder_service_module
 
@@ -28,6 +31,9 @@ class ManualAppointmentService:
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
         reminder_service: reminder_service_module.ReminderService | None = None,
+        event_description_builder: (
+            event_description_builder_mod.EventDescriptionBuilder | None
+        ) = None,
     ) -> None:
         self._manual_appointment_repository = manual_appointment_repository
         self._patient_repository = patient_repository
@@ -35,6 +41,7 @@ class ManualAppointmentService:
         self._id_generator = id_generator
         self._clock = clock
         self._reminder_service = reminder_service
+        self._event_description_builder = event_description_builder
 
     def list_appointments(
         self,
@@ -68,6 +75,25 @@ class ManualAppointmentService:
             tenant_id=claims.tenant_id,
             patient=patient,
         )
+        appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] = (
+            "VIRTUAL" if create_dto.is_virtual else "PRESENCIAL"
+        )
+        event_description_result = (
+            self._event_description_builder.build(
+                tenant_id=claims.tenant_id,
+                modality=appointment_modality,
+                consultation_reason=motivo,
+                payment_status=create_dto.payment_status,
+            )
+            if self._event_description_builder is not None
+            else None
+        )
+        event_description = (
+            event_description_result.description if event_description_result is not None else motivo
+        )
+        event_location = (
+            event_description_result.location if event_description_result is not None else None
+        )
         event = self._google_calendar_onboarding_service.create_event(
             tenant_id=claims.tenant_id,
             start_at=create_dto.start_at,
@@ -75,7 +101,8 @@ class ManualAppointmentService:
             summary=event_title,
             attendee_emails=[patient.email],
             with_meet=create_dto.is_virtual,
-            description=motivo,
+            description=event_description,
+            location=event_location,
         )
         now_value = self._clock.now()
         payment_updated_at = now_value if create_dto.payment_status == "PAID" else None

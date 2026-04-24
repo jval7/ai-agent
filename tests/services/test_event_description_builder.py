@@ -1,0 +1,135 @@
+import datetime
+
+import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
+import src.adapters.outbound.inmemory.store as in_memory_store
+import src.domain.entities.agent_profile as agent_profile_entity
+import src.services.use_cases.event_description_builder as event_description_builder_mod
+
+
+def _build_builder(
+    office_location: agent_profile_entity.OfficeLocation | None = None,
+    virtual_session_instructions: str | None = None,
+) -> event_description_builder_mod.EventDescriptionBuilder:
+    store = in_memory_store.InMemoryStore()
+    repository = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
+    if office_location is not None or virtual_session_instructions is not None:
+        profile = agent_profile_entity.AgentProfile(
+            tenant_id="t-1",
+            system_prompt="prompt",
+            office_location=office_location,
+            virtual_session_instructions=virtual_session_instructions,
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+        repository.save(profile)
+    return event_description_builder_mod.EventDescriptionBuilder(
+        agent_profile_repository=repository,
+    )
+
+
+class TestEventDescriptionBuilderPresencial:
+    def test_presencial_with_full_office_location(self) -> None:
+        builder = _build_builder(
+            office_location=agent_profile_entity.OfficeLocation(
+                address="Calle 5 # 38-25, Cali",
+                arrival_instructions="Llegar 20 min antes con cédula",
+                access_notes="Edificio azul, piso 3",
+            )
+        )
+        result = builder.build(
+            tenant_id="t-1",
+            modality="PRESENCIAL",
+            consultation_reason="Ansiedad",
+        )
+        assert "Motivo de consulta: Ansiedad" in result.description
+        assert "Calle 5 # 38-25, Cali" in result.description
+        assert "Llegar 20 min antes con cédula" in result.description
+        assert "Edificio azul, piso 3" in result.description
+        assert result.location == "Calle 5 # 38-25, Cali"
+
+    def test_presencial_without_optional_office_fields(self) -> None:
+        builder = _build_builder(
+            office_location=agent_profile_entity.OfficeLocation(
+                address="Carrera 1 # 2-3, Bogota",
+            )
+        )
+        result = builder.build(
+            tenant_id="t-1",
+            modality="PRESENCIAL",
+            consultation_reason="Estrés",
+        )
+        assert "Carrera 1 # 2-3, Bogota" in result.description
+        assert "Indicaciones" not in result.description
+        assert "Notas" not in result.description
+        assert result.location == "Carrera 1 # 2-3, Bogota"
+
+    def test_presencial_without_office_location_is_incomplete_but_does_not_raise(self) -> None:
+        builder = _build_builder()
+        result = builder.build(
+            tenant_id="t-1",
+            modality="PRESENCIAL",
+            consultation_reason="Duelo",
+        )
+        assert "Duelo" in result.description
+        assert result.location is None
+
+    def test_presencial_with_no_agent_profile_at_all(self) -> None:
+        store = in_memory_store.InMemoryStore()
+        repository = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(store)
+        builder = event_description_builder_mod.EventDescriptionBuilder(
+            agent_profile_repository=repository,
+        )
+        result = builder.build(
+            tenant_id="t-unknown",
+            modality="PRESENCIAL",
+            consultation_reason="Consulta",
+        )
+        assert result.location is None
+
+
+class TestEventDescriptionBuilderVirtual:
+    def test_virtual_with_instructions(self) -> None:
+        builder = _build_builder(
+            virtual_session_instructions="Link de Meet llega al correo 24h antes."
+        )
+        result = builder.build(
+            tenant_id="t-1",
+            modality="VIRTUAL",
+            consultation_reason="Orientación a padres",
+        )
+        assert "Orientación a padres" in result.description
+        assert "Link de Meet llega al correo 24h antes." in result.description
+        assert result.location is None
+
+    def test_virtual_without_instructions(self) -> None:
+        builder = _build_builder()
+        result = builder.build(
+            tenant_id="t-1",
+            modality="VIRTUAL",
+            consultation_reason="Ansiedad",
+        )
+        assert "Ansiedad" in result.description
+        assert result.location is None
+
+
+class TestEventDescriptionBuilderGeneral:
+    def test_no_consultation_reason_is_handled(self) -> None:
+        builder = _build_builder(
+            office_location=agent_profile_entity.OfficeLocation(address="Calle 1"),
+        )
+        result = builder.build(
+            tenant_id="t-1",
+            modality="PRESENCIAL",
+            consultation_reason=None,
+        )
+        assert "Calle 1" in result.description
+        assert "Motivo" not in result.description
+
+    def test_unknown_modality_yields_only_reason(self) -> None:
+        builder = _build_builder()
+        result = builder.build(
+            tenant_id="t-1",
+            modality=None,
+            consultation_reason="Consulta general",
+        )
+        assert "Consulta general" in result.description
+        assert result.location is None
