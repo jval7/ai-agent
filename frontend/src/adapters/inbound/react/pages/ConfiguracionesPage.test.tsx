@@ -253,7 +253,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
     });
   });
 
-  vitestModule.it("opens disclosure modal first and chains preflight + activate flow", async () => {
+  vitestModule.it("opens disclosure modal first and activates on confirm", async () => {
     const container = buildContainer();
 
     renderConfiguracionesPage(container);
@@ -277,30 +277,9 @@ vitestModule.describe("ConfiguracionesPage", () => {
           .length
       )
       .toBe(0);
-    vitestModule
-      .expect(
-        (container.whatsappBillingUseCase.runPreflight as vitestModule.Mock).mock.calls.length
-      )
-      .toBe(0);
 
     testingLibraryReactModule.fireEvent.click(continueButton);
 
-    const phoneInput =
-      await testingLibraryReactModule.screen.findByLabelText(/Tu número de WhatsApp/i);
-    testingLibraryReactModule.fireEvent.change(phoneInput, {
-      target: { value: "+573009998877" }
-    });
-
-    const verifyButton = testingLibraryReactModule.screen.getByRole("button", {
-      name: /Verificar/i
-    });
-    testingLibraryReactModule.fireEvent.click(verifyButton);
-
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule
-        .expect(container.whatsappBillingUseCase.runPreflight)
-        .toHaveBeenCalledWith("+573009998877");
-    });
     await testingLibraryReactModule.waitFor(() => {
       vitestModule
         .expect(container.whatsappTemplateUseCase.activateOfficialTemplate)
@@ -328,7 +307,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
     });
     testingLibraryReactModule.fireEvent.click(cancelButton);
 
-    vitestModule.expect(container.whatsappBillingUseCase.runPreflight).not.toHaveBeenCalled();
     vitestModule
       .expect(container.whatsappTemplateUseCase.activateOfficialTemplate)
       .not.toHaveBeenCalled();

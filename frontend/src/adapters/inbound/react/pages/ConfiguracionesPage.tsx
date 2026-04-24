@@ -5,7 +5,6 @@ import * as reactRouterDomModule from "react-router-dom";
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as billingDisclosureModalModule from "@adapters/inbound/react/components/BillingDisclosureModal";
-import * as billingPreflightModalModule from "@adapters/inbound/react/components/BillingPreflightModal";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
@@ -165,9 +164,7 @@ export function ConfiguracionesPage() {
   const [debounceDelay, setDebounceDelay] = reactModule.useState(0);
   const [reminderDaysBefore, setReminderDaysBefore] = reactModule.useState(1);
   const [paymentDetailsText, setPaymentDetailsText] = reactModule.useState("");
-  const [activationStep, setActivationStep] = reactModule.useState<
-    "idle" | "disclosure" | "preflight"
-  >("idle");
+  const [activationStep, setActivationStep] = reactModule.useState<"idle" | "disclosure">("idle");
 
   reactModule.useEffect(() => {
     if (settingsQuery.data !== undefined) {
@@ -746,16 +743,6 @@ export function ConfiguracionesPage() {
                 setActivationStep("idle");
               }}
               onContinue={() => {
-                setActivationStep("preflight");
-              }}
-            />
-            <billingPreflightModalModule.BillingPreflightModal
-              defaultPhoneNumber={settingsQuery.data?.reminderBillingTestPhoneNumber ?? ""}
-              isOpen={activationStep === "preflight"}
-              onCancel={() => {
-                setActivationStep("idle");
-              }}
-              onSuccess={() => {
                 setActivationStep("idle");
                 activateAllMutation.mutate();
               }}
