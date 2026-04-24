@@ -361,3 +361,47 @@ def test_compute_missing_fields_returns_empty_when_known_patient() -> None:
     )
 
     assert missing_fields == []
+
+
+def test_resolve_post_booking_followup_includes_appointment_modality_and_location() -> None:
+    resolver, scheduling_repo, conversation_repo, _ = _build_resolver_with_scheduling()
+    conversation_repo.save_conversation(
+        conversation_entity.Conversation(
+            id="conv-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            started_at=NOW,
+            updated_at=NOW,
+            last_message_preview=None,
+            message_ids=[],
+            control_mode="AI",
+        )
+    )
+    scheduling_repo.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="req-modal-1",
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            request_kind="INITIAL",
+            status="BOOKED",
+            round_number=1,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            slots=[],
+            slot_options_map={},
+            selected_slot_id="slot-1",
+            calendar_event_id="cal-evt-1",
+            appointment_modality="PRESENCIAL",
+            patient_location="Cali",
+            created_at=NOW,
+            updated_at=NOW,
+        )
+    )
+
+    result = resolver.resolve("tenant-1", "conv-1", None)
+
+    assert result.state == "POST_BOOKING_FOLLOWUP"
+    assert result.appointment_modality == "PRESENCIAL"
+    assert result.patient_location == "Cali"
