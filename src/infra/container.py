@@ -55,6 +55,7 @@ import src.services.use_cases.auth_service as auth_service
 import src.services.use_cases.blacklist_service as blacklist_service
 import src.services.use_cases.conversation_control_service as conversation_control_service
 import src.services.use_cases.conversation_query_service as conversation_query_service
+import src.services.use_cases.event_stream_service as event_stream_service
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.manual_appointment_service as manual_appointment_service
 import src.services.use_cases.memory_admin_service as memory_admin_service
@@ -421,6 +422,9 @@ class AppContainer:
         self.onboarding_status_service = onboarding_status_service.OnboardingStatusService(
             whatsapp_onboarding_service=self.whatsapp_onboarding_service,
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
+        )
+        self.event_stream_service = event_stream_service.EventStreamService(
+            firestore_client=self.firestore_client,
         )
         self.patient_query_service = patient_query_service.PatientQueryService(
             patient_repository=self.patient_repository,

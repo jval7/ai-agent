@@ -12,8 +12,10 @@ import * as whatsappBillingUseCaseModule from "@application/use_cases/whatsapp_b
 import * as whatsappOnboardingUseCaseModule from "@application/use_cases/whatsapp_onboarding_use_case";
 import * as whatsappTemplateUseCaseModule from "@application/use_cases/whatsapp_template_use_case";
 import * as backendApiAdapterModule from "@adapters/outbound/http/backend_api_adapter";
+import * as backendEventStreamAdapterModule from "@adapters/outbound/http/backend_event_stream_adapter";
 import * as browserTokenSessionAdapterModule from "@adapters/outbound/storage/browser_token_session_adapter";
 import * as envModule from "@infrastructure/config/env";
+import type * as eventStreamPortModule from "@ports/event_stream_port";
 
 export interface AppContainer {
   authUseCase: authUseCaseModule.AuthUseCase;
@@ -29,6 +31,7 @@ export interface AppContainer {
   whatsappBillingUseCase: whatsappBillingUseCaseModule.WhatsappBillingUseCase;
   reminderUseCase: reminderUseCaseModule.ReminderUseCase;
   tenantUseCase: tenantUseCaseModule.TenantUseCase;
+  eventStream: eventStreamPortModule.EventStreamPort;
 }
 
 export function createAppContainer(): AppContainer {
@@ -55,6 +58,10 @@ export function createAppContainer(): AppContainer {
     whatsappTemplateUseCase: new whatsappTemplateUseCaseModule.WhatsappTemplateUseCase(backendApi),
     whatsappBillingUseCase: new whatsappBillingUseCaseModule.WhatsappBillingUseCase(backendApi),
     reminderUseCase: new reminderUseCaseModule.ReminderUseCase(backendApi),
-    tenantUseCase: new tenantUseCaseModule.TenantUseCase(backendApi)
+    tenantUseCase: new tenantUseCaseModule.TenantUseCase(backendApi),
+    eventStream: new backendEventStreamAdapterModule.BackendEventStreamAdapter(
+      envModule.envConfig.apiBaseUrl,
+      tokenSession
+    )
   };
 }
