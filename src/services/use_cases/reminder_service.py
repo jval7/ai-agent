@@ -632,6 +632,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             reminder_scheduled_for=reminder.reminder_scheduled_for,
             template_name=reminder.template_name,
             status=reminder.status,
+            failure_reason=reminder.failure_reason,
             created_at=reminder.created_at,
         )
 

@@ -169,6 +169,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         reminder_scheduled_for: string;
         template_name: string;
         status: string;
+        failure_reason: string | null;
         created_at: string;
       }[];
     }>(`/v1/reminders${params}`, { method: "GET", authRequired: true });
@@ -183,6 +184,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         reminderScheduledFor: item.reminder_scheduled_for,
         templateName: item.template_name,
         status: item.status as "PENDING" | "SENT" | "FAILED" | "CANCELLED",
+        failureReason: item.failure_reason,
         createdAt: item.created_at
       }))
     };

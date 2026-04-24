@@ -128,6 +128,9 @@ export function RecordatoriosPage() {
                 <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Estado
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Motivo
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
@@ -155,6 +158,15 @@ export function RecordatoriosPage() {
                         label={badgeProps.label}
                         tone={badgeProps.tone}
                       />
+                    </td>
+                    <td className="max-w-md px-6 py-4 text-sm text-slate-600">
+                      {reminder.failureReason !== null && reminder.failureReason !== "" ? (
+                        <span className="block break-words" title={reminder.failureReason}>
+                          {reminder.failureReason}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
                   </tr>
                 );
