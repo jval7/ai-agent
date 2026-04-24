@@ -471,6 +471,30 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             items=[self._to_dto(item) for item in sorted_reminders]
         )
 
+    def send_reminder_now(self, tenant_id: str, reminder_id: str) -> dict[str, str]:
+        reminder = self._scheduled_reminder_repository.get_by_id(tenant_id, reminder_id)
+        if reminder is None:
+            raise service_exceptions.EntityNotFoundError("scheduled reminder not found")
+        if reminder.status != "PENDING":
+            raise service_exceptions.InvalidStateError(
+                f"reminder is not pending (status={reminder.status})"
+            )
+
+        if reminder.cloud_task_name is not None:
+            try:
+                self._task_scheduler.cancel_task(reminder.cloud_task_name)
+            except service_exceptions.ExternalProviderError:
+                logger.warning(
+                    "reminder.manual_send.cancel_task_failed",
+                    extra={
+                        "reminder_id": reminder.id,
+                        "cloud_task_name": reminder.cloud_task_name,
+                    },
+                    exc_info=True,
+                )
+
+        return self.execute_reminder(tenant_id, reminder_id)
+
     def _pre_position_conversation_state(
         self,
         tenant_id: str,

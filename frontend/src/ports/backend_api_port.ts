@@ -25,6 +25,7 @@ export interface BackendApiPort {
     input: agentModel.UpdateAgentSettingsInput
   ): Promise<agentModel.AgentSettings>;
   listReminders(status?: string): Promise<scheduledReminderModel.ScheduledReminderList>;
+  sendReminderNow(reminderId: string): Promise<void>;
 
   createEmbeddedSignupSession(
     registrationPin?: string

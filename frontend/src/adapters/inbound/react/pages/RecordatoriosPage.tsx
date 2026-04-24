@@ -52,8 +52,28 @@ function BellEmptyIcon() {
   );
 }
 
+function SendNowIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function RecordatoriosPage() {
   const appContainer = appContainerContextModule.useAppContainer();
+  const queryClient = reactQueryModule.useQueryClient();
 
   const [statusFilter, setStatusFilter] = reactModule.useState<StatusFilterValue>(undefined);
 
@@ -61,6 +81,25 @@ export function RecordatoriosPage() {
     queryKey: ["reminders", statusFilter],
     queryFn: () => appContainer.reminderUseCase.listReminders(statusFilter)
   });
+
+  const sendNowMutation = reactQueryModule.useMutation({
+    mutationFn: (reminderId: string) => appContainer.reminderUseCase.sendReminderNow(reminderId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["reminders"] });
+    },
+    onError: (error: unknown) => {
+      const message = error instanceof Error ? error.message : "Error al enviar el recordatorio";
+      window.alert(message);
+      void queryClient.invalidateQueries({ queryKey: ["reminders"] });
+    }
+  });
+
+  const handleSendNow = (reminderId: string, patientName: string) => {
+    if (!window.confirm(`¿Enviar recordatorio a ${patientName} ahora?`)) {
+      return;
+    }
+    sendNowMutation.mutate(reminderId);
+  };
 
   const reminders = remindersQuery.data?.items ?? [];
 
@@ -131,6 +170,9 @@ export function RecordatoriosPage() {
                 <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Motivo
                 </th>
+                <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Acciones
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
@@ -166,6 +208,27 @@ export function RecordatoriosPage() {
                         </span>
                       ) : (
                         <span className="text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-right text-sm">
+                      {reminder.status === "PENDING" ? (
+                        <button
+                          aria-label="Enviar recordatorio ahora"
+                          className="inline-flex items-center justify-center rounded-lg border border-brand-teal p-2 text-brand-teal transition-colors hover:bg-brand-teal/10 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={
+                            sendNowMutation.isPending &&
+                            sendNowMutation.variables === reminder.reminderId
+                          }
+                          onClick={() => {
+                            handleSendNow(reminder.reminderId, reminder.patientName);
+                          }}
+                          title="Enviar ahora"
+                          type="button"
+                        >
+                          <SendNowIcon />
+                        </button>
+                      ) : (
+                        <span className="text-slate-300">—</span>
                       )}
                     </td>
                   </tr>

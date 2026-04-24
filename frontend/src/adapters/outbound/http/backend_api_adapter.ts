@@ -190,6 +190,13 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     };
   }
 
+  async sendReminderNow(reminderId: string): Promise<void> {
+    await this.request<{ status: string }>(`/v1/reminders/${reminderId}/send-now`, {
+      method: "POST",
+      authRequired: true
+    });
+  }
+
   async createEmbeddedSignupSession(
     registrationPin?: string
   ): Promise<whatsappModel.EmbeddedSignupSession> {

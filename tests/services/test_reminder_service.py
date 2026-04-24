@@ -1,6 +1,8 @@
 import datetime
 import zoneinfo
 
+import pytest
+
 import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.inmemory.scheduled_reminder_repository_adapter as scheduled_reminder_repository_adapter
@@ -13,6 +15,7 @@ import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.domain.official_reminder_templates as official_reminder_templates
+import src.services.exceptions as service_exceptions
 import src.services.use_cases.reminder_service as reminder_service_module
 import tests.fakes.fake_adapters as fake_adapters
 
@@ -795,3 +798,74 @@ def test_execute_reminder_skips_pre_position_when_no_conversation() -> None:
     assert result["status"] == "sent"
     # No scheduling request created (no conversation).
     assert scheduling_repo.list_requests_by_tenant("tenant-1") == []
+
+
+# ---------------------------------------------------------------------------
+# send_reminder_now
+# ---------------------------------------------------------------------------
+
+
+def test_send_reminder_now_cancels_task_and_sends_immediately() -> None:
+    profile = _build_profile_with_payment_details()
+    service, _, reminder_repo, task_sched, wa_provider = _build_service(
+        ["reminder-1"], agent_profile=profile
+    )
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 5, 10, 0, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Ana",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+        appointment_modality="PRESENCIAL",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    assert len(pending) == 1
+    assert len(task_sched.scheduled_tasks) == 1
+
+    result = service.send_reminder_now("tenant-1", pending[0].id)
+
+    assert result["status"] == "sent"
+    assert len(wa_provider.sent_messages) == 1
+    # Scheduled Cloud Task was cancelled to avoid a duplicate send later.
+    assert task_sched.scheduled_tasks == []
+    # Reminder state is transitioned to SENT.
+    sent_reminder = reminder_repo.get_by_id("tenant-1", pending[0].id)
+    assert sent_reminder is not None
+    assert sent_reminder.status == "SENT"
+
+
+def test_send_reminder_now_rejects_non_pending_status() -> None:
+    profile = _build_profile_with_payment_details()
+    service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 5, 10, 0, tzinfo=bogota)
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Ana",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    reminder = pending[0]
+    reminder.status = "SENT"
+    reminder_repo.save(reminder)
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.send_reminder_now("tenant-1", reminder.id)
+
+
+def test_send_reminder_now_raises_when_reminder_missing() -> None:
+    service, _, _, _, _ = _build_service([])
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        service.send_reminder_now("tenant-1", "unknown-id")
