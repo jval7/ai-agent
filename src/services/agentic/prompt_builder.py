@@ -1,5 +1,7 @@
+import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.patient as patient_entity
 import src.services.agentic.prompts.enabled_tools_section as enabled_tools_section
+import src.services.agentic.prompts.office_context_section as office_context_section
 import src.services.agentic.prompts.patient_profile_section as patient_profile_section
 import src.services.agentic.prompts.prompt_assembler as prompt_assembler
 import src.services.agentic.prompts.runtime_context_section as runtime_context_section
@@ -12,6 +14,7 @@ def _build_default_assembler() -> prompt_assembler.PromptAssembler:
         sections=[
             runtime_context_section.RuntimeContextSection(),
             patient_profile_section.PatientProfileSection(),
+            office_context_section.OfficeContextSection(),
             enabled_tools_section.EnabledToolsSection(),
             state_instructions.StateInstructionsSection(),
         ]
@@ -41,8 +44,9 @@ class RuntimePromptBuilder:
         self,
         runtime_context: agentic_state_models.RuntimePromptContext,
         known_patient: patient_entity.Patient | None,
+        agent_profile: agent_profile_entity.AgentProfile | None = None,
     ) -> str:
-        return self._assembler.build_runtime_prompt(runtime_context, known_patient)
+        return self._assembler.build_runtime_prompt(runtime_context, known_patient, agent_profile)
 
     def build_runtime_state_specific_instructions(
         self,
