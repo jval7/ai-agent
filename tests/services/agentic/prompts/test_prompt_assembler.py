@@ -146,6 +146,32 @@ class TestPromptAssemblerOutputParity:
         assert "cita fue reservada exitosamente" in result
         assert "close_session" in result
 
+    def test_post_booking_followup_presencial_includes_office_data_instruction(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="POST_BOOKING_FOLLOWUP",
+            request_id="req-1",
+            request_status="BOOKED",
+            appointment_modality="PRESENCIAL",
+            enabled_tool_names=["close_session", "handoff_to_human"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "PRESENCIAL" in result
+        assert "Datos del consultorio" in result
+
+    def test_post_booking_followup_virtual_includes_meet_instruction(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="POST_BOOKING_FOLLOWUP",
+            request_id="req-1",
+            request_status="BOOKED",
+            appointment_modality="VIRTUAL",
+            enabled_tool_names=["close_session", "handoff_to_human"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "VIRTUAL" in result
+        assert "Meet" in result
+
     def test_compose_full_prompt(self) -> None:
         builder = _build_builder()
         ctx = agentic_state_models.RuntimePromptContext(
