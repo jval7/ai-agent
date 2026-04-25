@@ -69,7 +69,6 @@ class ManualAppointmentService:
         if patient is None:
             raise service_exceptions.EntityNotFoundError("patient not found")
 
-        motivo = self._normalize_text(create_dto.summary)
         summary = self._resolve_summary(create_dto.summary, patient)
         event_title = self._build_event_title(
             tenant_id=claims.tenant_id,
@@ -82,14 +81,13 @@ class ManualAppointmentService:
             self._event_description_builder.build(
                 tenant_id=claims.tenant_id,
                 modality=appointment_modality,
-                consultation_reason=motivo,
                 payment_status=create_dto.payment_status,
             )
             if self._event_description_builder is not None
             else None
         )
         event_description = (
-            event_description_result.description if event_description_result is not None else motivo
+            event_description_result.description if event_description_result is not None else None
         )
         event_location = (
             event_description_result.location if event_description_result is not None else None

@@ -24,6 +24,10 @@ class EventDescriptionBuilder:
     PRESENCIAL appointments so it appears prominently in the calendar invitation;
     for VIRTUAL appointments it is left as None (Google already shows
     "Meet video conference" as the location).
+
+    Sensitive patient data (e.g. consultation reason) is intentionally excluded
+    from the description because the event invitation is sent via email and may
+    be visible to third parties.
     """
 
     def __init__(
@@ -36,25 +40,19 @@ class EventDescriptionBuilder:
         self,
         tenant_id: str,
         modality: typing.Literal["PRESENCIAL", "VIRTUAL"] | None,
-        consultation_reason: str | None,
         payment_status: typing.Literal["PENDING", "PAID"] = "PENDING",
     ) -> EventDescription:
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
-        description = self._build_description(modality, consultation_reason, agent_profile)
+        description = self._build_description(modality, agent_profile)
         location = self._resolve_location(modality, agent_profile)
         return EventDescription(description=description, location=location)
 
     def _build_description(
         self,
         modality: typing.Literal["PRESENCIAL", "VIRTUAL"] | None,
-        consultation_reason: str | None,
         agent_profile: agent_profile_entity.AgentProfile | None,
     ) -> str:
         lines: list[str] = []
-        if consultation_reason is not None:
-            normalized_reason = consultation_reason.strip()
-            if normalized_reason:
-                lines.append(f"Motivo de consulta: {normalized_reason}")
 
         if modality == "PRESENCIAL":
             lines.extend(self._build_presencial_lines(agent_profile))

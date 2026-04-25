@@ -36,9 +36,8 @@ class TestEventDescriptionBuilderPresencial:
         result = builder.build(
             tenant_id="t-1",
             modality="PRESENCIAL",
-            consultation_reason="Ansiedad",
         )
-        assert "Motivo de consulta: Ansiedad" in result.description
+        assert "Motivo de consulta" not in result.description
         assert "Calle 5 # 38-25, Cali" in result.description
         assert "Llegar 20 min antes con cédula" in result.description
         assert result.location == "Calle 5 # 38-25, Cali"
@@ -52,20 +51,18 @@ class TestEventDescriptionBuilderPresencial:
         result = builder.build(
             tenant_id="t-1",
             modality="PRESENCIAL",
-            consultation_reason="Estrés",
         )
         assert "Carrera 1 # 2-3, Bogota" in result.description
         assert "Indicaciones" not in result.description
         assert result.location == "Carrera 1 # 2-3, Bogota"
 
-    def test_presencial_without_office_location_is_incomplete_but_does_not_raise(self) -> None:
+    def test_presencial_without_office_location_yields_empty_description(self) -> None:
         builder = _build_builder()
         result = builder.build(
             tenant_id="t-1",
             modality="PRESENCIAL",
-            consultation_reason="Duelo",
         )
-        assert "Duelo" in result.description
+        assert result.description == ""
         assert result.location is None
 
     def test_presencial_with_no_agent_profile_at_all(self) -> None:
@@ -77,7 +74,6 @@ class TestEventDescriptionBuilderPresencial:
         result = builder.build(
             tenant_id="t-unknown",
             modality="PRESENCIAL",
-            consultation_reason="Consulta",
         )
         assert result.location is None
 
@@ -89,9 +85,8 @@ class TestEventDescriptionBuilderVirtual:
         result = builder.build(
             tenant_id="t-1",
             modality="VIRTUAL",
-            consultation_reason="Orientación a padres",
         )
-        assert "Orientación a padres" in result.description
+        assert "Motivo de consulta" not in result.description
         assert booking_constants.VIRTUAL_SESSION_INSTRUCTIONS in result.description
         assert result.location is None
 
@@ -104,31 +99,28 @@ class TestEventDescriptionBuilderVirtual:
         result = builder.build(
             tenant_id="t-unknown",
             modality="VIRTUAL",
-            consultation_reason="Ansiedad",
         )
         assert booking_constants.VIRTUAL_SESSION_INSTRUCTIONS in result.description
         assert result.location is None
 
 
 class TestEventDescriptionBuilderGeneral:
-    def test_no_consultation_reason_is_handled(self) -> None:
+    def test_no_consultation_reason_does_not_appear_in_description(self) -> None:
         builder = _build_builder(
             office_location=agent_profile_entity.OfficeLocation(address="Calle 1"),
         )
         result = builder.build(
             tenant_id="t-1",
             modality="PRESENCIAL",
-            consultation_reason=None,
         )
         assert "Calle 1" in result.description
         assert "Motivo" not in result.description
 
-    def test_unknown_modality_yields_only_reason(self) -> None:
+    def test_unknown_modality_yields_empty_description(self) -> None:
         builder = _build_builder()
         result = builder.build(
             tenant_id="t-1",
             modality=None,
-            consultation_reason="Consulta general",
         )
-        assert "Consulta general" in result.description
+        assert result.description == ""
         assert result.location is None

@@ -436,7 +436,7 @@ def test_create_appointment_uses_professional_name_as_event_title() -> None:
     )
 
     assert google_provider.created_event_summaries == ["Test Professional/Jane Doe"]
-    assert google_provider.created_event_descriptions == ["Ansiedad"]
+    assert google_provider.created_event_descriptions == [None]
 
 
 def test_create_appointment_falls_back_to_profesional_when_name_unavailable() -> None:
@@ -468,4 +468,4 @@ def test_create_appointment_falls_back_to_profesional_when_name_unavailable() ->
     )
 
     assert google_provider.created_event_summaries == ["Profesional/Jane Doe"]
-    assert google_provider.created_event_descriptions == ["Ansiedad"]
+    assert google_provider.created_event_descriptions == [None]

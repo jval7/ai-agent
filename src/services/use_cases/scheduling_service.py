@@ -722,7 +722,6 @@ class SchedulingService:
                 self._event_description_builder.build(
                     tenant_id=tenant_id,
                     modality=request.appointment_modality,
-                    consultation_reason=request.consultation_reason,
                     payment_status=request.payment_status,
                 )
                 if self._event_description_builder is not None
