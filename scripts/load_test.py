@@ -14,10 +14,12 @@ Requiere:
     - .secrets/make_credentials.env con: OWNER_EMAIL, OWNER_PASSWORD, PATIENT_EMAIL
       (PATIENT_EMAIL es el correo que los pacientes simulados van a dar al bot — usalo
       para recibir las invitaciones de Google Calendar y validar el contenido).
+    - .secrets/make_api_base.env con: API_BASE
 
 Uso:
-    uv run python scripts/load_test.py                          # local
-    API_BASE=https://tu-backend.run.app uv run python scripts/load_test.py  # GCP
+    uv run python scripts/load_test.py                              # default (prod)
+    ENV=dev uv run python scripts/load_test.py                      # carga make_credentials_dev.env y make_api_base_dev.env
+    API_BASE=https://tu-backend.run.app uv run python scripts/load_test.py  # override inline
 """
 
 from __future__ import annotations
@@ -34,7 +36,9 @@ import httpx
 from google import genai
 
 # ---------------------------------------------------------------------------
-# Cargar .secrets/make_credentials.env y .secrets/make_api_base.env
+# Cargar archivos de .secrets/ segun ENV. Default: make_credentials.env y
+# make_api_base.env (apuntan a prod). Con ENV=dev: make_credentials_dev.env y
+# make_api_base_dev.env.
 # ---------------------------------------------------------------------------
 _SECRETS_DIR = pathlib.Path(__file__).resolve().parent.parent / ".secrets"
 
@@ -52,8 +56,9 @@ def _load_env_file(path: pathlib.Path) -> None:
             os.environ[key] = value
 
 
-_load_env_file(_SECRETS_DIR / "make_credentials.env")
-_load_env_file(_SECRETS_DIR / "make_api_base.env")
+_ENV_SUFFIX = f"_{os.environ['ENV']}" if os.environ.get("ENV") else ""
+_load_env_file(_SECRETS_DIR / f"make_credentials{_ENV_SUFFIX}.env")
+_load_env_file(_SECRETS_DIR / f"make_api_base{_ENV_SUFFIX}.env")
 
 # ---------------------------------------------------------------------------
 # Configuracion
