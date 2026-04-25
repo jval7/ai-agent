@@ -80,6 +80,19 @@ def register_exception_handlers(app: fastapi.FastAPI) -> None:
         request: fastapi.Request,
         error: service_exceptions.ExternalProviderError,
     ) -> fastapi_responses.JSONResponse:
+        logger.error(
+            "http.external_provider_error",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="http.external_provider_error",
+                    message=str(error),
+                    data={
+                        "path": request.url.path,
+                        "method": request.method,
+                    },
+                )
+            },
+        )
         return _build_json_response(
             request=request,
             status_code=502,
