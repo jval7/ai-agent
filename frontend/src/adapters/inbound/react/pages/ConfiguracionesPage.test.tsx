@@ -79,9 +79,19 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
-        paymentDetailsText: null
+        paymentDetailsText: null,
+        officeLocation: null
       })),
-      updateAgentSettings: vitestModule.vi.fn(async () => undefined)
+      updateAgentSettings: vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        paymentDetailsText: null,
+        officeLocation: null
+      }))
     },
     whatsappTemplateUseCase: {
       listOfficialTemplateStatus: vitestModule.vi.fn(async () => [
@@ -153,19 +163,23 @@ vitestModule.describe("ConfiguracionesPage", () => {
     });
   });
 
-  vitestModule.it("renders Perfil tab by default and shows professional name input", async () => {
-    const container = buildContainer();
+  vitestModule.it(
+    "renders Información General tab by default with professional name input",
+    async () => {
+      const container = buildContainer();
 
-    renderConfiguracionesPage(container);
+      renderConfiguracionesPage(container);
 
-    const input = await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
-    vitestModule.expect(input).toBeInTheDocument();
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule.expect((input as HTMLInputElement).value).toBe("Dra. Ana Garcia");
-    });
-  });
+      const input =
+        await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
+      vitestModule.expect(input).toBeInTheDocument();
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect((input as HTMLInputElement).value).toBe("Dra. Ana Garcia");
+      });
+    }
+  );
 
-  vitestModule.it("shows empty input when professionalName is null", async () => {
+  vitestModule.it("shows empty professional name input when professionalName is null", async () => {
     const container = buildContainer({
       tenantUseCase: {
         getProfile: vitestModule.vi.fn(async () => ({
@@ -214,8 +228,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
       target: { value: "Dra. Ana M. Garcia" }
     });
 
-    const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
-    testingLibraryReactModule.fireEvent.click(saveButton);
+    // Profile "Guardar" is the first of the two save buttons (profile and consultorio)
+    const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+      name: "Guardar"
+    });
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
 
     await testingLibraryReactModule.waitFor(() => {
       vitestModule.expect(updateProfileMock).toHaveBeenCalledWith({
@@ -303,5 +321,336 @@ vitestModule.describe("ConfiguracionesPage", () => {
     vitestModule
       .expect(container.whatsappTemplateUseCase.activateOfficialTemplate)
       .not.toHaveBeenCalled();
+  });
+
+  // --- Información General tab — consultorio section tests ---
+
+  vitestModule.it(
+    "renders office location data from backend in Información General tab",
+    async () => {
+      const container = buildContainer({
+        agentUseCase: {
+          getSystemPrompt: vitestModule.vi.fn(async () => ({
+            systemPrompt: "You are a helpful assistant"
+          })),
+          updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+          getAgentSettings: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            messageDebounceDelaySeconds: 5,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: null,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            paymentDetailsText: null,
+            officeLocation: {
+              address: "Calle 5 # 38-25, Edificio Azul, piso 3",
+              arrivalInstructions: "Llegar 20 minutos antes con cedula fisica"
+            }
+          })),
+          updateAgentSettings: vitestModule.vi.fn(async () => undefined)
+        }
+      });
+
+      renderConfiguracionesPage(container);
+
+      // Información General is the default tab — office fields are visible without clicking
+      const addressTextarea = await testingLibraryReactModule.screen.findByLabelText(
+        "Direccion del consultorio"
+      );
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule
+          .expect((addressTextarea as HTMLTextAreaElement).value)
+          .toBe("Calle 5 # 38-25, Edificio Azul, piso 3");
+      });
+
+      const arrivalInput =
+        testingLibraryReactModule.screen.getByLabelText("Indicaciones de llegada");
+      vitestModule
+        .expect((arrivalInput as HTMLTextAreaElement).value)
+        .toBe("Llegar 20 minutos antes con cedula fisica");
+
+      // "Notas de acceso" no longer exists as a separate field
+      vitestModule
+        .expect(testingLibraryReactModule.screen.queryByLabelText("Notas de acceso"))
+        .toBeNull();
+
+      // Virtual session instructions field no longer exists
+      vitestModule
+        .expect(
+          testingLibraryReactModule.screen.queryByLabelText("Instrucciones para sesiones virtuales")
+        )
+        .toBeNull();
+    }
+  );
+
+  vitestModule.it(
+    "submits office_location with address (multiline) and arrival instructions when both are filled",
+    async () => {
+      const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        paymentDetailsText: null,
+        officeLocation: {
+          address: "Avenida Siempre Viva 1234\nEdificio Azul, piso 5\nParqueadero en sotano",
+          arrivalInstructions: "Llegar 20 minutos antes"
+        }
+      }));
+      const container = buildContainer({
+        agentUseCase: {
+          getSystemPrompt: vitestModule.vi.fn(async () => ({
+            systemPrompt: ""
+          })),
+          updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+          getAgentSettings: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            messageDebounceDelaySeconds: 5,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: null,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            paymentDetailsText: null,
+            officeLocation: null
+          })),
+          updateAgentSettings: updateAgentSettingsMock
+        }
+      });
+
+      renderConfiguracionesPage(container);
+
+      // Información General is the default tab — office fields are visible without clicking.
+      // Wait for settingsQuery to resolve so the fields become enabled.
+      const addressTextarea = await testingLibraryReactModule.screen.findByLabelText(
+        "Direccion del consultorio"
+      );
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(addressTextarea).not.toBeDisabled();
+      });
+      // Simulate a multiline address — the textarea accepts newlines natively
+      testingLibraryReactModule.fireEvent.change(addressTextarea, {
+        target: { value: "Avenida Siempre Viva 1234\nEdificio Azul, piso 5\nParqueadero en sotano" }
+      });
+
+      const arrivalInput =
+        testingLibraryReactModule.screen.getByLabelText("Indicaciones de llegada");
+      testingLibraryReactModule.fireEvent.change(arrivalInput, {
+        target: { value: "Llegar 20 minutos antes" }
+      });
+
+      // Office "Guardar" is the second save button (after profile's)
+      const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+        name: "Guardar"
+      });
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
+          vitestModule.expect.objectContaining({
+            officeLocation: {
+              address: "Avenida Siempre Viva 1234\nEdificio Azul, piso 5\nParqueadero en sotano",
+              arrivalInstructions: "Llegar 20 minutos antes"
+            }
+          })
+        );
+      });
+
+      // Verify no access_notes key is sent in the payload
+      const callArg = (updateAgentSettingsMock as vitestModule.Mock).mock.calls[0]?.[0] as Record<
+        string,
+        unknown
+      >;
+      const officeLocation = callArg?.["officeLocation"] as Record<string, unknown> | null;
+      vitestModule.expect(officeLocation).not.toHaveProperty("accessNotes");
+    }
+  );
+
+  vitestModule.it(
+    "submits office_location with only address when arrival_instructions is empty",
+    async () => {
+      const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        paymentDetailsText: null,
+        officeLocation: {
+          address: "Calle 5 # 38-25, Cali",
+          arrivalInstructions: null
+        }
+      }));
+      const container = buildContainer({
+        agentUseCase: {
+          getSystemPrompt: vitestModule.vi.fn(async () => ({ systemPrompt: "" })),
+          updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+          getAgentSettings: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            messageDebounceDelaySeconds: 5,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: null,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            paymentDetailsText: null,
+            officeLocation: null
+          })),
+          updateAgentSettings: updateAgentSettingsMock
+        }
+      });
+
+      renderConfiguracionesPage(container);
+
+      // Información General is the default tab — office fields are visible without clicking.
+      // Wait for settingsQuery to resolve so the fields become enabled.
+      const addressInput = await testingLibraryReactModule.screen.findByLabelText(
+        "Direccion del consultorio"
+      );
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(addressInput).not.toBeDisabled();
+      });
+      testingLibraryReactModule.fireEvent.change(addressInput, {
+        target: { value: "Calle 5 # 38-25, Cali" }
+      });
+
+      // Office "Guardar" is the second save button (after profile's)
+      const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+        name: "Guardar"
+      });
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
+          vitestModule.expect.objectContaining({
+            officeLocation: {
+              address: "Calle 5 # 38-25, Cali",
+              arrivalInstructions: null
+            }
+          })
+        );
+      });
+    }
+  );
+
+  vitestModule.it(
+    "sends office_location null when address is empty even if arrival_instructions is filled",
+    async () => {
+      // UX decision: address is mandatory for office_location. Leaving address
+      // blank while filling arrival_instructions discards the sub-fields silently
+      // (no orphaned data is stored). This avoids confusing the backend with an
+      // office_location that has no address.
+      const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        paymentDetailsText: null,
+        officeLocation: null
+      }));
+      const container = buildContainer({
+        agentUseCase: {
+          getSystemPrompt: vitestModule.vi.fn(async () => ({ systemPrompt: "" })),
+          updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+          getAgentSettings: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            messageDebounceDelaySeconds: 5,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: null,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            paymentDetailsText: null,
+            officeLocation: null
+          })),
+          updateAgentSettings: updateAgentSettingsMock
+        }
+      });
+
+      renderConfiguracionesPage(container);
+
+      // Información General is the default tab — office fields are visible without clicking
+      // Leave address empty, fill arrival_instructions
+      const arrivalInput =
+        await testingLibraryReactModule.screen.findByLabelText("Indicaciones de llegada");
+      testingLibraryReactModule.fireEvent.change(arrivalInput, {
+        target: { value: "Llegar 20 minutos antes" }
+      });
+
+      // Office "Guardar" is the second save button (after profile's)
+      const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+        name: "Guardar"
+      });
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
+          vitestModule.expect.objectContaining({
+            officeLocation: null
+          })
+        );
+      });
+    }
+  );
+
+  vitestModule.it("shows success banner after saving office data", async () => {
+    const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
+      tenantId: "tenant-1",
+      messageDebounceDelaySeconds: 5,
+      appointmentReminderEnabled: false,
+      appointmentReminderDaysBefore: null,
+      appointmentReminderAttendanceTemplateName: null,
+      appointmentReminderPaymentTemplateName: null,
+      paymentDetailsText: null,
+      officeLocation: {
+        address: "Calle 5 # 38-25, Cali",
+        arrivalInstructions: null
+      }
+    }));
+    const container = buildContainer({
+      agentUseCase: {
+        getSystemPrompt: vitestModule.vi.fn(async () => ({ systemPrompt: "" })),
+        updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+        getAgentSettings: vitestModule.vi.fn(async () => ({
+          tenantId: "tenant-1",
+          messageDebounceDelaySeconds: 5,
+          appointmentReminderEnabled: false,
+          appointmentReminderDaysBefore: null,
+          appointmentReminderAttendanceTemplateName: null,
+          appointmentReminderPaymentTemplateName: null,
+          paymentDetailsText: null,
+          officeLocation: null
+        })),
+        updateAgentSettings: updateAgentSettingsMock
+      }
+    });
+
+    renderConfiguracionesPage(container);
+
+    // Información General is the default tab — office fields are visible without clicking
+    const addressInput = await testingLibraryReactModule.screen.findByLabelText(
+      "Direccion del consultorio"
+    );
+    testingLibraryReactModule.fireEvent.change(addressInput, {
+      target: { value: "Calle 5 # 38-25, Cali" }
+    });
+
+    // Office "Guardar" is the second save button (after profile's)
+    const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+      name: "Guardar"
+    });
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+
+    await testingLibraryReactModule.waitFor(() => {
+      vitestModule
+        .expect(testingLibraryReactModule.screen.getByText("Datos del consultorio guardados."))
+        .toBeInTheDocument();
+    });
   });
 });

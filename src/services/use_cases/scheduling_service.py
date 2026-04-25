@@ -19,6 +19,7 @@ import src.services.agentic.workflow_engine as workflow_engine
 import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.exceptions as service_exceptions
+import src.services.use_cases.event_description_builder as event_description_builder_mod
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.reminder_service as reminder_service_module
 import src.services.use_cases.tag_service as tag_service_module
@@ -84,6 +85,7 @@ class SchedulingService:
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
         task_scheduler: task_scheduler_port.TaskSchedulerPort,
+        event_description_builder: event_description_builder_mod.EventDescriptionBuilder,
         auto_close_delay_seconds: int = 3600,
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
         tag_service: tag_service_module.TagService | None = None,
@@ -110,6 +112,7 @@ class SchedulingService:
         self._manual_appointment_repository = manual_appointment_repository
         self._whatsapp_provider = whatsapp_provider
         self._whatsapp_connection_repository = whatsapp_connection_repository
+        self._event_description_builder = event_description_builder
         self._agent_workflow: agent_workflow_port.AgentWorkflowPort
         if agent_workflow is None:
             self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
@@ -713,6 +716,13 @@ class SchedulingService:
             normalized_summary = input_dto.event_summary.strip()
             if not normalized_summary:
                 raise service_exceptions.InvalidStateError("event summary cannot be empty")
+            event_description_result = self._event_description_builder.build(
+                tenant_id=tenant_id,
+                modality=request.appointment_modality,
+                payment_status=request.payment_status,
+            )
+            event_description = event_description_result.description
+            event_location = event_description_result.location
             event = self._google_calendar_onboarding_service.create_event(
                 tenant_id=tenant_id,
                 start_at=selected_slot.start_at,
@@ -720,7 +730,8 @@ class SchedulingService:
                 summary=normalized_summary,
                 attendee_emails=input_dto.attendee_emails,
                 with_meet=with_meet,
-                description=input_dto.description,
+                description=event_description,
+                location=event_location,
             )
         except service_exceptions.ExternalProviderError as error:
             if self._is_google_conflict_error(str(error)):

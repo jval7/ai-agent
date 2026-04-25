@@ -20,6 +20,11 @@ class SystemPromptResponseDTO(pydantic.BaseModel):
     system_prompt: str
 
 
+class OfficeLocationDTO(pydantic.BaseModel):
+    address: str
+    arrival_instructions: str | None = None
+
+
 class UpdateAgentSettingsDTO(pydantic.BaseModel):
     message_debounce_delay_seconds: int
     appointment_reminder_enabled: bool = False
@@ -27,6 +32,7 @@ class UpdateAgentSettingsDTO(pydantic.BaseModel):
     appointment_reminder_attendance_template_name: str | None = None
     appointment_reminder_payment_template_name: str | None = None
     payment_details_text: str | None = None
+    office_location: OfficeLocationDTO | None = None
 
     @pydantic.field_validator("message_debounce_delay_seconds")
     @classmethod
@@ -64,3 +70,4 @@ class AgentSettingsResponseDTO(pydantic.BaseModel):
     appointment_reminder_attendance_template_name: str | None
     appointment_reminder_payment_template_name: str | None
     payment_details_text: str | None
+    office_location: OfficeLocationDTO | None = None

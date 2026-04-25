@@ -274,6 +274,7 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         with_meet: bool,
         conference_request_id: str,
         description: str | None = None,
+        location: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         if self.create_event_errors:
             raise self.create_event_errors.pop(0)
@@ -281,6 +282,7 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         del calendar_id
         del timezone
         del conference_request_id
+        del location
         self.created_event_summaries.append(summary)
         self.created_event_descriptions.append(description)
         self.last_create_attendee_emails.append(list(attendee_emails))
@@ -318,12 +320,14 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         summary: str,
         attendee_emails: list[str],
         description: str | None = None,
+        location: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         if self.update_event_errors:
             raise self.update_event_errors.pop(0)
         del access_token
         del calendar_id
         del timezone
+        del location
         self.updated_event_summaries.append(summary)
         self.updated_event_descriptions.append(description)
         self.last_update_attendee_emails.append(list(attendee_emails))

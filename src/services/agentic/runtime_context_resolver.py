@@ -108,6 +108,8 @@ class RuntimeContextResolver:
                 state="POST_BOOKING_FOLLOWUP",
                 request_id=latest_open_request.request_id,
                 request_status=request_status,
+                appointment_modality=latest_open_request.appointment_modality,
+                patient_location=latest_open_request.patient_location,
                 enabled_tool_names=self._enabled_tools_for_state("POST_BOOKING_FOLLOWUP"),
             )
         return RuntimePromptContext(

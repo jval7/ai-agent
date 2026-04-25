@@ -3,19 +3,41 @@ import datetime
 import pydantic
 import pytest
 
+import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.inmemory.manual_appointment_repository_adapter as manual_appointment_repository_adapter
 import src.adapters.outbound.inmemory.patient_repository_adapter as patient_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
+import src.domain.booking_constants as booking_constants
+import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.tenant as tenant_entity
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.manual_appointment_dto as manual_appointment_dto
 import src.services.exceptions as service_exceptions
+import src.services.use_cases.event_description_builder as event_description_builder_mod
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.manual_appointment_service as manual_appointment_service
 import tests.fakes.fake_adapters as fake_adapters
+
+
+def _build_event_description_builder(
+    store: in_memory_store.InMemoryStore,
+) -> event_description_builder_mod.EventDescriptionBuilder:
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    agent_profile_repo.save(
+        agent_profile_entity.AgentProfile(
+            tenant_id="tenant-1",
+            system_prompt="Eres un asistente.",
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    return event_description_builder_mod.EventDescriptionBuilder(
+        agent_profile_repository=agent_profile_repo
+    )
 
 
 def build_service(
@@ -71,12 +93,14 @@ def build_service(
             connected_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         )
     )
+    builder = _build_event_description_builder(store)
     service = manual_appointment_service.ManualAppointmentService(
         manual_appointment_repository=manual_repository,
         patient_repository=patient_repository,
         google_calendar_onboarding_service=google_service,
         id_generator=id_generator,
         clock=clock,
+        event_description_builder=builder,
     )
     return service, manual_repository, patient_repository, google_provider
 
@@ -139,7 +163,9 @@ def test_create_and_reschedule_manual_appointment() -> None:
 
     assert created.appointment_id == "manual-appt-1"
     assert google_provider.created_event_summaries == ["Test Professional/Jane Doe"]
-    assert google_provider.created_event_descriptions == [None]
+    assert google_provider.created_event_descriptions == [
+        booking_constants.VIRTUAL_SESSION_EVENT_INSTRUCTIONS
+    ]
 
     rescheduled = service.reschedule_appointment(
         claims=build_claims("professional"),
@@ -436,7 +462,9 @@ def test_create_appointment_uses_professional_name_as_event_title() -> None:
     )
 
     assert google_provider.created_event_summaries == ["Test Professional/Jane Doe"]
-    assert google_provider.created_event_descriptions == ["Ansiedad"]
+    assert google_provider.created_event_descriptions == [
+        booking_constants.VIRTUAL_SESSION_EVENT_INSTRUCTIONS
+    ]
 
 
 def test_create_appointment_falls_back_to_profesional_when_name_unavailable() -> None:
@@ -468,4 +496,6 @@ def test_create_appointment_falls_back_to_profesional_when_name_unavailable() ->
     )
 
     assert google_provider.created_event_summaries == ["Profesional/Jane Doe"]
-    assert google_provider.created_event_descriptions == ["Ansiedad"]
+    assert google_provider.created_event_descriptions == [
+        booking_constants.VIRTUAL_SESSION_EVENT_INSTRUCTIONS
+    ]

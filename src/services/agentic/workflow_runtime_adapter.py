@@ -75,6 +75,7 @@ class WebhookConversationWorkflowRuntimeAdapter(
         runtime_prompt = self._prompt_builder.build_runtime_system_prompt(
             runtime_context=runtime_context,
             known_patient=self._known_patient,
+            agent_profile=agent_profile,
         )
         return self._prompt_builder.compose_base_and_runtime_system_prompt(
             base_system_prompt=base_prompt,
@@ -94,6 +95,7 @@ class WebhookConversationWorkflowRuntimeAdapter(
         )
         result = self._tool_calling_orchestrator.run(
             base_system_prompt=agent_profile.system_prompt,
+            agent_profile=agent_profile,
             messages=self._llm_messages,
             tool_execution_context=tool_context,
             known_patient=self._known_patient,
