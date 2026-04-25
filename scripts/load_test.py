@@ -25,12 +25,14 @@ Uso:
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 import os
 import pathlib
 import time
 import typing
 import uuid
+import zoneinfo
 
 import httpx
 from google import genai
@@ -460,21 +462,122 @@ _TERMINAL_STATUSES = {"SESSION_CLOSED", "CANCELLED", "CONSULTATION_REJECTED", "H
 _WAIT_FOR_OWNER_STATUSES = {"AWAITING_CONSULTATION_REVIEW", "AWAITING_PAYMENT_CONFIRMATION"}
 
 
+_BOGOTA_TZ = zoneinfo.ZoneInfo("America/Bogota")
+_DEFAULT_PAYMENT_AMOUNT_COP = 130000
+
+
+async def _get_scheduling_request(
+    client: httpx.AsyncClient,
+    access_token: str,
+    whatsapp_user_id: str,
+) -> dict[str, typing.Any] | None:
+    """Retorna el scheduling request mas reciente para este paciente, o None."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = await client.get("/v1/scheduling-requests", headers=headers)
+    resp.raise_for_status()
+    items: list[dict[str, typing.Any]] = resp.json().get("items", [])
+    for item in items:
+        if item.get("whatsapp_user_id") == whatsapp_user_id:
+            return item
+    return None
+
+
 async def _get_scheduling_status(
     client: httpx.AsyncClient,
     access_token: str,
     whatsapp_user_id: str,
 ) -> str | None:
     """Retorna el status del scheduling request mas reciente para este paciente, o None."""
-    headers = {"Authorization": f"Bearer {access_token}"}
-    resp = await client.get("/v1/scheduling-requests", headers=headers)
-    resp.raise_for_status()
-    items: list[dict[str, object]] = resp.json().get("items", [])
+    request = await _get_scheduling_request(client, access_token, whatsapp_user_id)
+    if request is None:
+        return None
+    return typing.cast(str, request.get("status"))
 
-    for item in items:
-        if item.get("whatsapp_user_id") == whatsapp_user_id:
-            return typing.cast(str, item.get("status"))
-    return None
+
+def _build_future_slots(num_slots: int) -> list[dict[str, str]]:
+    """Genera N slots futuros en horario habil del consultorio.
+
+    Reglas: miercoles a viernes 8am-4pm Colombia (presencial), lunes a viernes
+    para virtual. Para que sirva ambos casos, usamos miercoles/jueves/viernes
+    a 10am/2pm respetando el horario presencial (que es subset del virtual).
+    """
+    now_bogota = datetime.datetime.now(tz=_BOGOTA_TZ)
+    slot_hours = [10, 14]
+    candidates: list[datetime.datetime] = []
+    cursor = now_bogota.replace(minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)
+    while len(candidates) < num_slots:
+        # Miercoles=2, Jueves=3, Viernes=4
+        if cursor.weekday() in {2, 3, 4}:
+            for hour in slot_hours:
+                slot_start = cursor.replace(hour=hour)
+                if slot_start > now_bogota and len(candidates) < num_slots:
+                    candidates.append(slot_start)
+        cursor += datetime.timedelta(days=1)
+
+    slots: list[dict[str, str]] = []
+    for start in candidates:
+        end = start + datetime.timedelta(hours=1)
+        slots.append(
+            {
+                "slot_id": uuid.uuid4().hex,
+                "start_at": start.isoformat(),
+                "end_at": end.isoformat(),
+                "timezone": "America/Bogota",
+            }
+        )
+    return slots
+
+
+async def _act_as_owner(
+    client: httpx.AsyncClient,
+    access_token: str,
+    request: dict[str, typing.Any],
+    tag: str,
+) -> None:
+    """Ejecuta la accion del profesional segun el estado del scheduling request."""
+    status = request.get("status")
+    request_id = typing.cast(str, request["request_id"])
+    conversation_id = typing.cast(str, request["conversation_id"])
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    if status == "AWAITING_CONSULTATION_REVIEW":
+        slots = _build_future_slots(2)
+        payload = {
+            "slots": slots,
+            "professional_note": "[load_test] auto-aprobado por owner-bot",
+        }
+        resp = await client.post(
+            f"/v1/conversations/{conversation_id}/scheduling/requests/{request_id}/professional-slots",
+            headers=headers,
+            json=payload,
+        )
+        resp.raise_for_status()
+        logger.info(
+            "[%s] Owner-bot: 2 slots propuestos (%s, %s)",
+            tag,
+            slots[0]["start_at"],
+            slots[1]["start_at"],
+        )
+        return
+
+    if status == "AWAITING_PAYMENT_CONFIRMATION":
+        payment_amount = request.get("payment_amount_cop") or _DEFAULT_PAYMENT_AMOUNT_COP
+        payment_payload: dict[str, typing.Any] = {
+            "decision": "APPROVE",
+            "professional_note": "[load_test] pago auto-aprobado por owner-bot",
+            "payment_amount_cop": int(typing.cast(int, payment_amount)),
+            "payment_currency": "COP",
+        }
+        resp = await client.post(
+            f"/v1/conversations/{conversation_id}/scheduling/requests/{request_id}/payment-review",
+            headers=headers,
+            json=payment_payload,
+        )
+        resp.raise_for_status()
+        logger.info("[%s] Owner-bot: pago aprobado por %d COP", tag, payment_amount)
+        return
+
+    logger.warning("[%s] Owner-bot: estado %s no manejado", tag, status)
 
 
 async def _wait_for_owner_action(
@@ -484,9 +587,20 @@ async def _wait_for_owner_action(
     tag: str,
     current_status: str,
 ) -> str:
-    """Polling hasta que el status cambie de current_status. Retorna el nuevo status."""
-    elapsed = 0.0
+    """Actua como el profesional segun el estado, luego polea hasta que cambie."""
+    request = await _get_scheduling_request(client, access_token, whatsapp_user_id)
+    if request is not None and request.get("status") == current_status:
+        try:
+            await _act_as_owner(client, access_token, request, tag)
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                "[%s] Owner-bot fallo (%s): %s",
+                tag,
+                exc.response.status_code,
+                exc.response.text[:200],
+            )
 
+    elapsed = 0.0
     while True:
         status = await _get_scheduling_status(client, access_token, whatsapp_user_id)
         if status is not None and status != current_status:
@@ -496,7 +610,7 @@ async def _wait_for_owner_action(
         await asyncio.sleep(POLL_INTERVAL)
         elapsed += POLL_INTERVAL
         if int(elapsed) % 30 == 0:
-            logger.info("[%s] Esperando accion del owner... (%.0fs)", tag, elapsed)
+            logger.info("[%s] Esperando que el bot procese la accion... (%.0fs)", tag, elapsed)
 
 
 # ---------------------------------------------------------------------------
