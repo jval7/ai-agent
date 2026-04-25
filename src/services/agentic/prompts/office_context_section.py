@@ -1,3 +1,4 @@
+import src.domain.booking_constants as booking_constants
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.patient as patient_entity
 import src.services.agentic.prompts.prompt_section as prompt_section
@@ -5,8 +6,11 @@ import src.services.agentic.state_models as agentic_state_models
 
 
 class OfficeContextSection(prompt_section.PromptSection):
-    """Renders a 'Datos del consultorio' block when the AgentProfile has
-    office_location or virtual_session_instructions configured."""
+    """Renders a 'Datos del consultorio' block.
+
+    - The virtual session instructions are always included (product-wide constant).
+    - The office address block is only rendered when AgentProfile has office_location.
+    """
 
     def render(
         self,
@@ -16,27 +20,17 @@ class OfficeContextSection(prompt_section.PromptSection):
     ) -> list[str]:
         del runtime_context
         del known_patient
-        if agent_profile is None:
-            return []
-
-        has_office = agent_profile.office_location is not None
-        has_virtual = agent_profile.virtual_session_instructions is not None
-
-        if not has_office and not has_virtual:
-            return []
 
         lines: list[str] = ["Datos del consultorio:"]
 
-        if has_office:
+        if agent_profile is not None and agent_profile.office_location is not None:
             office = agent_profile.office_location
-            assert office is not None
             lines.append(f"- Dirección: {office.address}")
             if office.arrival_instructions is not None:
                 lines.append(f"- Indicaciones de llegada: {office.arrival_instructions}")
 
-        if has_virtual:
-            lines.append(
-                f"- Instrucciones sesión virtual: {agent_profile.virtual_session_instructions}"
-            )
+        lines.append(
+            f"- Instrucciones sesión virtual: {booking_constants.VIRTUAL_SESSION_INSTRUCTIONS}"
+        )
 
         return lines

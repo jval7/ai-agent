@@ -81,8 +81,7 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderPaymentTemplateName: null,
         reminderBillingTestPhoneNumber: null,
         paymentDetailsText: null,
-        officeLocation: null,
-        virtualSessionInstructions: null
+        officeLocation: null
       })),
       updateAgentSettings: vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
@@ -93,8 +92,7 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderPaymentTemplateName: null,
         reminderBillingTestPhoneNumber: null,
         paymentDetailsText: null,
-        officeLocation: null,
-        virtualSessionInstructions: null
+        officeLocation: null
       }))
     },
     whatsappTemplateUseCase: {
@@ -378,8 +376,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
             officeLocation: {
               address: "Calle 5 # 38-25, Edificio Azul, piso 3",
               arrivalInstructions: "Llegar 20 minutos antes con cedula fisica"
-            },
-            virtualSessionInstructions: "El link de Google Meet llega al correo 24h antes."
+            }
           })),
           updateAgentSettings: vitestModule.vi.fn(async () => undefined)
         }
@@ -408,12 +405,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
         .expect(testingLibraryReactModule.screen.queryByLabelText("Notas de acceso"))
         .toBeNull();
 
-      const virtualInput = testingLibraryReactModule.screen.getByLabelText(
-        "Instrucciones para sesiones virtuales"
-      );
+      // Virtual session instructions field no longer exists
       vitestModule
-        .expect((virtualInput as HTMLTextAreaElement).value)
-        .toBe("El link de Google Meet llega al correo 24h antes.");
+        .expect(
+          testingLibraryReactModule.screen.queryByLabelText("Instrucciones para sesiones virtuales")
+        )
+        .toBeNull();
     }
   );
 
@@ -432,8 +429,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
         officeLocation: {
           address: "Avenida Siempre Viva 1234\nEdificio Azul, piso 5\nParqueadero en sotano",
           arrivalInstructions: "Llegar 20 minutos antes"
-        },
-        virtualSessionInstructions: null
+        }
       }));
       const container = buildContainer({
         agentUseCase: {
@@ -450,8 +446,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderPaymentTemplateName: null,
             reminderBillingTestPhoneNumber: null,
             paymentDetailsText: null,
-            officeLocation: null,
-            virtualSessionInstructions: null
+            officeLocation: null
           })),
           updateAgentSettings: updateAgentSettingsMock
         }
@@ -521,8 +516,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
         officeLocation: {
           address: "Calle 5 # 38-25, Cali",
           arrivalInstructions: null
-        },
-        virtualSessionInstructions: null
+        }
       }));
       const container = buildContainer({
         agentUseCase: {
@@ -537,8 +531,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderPaymentTemplateName: null,
             reminderBillingTestPhoneNumber: null,
             paymentDetailsText: null,
-            officeLocation: null,
-            virtualSessionInstructions: null
+            officeLocation: null
           })),
           updateAgentSettings: updateAgentSettingsMock
         }
@@ -594,8 +587,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
         appointmentReminderPaymentTemplateName: null,
         reminderBillingTestPhoneNumber: null,
         paymentDetailsText: null,
-        officeLocation: null,
-        virtualSessionInstructions: null
+        officeLocation: null
       }));
       const container = buildContainer({
         agentUseCase: {
@@ -610,8 +602,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderPaymentTemplateName: null,
             reminderBillingTestPhoneNumber: null,
             paymentDetailsText: null,
-            officeLocation: null,
-            virtualSessionInstructions: null
+            officeLocation: null
           })),
           updateAgentSettings: updateAgentSettingsMock
         }
@@ -644,67 +635,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
     }
   );
 
-  vitestModule.it("sends virtual_session_instructions null when field is empty", async () => {
-    const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
-      tenantId: "tenant-1",
-      messageDebounceDelaySeconds: 5,
-      appointmentReminderEnabled: false,
-      appointmentReminderDaysBefore: null,
-      appointmentReminderAttendanceTemplateName: null,
-      appointmentReminderPaymentTemplateName: null,
-      reminderBillingTestPhoneNumber: null,
-      paymentDetailsText: null,
-      officeLocation: null,
-      virtualSessionInstructions: null
-    }));
-    const container = buildContainer({
-      agentUseCase: {
-        getSystemPrompt: vitestModule.vi.fn(async () => ({ systemPrompt: "" })),
-        updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
-        getAgentSettings: vitestModule.vi.fn(async () => ({
-          tenantId: "tenant-1",
-          messageDebounceDelaySeconds: 5,
-          appointmentReminderEnabled: false,
-          appointmentReminderDaysBefore: null,
-          appointmentReminderAttendanceTemplateName: null,
-          appointmentReminderPaymentTemplateName: null,
-          reminderBillingTestPhoneNumber: null,
-          paymentDetailsText: null,
-          officeLocation: null,
-          virtualSessionInstructions: null
-        })),
-        updateAgentSettings: updateAgentSettingsMock
-      }
-    });
-
-    renderConfiguracionesPage(container);
-
-    // Información General is the default tab — office fields are visible without clicking.
-    // Wait for settingsQuery to resolve so fields and the save button become enabled.
-    const virtualInput = await testingLibraryReactModule.screen.findByLabelText(
-      "Instrucciones para sesiones virtuales"
-    );
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule.expect(virtualInput).not.toBeDisabled();
-    });
-    vitestModule.expect((virtualInput as HTMLTextAreaElement).value).toBe("");
-
-    // Office "Guardar" is the second save button (after profile's)
-    const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
-      name: "Guardar"
-    });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
-
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
-        vitestModule.expect.objectContaining({
-          virtualSessionInstructions: null
-        })
-      );
-    });
-  });
-
   vitestModule.it("shows success banner after saving office data", async () => {
     const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
       tenantId: "tenant-1",
@@ -718,8 +648,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
       officeLocation: {
         address: "Calle 5 # 38-25, Cali",
         arrivalInstructions: null
-      },
-      virtualSessionInstructions: null
+      }
     }));
     const container = buildContainer({
       agentUseCase: {
@@ -734,8 +663,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
           appointmentReminderPaymentTemplateName: null,
           reminderBillingTestPhoneNumber: null,
           paymentDetailsText: null,
-          officeLocation: null,
-          virtualSessionInstructions: null
+          officeLocation: null
         })),
         updateAgentSettings: updateAgentSettingsMock
       }

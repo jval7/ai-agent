@@ -89,11 +89,6 @@ class AgentService:
             office_location=(
                 existing_profile.office_location if existing_profile is not None else None
             ),
-            virtual_session_instructions=(
-                existing_profile.virtual_session_instructions
-                if existing_profile is not None
-                else None
-            ),
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
@@ -115,7 +110,6 @@ class AgentService:
                 reminder_billing_test_phone_number=None,
                 payment_details_text=None,
                 office_location=None,
-                virtual_session_instructions=None,
             )
         return agent_dto.AgentSettingsResponseDTO(
             tenant_id=tenant_id,
@@ -127,7 +121,6 @@ class AgentService:
             reminder_billing_test_phone_number=agent_profile.reminder_billing_test_phone_number,
             payment_details_text=agent_profile.payment_details_text,
             office_location=_office_location_to_dto(agent_profile.office_location),
-            virtual_session_instructions=agent_profile.virtual_session_instructions,
         )
 
     def update_agent_settings(
@@ -156,7 +149,6 @@ class AgentService:
             reminder_billing_test_phone_number=existing_billing_phone,
             payment_details_text=update_dto.payment_details_text,
             office_location=_office_location_dto_to_entity(update_dto.office_location),
-            virtual_session_instructions=update_dto.virtual_session_instructions,
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
@@ -170,5 +162,4 @@ class AgentService:
             reminder_billing_test_phone_number=agent_profile.reminder_billing_test_phone_number,
             payment_details_text=agent_profile.payment_details_text,
             office_location=_office_location_to_dto(agent_profile.office_location),
-            virtual_session_instructions=agent_profile.virtual_session_instructions,
         )

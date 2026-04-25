@@ -33,7 +33,6 @@ class UpdateAgentSettingsDTO(pydantic.BaseModel):
     appointment_reminder_payment_template_name: str | None = None
     payment_details_text: str | None = None
     office_location: OfficeLocationDTO | None = None
-    virtual_session_instructions: str | None = None
 
     @pydantic.field_validator("message_debounce_delay_seconds")
     @classmethod
@@ -73,4 +72,3 @@ class AgentSettingsResponseDTO(pydantic.BaseModel):
     reminder_billing_test_phone_number: str | None
     payment_details_text: str | None
     office_location: OfficeLocationDTO | None = None
-    virtual_session_instructions: str | None = None

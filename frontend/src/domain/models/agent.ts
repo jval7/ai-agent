@@ -18,7 +18,6 @@ export interface AgentSettings {
   reminderBillingTestPhoneNumber: string | null;
   paymentDetailsText: string | null;
   officeLocation: OfficeLocation | null;
-  virtualSessionInstructions: string | null;
 }
 
 export interface UpdateAgentSettingsInput {
@@ -29,5 +28,4 @@ export interface UpdateAgentSettingsInput {
   appointmentReminderPaymentTemplateName: string | null;
   paymentDetailsText: string | null;
   officeLocation: OfficeLocation | null;
-  virtualSessionInstructions: string | null;
 }

@@ -52,7 +52,7 @@ def test_update_system_prompt_replaces_value() -> None:
     assert fetched.system_prompt == "custom prompt"
 
 
-def test_update_agent_settings_saves_office_location_and_virtual_instructions() -> None:
+def test_update_agent_settings_saves_office_location() -> None:
     service = build_agent_settings_service()
 
     result = service.update_agent_settings(
@@ -63,14 +63,12 @@ def test_update_agent_settings_saves_office_location_and_virtual_instructions() 
                 address="Calle 5 # 38-25, Cali",
                 arrival_instructions="Llegar 20 minutos antes",
             ),
-            virtual_session_instructions="Link de Meet se envía al correo 24h antes.",
         ),
     )
 
     assert result.office_location is not None
     assert result.office_location.address == "Calle 5 # 38-25, Cali"
     assert result.office_location.arrival_instructions == "Llegar 20 minutos antes"
-    assert result.virtual_session_instructions == "Link de Meet se envía al correo 24h antes."
 
 
 def test_get_agent_settings_returns_office_location_after_save() -> None:
@@ -110,17 +108,3 @@ def test_update_agent_settings_office_location_none_clears_field() -> None:
     )
 
     assert result.office_location is None
-
-
-def test_virtual_session_instructions_whitespace_normalized_to_none() -> None:
-    service = build_agent_settings_service()
-
-    result = service.update_agent_settings(
-        "tenant-1",
-        agent_dto.UpdateAgentSettingsDTO(
-            message_debounce_delay_seconds=0,
-            virtual_session_instructions="   ",
-        ),
-    )
-
-    assert result.virtual_session_instructions is None

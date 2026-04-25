@@ -167,7 +167,6 @@ export function ConfiguracionesPage() {
   const [paymentDetailsText, setPaymentDetailsText] = reactModule.useState("");
   const [officeAddress, setOfficeAddress] = reactModule.useState("");
   const [officeArrivalInstructions, setOfficeArrivalInstructions] = reactModule.useState("");
-  const [virtualSessionInstructions, setVirtualSessionInstructions] = reactModule.useState("");
   const [activationStep, setActivationStep] = reactModule.useState<
     "idle" | "disclosure" | "preflight"
   >("idle");
@@ -179,7 +178,6 @@ export function ConfiguracionesPage() {
       setPaymentDetailsText(settingsQuery.data.paymentDetailsText ?? "");
       setOfficeAddress(settingsQuery.data.officeLocation?.address ?? "");
       setOfficeArrivalInstructions(settingsQuery.data.officeLocation?.arrivalInstructions ?? "");
-      setVirtualSessionInstructions(settingsQuery.data.virtualSessionInstructions ?? "");
     }
   }, [settingsQuery.data]);
 
@@ -247,8 +245,7 @@ export function ConfiguracionesPage() {
         appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
         appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName,
         paymentDetailsText: fresh.paymentDetailsText,
-        officeLocation: fresh.officeLocation,
-        virtualSessionInstructions: fresh.virtualSessionInstructions
+        officeLocation: fresh.officeLocation
       });
     },
     onSuccess: async () => {
@@ -282,8 +279,7 @@ export function ConfiguracionesPage() {
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
         paymentDetailsText: fresh.paymentDetailsText,
-        officeLocation: fresh.officeLocation,
-        virtualSessionInstructions: fresh.virtualSessionInstructions
+        officeLocation: fresh.officeLocation
       });
     },
     onSuccess: async () => {
@@ -305,8 +301,7 @@ export function ConfiguracionesPage() {
         appointmentReminderPaymentTemplateName:
           settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null,
         paymentDetailsText: paymentDetailsText.trim() === "" ? null : paymentDetailsText,
-        officeLocation: settingsQuery.data?.officeLocation ?? null,
-        virtualSessionInstructions: settingsQuery.data?.virtualSessionInstructions ?? null
+        officeLocation: settingsQuery.data?.officeLocation ?? null
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
@@ -331,8 +326,6 @@ export function ConfiguracionesPage() {
   const officeSettingsMutation = reactQueryModule.useMutation({
     mutationFn: () => {
       const officeLocationInput = buildOfficeLocationInput();
-      const virtualInstructions =
-        virtualSessionInstructions.trim() === "" ? null : virtualSessionInstructions.trim();
       return appContainer.agentUseCase.updateAgentSettings({
         messageDebounceDelaySeconds: settingsQuery.data?.messageDebounceDelaySeconds ?? 0,
         appointmentReminderEnabled: settingsQuery.data?.appointmentReminderEnabled ?? false,
@@ -342,8 +335,7 @@ export function ConfiguracionesPage() {
         appointmentReminderPaymentTemplateName:
           settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null,
         paymentDetailsText: settingsQuery.data?.paymentDetailsText ?? null,
-        officeLocation: officeLocationInput,
-        virtualSessionInstructions: virtualInstructions
+        officeLocation: officeLocationInput
       });
     },
     onSuccess: async () => {
@@ -533,14 +525,11 @@ export function ConfiguracionesPage() {
           <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
             <h3 className="text-xl font-semibold text-brand-ink">Datos del consultorio</h3>
             <p className="mt-1 text-sm text-slate-600">
-              Esta informacion se incluye automaticamente en los mensajes de confirmacion de citas y
-              en los eventos de Google Calendar.
+              Esta informacion se incluye automaticamente en los mensajes de confirmacion de citas
+              presenciales y en los eventos de Google Calendar.
             </p>
 
-            {/* Presencial */}
             <div className="mt-6 space-y-4">
-              <h4 className="text-sm font-semibold text-brand-ink">Citas presenciales</h4>
-
               <div>
                 <label
                   className="block text-sm font-medium text-slate-700"
@@ -585,36 +574,6 @@ export function ConfiguracionesPage() {
                   placeholder="Ej. Llegar 20 minutos antes con cedula fisica"
                   rows={2}
                   value={officeArrivalInstructions}
-                />
-              </div>
-            </div>
-
-            {/* Virtual */}
-            <div className="mt-6 space-y-4 border-t border-border-subtle pt-6">
-              <h4 className="text-sm font-semibold text-brand-ink">Citas virtuales</h4>
-
-              <div>
-                <label
-                  className="block text-sm font-medium text-slate-700"
-                  htmlFor="virtual-session-instructions"
-                >
-                  Instrucciones para sesiones virtuales
-                </label>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Se incluye en mensajes de confirmacion de citas virtuales. Si lo dejas vacio, no
-                  se enviaran instrucciones virtuales.
-                </p>
-                <textarea
-                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={settingsQuery.isLoading}
-                  id="virtual-session-instructions"
-                  onChange={(e) => {
-                    setVirtualSessionInstructions(e.target.value);
-                    setOfficeSuccessMessage(null);
-                  }}
-                  placeholder="Ej. El link de Google Meet llega en la invitacion al correo 24h antes."
-                  rows={3}
-                  value={virtualSessionInstructions}
                 />
               </div>
             </div>

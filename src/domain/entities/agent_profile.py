@@ -28,7 +28,6 @@ class AgentProfile(pydantic.BaseModel):
     reminder_billing_test_phone_number: str | None = None
     payment_details_text: str | None = None
     office_location: OfficeLocation | None = None
-    virtual_session_instructions: str | None = None
     updated_at: datetime.datetime
 
     @pydantic.field_validator("system_prompt")
@@ -45,16 +44,6 @@ class AgentProfile(pydantic.BaseModel):
         if value < 0 or value > 30:
             raise ValueError("message_debounce_delay_seconds must be between 0 and 30")
         return value
-
-    @pydantic.field_validator("virtual_session_instructions")
-    @classmethod
-    def validate_virtual_session_instructions(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip()
-        if not normalized:
-            return None
-        return normalized
 
     @pydantic.field_validator("appointment_reminder_days_before")
     @classmethod

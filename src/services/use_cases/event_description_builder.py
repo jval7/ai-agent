@@ -2,6 +2,7 @@ import typing
 
 import pydantic
 
+import src.domain.booking_constants as booking_constants
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
@@ -89,9 +90,8 @@ class EventDescriptionBuilder:
         self,
         agent_profile: agent_profile_entity.AgentProfile | None,
     ) -> list[str]:
-        if agent_profile is None or agent_profile.virtual_session_instructions is None:
-            return []
-        return [agent_profile.virtual_session_instructions]
+        del agent_profile
+        return [booking_constants.VIRTUAL_SESSION_INSTRUCTIONS]
 
     def _resolve_location(
         self,
