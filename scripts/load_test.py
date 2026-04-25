@@ -287,19 +287,35 @@ async def _generate_patient_message(
         logger.info("  [%d] %s: %s", i, c["role"], c["parts"][0]["text"][:100])
 
     max_retries = 3
+    gemini_timeout_seconds = 30.0
     for attempt in range(max_retries):
         try:
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model=GEMINI_MODEL,
-                contents=contents,
-                config={
-                    "system_instruction": system_instruction,
-                    "max_output_tokens": 1024,
-                    "temperature": 0.9,
-                },
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.models.generate_content,
+                    model=GEMINI_MODEL,
+                    contents=contents,
+                    config={
+                        "system_instruction": system_instruction,
+                        "max_output_tokens": 1024,
+                        "temperature": 0.9,
+                    },
+                ),
+                timeout=gemini_timeout_seconds,
             )
             break
+        except TimeoutError:
+            if attempt < max_retries - 1:
+                logger.warning(
+                    "Gemini timeout tras %.0fs, reintentando (attempt %d/%d)...",
+                    gemini_timeout_seconds,
+                    attempt + 1,
+                    max_retries,
+                )
+                continue
+            raise RuntimeError(
+                f"Gemini timeout tras {gemini_timeout_seconds:.0f}s en {max_retries} intentos"
+            ) from None
         except Exception as exc:
             if "429" in str(exc) and attempt < max_retries - 1:
                 wait = 2 ** (attempt + 1)
