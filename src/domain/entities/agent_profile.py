@@ -7,7 +7,6 @@ import pydantic
 class OfficeLocation(pydantic.BaseModel):
     address: str
     arrival_instructions: str | None = None
-    access_notes: str | None = None
 
     @pydantic.field_validator("address")
     @classmethod

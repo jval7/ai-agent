@@ -17,11 +17,11 @@ class EventDescription(pydantic.BaseModel):
 class EventDescriptionBuilder:
     """Builds the description and location fields for Google Calendar events.
 
-    Reads AgentProfile from the repository to include office address, arrival
-    instructions, and access notes (PRESENCIAL) or virtual session instructions
-    (VIRTUAL) in the event description. The location field is set to the office
-    address for PRESENCIAL appointments so it appears prominently in the calendar
-    invitation; for VIRTUAL appointments it is left as None (Google already shows
+    Reads AgentProfile from the repository to include office address and arrival
+    instructions (PRESENCIAL) or virtual session instructions (VIRTUAL) in the
+    event description. The location field is set to the office address for
+    PRESENCIAL appointments so it appears prominently in the calendar invitation;
+    for VIRTUAL appointments it is left as None (Google already shows
     "Meet video conference" as the location).
     """
 
@@ -83,8 +83,6 @@ class EventDescriptionBuilder:
         lines = [f"Dirección: {office.address}"]
         if office.arrival_instructions is not None:
             lines.append(f"Indicaciones de llegada: {office.arrival_instructions}")
-        if office.access_notes is not None:
-            lines.append(f"Notas de acceso: {office.access_notes}")
         return lines
 
     def _build_virtual_lines(

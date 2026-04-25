@@ -32,7 +32,6 @@ class TestEventDescriptionBuilderPresencial:
             office_location=agent_profile_entity.OfficeLocation(
                 address="Calle 5 # 38-25, Cali",
                 arrival_instructions="Llegar 20 min antes con cédula",
-                access_notes="Edificio azul, piso 3",
             )
         )
         result = builder.build(
@@ -43,7 +42,6 @@ class TestEventDescriptionBuilderPresencial:
         assert "Motivo de consulta: Ansiedad" in result.description
         assert "Calle 5 # 38-25, Cali" in result.description
         assert "Llegar 20 min antes con cédula" in result.description
-        assert "Edificio azul, piso 3" in result.description
         assert result.location == "Calle 5 # 38-25, Cali"
 
     def test_presencial_without_optional_office_fields(self) -> None:
@@ -59,7 +57,6 @@ class TestEventDescriptionBuilderPresencial:
         )
         assert "Carrera 1 # 2-3, Bogota" in result.description
         assert "Indicaciones" not in result.description
-        assert "Notas" not in result.description
         assert result.location == "Carrera 1 # 2-3, Bogota"
 
     def test_presencial_without_office_location_is_incomplete_but_does_not_raise(self) -> None:

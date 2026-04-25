@@ -62,7 +62,6 @@ def test_update_agent_settings_saves_office_location_and_virtual_instructions() 
             office_location=agent_dto.OfficeLocationDTO(
                 address="Calle 5 # 38-25, Cali",
                 arrival_instructions="Llegar 20 minutos antes",
-                access_notes="Edificio azul, piso 3",
             ),
             virtual_session_instructions="Link de Meet se envía al correo 24h antes.",
         ),
@@ -71,7 +70,6 @@ def test_update_agent_settings_saves_office_location_and_virtual_instructions() 
     assert result.office_location is not None
     assert result.office_location.address == "Calle 5 # 38-25, Cali"
     assert result.office_location.arrival_instructions == "Llegar 20 minutos antes"
-    assert result.office_location.access_notes == "Edificio azul, piso 3"
     assert result.virtual_session_instructions == "Link de Meet se envía al correo 24h antes."
 
 

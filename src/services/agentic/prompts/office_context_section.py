@@ -33,8 +33,6 @@ class OfficeContextSection(prompt_section.PromptSection):
             lines.append(f"- Dirección: {office.address}")
             if office.arrival_instructions is not None:
                 lines.append(f"- Indicaciones de llegada: {office.arrival_instructions}")
-            if office.access_notes is not None:
-                lines.append(f"- Notas de acceso: {office.access_notes}")
 
         if has_virtual:
             lines.append(

@@ -15,7 +15,6 @@ def _build_context() -> agentic_state_models.RuntimePromptContext:
 def _build_profile_with_office(
     address: str = "Calle 5 # 38-25, Cali",
     arrival_instructions: str | None = "Llegar 20 min antes",
-    access_notes: str | None = "Edificio azul, piso 3",
     virtual_session_instructions: str | None = None,
 ) -> agent_profile_entity.AgentProfile:
     return agent_profile_entity.AgentProfile(
@@ -24,7 +23,6 @@ def _build_profile_with_office(
         office_location=agent_profile_entity.OfficeLocation(
             address=address,
             arrival_instructions=arrival_instructions,
-            access_notes=access_notes,
         ),
         virtual_session_instructions=virtual_session_instructions,
         updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
@@ -69,17 +67,15 @@ class TestOfficeContextSection:
         assert "Datos del consultorio" in joined
         assert "Calle 5 # 38-25, Cali" in joined
         assert "Llegar 20 min antes" in joined
-        assert "Edificio azul, piso 3" in joined
 
     def test_renders_office_location_without_optional_fields(self) -> None:
         section = office_context_section.OfficeContextSection()
         ctx = _build_context()
-        profile = _build_profile_with_office(arrival_instructions=None, access_notes=None)
+        profile = _build_profile_with_office(arrival_instructions=None)
         result = section.render(ctx, known_patient=None, agent_profile=profile)
         joined = "\n".join(result)
         assert "Calle 5 # 38-25, Cali" in joined
         assert "Indicaciones" not in joined
-        assert "Notas" not in joined
 
     def test_renders_virtual_only(self) -> None:
         section = office_context_section.OfficeContextSection()

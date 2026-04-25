@@ -12,7 +12,6 @@ def _office_location_to_dto(
     return agent_dto.OfficeLocationDTO(
         address=office_location.address,
         arrival_instructions=office_location.arrival_instructions,
-        access_notes=office_location.access_notes,
     )
 
 
@@ -24,7 +23,6 @@ def _office_location_dto_to_entity(
     return agent_profile_entity.OfficeLocation(
         address=dto.address,
         arrival_instructions=dto.arrival_instructions,
-        access_notes=dto.access_notes,
     )
 
 

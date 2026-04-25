@@ -23,7 +23,6 @@ class SystemPromptResponseDTO(pydantic.BaseModel):
 class OfficeLocationDTO(pydantic.BaseModel):
     address: str
     arrival_instructions: str | None = None
-    access_notes: str | None = None
 
 
 class UpdateAgentSettingsDTO(pydantic.BaseModel):
