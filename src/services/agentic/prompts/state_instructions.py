@@ -1,3 +1,4 @@
+import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.patient as patient_entity
 import src.services.agentic.prompts.prompt_section as prompt_section
 import src.services.agentic.state_models as agentic_state_models
@@ -8,8 +9,10 @@ class StateInstructionsSection(prompt_section.PromptSection):
         self,
         runtime_context: agentic_state_models.RuntimePromptContext,
         known_patient: patient_entity.Patient | None,
+        agent_profile: agent_profile_entity.AgentProfile | None = None,
     ) -> list[str]:
         del known_patient
+        del agent_profile
         return _instructions_for_state(runtime_context)
 
 
@@ -90,18 +93,39 @@ def _instructions_for_state(
             "No avances ningun flujo de agendamiento en este estado.",
         ]
     if runtime_context.state == "POST_BOOKING_FOLLOWUP":
-        return [
-            "Flujo actual: la cita fue reservada exitosamente. Sigue las instrucciones de post_booking del system prompt.",
-            "Puedes responder preguntas generales del paciente: informacion del consultorio, "
-            "horarios, direccion, preparacion para la cita u otros datos generales.",
+        modality = runtime_context.appointment_modality
+        lines = [
+            "Flujo actual: la cita fue reservada exitosamente.",
+            "Si es el primer mensaje del estado, envia confirmacion con: nombre del paciente (si lo tienes), "
+            "fecha, hora en hora Colombia, y modalidad de la cita.",
+        ]
+        if modality == "PRESENCIAL":
+            lines += [
+                "La cita es PRESENCIAL. Incluye en la confirmacion la direccion del consultorio, "
+                "las indicaciones de llegada y las notas de acceso tal como aparezcan en la seccion "
+                "'Datos del consultorio' del contexto inyectado.",
+                "Si la seccion 'Datos del consultorio' no existe o no tiene direccion, "
+                "transfiere a humano en lugar de inventar datos.",
+            ]
+        elif modality == "VIRTUAL":
+            lines += [
+                "La cita es VIRTUAL. Incluye las instrucciones de sesion virtual del contexto inyectado "
+                "('Datos del consultorio > Instrucciones sesion virtual').",
+                "Menciona que el link de Google Meet llega en la invitacion de calendario al correo registrado.",
+            ]
+        else:
+            lines.append(
+                "Menciona que el paciente recibira los detalles por correo en la invitacion de calendario."
+            )
+        lines += [
+            "Menciona que el paciente tambien recibe una invitacion de Google Calendar al correo registrado.",
+            "Para mensajes siguientes, responde preguntas generales del paciente usando los datos del contexto.",
             "NO inicies un nuevo proceso de agendamiento. Si el paciente quiere agendar otra cita, "
             "usa handoff_to_human.",
             "Cuando el paciente se despida o confirme que no necesita nada mas (ej: 'gracias', "
             "'no gracias', 'eso es todo', 'ya estoy bien', 'listo', 'ok'), "
             "DEBES llamar close_session obligatoriamente. No te despidas solo con texto; "
             "tu respuesta de despedida DEBE incluir la llamada a close_session.",
-            "IMPORTANTE: tu UNICO objetivo en este estado es responder preguntas generales y "
-            "cerrar la sesion cuando el paciente termine. No debes salir de este estado por "
-            "ningun otro motivo.",
         ]
+        return lines
     return ["Mantente en flujo natural y sin mencionar procesos internos."]

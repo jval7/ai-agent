@@ -35,10 +35,10 @@ function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   return <statusBadgeModule.StatusBadge label="DISCONNECTED" tone="danger" />;
 }
 
-type ConfigTab = "perfil" | "conexiones" | "prompt" | "ajustes";
+type ConfigTab = "general" | "conexiones" | "prompt" | "ajustes";
 
 const CONFIG_TABS: { id: ConfigTab; label: string }[] = [
-  { id: "perfil", label: "Perfil" },
+  { id: "general", label: "Información General" },
   { id: "conexiones", label: "Conexiones" },
   { id: "prompt", label: "System Prompt" },
   { id: "ajustes", label: "Ajustes del agente" }
@@ -53,7 +53,7 @@ export function ConfiguracionesPage() {
     [location.search]
   );
 
-  const [activeTab, setActiveTab] = reactModule.useState<ConfigTab>("perfil");
+  const [activeTab, setActiveTab] = reactModule.useState<ConfigTab>("general");
 
   // --- Onboarding queries ---
   const whatsappConnectionQuery = reactQueryModule.useQuery({
@@ -165,6 +165,8 @@ export function ConfiguracionesPage() {
   const [debounceDelay, setDebounceDelay] = reactModule.useState(0);
   const [reminderDaysBefore, setReminderDaysBefore] = reactModule.useState(1);
   const [paymentDetailsText, setPaymentDetailsText] = reactModule.useState("");
+  const [officeAddress, setOfficeAddress] = reactModule.useState("");
+  const [officeArrivalInstructions, setOfficeArrivalInstructions] = reactModule.useState("");
   const [activationStep, setActivationStep] = reactModule.useState<
     "idle" | "disclosure" | "preflight"
   >("idle");
@@ -174,6 +176,8 @@ export function ConfiguracionesPage() {
       setDebounceDelay(settingsQuery.data.messageDebounceDelaySeconds);
       setReminderDaysBefore(settingsQuery.data.appointmentReminderDaysBefore ?? 1);
       setPaymentDetailsText(settingsQuery.data.paymentDetailsText ?? "");
+      setOfficeAddress(settingsQuery.data.officeLocation?.address ?? "");
+      setOfficeArrivalInstructions(settingsQuery.data.officeLocation?.arrivalInstructions ?? "");
     }
   }, [settingsQuery.data]);
 
@@ -240,7 +244,8 @@ export function ConfiguracionesPage() {
         appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore ?? 1,
         appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
         appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName,
-        paymentDetailsText: fresh.paymentDetailsText
+        paymentDetailsText: fresh.paymentDetailsText,
+        officeLocation: fresh.officeLocation
       });
     },
     onSuccess: async () => {
@@ -273,7 +278,8 @@ export function ConfiguracionesPage() {
         appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore,
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
-        paymentDetailsText: fresh.paymentDetailsText
+        paymentDetailsText: fresh.paymentDetailsText,
+        officeLocation: fresh.officeLocation
       });
     },
     onSuccess: async () => {
@@ -294,12 +300,54 @@ export function ConfiguracionesPage() {
           settingsQuery.data?.appointmentReminderAttendanceTemplateName ?? null,
         appointmentReminderPaymentTemplateName:
           settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null,
-        paymentDetailsText: paymentDetailsText.trim() === "" ? null : paymentDetailsText
+        paymentDetailsText: paymentDetailsText.trim() === "" ? null : paymentDetailsText,
+        officeLocation: settingsQuery.data?.officeLocation ?? null
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
     }
   });
+
+  const buildOfficeLocationInput = () => {
+    const trimmedAddress = officeAddress.trim();
+    if (trimmedAddress === "") {
+      // No address → no office_location (discard any filled sub-fields to avoid orphaned data)
+      return null;
+    }
+    return {
+      address: trimmedAddress,
+      arrivalInstructions:
+        officeArrivalInstructions.trim() === "" ? null : officeArrivalInstructions.trim()
+    };
+  };
+
+  const [officeSuccessMessage, setOfficeSuccessMessage] = reactModule.useState<string | null>(null);
+
+  const officeSettingsMutation = reactQueryModule.useMutation({
+    mutationFn: () => {
+      const officeLocationInput = buildOfficeLocationInput();
+      return appContainer.agentUseCase.updateAgentSettings({
+        messageDebounceDelaySeconds: settingsQuery.data?.messageDebounceDelaySeconds ?? 0,
+        appointmentReminderEnabled: settingsQuery.data?.appointmentReminderEnabled ?? false,
+        appointmentReminderDaysBefore: settingsQuery.data?.appointmentReminderDaysBefore ?? null,
+        appointmentReminderAttendanceTemplateName:
+          settingsQuery.data?.appointmentReminderAttendanceTemplateName ?? null,
+        appointmentReminderPaymentTemplateName:
+          settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null,
+        paymentDetailsText: settingsQuery.data?.paymentDetailsText ?? null,
+        officeLocation: officeLocationInput
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+      setOfficeSuccessMessage("Datos del consultorio guardados.");
+    }
+  });
+
+  const officeErrorMessage = uiErrorModule.resolveUiErrorMessage([
+    officeSettingsMutation.error,
+    settingsQuery.error
+  ]);
 
   // --- Tenant profile ---
   const profileQuery = reactQueryModule.useQuery({
@@ -412,61 +460,148 @@ export function ConfiguracionesPage() {
         ))}
       </nav>
 
-      {/* --- Perfil --- */}
-      {activeTab === "perfil" ? (
-        <section className="mt-6 max-w-2xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <h3 className="text-xl font-semibold text-brand-ink">Perfil del profesional</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Este nombre aparece en los titulos de los eventos de Google Calendar cuando agendas una
-            cita.
-          </p>
-
-          <div className="mt-6">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="professional-name">
-              Nombre del profesional
-            </label>
-            <input
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={profileQuery.isLoading}
-              id="professional-name"
-              maxLength={80}
-              onChange={(e) => {
-                setProfileDraft({ professionalName: e.target.value });
-                setProfileSuccessMessage(null);
-              }}
-              placeholder="Ej. Dra. Ana Garcia"
-              type="text"
-              value={profileDraft.professionalName}
-            />
-            <p className="mt-1.5 text-xs text-slate-500">
-              Formato del titulo en Calendar: {"{tu nombre}"}/{"{nombre del paciente}"}. Si dejas
-              este campo vacio se usara "Profesional" por defecto.
+      {/* --- Información General (Perfil + Consultorio) --- */}
+      {activeTab === "general" ? (
+        <div className="mt-6 max-w-2xl space-y-6">
+          {/* Sub-sección: Perfil del profesional */}
+          <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+            <h3 className="text-xl font-semibold text-brand-ink">Perfil del profesional</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Este nombre aparece en los titulos de los eventos de Google Calendar cuando agendas
+              una cita.
             </p>
-          </div>
 
-          {profileSuccessMessage !== null ? (
-            <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {profileSuccessMessage}
+            <div className="mt-6">
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor="professional-name"
+              >
+                Nombre del profesional
+              </label>
+              <input
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={profileQuery.isLoading}
+                id="professional-name"
+                maxLength={80}
+                onChange={(e) => {
+                  setProfileDraft({ professionalName: e.target.value });
+                  setProfileSuccessMessage(null);
+                }}
+                placeholder="Ej. Dra. Ana Garcia"
+                type="text"
+                value={profileDraft.professionalName}
+              />
+              <p className="mt-1.5 text-xs text-slate-500">
+                Formato del titulo en Calendar: {"{tu nombre}"}/{"{nombre del paciente}"}. Si dejas
+                este campo vacio se usara "Profesional" por defecto.
+              </p>
             </div>
-          ) : null}
 
-          {profileErrorMessage !== null ? (
-            <errorBannerModule.ErrorBanner className="mt-3" message={profileErrorMessage} />
-          ) : null}
+            {profileSuccessMessage !== null ? (
+              <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {profileSuccessMessage}
+              </div>
+            ) : null}
 
-          <div className="mt-6 flex justify-end">
-            <button
-              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={profileMutation.isPending || profileQuery.isLoading || !isProfileDirty}
-              onClick={() => {
-                profileMutation.mutate();
-              }}
-              type="button"
-            >
-              {profileMutation.isPending ? "Guardando..." : "Guardar"}
-            </button>
-          </div>
-        </section>
+            {profileErrorMessage !== null ? (
+              <errorBannerModule.ErrorBanner className="mt-3" message={profileErrorMessage} />
+            ) : null}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={profileMutation.isPending || profileQuery.isLoading || !isProfileDirty}
+                onClick={() => {
+                  profileMutation.mutate();
+                }}
+                type="button"
+              >
+                {profileMutation.isPending ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </section>
+
+          {/* Sub-sección: Datos del consultorio */}
+          <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+            <h3 className="text-xl font-semibold text-brand-ink">Datos del consultorio</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Esta informacion se incluye automaticamente en los mensajes de confirmacion de citas
+              presenciales y en los eventos de Google Calendar.
+            </p>
+
+            <div className="mt-6 space-y-4">
+              <div>
+                <label
+                  className="block text-sm font-medium text-slate-700"
+                  htmlFor="office-address"
+                >
+                  Direccion del consultorio
+                </label>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Si dejas este campo vacio, no se guardaran datos presenciales ni indicaciones de
+                  llegada. Puedes incluir edificio, piso, parqueadero y referencias en el mismo
+                  campo.
+                </p>
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={settingsQuery.isLoading}
+                  id="office-address"
+                  onChange={(e) => {
+                    setOfficeAddress(e.target.value);
+                    setOfficeSuccessMessage(null);
+                  }}
+                  placeholder="Ej. Avenida Siempre Viva 1234, Edificio Azul, piso 5, parqueadero en sotano"
+                  rows={3}
+                  value={officeAddress}
+                />
+              </div>
+
+              <div>
+                <label
+                  className="block text-sm font-medium text-slate-700"
+                  htmlFor="office-arrival-instructions"
+                >
+                  Indicaciones de llegada
+                </label>
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={settingsQuery.isLoading}
+                  id="office-arrival-instructions"
+                  onChange={(e) => {
+                    setOfficeArrivalInstructions(e.target.value);
+                    setOfficeSuccessMessage(null);
+                  }}
+                  placeholder="Ej. Llegar 20 minutos antes con cedula fisica"
+                  rows={2}
+                  value={officeArrivalInstructions}
+                />
+              </div>
+            </div>
+
+            {officeSuccessMessage !== null ? (
+              <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {officeSuccessMessage}
+              </div>
+            ) : null}
+
+            {officeErrorMessage !== null ? (
+              <errorBannerModule.ErrorBanner className="mt-3" message={officeErrorMessage} />
+            ) : null}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={officeSettingsMutation.isPending || settingsQuery.isLoading}
+                onClick={() => {
+                  officeSettingsMutation.mutate();
+                }}
+                type="button"
+              >
+                {officeSettingsMutation.isPending ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {/* --- Conexiones --- */}

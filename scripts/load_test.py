@@ -9,29 +9,38 @@ respuesta del AI y la alimenta al LLM-paciente para generar la
 siguiente respuesta.
 
 Requiere:
-    - WHATSAPP_OUTBOUND_NOOP=true en el backend
+    - WHATSAPP_OUTBOUND_NOOP=true en el backend (modo sandbox)
     - ADC configurado (gcloud auth application-default login)
+    - .secrets/make_credentials.env con: OWNER_EMAIL, OWNER_PASSWORD, PATIENT_EMAIL
+      (PATIENT_EMAIL es el correo que los pacientes simulados van a dar al bot — usalo
+      para recibir las invitaciones de Google Calendar y validar el contenido).
+    - .secrets/make_api_base.env con: API_BASE
 
 Uso:
-    uv run python scripts/load_test.py                          # local
-    API_BASE=https://tu-backend.run.app uv run python scripts/load_test.py  # GCP
+    uv run python scripts/load_test.py                              # default (prod)
+    ENV=dev uv run python scripts/load_test.py                      # carga make_credentials_dev.env y make_api_base_dev.env
+    API_BASE=https://tu-backend.run.app uv run python scripts/load_test.py  # override inline
 """
 
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
 import os
 import pathlib
 import time
 import typing
 import uuid
+import zoneinfo
 
 import httpx
 from google import genai
 
 # ---------------------------------------------------------------------------
-# Cargar .secrets/make_credentials.env y .secrets/make_api_base.env
+# Cargar archivos de .secrets/ segun ENV. Default: make_credentials.env y
+# make_api_base.env (apuntan a prod). Con ENV=dev: make_credentials_dev.env y
+# make_api_base_dev.env.
 # ---------------------------------------------------------------------------
 _SECRETS_DIR = pathlib.Path(__file__).resolve().parent.parent / ".secrets"
 
@@ -49,8 +58,9 @@ def _load_env_file(path: pathlib.Path) -> None:
             os.environ[key] = value
 
 
-_load_env_file(_SECRETS_DIR / "make_credentials.env")
-_load_env_file(_SECRETS_DIR / "make_api_base.env")
+_ENV_SUFFIX = f"_{os.environ['ENV']}" if os.environ.get("ENV") else ""
+_load_env_file(_SECRETS_DIR / f"make_credentials{_ENV_SUFFIX}.env")
+_load_env_file(_SECRETS_DIR / f"make_api_base{_ENV_SUFFIX}.env")
 
 # ---------------------------------------------------------------------------
 # Configuracion
@@ -58,6 +68,7 @@ _load_env_file(_SECRETS_DIR / "make_api_base.env")
 API_BASE = os.environ.get("API_BASE", "http://localhost:8000")
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
 OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
+PATIENT_EMAIL = os.environ.get("PATIENT_EMAIL", "")
 
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_LOCATION = "us-central1"
@@ -82,7 +93,8 @@ IMPORTANTE — como escribir:
 - NO uses terminologia clinica ni del consultorio. No digas "consulta individual adultos" ni "terapia infantil". Di "una cita", "ver a la doctora", "una sesion para mi hijo".
 - NO des toda tu informacion de una (a menos que tu comportamiento lo indique). La gente real responde lo que le preguntan.
 - Primer mensaje: saluda y di lo MINIMO. Ejemplos reales: "Hola buenas tardes, quiero pedir una cita", "Hola, cuanto vale la consulta?", "Buenas, quiero agendar una sesion".
-- Cuando te pidan datos (nombre, edad, correo, telefono), responde con datos coherentes con tu perfil.
+- Cuando te pidan datos (nombre, edad, telefono), responde con datos coherentes con tu perfil.
+- Cuando te pidan correo electronico, SIEMPRE responde: {patient_email} — sin importar tu persona.
 - Responde SOLO con el mensaje de WhatsApp. Sin comillas, sin prefijos.
 - Si te confirman la cita, agradece brevemente y despidete.
 - NUNCA actues como el consultorio ni como la asistente. Tu SOLO eres el paciente. No ofrezcas horarios, precios ni informacion del consultorio. Si no sabes algo, PREGUNTA.
@@ -211,6 +223,7 @@ async def _generate_patient_message(
     system_instruction = _PATIENT_SYSTEM_INSTRUCTION.format(
         display_name=display_name,
         persona=persona,
+        patient_email=PATIENT_EMAIL,
     )
 
     # Mapear historial al formato Gemini:
@@ -274,19 +287,35 @@ async def _generate_patient_message(
         logger.info("  [%d] %s: %s", i, c["role"], c["parts"][0]["text"][:100])
 
     max_retries = 3
+    gemini_timeout_seconds = 30.0
     for attempt in range(max_retries):
         try:
-            response = await asyncio.to_thread(
-                client.models.generate_content,
-                model=GEMINI_MODEL,
-                contents=contents,
-                config={
-                    "system_instruction": system_instruction,
-                    "max_output_tokens": 1024,
-                    "temperature": 0.9,
-                },
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    client.models.generate_content,
+                    model=GEMINI_MODEL,
+                    contents=contents,
+                    config={
+                        "system_instruction": system_instruction,
+                        "max_output_tokens": 1024,
+                        "temperature": 0.9,
+                    },
+                ),
+                timeout=gemini_timeout_seconds,
             )
             break
+        except TimeoutError:
+            if attempt < max_retries - 1:
+                logger.warning(
+                    "Gemini timeout tras %.0fs, reintentando (attempt %d/%d)...",
+                    gemini_timeout_seconds,
+                    attempt + 1,
+                    max_retries,
+                )
+                continue
+            raise RuntimeError(
+                f"Gemini timeout tras {gemini_timeout_seconds:.0f}s en {max_retries} intentos"
+            ) from None
         except Exception as exc:
             if "429" in str(exc) and attempt < max_retries - 1:
                 wait = 2 ** (attempt + 1)
@@ -296,6 +325,9 @@ async def _generate_patient_message(
                 raise
 
     # Log raw response for debugging
+    if not response.candidates:
+        prompt_feedback = getattr(response, "prompt_feedback", None)
+        raise RuntimeError(f"Gemini returned no candidates (prompt_feedback={prompt_feedback})")
     candidate = response.candidates[0]
     parts = candidate.content.parts if candidate.content and candidate.content.parts else []
     logger.info("Gemini finish_reason=%s, parts=%d", candidate.finish_reason, len(parts))
@@ -449,21 +481,122 @@ _TERMINAL_STATUSES = {"SESSION_CLOSED", "CANCELLED", "CONSULTATION_REJECTED", "H
 _WAIT_FOR_OWNER_STATUSES = {"AWAITING_CONSULTATION_REVIEW", "AWAITING_PAYMENT_CONFIRMATION"}
 
 
+_BOGOTA_TZ = zoneinfo.ZoneInfo("America/Bogota")
+_DEFAULT_PAYMENT_AMOUNT_COP = 130000
+
+
+async def _get_scheduling_request(
+    client: httpx.AsyncClient,
+    access_token: str,
+    whatsapp_user_id: str,
+) -> dict[str, typing.Any] | None:
+    """Retorna el scheduling request mas reciente para este paciente, o None."""
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = await client.get("/v1/scheduling-requests", headers=headers)
+    resp.raise_for_status()
+    items: list[dict[str, typing.Any]] = resp.json().get("items", [])
+    for item in items:
+        if item.get("whatsapp_user_id") == whatsapp_user_id:
+            return item
+    return None
+
+
 async def _get_scheduling_status(
     client: httpx.AsyncClient,
     access_token: str,
     whatsapp_user_id: str,
 ) -> str | None:
     """Retorna el status del scheduling request mas reciente para este paciente, o None."""
-    headers = {"Authorization": f"Bearer {access_token}"}
-    resp = await client.get("/v1/scheduling-requests", headers=headers)
-    resp.raise_for_status()
-    items: list[dict[str, object]] = resp.json().get("items", [])
+    request = await _get_scheduling_request(client, access_token, whatsapp_user_id)
+    if request is None:
+        return None
+    return typing.cast(str, request.get("status"))
 
-    for item in items:
-        if item.get("whatsapp_user_id") == whatsapp_user_id:
-            return typing.cast(str, item.get("status"))
-    return None
+
+def _build_future_slots(num_slots: int) -> list[dict[str, str]]:
+    """Genera N slots futuros en horario habil del consultorio.
+
+    Reglas: miercoles a viernes 8am-4pm Colombia (presencial), lunes a viernes
+    para virtual. Para que sirva ambos casos, usamos miercoles/jueves/viernes
+    a 10am/2pm respetando el horario presencial (que es subset del virtual).
+    """
+    now_bogota = datetime.datetime.now(tz=_BOGOTA_TZ)
+    slot_hours = [10, 14]
+    candidates: list[datetime.datetime] = []
+    cursor = now_bogota.replace(minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)
+    while len(candidates) < num_slots:
+        # Miercoles=2, Jueves=3, Viernes=4
+        if cursor.weekday() in {2, 3, 4}:
+            for hour in slot_hours:
+                slot_start = cursor.replace(hour=hour)
+                if slot_start > now_bogota and len(candidates) < num_slots:
+                    candidates.append(slot_start)
+        cursor += datetime.timedelta(days=1)
+
+    slots: list[dict[str, str]] = []
+    for start in candidates:
+        end = start + datetime.timedelta(hours=1)
+        slots.append(
+            {
+                "slot_id": uuid.uuid4().hex,
+                "start_at": start.isoformat(),
+                "end_at": end.isoformat(),
+                "timezone": "America/Bogota",
+            }
+        )
+    return slots
+
+
+async def _act_as_owner(
+    client: httpx.AsyncClient,
+    access_token: str,
+    request: dict[str, typing.Any],
+    tag: str,
+) -> None:
+    """Ejecuta la accion del profesional segun el estado del scheduling request."""
+    status = request.get("status")
+    request_id = typing.cast(str, request["request_id"])
+    conversation_id = typing.cast(str, request["conversation_id"])
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    if status == "AWAITING_CONSULTATION_REVIEW":
+        slots = _build_future_slots(2)
+        payload = {
+            "slots": slots,
+            "professional_note": "[load_test] auto-aprobado por owner-bot",
+        }
+        resp = await client.post(
+            f"/v1/conversations/{conversation_id}/scheduling/requests/{request_id}/professional-slots",
+            headers=headers,
+            json=payload,
+        )
+        resp.raise_for_status()
+        logger.info(
+            "[%s] Owner-bot: 2 slots propuestos (%s, %s)",
+            tag,
+            slots[0]["start_at"],
+            slots[1]["start_at"],
+        )
+        return
+
+    if status == "AWAITING_PAYMENT_CONFIRMATION":
+        payment_amount = request.get("payment_amount_cop") or _DEFAULT_PAYMENT_AMOUNT_COP
+        payment_payload: dict[str, typing.Any] = {
+            "decision": "APPROVE",
+            "professional_note": "[load_test] pago auto-aprobado por owner-bot",
+            "payment_amount_cop": int(typing.cast(int, payment_amount)),
+            "payment_currency": "COP",
+        }
+        resp = await client.post(
+            f"/v1/conversations/{conversation_id}/scheduling/requests/{request_id}/payment-review",
+            headers=headers,
+            json=payment_payload,
+        )
+        resp.raise_for_status()
+        logger.info("[%s] Owner-bot: pago aprobado por %d COP", tag, payment_amount)
+        return
+
+    logger.warning("[%s] Owner-bot: estado %s no manejado", tag, status)
 
 
 async def _wait_for_owner_action(
@@ -473,9 +606,20 @@ async def _wait_for_owner_action(
     tag: str,
     current_status: str,
 ) -> str:
-    """Polling hasta que el status cambie de current_status. Retorna el nuevo status."""
-    elapsed = 0.0
+    """Actua como el profesional segun el estado, luego polea hasta que cambie."""
+    request = await _get_scheduling_request(client, access_token, whatsapp_user_id)
+    if request is not None and request.get("status") == current_status:
+        try:
+            await _act_as_owner(client, access_token, request, tag)
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                "[%s] Owner-bot fallo (%s): %s",
+                tag,
+                exc.response.status_code,
+                exc.response.text[:200],
+            )
 
+    elapsed = 0.0
     while True:
         status = await _get_scheduling_status(client, access_token, whatsapp_user_id)
         if status is not None and status != current_status:
@@ -485,7 +629,7 @@ async def _wait_for_owner_action(
         await asyncio.sleep(POLL_INTERVAL)
         elapsed += POLL_INTERVAL
         if int(elapsed) % 30 == 0:
-            logger.info("[%s] Esperando accion del owner... (%.0fs)", tag, elapsed)
+            logger.info("[%s] Esperando que el bot procese la accion... (%.0fs)", tag, elapsed)
 
 
 # ---------------------------------------------------------------------------
@@ -596,18 +740,21 @@ async def _run_patient(
                     elapsed = time.monotonic() - start
                     logger.info("[%s] Finalizado con status %s en %.1fs", tag, new_status, elapsed)
                     return elapsed
-                # Owner actuo -> esperar mensajes nuevos del AI
-                if conversation_id is not None:
-                    await _sync_new_assistant_messages(
-                        client,
-                        access_token,
-                        conversation_id,
-                        local_history,
-                        tag,
-                        "Post-owner",
-                        max_wait=60.0,
-                    )
-            # Continuar al siguiente turno para que el paciente responda al nuevo mensaje
+            # Esperar respuesta del bot antes de pasar al siguiente turno (evita
+            # que el LLM-paciente reenvie mensajes duplicados mientras el bot
+            # todavia esta procesando).
+            if conversation_id is not None:
+                got_response = await _sync_new_assistant_messages(
+                    client,
+                    access_token,
+                    conversation_id,
+                    local_history,
+                    tag,
+                    f"Turno {turn} (post-pending)",
+                    max_wait=60.0,
+                )
+                if not got_response:
+                    raise RuntimeError(f"AI no respondio tras 60s en turno {turn} (post-pending)")
             continue
 
         # --- Esperar respuesta del AI desde el backend ---
@@ -651,7 +798,11 @@ async def _run_patient(
 # Main
 # ---------------------------------------------------------------------------
 async def main() -> None:
-    all_patients = PATIENTS
+    if not PATIENT_EMAIL:
+        raise RuntimeError(
+            "PATIENT_EMAIL not set. Add it to .secrets/make_credentials.env or export it."
+        )
+    all_patients = PATIENTS[:NUM_PATIENTS]
     batch_size = NUM_PATIENTS
     total_start = time.monotonic()
     logger.info(
@@ -679,10 +830,12 @@ async def main() -> None:
                     return patient["display_name"], elapsed
                 except Exception as exc:
                     logger.error(
-                        "[Patient-%02d: %s] FALLO: %s",
+                        "[Patient-%02d: %s] FALLO: %s: %s",
                         index + 1,
                         patient["display_name"],
-                        exc,
+                        type(exc).__name__,
+                        str(exc) or "(no message)",
+                        exc_info=True,
                     )
                     return patient["display_name"], exc
 

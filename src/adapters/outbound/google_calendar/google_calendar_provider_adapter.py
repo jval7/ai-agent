@@ -148,6 +148,7 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         with_meet: bool,
         conference_request_id: str,
         description: str | None = None,
+        location: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         encoded_calendar_id = urllib.parse.quote(calendar_id, safe="")
         body: dict[str, object] = {
@@ -163,6 +164,8 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         }
         if description is not None:
             body["description"] = description
+        if location is not None:
+            body["location"] = location
         if attendee_emails:
             body["attendees"] = [{"email": e} for e in attendee_emails]
         if with_meet:
@@ -227,6 +230,7 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         summary: str,
         attendee_emails: list[str],
         description: str | None = None,
+        location: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         encoded_calendar_id = urllib.parse.quote(calendar_id, safe="")
         encoded_event_id = urllib.parse.quote(event_id, safe="")
@@ -243,6 +247,8 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         }
         if description is not None:
             body["description"] = description
+        if location is not None:
+            body["location"] = location
         if attendee_emails:
             body["attendees"] = [{"email": e} for e in attendee_emails]
         query_params = {"sendUpdates": "all"}
