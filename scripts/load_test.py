@@ -309,6 +309,9 @@ async def _generate_patient_message(
                 raise
 
     # Log raw response for debugging
+    if not response.candidates:
+        prompt_feedback = getattr(response, "prompt_feedback", None)
+        raise RuntimeError(f"Gemini returned no candidates (prompt_feedback={prompt_feedback})")
     candidate = response.candidates[0]
     parts = candidate.content.parts if candidate.content and candidate.content.parts else []
     logger.info("Gemini finish_reason=%s, parts=%d", candidate.finish_reason, len(parts))
@@ -721,18 +724,21 @@ async def _run_patient(
                     elapsed = time.monotonic() - start
                     logger.info("[%s] Finalizado con status %s en %.1fs", tag, new_status, elapsed)
                     return elapsed
-                # Owner actuo -> esperar mensajes nuevos del AI
-                if conversation_id is not None:
-                    await _sync_new_assistant_messages(
-                        client,
-                        access_token,
-                        conversation_id,
-                        local_history,
-                        tag,
-                        "Post-owner",
-                        max_wait=60.0,
-                    )
-            # Continuar al siguiente turno para que el paciente responda al nuevo mensaje
+            # Esperar respuesta del bot antes de pasar al siguiente turno (evita
+            # que el LLM-paciente reenvie mensajes duplicados mientras el bot
+            # todavia esta procesando).
+            if conversation_id is not None:
+                got_response = await _sync_new_assistant_messages(
+                    client,
+                    access_token,
+                    conversation_id,
+                    local_history,
+                    tag,
+                    f"Turno {turn} (post-pending)",
+                    max_wait=60.0,
+                )
+                if not got_response:
+                    raise RuntimeError(f"AI no respondio tras 60s en turno {turn} (post-pending)")
             continue
 
         # --- Esperar respuesta del AI desde el backend ---
@@ -780,7 +786,7 @@ async def main() -> None:
         raise RuntimeError(
             "PATIENT_EMAIL not set. Add it to .secrets/make_credentials.env or export it."
         )
-    all_patients = PATIENTS
+    all_patients = PATIENTS[:NUM_PATIENTS]
     batch_size = NUM_PATIENTS
     total_start = time.monotonic()
     logger.info(
@@ -808,10 +814,12 @@ async def main() -> None:
                     return patient["display_name"], elapsed
                 except Exception as exc:
                     logger.error(
-                        "[Patient-%02d: %s] FALLO: %s",
+                        "[Patient-%02d: %s] FALLO: %s: %s",
                         index + 1,
                         patient["display_name"],
-                        exc,
+                        type(exc).__name__,
+                        str(exc) or "(no message)",
+                        exc_info=True,
                     )
                     return patient["display_name"], exc
 
