@@ -376,9 +376,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
             reminderBillingTestPhoneNumber: null,
             paymentDetailsText: null,
             officeLocation: {
-              address: "Calle 5 # 38-25, Cali",
-              arrivalInstructions: "Llegar 20 minutos antes con cedula fisica",
-              accessNotes: "Edificio azul, piso 3"
+              address: "Calle 5 # 38-25, Edificio Azul, piso 3",
+              arrivalInstructions: "Llegar 20 minutos antes con cedula fisica"
             },
             virtualSessionInstructions: "El link de Google Meet llega al correo 24h antes."
           })),
@@ -389,11 +388,13 @@ vitestModule.describe("ConfiguracionesPage", () => {
       renderConfiguracionesPage(container);
 
       // Información General is the default tab — office fields are visible without clicking
-      const addressInput = await testingLibraryReactModule.screen.findByLabelText(
+      const addressTextarea = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
       );
       await testingLibraryReactModule.waitFor(() => {
-        vitestModule.expect((addressInput as HTMLInputElement).value).toBe("Calle 5 # 38-25, Cali");
+        vitestModule
+          .expect((addressTextarea as HTMLTextAreaElement).value)
+          .toBe("Calle 5 # 38-25, Edificio Azul, piso 3");
       });
 
       const arrivalInput =
@@ -402,8 +403,10 @@ vitestModule.describe("ConfiguracionesPage", () => {
         .expect((arrivalInput as HTMLTextAreaElement).value)
         .toBe("Llegar 20 minutos antes con cedula fisica");
 
-      const accessInput = testingLibraryReactModule.screen.getByLabelText("Notas de acceso");
-      vitestModule.expect((accessInput as HTMLTextAreaElement).value).toBe("Edificio azul, piso 3");
+      // "Notas de acceso" no longer exists as a separate field
+      vitestModule
+        .expect(testingLibraryReactModule.screen.queryByLabelText("Notas de acceso"))
+        .toBeNull();
 
       const virtualInput = testingLibraryReactModule.screen.getByLabelText(
         "Instrucciones para sesiones virtuales"
@@ -415,7 +418,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
   );
 
   vitestModule.it(
-    "submits office_location with all fields when address and sub-fields are filled",
+    "submits office_location with address (multiline) and arrival instructions when both are filled",
     async () => {
       const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
@@ -427,9 +430,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
         reminderBillingTestPhoneNumber: null,
         paymentDetailsText: null,
         officeLocation: {
-          address: "Calle 5 # 38-25, Cali",
-          arrivalInstructions: "Llegar 20 minutos antes",
-          accessNotes: "Piso 3"
+          address: "Avenida Siempre Viva 1234\nEdificio Azul, piso 5\nParqueadero en sotano",
+          arrivalInstructions: "Llegar 20 minutos antes"
         },
         virtualSessionInstructions: null
       }));
@@ -459,25 +461,21 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       // Información General is the default tab — office fields are visible without clicking.
       // Wait for settingsQuery to resolve so the fields become enabled.
-      const addressInput = await testingLibraryReactModule.screen.findByLabelText(
+      const addressTextarea = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
       );
       await testingLibraryReactModule.waitFor(() => {
-        vitestModule.expect(addressInput).not.toBeDisabled();
+        vitestModule.expect(addressTextarea).not.toBeDisabled();
       });
-      testingLibraryReactModule.fireEvent.change(addressInput, {
-        target: { value: "Calle 5 # 38-25, Cali" }
+      // Simulate a multiline address — the textarea accepts newlines natively
+      testingLibraryReactModule.fireEvent.change(addressTextarea, {
+        target: { value: "Avenida Siempre Viva 1234\nEdificio Azul, piso 5\nParqueadero en sotano" }
       });
 
       const arrivalInput =
         testingLibraryReactModule.screen.getByLabelText("Indicaciones de llegada");
       testingLibraryReactModule.fireEvent.change(arrivalInput, {
         target: { value: "Llegar 20 minutos antes" }
-      });
-
-      const accessInput = testingLibraryReactModule.screen.getByLabelText("Notas de acceso");
-      testingLibraryReactModule.fireEvent.change(accessInput, {
-        target: { value: "Piso 3" }
       });
 
       // Office "Guardar" is the second save button (after profile's)
@@ -491,18 +489,25 @@ vitestModule.describe("ConfiguracionesPage", () => {
         vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
           vitestModule.expect.objectContaining({
             officeLocation: {
-              address: "Calle 5 # 38-25, Cali",
-              arrivalInstructions: "Llegar 20 minutos antes",
-              accessNotes: "Piso 3"
+              address: "Avenida Siempre Viva 1234\nEdificio Azul, piso 5\nParqueadero en sotano",
+              arrivalInstructions: "Llegar 20 minutos antes"
             }
           })
         );
       });
+
+      // Verify no access_notes key is sent in the payload
+      const callArg = (updateAgentSettingsMock as vitestModule.Mock).mock.calls[0]?.[0] as Record<
+        string,
+        unknown
+      >;
+      const officeLocation = callArg?.["officeLocation"] as Record<string, unknown> | null;
+      vitestModule.expect(officeLocation).not.toHaveProperty("accessNotes");
     }
   );
 
   vitestModule.it(
-    "submits office_location with only address when arrival/access are empty",
+    "submits office_location with only address when arrival_instructions is empty",
     async () => {
       const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
@@ -515,8 +520,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
         paymentDetailsText: null,
         officeLocation: {
           address: "Calle 5 # 38-25, Cali",
-          arrivalInstructions: null,
-          accessNotes: null
+          arrivalInstructions: null
         },
         virtualSessionInstructions: null
       }));
@@ -566,8 +570,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
           vitestModule.expect.objectContaining({
             officeLocation: {
               address: "Calle 5 # 38-25, Cali",
-              arrivalInstructions: null,
-              accessNotes: null
+              arrivalInstructions: null
             }
           })
         );
@@ -714,8 +717,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
       paymentDetailsText: null,
       officeLocation: {
         address: "Calle 5 # 38-25, Cali",
-        arrivalInstructions: null,
-        accessNotes: null
+        arrivalInstructions: null
       },
       virtualSessionInstructions: null
     }));

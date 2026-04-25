@@ -167,7 +167,6 @@ export function ConfiguracionesPage() {
   const [paymentDetailsText, setPaymentDetailsText] = reactModule.useState("");
   const [officeAddress, setOfficeAddress] = reactModule.useState("");
   const [officeArrivalInstructions, setOfficeArrivalInstructions] = reactModule.useState("");
-  const [officeAccessNotes, setOfficeAccessNotes] = reactModule.useState("");
   const [virtualSessionInstructions, setVirtualSessionInstructions] = reactModule.useState("");
   const [activationStep, setActivationStep] = reactModule.useState<
     "idle" | "disclosure" | "preflight"
@@ -180,7 +179,6 @@ export function ConfiguracionesPage() {
       setPaymentDetailsText(settingsQuery.data.paymentDetailsText ?? "");
       setOfficeAddress(settingsQuery.data.officeLocation?.address ?? "");
       setOfficeArrivalInstructions(settingsQuery.data.officeLocation?.arrivalInstructions ?? "");
-      setOfficeAccessNotes(settingsQuery.data.officeLocation?.accessNotes ?? "");
       setVirtualSessionInstructions(settingsQuery.data.virtualSessionInstructions ?? "");
     }
   }, [settingsQuery.data]);
@@ -324,8 +322,7 @@ export function ConfiguracionesPage() {
     return {
       address: trimmedAddress,
       arrivalInstructions:
-        officeArrivalInstructions.trim() === "" ? null : officeArrivalInstructions.trim(),
-      accessNotes: officeAccessNotes.trim() === "" ? null : officeAccessNotes.trim()
+        officeArrivalInstructions.trim() === "" ? null : officeArrivalInstructions.trim()
     };
   };
 
@@ -552,20 +549,20 @@ export function ConfiguracionesPage() {
                   Direccion del consultorio
                 </label>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Si dejas este campo vacio, no se guardaran datos presenciales (ni indicaciones ni
-                  notas de acceso).
+                  Si dejas este campo vacio, no se guardaran datos presenciales ni indicaciones de
+                  llegada. Puedes incluir edificio, piso, parqueadero y referencias en el mismo
+                  campo.
                 </p>
-                <input
-                  className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={settingsQuery.isLoading}
                   id="office-address"
-                  maxLength={200}
                   onChange={(e) => {
                     setOfficeAddress(e.target.value);
                     setOfficeSuccessMessage(null);
                   }}
-                  placeholder="Ej. Calle 5 # 38-25, Cali"
-                  type="text"
+                  placeholder="Ej. Avenida Siempre Viva 1234, Edificio Azul, piso 5, parqueadero en sotano"
+                  rows={3}
                   value={officeAddress}
                 />
               </div>
@@ -588,27 +585,6 @@ export function ConfiguracionesPage() {
                   placeholder="Ej. Llegar 20 minutos antes con cedula fisica"
                   rows={2}
                   value={officeArrivalInstructions}
-                />
-              </div>
-
-              <div>
-                <label
-                  className="block text-sm font-medium text-slate-700"
-                  htmlFor="office-access-notes"
-                >
-                  Notas de acceso
-                </label>
-                <textarea
-                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={settingsQuery.isLoading}
-                  id="office-access-notes"
-                  onChange={(e) => {
-                    setOfficeAccessNotes(e.target.value);
-                    setOfficeSuccessMessage(null);
-                  }}
-                  placeholder="Ej. Edificio azul, piso 3, recepcion al ingresar"
-                  rows={2}
-                  value={officeAccessNotes}
                 />
               </div>
             </div>

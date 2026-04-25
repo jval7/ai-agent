@@ -109,7 +109,6 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       office_location: {
         address: string;
         arrival_instructions: string | null;
-        access_notes: string | null;
       } | null;
       virtual_session_instructions: string | null;
     }>("/v1/agent/settings", { method: "GET", authRequired: true });
@@ -126,8 +125,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         raw.office_location !== null && raw.office_location !== undefined
           ? {
               address: raw.office_location.address,
-              arrivalInstructions: raw.office_location.arrival_instructions,
-              accessNotes: raw.office_location.access_notes
+              arrivalInstructions: raw.office_location.arrival_instructions
             }
           : null,
       virtualSessionInstructions: raw.virtual_session_instructions ?? null
@@ -149,7 +147,6 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       office_location: {
         address: string;
         arrival_instructions: string | null;
-        access_notes: string | null;
       } | null;
       virtual_session_instructions: string | null;
     }>("/v1/agent/settings", {
@@ -167,8 +164,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
           input.officeLocation !== null
             ? {
                 address: input.officeLocation.address,
-                arrival_instructions: input.officeLocation.arrivalInstructions,
-                access_notes: input.officeLocation.accessNotes
+                arrival_instructions: input.officeLocation.arrivalInstructions
               }
             : null,
         virtual_session_instructions: input.virtualSessionInstructions
@@ -187,8 +183,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         raw.office_location !== null && raw.office_location !== undefined
           ? {
               address: raw.office_location.address,
-              arrivalInstructions: raw.office_location.arrival_instructions,
-              accessNotes: raw.office_location.access_notes
+              arrivalInstructions: raw.office_location.arrival_instructions
             }
           : null,
       virtualSessionInstructions: raw.virtual_session_instructions ?? null

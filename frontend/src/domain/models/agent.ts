@@ -6,7 +6,6 @@ export interface SystemPrompt {
 export interface OfficeLocation {
   address: string;
   arrivalInstructions: string | null;
-  accessNotes: string | null;
 }
 
 export interface AgentSettings {
