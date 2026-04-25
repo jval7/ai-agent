@@ -42,6 +42,7 @@ import src.services.agentic.tool_registry as tool_definition_registry_mod
 import src.services.dto.llm_dto as llm_dto
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
+import src.services.use_cases.event_description_builder as event_description_builder_mod
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.scheduling_service as scheduling_service
 import src.services.use_cases.webhook_service as webhook_service
@@ -222,6 +223,9 @@ def build_tool_calling_context(
         tenant_repository=tenant_repo,
     )
     task_sched = inmemory_task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
+    builder = event_description_builder_mod.EventDescriptionBuilder(
+        agent_profile_repository=agent_profile_repo,
+    )
     scheduling_use_case = scheduling_service.SchedulingService(
         scheduling_repository=scheduling_repo,
         conversation_repository=conversation_repo,
@@ -229,6 +233,7 @@ def build_tool_calling_context(
         id_generator=id_generator,
         clock=clock,
         task_scheduler=task_sched,
+        event_description_builder=builder,
     )
 
     service_kwargs: dict[str, typing.Any] = {}

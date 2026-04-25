@@ -30,10 +30,8 @@ class ManualAppointmentService:
         ),
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
+        event_description_builder: event_description_builder_mod.EventDescriptionBuilder,
         reminder_service: reminder_service_module.ReminderService | None = None,
-        event_description_builder: (
-            event_description_builder_mod.EventDescriptionBuilder | None
-        ) = None,
     ) -> None:
         self._manual_appointment_repository = manual_appointment_repository
         self._patient_repository = patient_repository
@@ -77,21 +75,13 @@ class ManualAppointmentService:
         appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] = (
             "VIRTUAL" if create_dto.is_virtual else "PRESENCIAL"
         )
-        event_description_result = (
-            self._event_description_builder.build(
-                tenant_id=claims.tenant_id,
-                modality=appointment_modality,
-                payment_status=create_dto.payment_status,
-            )
-            if self._event_description_builder is not None
-            else None
+        event_description_result = self._event_description_builder.build(
+            tenant_id=claims.tenant_id,
+            modality=appointment_modality,
+            payment_status=create_dto.payment_status,
         )
-        event_description = (
-            event_description_result.description if event_description_result is not None else None
-        )
-        event_location = (
-            event_description_result.location if event_description_result is not None else None
-        )
+        event_description = event_description_result.description
+        event_location = event_description_result.location
         event = self._google_calendar_onboarding_service.create_event(
             tenant_id=claims.tenant_id,
             start_at=create_dto.start_at,

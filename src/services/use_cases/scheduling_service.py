@@ -85,6 +85,7 @@ class SchedulingService:
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
         task_scheduler: task_scheduler_port.TaskSchedulerPort,
+        event_description_builder: event_description_builder_mod.EventDescriptionBuilder,
         auto_close_delay_seconds: int = 3600,
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
         tag_service: tag_service_module.TagService | None = None,
@@ -96,9 +97,6 @@ class SchedulingService:
         whatsapp_provider: whatsapp_provider_port.WhatsappProviderPort | None = None,
         whatsapp_connection_repository: (
             whatsapp_connection_repository_port.WhatsappConnectionRepositoryPort | None
-        ) = None,
-        event_description_builder: (
-            event_description_builder_mod.EventDescriptionBuilder | None
         ) = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
@@ -718,23 +716,13 @@ class SchedulingService:
             normalized_summary = input_dto.event_summary.strip()
             if not normalized_summary:
                 raise service_exceptions.InvalidStateError("event summary cannot be empty")
-            event_description_result = (
-                self._event_description_builder.build(
-                    tenant_id=tenant_id,
-                    modality=request.appointment_modality,
-                    payment_status=request.payment_status,
-                )
-                if self._event_description_builder is not None
-                else None
+            event_description_result = self._event_description_builder.build(
+                tenant_id=tenant_id,
+                modality=request.appointment_modality,
+                payment_status=request.payment_status,
             )
-            event_description = (
-                event_description_result.description
-                if event_description_result is not None
-                else None
-            )
-            event_location = (
-                event_description_result.location if event_description_result is not None else None
-            )
+            event_description = event_description_result.description
+            event_location = event_description_result.location
             event = self._google_calendar_onboarding_service.create_event(
                 tenant_id=tenant_id,
                 start_at=selected_slot.start_at,

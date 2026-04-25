@@ -1,16 +1,19 @@
 import datetime
 
+import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.task_scheduler_adapter as inmemory_task_scheduler_adapter
+import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
 import src.services.dto.scheduling_dto as scheduling_dto
+import src.services.use_cases.event_description_builder as event_description_builder_mod
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.scheduling_service as scheduling_service
 import tests.fakes.fake_adapters as fake_adapters
@@ -56,6 +59,19 @@ def _build_resolver_with_scheduling() -> tuple[
         clock=clock,
     )
     task_sched = inmemory_task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    agent_profile_repo.save(
+        agent_profile_entity.AgentProfile(
+            tenant_id="tenant-1",
+            system_prompt="Eres un asistente.",
+            updated_at=NOW,
+        )
+    )
+    builder = event_description_builder_mod.EventDescriptionBuilder(
+        agent_profile_repository=agent_profile_repo,
+    )
     scheduling_svc = scheduling_service.SchedulingService(
         scheduling_repository=scheduling_repo,
         conversation_repository=conversation_repo,
@@ -63,6 +79,7 @@ def _build_resolver_with_scheduling() -> tuple[
         id_generator=id_gen,
         clock=clock,
         task_scheduler=task_sched,
+        event_description_builder=builder,
     )
     resolver = runtime_context_resolver_mod.RuntimeContextResolver(
         scheduling_svc=scheduling_svc,
