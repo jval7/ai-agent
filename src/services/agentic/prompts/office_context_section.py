@@ -30,7 +30,7 @@ class OfficeContextSection(prompt_section.PromptSection):
                 lines.append(f"- Indicaciones de llegada: {office.arrival_instructions}")
 
         lines.append(
-            f"- Instrucciones sesión virtual: {booking_constants.VIRTUAL_SESSION_INSTRUCTIONS}"
+            f"- Instrucciones sesión virtual: {booking_constants.VIRTUAL_SESSION_BOT_INSTRUCTIONS}"
         )
 
         return lines

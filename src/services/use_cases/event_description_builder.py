@@ -89,7 +89,7 @@ class EventDescriptionBuilder:
         agent_profile: agent_profile_entity.AgentProfile | None,
     ) -> list[str]:
         del agent_profile
-        return [booking_constants.VIRTUAL_SESSION_INSTRUCTIONS]
+        return [booking_constants.VIRTUAL_SESSION_EVENT_INSTRUCTIONS]
 
     def _resolve_location(
         self,

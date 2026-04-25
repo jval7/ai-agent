@@ -164,7 +164,7 @@ def test_create_and_reschedule_manual_appointment() -> None:
     assert created.appointment_id == "manual-appt-1"
     assert google_provider.created_event_summaries == ["Test Professional/Jane Doe"]
     assert google_provider.created_event_descriptions == [
-        booking_constants.VIRTUAL_SESSION_INSTRUCTIONS
+        booking_constants.VIRTUAL_SESSION_EVENT_INSTRUCTIONS
     ]
 
     rescheduled = service.reschedule_appointment(
@@ -463,7 +463,7 @@ def test_create_appointment_uses_professional_name_as_event_title() -> None:
 
     assert google_provider.created_event_summaries == ["Test Professional/Jane Doe"]
     assert google_provider.created_event_descriptions == [
-        booking_constants.VIRTUAL_SESSION_INSTRUCTIONS
+        booking_constants.VIRTUAL_SESSION_EVENT_INSTRUCTIONS
     ]
 
 
@@ -497,5 +497,5 @@ def test_create_appointment_falls_back_to_profesional_when_name_unavailable() ->
 
     assert google_provider.created_event_summaries == ["Profesional/Jane Doe"]
     assert google_provider.created_event_descriptions == [
-        booking_constants.VIRTUAL_SESSION_INSTRUCTIONS
+        booking_constants.VIRTUAL_SESSION_EVENT_INSTRUCTIONS
     ]

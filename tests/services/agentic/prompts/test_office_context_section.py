@@ -44,7 +44,7 @@ class TestOfficeContextSection:
         result = section.render(ctx, known_patient=None, agent_profile=None)
         joined = "\n".join(result)
         assert "Datos del consultorio" in joined
-        assert booking_constants.VIRTUAL_SESSION_INSTRUCTIONS in joined
+        assert booking_constants.VIRTUAL_SESSION_BOT_INSTRUCTIONS in joined
         assert "Dirección" not in joined
 
     def test_always_renders_virtual_instructions_constant(self) -> None:
@@ -55,7 +55,7 @@ class TestOfficeContextSection:
         result = section.render(ctx, known_patient=None, agent_profile=profile)
         joined = "\n".join(result)
         assert "Datos del consultorio" in joined
-        assert booking_constants.VIRTUAL_SESSION_INSTRUCTIONS in joined
+        assert booking_constants.VIRTUAL_SESSION_BOT_INSTRUCTIONS in joined
         assert "Dirección" not in joined
 
     def test_renders_office_location_with_all_fields(self) -> None:
@@ -67,7 +67,7 @@ class TestOfficeContextSection:
         assert "Datos del consultorio" in joined
         assert "Calle 5 # 38-25, Cali" in joined
         assert "Llegar 20 min antes" in joined
-        assert booking_constants.VIRTUAL_SESSION_INSTRUCTIONS in joined
+        assert booking_constants.VIRTUAL_SESSION_BOT_INSTRUCTIONS in joined
 
     def test_renders_office_location_without_optional_fields(self) -> None:
         section = office_context_section.OfficeContextSection()
@@ -77,4 +77,4 @@ class TestOfficeContextSection:
         joined = "\n".join(result)
         assert "Calle 5 # 38-25, Cali" in joined
         assert "Indicaciones" not in joined
-        assert booking_constants.VIRTUAL_SESSION_INSTRUCTIONS in joined
+        assert booking_constants.VIRTUAL_SESSION_BOT_INSTRUCTIONS in joined

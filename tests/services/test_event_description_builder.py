@@ -87,7 +87,7 @@ class TestEventDescriptionBuilderVirtual:
             modality="VIRTUAL",
         )
         assert "Motivo de consulta" not in result.description
-        assert booking_constants.VIRTUAL_SESSION_INSTRUCTIONS in result.description
+        assert booking_constants.VIRTUAL_SESSION_EVENT_INSTRUCTIONS in result.description
         assert result.location is None
 
     def test_virtual_constant_present_even_without_agent_profile(self) -> None:
@@ -100,7 +100,7 @@ class TestEventDescriptionBuilderVirtual:
             tenant_id="t-unknown",
             modality="VIRTUAL",
         )
-        assert booking_constants.VIRTUAL_SESSION_INSTRUCTIONS in result.description
+        assert booking_constants.VIRTUAL_SESSION_EVENT_INSTRUCTIONS in result.description
         assert result.location is None
 
 
