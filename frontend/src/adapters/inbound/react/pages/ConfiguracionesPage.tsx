@@ -35,14 +35,13 @@ function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   return <statusBadgeModule.StatusBadge label="DISCONNECTED" tone="danger" />;
 }
 
-type ConfigTab = "perfil" | "conexiones" | "prompt" | "ajustes" | "consultorio";
+type ConfigTab = "general" | "conexiones" | "prompt" | "ajustes";
 
 const CONFIG_TABS: { id: ConfigTab; label: string }[] = [
-  { id: "perfil", label: "Perfil" },
+  { id: "general", label: "Información General" },
   { id: "conexiones", label: "Conexiones" },
   { id: "prompt", label: "System Prompt" },
-  { id: "ajustes", label: "Ajustes del agente" },
-  { id: "consultorio", label: "Consultorio" }
+  { id: "ajustes", label: "Ajustes del agente" }
 ];
 
 export function ConfiguracionesPage() {
@@ -54,7 +53,7 @@ export function ConfiguracionesPage() {
     [location.search]
   );
 
-  const [activeTab, setActiveTab] = reactModule.useState<ConfigTab>("perfil");
+  const [activeTab, setActiveTab] = reactModule.useState<ConfigTab>("general");
 
   // --- Onboarding queries ---
   const whatsappConnectionQuery = reactQueryModule.useQuery({
@@ -472,61 +471,202 @@ export function ConfiguracionesPage() {
         ))}
       </nav>
 
-      {/* --- Perfil --- */}
-      {activeTab === "perfil" ? (
-        <section className="mt-6 max-w-2xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <h3 className="text-xl font-semibold text-brand-ink">Perfil del profesional</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Este nombre aparece en los titulos de los eventos de Google Calendar cuando agendas una
-            cita.
-          </p>
-
-          <div className="mt-6">
-            <label className="block text-sm font-medium text-slate-700" htmlFor="professional-name">
-              Nombre del profesional
-            </label>
-            <input
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={profileQuery.isLoading}
-              id="professional-name"
-              maxLength={80}
-              onChange={(e) => {
-                setProfileDraft({ professionalName: e.target.value });
-                setProfileSuccessMessage(null);
-              }}
-              placeholder="Ej. Dra. Ana Garcia"
-              type="text"
-              value={profileDraft.professionalName}
-            />
-            <p className="mt-1.5 text-xs text-slate-500">
-              Formato del titulo en Calendar: {"{tu nombre}"}/{"{nombre del paciente}"}. Si dejas
-              este campo vacio se usara "Profesional" por defecto.
+      {/* --- Información General (Perfil + Consultorio) --- */}
+      {activeTab === "general" ? (
+        <div className="mt-6 max-w-2xl space-y-6">
+          {/* Sub-sección: Perfil del profesional */}
+          <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+            <h3 className="text-xl font-semibold text-brand-ink">Perfil del profesional</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Este nombre aparece en los titulos de los eventos de Google Calendar cuando agendas
+              una cita.
             </p>
-          </div>
 
-          {profileSuccessMessage !== null ? (
-            <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {profileSuccessMessage}
+            <div className="mt-6">
+              <label
+                className="block text-sm font-medium text-slate-700"
+                htmlFor="professional-name"
+              >
+                Nombre del profesional
+              </label>
+              <input
+                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={profileQuery.isLoading}
+                id="professional-name"
+                maxLength={80}
+                onChange={(e) => {
+                  setProfileDraft({ professionalName: e.target.value });
+                  setProfileSuccessMessage(null);
+                }}
+                placeholder="Ej. Dra. Ana Garcia"
+                type="text"
+                value={profileDraft.professionalName}
+              />
+              <p className="mt-1.5 text-xs text-slate-500">
+                Formato del titulo en Calendar: {"{tu nombre}"}/{"{nombre del paciente}"}. Si dejas
+                este campo vacio se usara "Profesional" por defecto.
+              </p>
             </div>
-          ) : null}
 
-          {profileErrorMessage !== null ? (
-            <errorBannerModule.ErrorBanner className="mt-3" message={profileErrorMessage} />
-          ) : null}
+            {profileSuccessMessage !== null ? (
+              <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {profileSuccessMessage}
+              </div>
+            ) : null}
 
-          <div className="mt-6 flex justify-end">
-            <button
-              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={profileMutation.isPending || profileQuery.isLoading || !isProfileDirty}
-              onClick={() => {
-                profileMutation.mutate();
-              }}
-              type="button"
-            >
-              {profileMutation.isPending ? "Guardando..." : "Guardar"}
-            </button>
-          </div>
-        </section>
+            {profileErrorMessage !== null ? (
+              <errorBannerModule.ErrorBanner className="mt-3" message={profileErrorMessage} />
+            ) : null}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={profileMutation.isPending || profileQuery.isLoading || !isProfileDirty}
+                onClick={() => {
+                  profileMutation.mutate();
+                }}
+                type="button"
+              >
+                {profileMutation.isPending ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </section>
+
+          {/* Sub-sección: Datos del consultorio */}
+          <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+            <h3 className="text-xl font-semibold text-brand-ink">Datos del consultorio</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Esta informacion se incluye automaticamente en los mensajes de confirmacion de citas y
+              en los eventos de Google Calendar.
+            </p>
+
+            {/* Presencial */}
+            <div className="mt-6 space-y-4">
+              <h4 className="text-sm font-semibold text-brand-ink">Citas presenciales</h4>
+
+              <div>
+                <label
+                  className="block text-sm font-medium text-slate-700"
+                  htmlFor="office-address"
+                >
+                  Direccion del consultorio
+                </label>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Si dejas este campo vacio, no se guardaran datos presenciales (ni indicaciones ni
+                  notas de acceso).
+                </p>
+                <input
+                  className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={settingsQuery.isLoading}
+                  id="office-address"
+                  maxLength={200}
+                  onChange={(e) => {
+                    setOfficeAddress(e.target.value);
+                    setOfficeSuccessMessage(null);
+                  }}
+                  placeholder="Ej. Calle 5 # 38-25, Cali"
+                  type="text"
+                  value={officeAddress}
+                />
+              </div>
+
+              <div>
+                <label
+                  className="block text-sm font-medium text-slate-700"
+                  htmlFor="office-arrival-instructions"
+                >
+                  Indicaciones de llegada
+                </label>
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={settingsQuery.isLoading}
+                  id="office-arrival-instructions"
+                  onChange={(e) => {
+                    setOfficeArrivalInstructions(e.target.value);
+                    setOfficeSuccessMessage(null);
+                  }}
+                  placeholder="Ej. Llegar 20 minutos antes con cedula fisica"
+                  rows={2}
+                  value={officeArrivalInstructions}
+                />
+              </div>
+
+              <div>
+                <label
+                  className="block text-sm font-medium text-slate-700"
+                  htmlFor="office-access-notes"
+                >
+                  Notas de acceso
+                </label>
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={settingsQuery.isLoading}
+                  id="office-access-notes"
+                  onChange={(e) => {
+                    setOfficeAccessNotes(e.target.value);
+                    setOfficeSuccessMessage(null);
+                  }}
+                  placeholder="Ej. Edificio azul, piso 3, recepcion al ingresar"
+                  rows={2}
+                  value={officeAccessNotes}
+                />
+              </div>
+            </div>
+
+            {/* Virtual */}
+            <div className="mt-6 space-y-4 border-t border-border-subtle pt-6">
+              <h4 className="text-sm font-semibold text-brand-ink">Citas virtuales</h4>
+
+              <div>
+                <label
+                  className="block text-sm font-medium text-slate-700"
+                  htmlFor="virtual-session-instructions"
+                >
+                  Instrucciones para sesiones virtuales
+                </label>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Se incluye en mensajes de confirmacion de citas virtuales. Si lo dejas vacio, no
+                  se enviaran instrucciones virtuales.
+                </p>
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={settingsQuery.isLoading}
+                  id="virtual-session-instructions"
+                  onChange={(e) => {
+                    setVirtualSessionInstructions(e.target.value);
+                    setOfficeSuccessMessage(null);
+                  }}
+                  placeholder="Ej. El link de Google Meet llega en la invitacion al correo 24h antes."
+                  rows={3}
+                  value={virtualSessionInstructions}
+                />
+              </div>
+            </div>
+
+            {officeSuccessMessage !== null ? (
+              <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                {officeSuccessMessage}
+              </div>
+            ) : null}
+
+            {officeErrorMessage !== null ? (
+              <errorBannerModule.ErrorBanner className="mt-3" message={officeErrorMessage} />
+            ) : null}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={officeSettingsMutation.isPending || settingsQuery.isLoading}
+                onClick={() => {
+                  officeSettingsMutation.mutate();
+                }}
+                type="button"
+              >
+                {officeSettingsMutation.isPending ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </section>
+        </div>
       ) : null}
 
       {/* --- Conexiones --- */}
@@ -740,140 +880,6 @@ export function ConfiguracionesPage() {
               type="button"
             >
               {updateMutation.isPending ? "Guardando..." : "Guardar prompt"}
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {/* --- Consultorio --- */}
-      {activeTab === "consultorio" ? (
-        <section className="mt-6 max-w-2xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <h3 className="text-xl font-semibold text-brand-ink">Datos del consultorio</h3>
-          <p className="mt-1 text-sm text-slate-600">
-            Esta informacion se incluye automaticamente en los mensajes de confirmacion de citas y
-            en los eventos de Google Calendar.
-          </p>
-
-          {/* Presencial */}
-          <div className="mt-6 space-y-4">
-            <h4 className="text-sm font-semibold text-brand-ink">Citas presenciales</h4>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700" htmlFor="office-address">
-                Direccion del consultorio
-              </label>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Si dejas este campo vacio, no se guardaran datos presenciales (ni indicaciones ni
-                notas de acceso).
-              </p>
-              <input
-                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={settingsQuery.isLoading}
-                id="office-address"
-                maxLength={200}
-                onChange={(e) => {
-                  setOfficeAddress(e.target.value);
-                  setOfficeSuccessMessage(null);
-                }}
-                placeholder="Ej. Calle 5 # 38-25, Cali"
-                type="text"
-                value={officeAddress}
-              />
-            </div>
-
-            <div>
-              <label
-                className="block text-sm font-medium text-slate-700"
-                htmlFor="office-arrival-instructions"
-              >
-                Indicaciones de llegada
-              </label>
-              <textarea
-                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={settingsQuery.isLoading}
-                id="office-arrival-instructions"
-                onChange={(e) => {
-                  setOfficeArrivalInstructions(e.target.value);
-                  setOfficeSuccessMessage(null);
-                }}
-                placeholder="Ej. Llegar 20 minutos antes con cedula fisica"
-                rows={2}
-                value={officeArrivalInstructions}
-              />
-            </div>
-
-            <div>
-              <label
-                className="block text-sm font-medium text-slate-700"
-                htmlFor="office-access-notes"
-              >
-                Notas de acceso
-              </label>
-              <textarea
-                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={settingsQuery.isLoading}
-                id="office-access-notes"
-                onChange={(e) => {
-                  setOfficeAccessNotes(e.target.value);
-                  setOfficeSuccessMessage(null);
-                }}
-                placeholder="Ej. Edificio azul, piso 3, recepcion al ingresar"
-                rows={2}
-                value={officeAccessNotes}
-              />
-            </div>
-          </div>
-
-          {/* Virtual */}
-          <div className="mt-6 space-y-4 border-t border-border-subtle pt-6">
-            <h4 className="text-sm font-semibold text-brand-ink">Citas virtuales</h4>
-
-            <div>
-              <label
-                className="block text-sm font-medium text-slate-700"
-                htmlFor="virtual-session-instructions"
-              >
-                Instrucciones para sesiones virtuales
-              </label>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Se incluye en mensajes de confirmacion de citas virtuales. Si lo dejas vacio, no se
-                enviaran instrucciones virtuales.
-              </p>
-              <textarea
-                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={settingsQuery.isLoading}
-                id="virtual-session-instructions"
-                onChange={(e) => {
-                  setVirtualSessionInstructions(e.target.value);
-                  setOfficeSuccessMessage(null);
-                }}
-                placeholder="Ej. El link de Google Meet llega en la invitacion al correo 24h antes."
-                rows={3}
-                value={virtualSessionInstructions}
-              />
-            </div>
-          </div>
-
-          {officeSuccessMessage !== null ? (
-            <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {officeSuccessMessage}
-            </div>
-          ) : null}
-
-          {officeErrorMessage !== null ? (
-            <errorBannerModule.ErrorBanner className="mt-3" message={officeErrorMessage} />
-          ) : null}
-
-          <div className="mt-6 flex justify-end">
-            <button
-              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={officeSettingsMutation.isPending || settingsQuery.isLoading}
-              onClick={() => {
-                officeSettingsMutation.mutate();
-              }}
-              type="button"
-            >
-              {officeSettingsMutation.isPending ? "Guardando..." : "Guardar"}
             </button>
           </div>
         </section>

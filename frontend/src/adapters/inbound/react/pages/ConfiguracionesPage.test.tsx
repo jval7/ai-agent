@@ -173,19 +173,23 @@ vitestModule.describe("ConfiguracionesPage", () => {
     });
   });
 
-  vitestModule.it("renders Perfil tab by default and shows professional name input", async () => {
-    const container = buildContainer();
+  vitestModule.it(
+    "renders Información General tab by default with professional name input",
+    async () => {
+      const container = buildContainer();
 
-    renderConfiguracionesPage(container);
+      renderConfiguracionesPage(container);
 
-    const input = await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
-    vitestModule.expect(input).toBeInTheDocument();
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule.expect((input as HTMLInputElement).value).toBe("Dra. Ana Garcia");
-    });
-  });
+      const input =
+        await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
+      vitestModule.expect(input).toBeInTheDocument();
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect((input as HTMLInputElement).value).toBe("Dra. Ana Garcia");
+      });
+    }
+  );
 
-  vitestModule.it("shows empty input when professionalName is null", async () => {
+  vitestModule.it("shows empty professional name input when professionalName is null", async () => {
     const container = buildContainer({
       tenantUseCase: {
         getProfile: vitestModule.vi.fn(async () => ({
@@ -234,8 +238,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
       target: { value: "Dra. Ana M. Garcia" }
     });
 
-    const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
-    testingLibraryReactModule.fireEvent.click(saveButton);
+    // Profile "Guardar" is the first of the two save buttons (profile and consultorio)
+    const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+      name: "Guardar"
+    });
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
 
     await testingLibraryReactModule.waitFor(() => {
       vitestModule.expect(updateProfileMock).toHaveBeenCalledWith({
@@ -347,10 +355,10 @@ vitestModule.describe("ConfiguracionesPage", () => {
       .not.toHaveBeenCalled();
   });
 
-  // --- Consultorio tab tests ---
+  // --- Información General tab — consultorio section tests ---
 
   vitestModule.it(
-    "renders Consultorio tab with initial office location data from backend",
+    "renders office location data from backend in Información General tab",
     async () => {
       const container = buildContainer({
         agentUseCase: {
@@ -380,11 +388,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
-        name: "Consultorio"
-      });
-      testingLibraryReactModule.fireEvent.click(consultorioTab);
-
+      // Información General is the default tab — office fields are visible without clicking
       const addressInput = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
       );
@@ -453,14 +457,14 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
-        name: "Consultorio"
-      });
-      testingLibraryReactModule.fireEvent.click(consultorioTab);
-
+      // Información General is the default tab — office fields are visible without clicking.
+      // Wait for settingsQuery to resolve so the fields become enabled.
       const addressInput = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
       );
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(addressInput).not.toBeDisabled();
+      });
       testingLibraryReactModule.fireEvent.change(addressInput, {
         target: { value: "Calle 5 # 38-25, Cali" }
       });
@@ -476,8 +480,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
         target: { value: "Piso 3" }
       });
 
-      const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
-      testingLibraryReactModule.fireEvent.click(saveButton);
+      // Office "Guardar" is the second save button (after profile's)
+      const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+        name: "Guardar"
+      });
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
 
       await testingLibraryReactModule.waitFor(() => {
         vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
@@ -534,20 +542,24 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
-        name: "Consultorio"
-      });
-      testingLibraryReactModule.fireEvent.click(consultorioTab);
-
+      // Información General is the default tab — office fields are visible without clicking.
+      // Wait for settingsQuery to resolve so the fields become enabled.
       const addressInput = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
       );
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(addressInput).not.toBeDisabled();
+      });
       testingLibraryReactModule.fireEvent.change(addressInput, {
         target: { value: "Calle 5 # 38-25, Cali" }
       });
 
-      const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
-      testingLibraryReactModule.fireEvent.click(saveButton);
+      // Office "Guardar" is the second save button (after profile's)
+      const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+        name: "Guardar"
+      });
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
 
       await testingLibraryReactModule.waitFor(() => {
         vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
@@ -604,11 +616,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
-        name: "Consultorio"
-      });
-      testingLibraryReactModule.fireEvent.click(consultorioTab);
-
+      // Información General is the default tab — office fields are visible without clicking
       // Leave address empty, fill arrival_instructions
       const arrivalInput =
         await testingLibraryReactModule.screen.findByLabelText("Indicaciones de llegada");
@@ -616,8 +624,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
         target: { value: "Llegar 20 minutos antes" }
       });
 
-      const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
-      testingLibraryReactModule.fireEvent.click(saveButton);
+      // Office "Guardar" is the second save button (after profile's)
+      const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+        name: "Guardar"
+      });
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
 
       await testingLibraryReactModule.waitFor(() => {
         vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
@@ -664,19 +676,22 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
-      name: "Consultorio"
-    });
-    testingLibraryReactModule.fireEvent.click(consultorioTab);
-
-    // Verify virtual instructions field exists and is empty, then save
+    // Información General is the default tab — office fields are visible without clicking.
+    // Wait for settingsQuery to resolve so fields and the save button become enabled.
     const virtualInput = await testingLibraryReactModule.screen.findByLabelText(
       "Instrucciones para sesiones virtuales"
     );
+    await testingLibraryReactModule.waitFor(() => {
+      vitestModule.expect(virtualInput).not.toBeDisabled();
+    });
     vitestModule.expect((virtualInput as HTMLTextAreaElement).value).toBe("");
 
-    const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
-    testingLibraryReactModule.fireEvent.click(saveButton);
+    // Office "Guardar" is the second save button (after profile's)
+    const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+      name: "Guardar"
+    });
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
 
     await testingLibraryReactModule.waitFor(() => {
       vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
@@ -726,11 +741,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    const consultorioTab = await testingLibraryReactModule.screen.findByRole("button", {
-      name: "Consultorio"
-    });
-    testingLibraryReactModule.fireEvent.click(consultorioTab);
-
+    // Información General is the default tab — office fields are visible without clicking
     const addressInput = await testingLibraryReactModule.screen.findByLabelText(
       "Direccion del consultorio"
     );
@@ -738,8 +749,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
       target: { value: "Calle 5 # 38-25, Cali" }
     });
 
-    const saveButton = testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" });
-    testingLibraryReactModule.fireEvent.click(saveButton);
+    // Office "Guardar" is the second save button (after profile's)
+    const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
+      name: "Guardar"
+    });
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
 
     await testingLibraryReactModule.waitFor(() => {
       vitestModule
