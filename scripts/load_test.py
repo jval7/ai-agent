@@ -9,8 +9,11 @@ respuesta del AI y la alimenta al LLM-paciente para generar la
 siguiente respuesta.
 
 Requiere:
-    - WHATSAPP_OUTBOUND_NOOP=true en el backend
+    - WHATSAPP_OUTBOUND_NOOP=true en el backend (modo sandbox)
     - ADC configurado (gcloud auth application-default login)
+    - .secrets/make_credentials.env con: OWNER_EMAIL, OWNER_PASSWORD, PATIENT_EMAIL
+      (PATIENT_EMAIL es el correo que los pacientes simulados van a dar al bot — usalo
+      para recibir las invitaciones de Google Calendar y validar el contenido).
 
 Uso:
     uv run python scripts/load_test.py                          # local
@@ -58,6 +61,7 @@ _load_env_file(_SECRETS_DIR / "make_api_base.env")
 API_BASE = os.environ.get("API_BASE", "http://localhost:8000")
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
 OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
+PATIENT_EMAIL = os.environ.get("PATIENT_EMAIL", "")
 
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_LOCATION = "us-central1"
@@ -82,7 +86,8 @@ IMPORTANTE — como escribir:
 - NO uses terminologia clinica ni del consultorio. No digas "consulta individual adultos" ni "terapia infantil". Di "una cita", "ver a la doctora", "una sesion para mi hijo".
 - NO des toda tu informacion de una (a menos que tu comportamiento lo indique). La gente real responde lo que le preguntan.
 - Primer mensaje: saluda y di lo MINIMO. Ejemplos reales: "Hola buenas tardes, quiero pedir una cita", "Hola, cuanto vale la consulta?", "Buenas, quiero agendar una sesion".
-- Cuando te pidan datos (nombre, edad, correo, telefono), responde con datos coherentes con tu perfil.
+- Cuando te pidan datos (nombre, edad, telefono), responde con datos coherentes con tu perfil.
+- Cuando te pidan correo electronico, SIEMPRE responde: {patient_email} — sin importar tu persona.
 - Responde SOLO con el mensaje de WhatsApp. Sin comillas, sin prefijos.
 - Si te confirman la cita, agradece brevemente y despidete.
 - NUNCA actues como el consultorio ni como la asistente. Tu SOLO eres el paciente. No ofrezcas horarios, precios ni informacion del consultorio. Si no sabes algo, PREGUNTA.
@@ -211,6 +216,7 @@ async def _generate_patient_message(
     system_instruction = _PATIENT_SYSTEM_INSTRUCTION.format(
         display_name=display_name,
         persona=persona,
+        patient_email=PATIENT_EMAIL,
     )
 
     # Mapear historial al formato Gemini:
@@ -651,6 +657,10 @@ async def _run_patient(
 # Main
 # ---------------------------------------------------------------------------
 async def main() -> None:
+    if not PATIENT_EMAIL:
+        raise RuntimeError(
+            "PATIENT_EMAIL not set. Add it to .secrets/make_credentials.env or export it."
+        )
     all_patients = PATIENTS
     batch_size = NUM_PATIENTS
     total_start = time.monotonic()
