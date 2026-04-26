@@ -349,6 +349,13 @@ export function ConfiguracionesPage() {
     settingsQuery.error
   ]);
 
+  const savedOfficeAddress = settingsQuery.data?.officeLocation?.address ?? "";
+  const savedOfficeArrivalInstructions =
+    settingsQuery.data?.officeLocation?.arrivalInstructions ?? "";
+  const isOfficeDirty =
+    officeAddress.trim() !== savedOfficeAddress.trim() ||
+    officeArrivalInstructions.trim() !== savedOfficeArrivalInstructions.trim();
+
   // --- Tenant profile ---
   const profileQuery = reactQueryModule.useQuery({
     queryKey: tenantProfileQueryKey,
@@ -591,7 +598,9 @@ export function ConfiguracionesPage() {
             <div className="mt-6 flex justify-end">
               <button
                 className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={officeSettingsMutation.isPending || settingsQuery.isLoading}
+                disabled={
+                  officeSettingsMutation.isPending || settingsQuery.isLoading || !isOfficeDirty
+                }
                 onClick={() => {
                   officeSettingsMutation.mutate();
                 }}
