@@ -202,16 +202,16 @@ export function RecordatoriosPage() {
                         tone={badgeProps.tone}
                       />
                     </td>
-                    <td className="max-w-md px-6 py-4 text-sm text-slate-600">
+                    <td className="max-w-xs px-6 py-4 text-sm text-slate-600">
                       {reminder.failureReason !== null && reminder.failureReason !== "" ? (
-                        <span className="block break-words" title={reminder.failureReason}>
+                        <span className="line-clamp-2 break-words" title={reminder.failureReason}>
                           {reminder.failureReason}
                         </span>
                       ) : (
                         <span className="text-slate-400">—</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right text-sm">
+                    <td className="whitespace-nowrap px-6 py-4 text-right text-sm">
                       {reminder.status === "PENDING" || reminder.status === "FAILED" ? (
                         <button
                           aria-label={
