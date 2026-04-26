@@ -475,10 +475,19 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         reminder = self._scheduled_reminder_repository.get_by_id(tenant_id, reminder_id)
         if reminder is None:
             raise service_exceptions.EntityNotFoundError("scheduled reminder not found")
-        if reminder.status != "PENDING":
+        # Allow PENDING (manual early send) and FAILED (retry after a previous
+        # failure). For FAILED, reset to PENDING so execute_reminder accepts it
+        # and the previous failure_reason is cleared before re-attempting.
+        if reminder.status not in ("PENDING", "FAILED"):
             raise service_exceptions.InvalidStateError(
-                f"reminder is not pending (status={reminder.status})"
+                f"reminder is not pending or failed (status={reminder.status})"
             )
+
+        if reminder.status == "FAILED":
+            reminder.status = "PENDING"
+            reminder.failure_reason = None
+            reminder.updated_at = self._clock.now()
+            self._scheduled_reminder_repository.save(reminder)
 
         if reminder.cloud_task_name is not None:
             try:

@@ -94,8 +94,9 @@ export function RecordatoriosPage() {
     }
   });
 
-  const handleSendNow = (reminderId: string, patientName: string) => {
-    if (!window.confirm(`¿Enviar recordatorio a ${patientName} ahora?`)) {
+  const handleSendNow = (reminderId: string, patientName: string, isRetry: boolean) => {
+    const verb = isRetry ? "Reintentar el recordatorio para" : "Enviar recordatorio a";
+    if (!window.confirm(`¿${verb} ${patientName} ahora?`)) {
       return;
     }
     sendNowMutation.mutate(reminderId);
@@ -211,18 +212,26 @@ export function RecordatoriosPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-right text-sm">
-                      {reminder.status === "PENDING" ? (
+                      {reminder.status === "PENDING" || reminder.status === "FAILED" ? (
                         <button
-                          aria-label="Enviar recordatorio ahora"
+                          aria-label={
+                            reminder.status === "FAILED"
+                              ? "Reintentar recordatorio"
+                              : "Enviar recordatorio ahora"
+                          }
                           className="inline-flex items-center justify-center rounded-lg border border-brand-teal p-2 text-brand-teal transition-colors hover:bg-brand-teal/10 disabled:cursor-not-allowed disabled:opacity-50"
                           disabled={
                             sendNowMutation.isPending &&
                             sendNowMutation.variables === reminder.reminderId
                           }
                           onClick={() => {
-                            handleSendNow(reminder.reminderId, reminder.patientName);
+                            handleSendNow(
+                              reminder.reminderId,
+                              reminder.patientName,
+                              reminder.status === "FAILED"
+                            );
                           }}
-                          title="Enviar ahora"
+                          title={reminder.status === "FAILED" ? "Reintentar" : "Enviar ahora"}
                           type="button"
                         >
                           <SendNowIcon />

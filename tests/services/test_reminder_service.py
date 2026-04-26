@@ -840,7 +840,7 @@ def test_send_reminder_now_cancels_task_and_sends_immediately() -> None:
     assert sent_reminder.status == "SENT"
 
 
-def test_send_reminder_now_rejects_non_pending_status() -> None:
+def test_send_reminder_now_rejects_terminal_status() -> None:
     profile = _build_profile_with_payment_details()
     service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
 
@@ -862,6 +862,37 @@ def test_send_reminder_now_rejects_non_pending_status() -> None:
 
     with pytest.raises(service_exceptions.InvalidStateError):
         service.send_reminder_now("tenant-1", reminder.id)
+
+
+def test_send_reminder_now_retries_failed_reminder() -> None:
+    profile = _build_profile_with_payment_details()
+    service, _, reminder_repo, _, whatsapp = _build_service(["reminder-1"], agent_profile=profile)
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 5, 10, 0, tzinfo=bogota)
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Ana",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    reminder = pending[0]
+    reminder.status = "FAILED"
+    reminder.failure_reason = "payment_details_not_configured"
+    reminder_repo.save(reminder)
+
+    result = service.send_reminder_now("tenant-1", reminder.id)
+
+    assert result["status"] == "sent"
+    refreshed = reminder_repo.get_by_id("tenant-1", reminder.id)
+    assert refreshed is not None
+    assert refreshed.status == "SENT"
+    assert refreshed.failure_reason is None
+    assert len(whatsapp.sent_template_body_parameters) == 1
 
 
 def test_send_reminder_now_raises_when_reminder_missing() -> None:
