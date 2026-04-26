@@ -1049,12 +1049,14 @@ class SchedulingService:
                 tenant_id=tenant_id,
                 whatsapp_user_id=request.whatsapp_user_id,
                 patient_first_name=request.patient_first_name,
+                source_appointment_id=request.source_appointment_id,
                 now_value=now_value,
                 conversation_repository=self._conversation_repository,
                 whatsapp_connection_repository=self._whatsapp_connection_repository,
                 whatsapp_provider=self._whatsapp_provider,
                 id_generator=self._id_generator,
                 clock=self._clock,
+                scheduling_repository=self._scheduling_repository,
             )
         else:
             # No whatsapp wiring: still archive subsession so the synthetic

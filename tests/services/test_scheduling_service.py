@@ -1244,6 +1244,61 @@ def test_approve_payment_from_reminder_marks_scheduling_request_paid() -> None:
     assert len(wa_provider.sent_messages) == 1
 
 
+def test_approve_payment_from_reminder_closes_session_even_without_recent_inbound() -> None:
+    """If the patient never replied to the reminder (no INBOUND in 24h), the
+    confirmation message can't be sent (Meta blocks freeform), but the
+    session must still close so the conversation leaves Pago pendiente."""
+    store = in_memory_store.InMemoryStore()
+    service, scheduling_repo, manual_appt_repo, _, wa_provider, _ = (
+        _build_service_with_reminder_deps(["msg-id-1"], store)
+    )
+    # NOTE: deliberately no _seed_recent_patient_inbound — patient stayed silent.
+
+    appt_id = "manual-appt-silent"
+    manual_appt_repo.save(
+        manual_appointment_entity.ManualAppointment(
+            id=appt_id,
+            tenant_id="tenant-1",
+            patient_whatsapp_user_id="wa-user-1",
+            status="SCHEDULED",
+            calendar_event_id="cal-event-silent",
+            start_at=datetime.datetime(2026, 3, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 3, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            summary="Cita silenciosa",
+            payment_status="PENDING",
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+    )
+    _seed_payment_reminder_request(
+        scheduling_repo,
+        source_appointment_id=appt_id,
+        source_appointment_kind="MANUAL_APPOINTMENT",
+    )
+
+    service.approve_payment(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        request_id="pay-req-1",
+        input_dto=scheduling_dto.PaymentReviewDecisionDTO(
+            decision="APPROVE",
+            payment_amount_cop=50000,
+        ),
+    )
+
+    # Source PAID.
+    paid_appt = manual_appt_repo.get_by_id("tenant-1", appt_id)
+    assert paid_appt is not None
+    assert paid_appt.payment_status == "PAID"
+    # Synthetic SESSION_CLOSED.
+    closed_req = scheduling_repo.get_request_by_id("tenant-1", "pay-req-1")
+    assert closed_req is not None
+    assert closed_req.status == "SESSION_CLOSED"
+    # No freeform message because there was no recent INBOUND.
+    assert len(wa_provider.sent_messages) == 0
+
+
 def test_approve_payment_from_reminder_handles_missing_source_gracefully() -> None:
     """If the source appointment is not found, the session is still closed and WA message sent."""
     store = in_memory_store.InMemoryStore()

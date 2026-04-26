@@ -8,6 +8,7 @@ import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.manual_appointment_repository_port as manual_appointment_repository_port
 import src.ports.patient_repository_port as patient_repository_port
+import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.constants as service_constants
@@ -43,6 +44,7 @@ class ManualAppointmentService:
             whatsapp_connection_repository_port.WhatsappConnectionRepositoryPort | None
         ) = None,
         whatsapp_provider: whatsapp_provider_port.WhatsappProviderPort | None = None,
+        scheduling_repository: (scheduling_repository_port.SchedulingRepositoryPort | None) = None,
     ) -> None:
         self._manual_appointment_repository = manual_appointment_repository
         self._patient_repository = patient_repository
@@ -54,6 +56,7 @@ class ManualAppointmentService:
         self._conversation_repository = conversation_repository
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._whatsapp_provider = whatsapp_provider
+        self._scheduling_repository = scheduling_repository
 
     def list_appointments(
         self,
@@ -347,12 +350,14 @@ class ManualAppointmentService:
                     tenant_id=claims.tenant_id,
                     whatsapp_user_id=appointment.patient_whatsapp_user_id,
                     patient_first_name=patient.first_name if patient is not None else None,
+                    source_appointment_id=appointment.id,
                     now_value=now_value,
                     conversation_repository=self._conversation_repository,
                     whatsapp_connection_repository=self._whatsapp_connection_repository,
                     whatsapp_provider=self._whatsapp_provider,
                     id_generator=self._id_generator,
                     clock=self._clock,
+                    scheduling_repository=self._scheduling_repository,
                 )
 
         logger.info(
