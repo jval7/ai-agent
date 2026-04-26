@@ -275,6 +275,9 @@ class AppContainer:
         self.event_description_builder = event_description_builder.EventDescriptionBuilder(
             agent_profile_repository=self.agent_profile_repository,
         )
+        self.event_description_builder = event_description_builder.EventDescriptionBuilder(
+            agent_profile_repository=self.agent_profile_repository,
+        )
         self.scheduling_service = scheduling_service.SchedulingService(
             scheduling_repository=self.scheduling_repository,
             conversation_repository=self.conversation_repository,
