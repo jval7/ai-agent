@@ -475,22 +475,10 @@ export function NewManualAppointmentModal({
                 </div>
               </button>
             </section>
-
-            {/* Error / success banners */}
-            {errorMessage !== null ? (
-              <div className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                {errorMessage}
-              </div>
-            ) : null}
-            {successMessage !== null ? (
-              <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                {successMessage}
-              </div>
-            ) : null}
           </div>
 
           {/* Footer */}
-          <div className="flex shrink-0 items-center justify-between border-t border-border-subtle px-5 py-4">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border-subtle px-5 py-4">
             <button
               className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={isPending}
@@ -499,14 +487,31 @@ export function NewManualAppointmentModal({
             >
               Cancelar
             </button>
-            <button
-              className="rounded-lg bg-brand-teal px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isPending}
-              onClick={handleSubmit}
-              type="button"
-            >
-              {isPending ? "Agendando..." : "Agendar cita"}
-            </button>
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+              {errorMessage !== null ? (
+                <div
+                  className="min-w-0 flex-1 truncate rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+                  title={errorMessage}
+                >
+                  {errorMessage}
+                </div>
+              ) : successMessage !== null ? (
+                <div
+                  className="min-w-0 flex-1 truncate rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700"
+                  title={successMessage}
+                >
+                  {successMessage}
+                </div>
+              ) : null}
+              <button
+                className="shrink-0 rounded-lg bg-brand-teal px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isPending}
+                onClick={handleSubmit}
+                type="button"
+              >
+                {isPending ? "Agendando..." : "Agendar cita"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

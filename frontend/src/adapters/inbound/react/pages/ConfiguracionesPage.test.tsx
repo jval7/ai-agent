@@ -577,6 +577,9 @@ vitestModule.describe("ConfiguracionesPage", () => {
       // Leave address empty, fill arrival_instructions
       const arrivalInput =
         await testingLibraryReactModule.screen.findByLabelText("Indicaciones de llegada");
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(arrivalInput).not.toBeDisabled();
+      });
       testingLibraryReactModule.fireEvent.change(arrivalInput, {
         target: { value: "Llegar 20 minutos antes" }
       });
@@ -636,6 +639,9 @@ vitestModule.describe("ConfiguracionesPage", () => {
     const addressInput = await testingLibraryReactModule.screen.findByLabelText(
       "Direccion del consultorio"
     );
+    await testingLibraryReactModule.waitFor(() => {
+      vitestModule.expect(addressInput).not.toBeDisabled();
+    });
     testingLibraryReactModule.fireEvent.change(addressInput, {
       target: { value: "Calle 5 # 38-25, Cali" }
     });
