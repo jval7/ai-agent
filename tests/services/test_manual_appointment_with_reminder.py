@@ -17,6 +17,7 @@ import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.google_calendar_dto as google_calendar_dto
 import src.services.dto.manual_appointment_dto as manual_appointment_dto
+import src.services.use_cases.event_description_builder as event_description_builder_mod
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.manual_appointment_service as manual_appointment_service_module
 import src.services.use_cases.reminder_service as reminder_service_module
@@ -118,12 +119,16 @@ def _build_context(
         clock=clock,
     )
 
+    builder = event_description_builder_mod.EventDescriptionBuilder(
+        agent_profile_repository=agent_profile_repo,
+    )
     appointment_svc = manual_appointment_service_module.ManualAppointmentService(
         manual_appointment_repository=manual_repo,
         patient_repository=patient_repo,
         google_calendar_onboarding_service=calendar_svc,
         id_generator=id_gen,
         clock=clock,
+        event_description_builder=builder,
         reminder_service=reminder_svc,
     )
 

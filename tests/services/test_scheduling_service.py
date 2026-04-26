@@ -3,6 +3,7 @@ import datetime
 import pydantic
 import pytest
 
+import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.inmemory.manual_appointment_repository_adapter as manual_appointment_repository_adapter
@@ -10,6 +11,7 @@ import src.adapters.outbound.inmemory.scheduling_repository_adapter as schedulin
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.task_scheduler_adapter as task_scheduler_adapter
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
+import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.domain.entities.manual_appointment as manual_appointment_entity
@@ -20,9 +22,28 @@ import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.services.dto.google_calendar_dto as google_calendar_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.exceptions as service_exceptions
+import src.services.use_cases.event_description_builder as event_description_builder_mod
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.scheduling_service as scheduling_service
 import tests.fakes.fake_adapters as fake_adapters
+
+
+def _build_event_description_builder(
+    store: in_memory_store.InMemoryStore,
+) -> event_description_builder_mod.EventDescriptionBuilder:
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    agent_profile_repo.save(
+        agent_profile_entity.AgentProfile(
+            tenant_id="tenant-1",
+            system_prompt="Eres un asistente.",
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    return event_description_builder_mod.EventDescriptionBuilder(
+        agent_profile_repository=agent_profile_repo
+    )
 
 
 def build_service(
@@ -81,6 +102,7 @@ def build_service(
     )
 
     task_sched = task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
+    builder = _build_event_description_builder(store)
     service = scheduling_service.SchedulingService(
         scheduling_repository=scheduling_repository,
         conversation_repository=conversation_repository,
@@ -88,6 +110,7 @@ def build_service(
         id_generator=id_generator,
         clock=clock,
         task_scheduler=task_sched,
+        event_description_builder=builder,
     )
     return service, scheduling_repository, provider, task_sched
 
@@ -1024,6 +1047,7 @@ def _build_service_with_reminder_deps(
         )
     )
     task_sched = task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
+    builder = _build_event_description_builder(store)
     service = scheduling_service.SchedulingService(
         scheduling_repository=scheduling_repo,
         conversation_repository=conversation_repo,
@@ -1034,6 +1058,7 @@ def _build_service_with_reminder_deps(
         manual_appointment_repository=manual_appt_repo,
         whatsapp_provider=wa_provider,
         whatsapp_connection_repository=wa_connection_repo,
+        event_description_builder=builder,
     )
     return (
         service,

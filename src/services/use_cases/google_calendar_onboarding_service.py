@@ -205,6 +205,7 @@ class GoogleCalendarOnboardingService:
         attendee_emails: list[str],
         with_meet: bool,
         description: str | None = None,
+        location: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         connection = self._get_connected_connection_with_fresh_access_token(tenant_id)
         calendar_id = connection.calendar_id
@@ -227,6 +228,7 @@ class GoogleCalendarOnboardingService:
             with_meet=with_meet,
             conference_request_id=conference_request_id,
             description=description,
+            location=location,
         )
 
     def delete_event(
@@ -258,6 +260,7 @@ class GoogleCalendarOnboardingService:
         summary: str,
         attendee_emails: list[str],
         description: str | None = None,
+        location: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         connection = self._get_connected_connection_with_fresh_access_token(tenant_id)
         calendar_id = connection.calendar_id
@@ -277,6 +280,7 @@ class GoogleCalendarOnboardingService:
             summary=summary,
             attendee_emails=attendee_emails,
             description=description,
+            location=location,
         )
 
     def _finalize_connection(
