@@ -62,11 +62,8 @@ export function BillingDisclosureModal({
               Costos asociados
             </h3>
             <p className="mt-2">
-              Los recordatorios se envían a través de tu cuenta de WhatsApp Business. Meta cobra
-              cada mensaje de plantilla enviado a un paciente que no haya escrito en las últimas 24
-              horas, según las tarifas vigentes para mensajes de tipo <em>UTILITY</em>. La factura
-              llega directamente a la tarjeta que configures en Meta; nosotros no intermediamos el
-              cobro.
+              Meta te cobra cada recordatorio (tarifa <em>UTILITY</em>) directamente a la tarjeta
+              configurada en tu cuenta de WhatsApp Business. Nosotros no intermediamos el cobro.
             </p>
           </section>
 

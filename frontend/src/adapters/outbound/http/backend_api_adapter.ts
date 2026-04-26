@@ -10,7 +10,6 @@ import type * as scheduledReminderModel from "@domain/models/scheduled_reminder"
 import type * as schedulingModel from "@domain/models/scheduling";
 import type * as tenantModel from "@domain/models/tenant";
 import type * as whatsappModel from "@domain/models/whatsapp";
-import type * as whatsappBillingModel from "@domain/models/whatsapp_billing";
 import type * as whatsappTemplateModel from "@domain/models/whatsapp_template";
 import type * as backendApiPort from "@ports/backend_api_port";
 import type * as tokenSessionPort from "@ports/token_session_port";
@@ -104,7 +103,6 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointment_reminder_days_before: number | null;
       appointment_reminder_attendance_template_name: string | null;
       appointment_reminder_payment_template_name: string | null;
-      reminder_billing_test_phone_number: string | null;
       payment_details_text: string | null;
       office_location: {
         address: string;
@@ -118,7 +116,6 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
       appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
       appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name,
-      reminderBillingTestPhoneNumber: raw.reminder_billing_test_phone_number,
       paymentDetailsText: raw.payment_details_text,
       officeLocation:
         raw.office_location !== null && raw.office_location !== undefined
@@ -140,7 +137,6 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointment_reminder_days_before: number | null;
       appointment_reminder_attendance_template_name: string | null;
       appointment_reminder_payment_template_name: string | null;
-      reminder_billing_test_phone_number: string | null;
       payment_details_text: string | null;
       office_location: {
         address: string;
@@ -173,7 +169,6 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
       appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
       appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name,
-      reminderBillingTestPhoneNumber: raw.reminder_billing_test_phone_number,
       paymentDetailsText: raw.payment_details_text,
       officeLocation:
         raw.office_location !== null && raw.office_location !== undefined
@@ -198,6 +193,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         reminder_scheduled_for: string;
         template_name: string;
         status: string;
+        failure_reason: string | null;
         created_at: string;
       }[];
     }>(`/v1/reminders${params}`, { method: "GET", authRequired: true });
@@ -212,9 +208,17 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         reminderScheduledFor: item.reminder_scheduled_for,
         templateName: item.template_name,
         status: item.status as "PENDING" | "SENT" | "FAILED" | "CANCELLED",
+        failureReason: item.failure_reason,
         createdAt: item.created_at
       }))
     };
+  }
+
+  async sendReminderNow(reminderId: string): Promise<void> {
+    await this.request<{ status: string }>(`/v1/reminders/${reminderId}/send-now`, {
+      method: "POST",
+      authRequired: true
+    });
   }
 
   async createEmbeddedSignupSession(
@@ -943,23 +947,6 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       authRequired: true
     });
     return mapOfficialTemplateStatus(raw);
-  }
-
-  async sendBillingPreflight(
-    phoneNumber: string
-  ): Promise<whatsappBillingModel.BillingPreflightResult> {
-    const raw = await this.request<{
-      ok: boolean;
-      recipient_phone_number: string;
-    }>("/v1/whatsapp/billing/preflight", {
-      method: "POST",
-      authRequired: true,
-      body: JSON.stringify({ recipient_phone_number: phoneNumber })
-    });
-    return {
-      ok: raw.ok,
-      recipientPhoneNumber: raw.recipient_phone_number
-    };
   }
 
   async deactivateOfficialTemplate(

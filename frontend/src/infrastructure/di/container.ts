@@ -8,7 +8,6 @@ import * as patientUseCaseModule from "@application/use_cases/patient_use_case";
 import * as reminderUseCaseModule from "@application/use_cases/reminder_use_case";
 import * as schedulingUseCaseModule from "@application/use_cases/scheduling_use_case";
 import * as tenantUseCaseModule from "@application/use_cases/tenant_use_case";
-import * as whatsappBillingUseCaseModule from "@application/use_cases/whatsapp_billing_use_case";
 import * as whatsappOnboardingUseCaseModule from "@application/use_cases/whatsapp_onboarding_use_case";
 import * as whatsappTemplateUseCaseModule from "@application/use_cases/whatsapp_template_use_case";
 import * as backendApiAdapterModule from "@adapters/outbound/http/backend_api_adapter";
@@ -26,7 +25,6 @@ export interface AppContainer {
   blacklistUseCase: blacklistUseCaseModule.BlacklistUseCase;
   agentUseCase: agentUseCaseModule.AgentUseCase;
   whatsappTemplateUseCase: whatsappTemplateUseCaseModule.WhatsappTemplateUseCase;
-  whatsappBillingUseCase: whatsappBillingUseCaseModule.WhatsappBillingUseCase;
   reminderUseCase: reminderUseCaseModule.ReminderUseCase;
   tenantUseCase: tenantUseCaseModule.TenantUseCase;
 }
@@ -53,7 +51,6 @@ export function createAppContainer(): AppContainer {
     blacklistUseCase: new blacklistUseCaseModule.BlacklistUseCase(backendApi),
     agentUseCase: new agentUseCaseModule.AgentUseCase(backendApi),
     whatsappTemplateUseCase: new whatsappTemplateUseCaseModule.WhatsappTemplateUseCase(backendApi),
-    whatsappBillingUseCase: new whatsappBillingUseCaseModule.WhatsappBillingUseCase(backendApi),
     reminderUseCase: new reminderUseCaseModule.ReminderUseCase(backendApi),
     tenantUseCase: new tenantUseCaseModule.TenantUseCase(backendApi)
   };

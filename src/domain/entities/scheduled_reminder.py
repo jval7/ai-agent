@@ -20,6 +20,7 @@ class ScheduledReminder(pydantic.BaseModel):
     sent_at: datetime.datetime | None = None
     failure_reason: str | None = None
     appointment_modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None = None
+    meet_url: str | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 

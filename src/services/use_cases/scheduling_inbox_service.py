@@ -144,6 +144,22 @@ class SchedulingInboxService:
             request_id=request_id,
             input_dto=input_dto,
         )
+
+        # When approve_payment ran the reminder-reply branch (synthetic
+        # SchedulingRequest with source_appointment_id set), the request comes
+        # back already in SESSION_CLOSED — the confirmation message and the
+        # subsession archival are done by payment_confirmation_dispatcher
+        # inside _approve_payment_from_reminder. Skip the bot's own message,
+        # which is built for the booking-time payment flow and would tell the
+        # patient to send their personal data, even though there's nothing
+        # left to schedule.
+        if request.status == "SESSION_CLOSED":
+            return scheduling_dto.PaymentReviewDecisionResponseDTO(
+                status=request.status,
+                outbound_message_id="",
+                assistant_text="",
+            )
+
         conversation = self._conversation_repository.get_conversation_by_id(
             claims.tenant_id,
             conversation_id,

@@ -11,4 +11,8 @@ export class ReminderUseCase {
   listReminders(status?: string): Promise<scheduledReminderModel.ScheduledReminderList> {
     return this.api.listReminders(status);
   }
+
+  sendReminderNow(reminderId: string): Promise<void> {
+    return this.api.sendReminderNow(reminderId);
+  }
 }

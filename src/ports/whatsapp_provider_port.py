@@ -83,18 +83,3 @@ class WhatsappProviderPort(abc.ABC):
         body_parameters: list[str],
     ) -> str:
         raise NotImplementedError
-
-    @abc.abstractmethod
-    def send_hello_world_preflight(
-        self,
-        access_token: str,
-        phone_number_id: str,
-        recipient_phone_e164: str,
-    ) -> str:
-        """Send Meta's pre-approved `hello_world` template as a billing preflight.
-
-        Returns the outbound message id on success. On Meta error 131042 raises
-        `WhatsappBillingNotConfiguredError`. On other Meta errors raises
-        `WhatsappPreflightError` with the parsed `meta_error_code`.
-        """
-        raise NotImplementedError

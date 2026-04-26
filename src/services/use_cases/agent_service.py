@@ -1,4 +1,5 @@
 import src.domain.entities.agent_profile as agent_profile_entity
+import src.domain.whatsapp_template_params as whatsapp_template_params
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.clock_port as clock_port
 import src.services.dto.agent_dto as agent_dto
@@ -20,10 +21,24 @@ def _office_location_dto_to_entity(
 ) -> agent_profile_entity.OfficeLocation | None:
     if dto is None:
         return None
+    # Sanitize fields that travel verbatim into a WhatsApp template parameter
+    # so what the professional sees in the UI matches what gets sent.
+    sanitized_arrival = (
+        whatsapp_template_params.sanitize_template_param(dto.arrival_instructions)
+        if dto.arrival_instructions is not None
+        else None
+    )
     return agent_profile_entity.OfficeLocation(
         address=dto.address,
-        arrival_instructions=dto.arrival_instructions,
+        arrival_instructions=sanitized_arrival or None,
     )
+
+
+def _sanitize_payment_details(value: str | None) -> str | None:
+    if value is None:
+        return None
+    sanitized = whatsapp_template_params.sanitize_template_param(value)
+    return sanitized or None
 
 
 class AgentService:
@@ -107,7 +122,6 @@ class AgentService:
                 appointment_reminder_days_before=None,
                 appointment_reminder_attendance_template_name=None,
                 appointment_reminder_payment_template_name=None,
-                reminder_billing_test_phone_number=None,
                 payment_details_text=None,
                 office_location=None,
             )
@@ -118,7 +132,6 @@ class AgentService:
             appointment_reminder_days_before=agent_profile.appointment_reminder_days_before,
             appointment_reminder_attendance_template_name=agent_profile.appointment_reminder_attendance_template_name,
             appointment_reminder_payment_template_name=agent_profile.appointment_reminder_payment_template_name,
-            reminder_billing_test_phone_number=agent_profile.reminder_billing_test_phone_number,
             payment_details_text=agent_profile.payment_details_text,
             office_location=_office_location_to_dto(agent_profile.office_location),
         )
@@ -133,11 +146,6 @@ class AgentService:
             if existing_profile is not None
             else self._default_system_prompt
         )
-        existing_billing_phone = (
-            existing_profile.reminder_billing_test_phone_number
-            if existing_profile is not None
-            else None
-        )
         agent_profile = agent_profile_entity.AgentProfile(
             tenant_id=tenant_id,
             system_prompt=system_prompt,
@@ -146,8 +154,7 @@ class AgentService:
             appointment_reminder_days_before=update_dto.appointment_reminder_days_before,
             appointment_reminder_attendance_template_name=update_dto.appointment_reminder_attendance_template_name,
             appointment_reminder_payment_template_name=update_dto.appointment_reminder_payment_template_name,
-            reminder_billing_test_phone_number=existing_billing_phone,
-            payment_details_text=update_dto.payment_details_text,
+            payment_details_text=_sanitize_payment_details(update_dto.payment_details_text),
             office_location=_office_location_dto_to_entity(update_dto.office_location),
             updated_at=now_value,
         )
@@ -159,7 +166,6 @@ class AgentService:
             appointment_reminder_days_before=agent_profile.appointment_reminder_days_before,
             appointment_reminder_attendance_template_name=agent_profile.appointment_reminder_attendance_template_name,
             appointment_reminder_payment_template_name=agent_profile.appointment_reminder_payment_template_name,
-            reminder_billing_test_phone_number=agent_profile.reminder_billing_test_phone_number,
             payment_details_text=agent_profile.payment_details_text,
             office_location=_office_location_to_dto(agent_profile.office_location),
         )
