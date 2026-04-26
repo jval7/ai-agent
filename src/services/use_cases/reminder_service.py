@@ -22,6 +22,7 @@ import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.scheduled_reminder_dto as scheduled_reminder_dto
 import src.services.exceptions as service_exceptions
 import src.services.reminder_date_formatter as reminder_date_formatter
+import src.services.use_cases.conversation_provisioning as conversation_provisioning
 
 logger = app_logs.get_logger(__name__)
 
@@ -537,19 +538,20 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         assert self._scheduling_repository is not None
         assert self._conversation_repository is not None
 
-        # Resolve the conversation for this patient.
-        conversation = self._conversation_repository.get_conversation_by_whatsapp_user(
-            tenant_id, reminder.patient_whatsapp_user_id
-        )
-        if conversation is None:
-            logger.warning(
-                "reminder.pre_position.no_conversation",
-                extra={
-                    "reminder_id": reminder.id,
-                    "whatsapp_user_id": reminder.patient_whatsapp_user_id,
-                },
+        # Materialize the (whatsapp_user, conversation) pair if it does not
+        # exist yet. This covers the common case of a manual appointment for a
+        # patient who has never chatted with the bot before: we still want the
+        # bot to have context when the patient replies to the reminder.
+        _whatsapp_user, conversation = (
+            conversation_provisioning.ensure_conversation_for_whatsapp_user(
+                tenant_id=tenant_id,
+                whatsapp_user_id=reminder.patient_whatsapp_user_id,
+                display_name=reminder.patient_name,
+                now_value=now_value,
+                conversation_repository=self._conversation_repository,
+                id_generator=self._id_generator,
             )
-            return
+        )
 
         # Archive (mark CANCELLED) every open scheduling request for this conversation.
         open_requests = self._scheduling_repository.list_requests_by_conversation(

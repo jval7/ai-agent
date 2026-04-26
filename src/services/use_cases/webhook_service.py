@@ -5,7 +5,6 @@ import typing
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
-import src.domain.entities.whatsapp_user as whatsapp_user_entity
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
@@ -30,6 +29,7 @@ import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.llm_dto as llm_dto
 import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
+import src.services.use_cases.conversation_provisioning as conversation_provisioning
 import src.services.use_cases.scheduling_service as scheduling_service_mod
 
 logger = app_logs.get_logger(__name__)
@@ -195,35 +195,16 @@ class WebhookService:
             raise service_exceptions.InvalidStateError("whatsapp connection is missing credentials")
 
         now_value = self._clock.now()
-        whatsapp_user = self._conversation_repository.get_whatsapp_user(
-            tenant_id,
-            event.whatsapp_user_id,
-        )
-        if whatsapp_user is None:
-            whatsapp_user = whatsapp_user_entity.WhatsappUser(
-                id=event.whatsapp_user_id,
-                tenant_id=tenant_id,
-                display_name=event.whatsapp_user_name,
-                created_at=now_value,
-            )
-            self._conversation_repository.save_whatsapp_user(whatsapp_user)
-
-        conversation = self._conversation_repository.get_conversation_by_whatsapp_user(
-            tenant_id,
-            event.whatsapp_user_id,
-        )
-        if conversation is None:
-            conversation = conversation_entity.Conversation(
-                id=self._id_generator.new_id(),
+        _whatsapp_user, conversation = (
+            conversation_provisioning.ensure_conversation_for_whatsapp_user(
                 tenant_id=tenant_id,
                 whatsapp_user_id=event.whatsapp_user_id,
-                started_at=now_value,
-                updated_at=now_value,
-                last_message_preview=None,
-                message_ids=[],
-                control_mode="AI",
+                display_name=event.whatsapp_user_name,
+                now_value=now_value,
+                conversation_repository=self._conversation_repository,
+                id_generator=self._id_generator,
             )
-            self._conversation_repository.save_conversation(conversation)
+        )
 
         if self._conversation_has_provider_message_id(conversation, event.message_id):
             self._mark_event_processed(tenant_id, event.provider_event_id)

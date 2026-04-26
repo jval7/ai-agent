@@ -832,12 +832,16 @@ def test_execute_reminder_archives_existing_open_requests() -> None:
     assert len(new_requests) == 1
 
 
-def test_execute_reminder_skips_pre_position_when_no_conversation() -> None:
-    """If no conversation exists for the patient, pre-positioning is skipped gracefully."""
+def test_execute_reminder_provisions_conversation_when_patient_is_unknown() -> None:
+    """If no conversation exists for the patient, pre-positioning materializes
+    the WhatsappUser + Conversation pair so the bot has context when the
+    patient replies. This is the common path for reminders sent to manual
+    appointments of patients who never chatted before."""
     profile = _build_profile_with_payment_details()
-    service, reminder_repo, scheduling_repo, _conversation_repo, _wa_provider = (
+    service, reminder_repo, scheduling_repo, conversation_repo, _wa_provider = (
         _build_service_with_conversation_repos(
-            ["reminder-1", "new-request-1", "outbound-msg-1"], agent_profile=profile
+            ["reminder-1", "new-conversation-1", "new-request-1", "outbound-msg-1"],
+            agent_profile=profile,
         )
     )
     # No conversation is set up — patient is unknown.
@@ -856,12 +860,20 @@ def test_execute_reminder_skips_pre_position_when_no_conversation() -> None:
     )
     pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
 
-    # Should still send the reminder without raising.
     result = service.execute_reminder("tenant-1", pending[0].id)
-
     assert result["status"] == "sent"
-    # No scheduling request created (no conversation).
-    assert scheduling_repo.list_requests_by_tenant("tenant-1") == []
+
+    conversation = conversation_repo.get_conversation_by_whatsapp_user(
+        "tenant-1", "wa-user-unknown"
+    )
+    assert conversation is not None, "conversation should be auto-created"
+    whatsapp_user = conversation_repo.get_whatsapp_user("tenant-1", "wa-user-unknown")
+    assert whatsapp_user is not None
+    assert whatsapp_user.display_name == "Unknown"
+
+    requests = scheduling_repo.list_requests_by_tenant("tenant-1")
+    assert len(requests) == 1
+    assert requests[0].status == "AWAITING_ATTENDANCE_CONFIRMATION"
 
 
 # ---------------------------------------------------------------------------
