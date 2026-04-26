@@ -1,7 +1,6 @@
 import datetime
 import typing
 
-import src.domain.entities.message as message_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.infra.logs as app_logs
@@ -19,7 +18,9 @@ import src.services.agentic.workflow_engine as workflow_engine
 import src.services.dto.agent_workflow_dto as agent_workflow_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.exceptions as service_exceptions
+import src.services.use_cases.event_description_builder as event_description_builder_mod
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
+import src.services.use_cases.payment_confirmation_dispatcher as payment_confirmation_dispatcher
 import src.services.use_cases.reminder_service as reminder_service_module
 import src.services.use_cases.tag_service as tag_service_module
 
@@ -84,6 +85,7 @@ class SchedulingService:
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
         task_scheduler: task_scheduler_port.TaskSchedulerPort,
+        event_description_builder: event_description_builder_mod.EventDescriptionBuilder,
         auto_close_delay_seconds: int = 3600,
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
         tag_service: tag_service_module.TagService | None = None,
@@ -110,6 +112,7 @@ class SchedulingService:
         self._manual_appointment_repository = manual_appointment_repository
         self._whatsapp_provider = whatsapp_provider
         self._whatsapp_connection_repository = whatsapp_connection_repository
+        self._event_description_builder = event_description_builder
         self._agent_workflow: agent_workflow_port.AgentWorkflowPort
         if agent_workflow is None:
             self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
@@ -713,6 +716,13 @@ class SchedulingService:
             normalized_summary = input_dto.event_summary.strip()
             if not normalized_summary:
                 raise service_exceptions.InvalidStateError("event summary cannot be empty")
+            event_description_result = self._event_description_builder.build(
+                tenant_id=tenant_id,
+                modality=request.appointment_modality,
+                payment_status=request.payment_status,
+            )
+            event_description = event_description_result.description
+            event_location = event_description_result.location
             event = self._google_calendar_onboarding_service.create_event(
                 tenant_id=tenant_id,
                 start_at=selected_slot.start_at,
@@ -720,7 +730,8 @@ class SchedulingService:
                 summary=normalized_summary,
                 attendee_emails=input_dto.attendee_emails,
                 with_meet=with_meet,
-                description=input_dto.description,
+                description=event_description,
+                location=event_location,
             )
         except service_exceptions.ExternalProviderError as error:
             if self._is_google_conflict_error(str(error)):
@@ -752,6 +763,7 @@ class SchedulingService:
                 appointment_start_at=selected_slot.start_at,
                 payment_status="PAID",
                 appointment_modality=request.appointment_modality,
+                meet_url=event.meet_url,
             )
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="BOOKED",
@@ -1027,58 +1039,33 @@ class SchedulingService:
 
         # 2. Close the synthetic request.
         request.set_status("SESSION_CLOSED", now_value)
-        self._archive_conversation_subsession_manual_close(
-            tenant_id=tenant_id,
-            conversation_id=request.conversation_id,
-            now_value=now_value,
-        )
 
-        # 3. Send freeform confirmation to the patient.
+        # 3. Send freeform confirmation + archive subsession (if chat is open
+        # within Meta's 24h window). The dispatcher itself handles the
+        # archive_manual_close + delete_messages so we don't need to call
+        # _archive_conversation_subsession_manual_close beforehand.
         if self._whatsapp_provider is not None and self._whatsapp_connection_repository is not None:
-            connection = self._whatsapp_connection_repository.get_by_tenant_id(tenant_id)
-            if (
-                connection is None
-                or connection.access_token is None
-                or connection.phone_number_id is None
-            ):
-                logger.warning(
-                    "scheduling.approve_reminder_payment.whatsapp_not_connected",
-                    extra={"tenant_id": tenant_id},
-                )
-            else:
-                patient_first_name = request.patient_first_name or "Paciente"
-                confirmation_text = (
-                    f"¡Listo {patient_first_name}! Tu pago fue confirmado ✅ "
-                    "Te esperamos para tu cita. 🙌"
-                )
-                try:
-                    provider_message_id = self._whatsapp_provider.send_text_message(
-                        access_token=connection.access_token,
-                        phone_number_id=connection.phone_number_id,
-                        whatsapp_user_id=request.whatsapp_user_id,
-                        text=confirmation_text,
-                    )
-                    # 4. Persist the outbound message.
-                    outbound_msg = message_entity.Message(
-                        id=self._id_generator.new_id(),
-                        conversation_id=request.conversation_id,
-                        tenant_id=tenant_id,
-                        direction="OUTBOUND",
-                        role="assistant",
-                        content=confirmation_text,
-                        provider_message_id=provider_message_id,
-                        created_at=now_value,
-                    )
-                    self._conversation_repository.save_message(outbound_msg)
-                except service_exceptions.ExternalProviderError:
-                    logger.warning(
-                        "scheduling.approve_reminder_payment.whatsapp_send_failed",
-                        extra={
-                            "tenant_id": tenant_id,
-                            "request_id": request.id,
-                        },
-                        exc_info=True,
-                    )
+            payment_confirmation_dispatcher.confirm_payment_in_chat_if_open(
+                tenant_id=tenant_id,
+                whatsapp_user_id=request.whatsapp_user_id,
+                patient_first_name=request.patient_first_name,
+                source_appointment_id=request.source_appointment_id,
+                now_value=now_value,
+                conversation_repository=self._conversation_repository,
+                whatsapp_connection_repository=self._whatsapp_connection_repository,
+                whatsapp_provider=self._whatsapp_provider,
+                id_generator=self._id_generator,
+                clock=self._clock,
+                scheduling_repository=self._scheduling_repository,
+            )
+        else:
+            # No whatsapp wiring: still archive subsession so the synthetic
+            # request leaves the active list.
+            self._archive_conversation_subsession_manual_close(
+                tenant_id=tenant_id,
+                conversation_id=request.conversation_id,
+                now_value=now_value,
+            )
 
         logger.info(
             "scheduling.approve_reminder_payment.done",
@@ -1159,6 +1146,7 @@ class SchedulingService:
                 appointment_start_at=input_dto.start_at,
                 payment_status="PAID",
                 appointment_modality=request.appointment_modality,
+                meet_url=updated_event.meet_url,
             )
         logger.info(
             "scheduling.booked_slot_rescheduled",

@@ -47,6 +47,7 @@ class GoogleCalendarProviderPort(abc.ABC):
         with_meet: bool,
         conference_request_id: str,
         description: str | None = None,
+        location: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         raise NotImplementedError
 
@@ -71,5 +72,6 @@ class GoogleCalendarProviderPort(abc.ABC):
         summary: str,
         attendee_emails: list[str],
         description: str | None = None,
+        location: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         raise NotImplementedError

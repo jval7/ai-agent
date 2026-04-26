@@ -2,6 +2,7 @@ import typing
 
 import pydantic
 
+import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.patient as patient_entity
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.logs as app_logs
@@ -67,6 +68,7 @@ class ToolCallingOrchestrator:
         tool_execution_context: tool_handler_base.ToolExecutionContext,
         known_patient: patient_entity.Patient | None,
         runtime_context_resolver: RuntimeContextResolver,
+        agent_profile: agent_profile_entity.AgentProfile | None = None,
     ) -> OrchestratorResult:
         trace_inputs = {
             "tenant_id": tool_execution_context.tenant_id,
@@ -95,6 +97,7 @@ class ToolCallingOrchestrator:
                     runtime_prompt=self._prompt_builder.build_runtime_system_prompt(
                         runtime_context=runtime_context,
                         known_patient=current_known_patient,
+                        agent_profile=agent_profile,
                     ),
                 )
                 tool_definitions = self._tool_definition_registry.build_tool_definitions(

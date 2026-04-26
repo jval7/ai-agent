@@ -108,6 +108,10 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async sendReminderNow(_reminderId: string): Promise<void> {
+    throw new Error("not used");
+  }
+
   async createEmbeddedSignupSession(): Promise<whatsappModel.EmbeddedSignupSession> {
     throw new Error("not used");
   }
@@ -334,12 +338,6 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     _kind: whatsappTemplateModel.OfficialReminderKind
   ): Promise<void> {
     return;
-  }
-
-  async sendBillingPreflight(
-    _phoneNumber: string
-  ): Promise<{ ok: boolean; recipientPhoneNumber: string }> {
-    throw new Error("not used");
   }
 }
 

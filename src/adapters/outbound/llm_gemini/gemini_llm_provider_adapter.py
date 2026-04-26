@@ -183,10 +183,15 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
 
     def _get_client(self) -> genai.Client:
         if self._client is None:
+            # Without an explicit timeout the genai SDK can hang indefinitely
+            # if Vertex AI never responds, blocking the webhook handler until
+            # Cloud Run kills it at 5 min with 504. Cap each request at 60s
+            # so the tenacity retry above can recover instead.
             self._client = genai.Client(
                 vertexai=True,
                 project=self._project_id,
                 location=self._location,
+                http_options=genai_types.HttpOptions(timeout=60_000),
             )
         return self._client
 

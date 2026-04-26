@@ -3,6 +3,11 @@ export interface SystemPrompt {
   systemPrompt: string;
 }
 
+export interface OfficeLocation {
+  address: string;
+  arrivalInstructions: string | null;
+}
+
 export interface AgentSettings {
   tenantId: string;
   messageDebounceDelaySeconds: number;
@@ -10,8 +15,8 @@ export interface AgentSettings {
   appointmentReminderDaysBefore: number | null;
   appointmentReminderAttendanceTemplateName: string | null;
   appointmentReminderPaymentTemplateName: string | null;
-  reminderBillingTestPhoneNumber: string | null;
   paymentDetailsText: string | null;
+  officeLocation: OfficeLocation | null;
 }
 
 export interface UpdateAgentSettingsInput {
@@ -21,4 +26,5 @@ export interface UpdateAgentSettingsInput {
   appointmentReminderAttendanceTemplateName: string | null;
   appointmentReminderPaymentTemplateName: string | null;
   paymentDetailsText: string | null;
+  officeLocation: OfficeLocation | null;
 }
