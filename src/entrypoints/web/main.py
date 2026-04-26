@@ -9,6 +9,7 @@ import src.entrypoints.web.routers.auth_router as auth_router
 import src.entrypoints.web.routers.blacklist_router as blacklist_router
 import src.entrypoints.web.routers.conversation_router as conversation_router
 import src.entrypoints.web.routers.dev_router as dev_router
+import src.entrypoints.web.routers.events_router as events_router
 import src.entrypoints.web.routers.google_calendar_router as google_calendar_router
 import src.entrypoints.web.routers.health_router as health_router
 import src.entrypoints.web.routers.internal_router as internal_router
@@ -62,6 +63,7 @@ def create_app() -> fastapi.FastAPI:
     app.include_router(patient_router.router)
     app.include_router(manual_appointment_router.router)
     app.include_router(reminder_router.router)
+    app.include_router(events_router.router)
     app.include_router(scheduling_router.router)
     app.include_router(internal_router.router)
     app.include_router(settings_router.router)

@@ -96,7 +96,7 @@ export function InboxPage() {
   const conversationsQuery = reactQueryModule.useQuery({
     queryKey: conversationsQueryKey,
     queryFn: () => appContainer.conversationUseCase.listConversations(),
-    refetchInterval: 5_000
+    refetchInterval: 60_000
   });
 
   const blacklistQuery = reactQueryModule.useQuery({
@@ -112,7 +112,7 @@ export function InboxPage() {
   const schedulingRequestsQuery = reactQueryModule.useQuery({
     queryKey: schedulingRequestsQueryKey,
     queryFn: () => appContainer.schedulingUseCase.listRequests(),
-    refetchInterval: 5_000
+    refetchInterval: 60_000
   });
 
   const googleCalendarConnectionQuery = reactQueryModule.useQuery({
@@ -272,7 +272,7 @@ export function InboxPage() {
     queryKey: ["conversation-messages", selectedConversationId],
     enabled: selectedConversationId !== null,
     queryFn: () => appContainer.conversationUseCase.listMessages(selectedConversationId ?? ""),
-    refetchInterval: 3_000
+    refetchInterval: 60_000
   });
 
   const controlModeMutation = reactQueryModule.useMutation({

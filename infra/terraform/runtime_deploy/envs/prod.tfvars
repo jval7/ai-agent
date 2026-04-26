@@ -5,6 +5,6 @@ artifact_repository_id = "ai-agent-backend"
 min_instances          = 1
 max_instances          = 2
 container_concurrency  = 40
-timeout_seconds        = 300
+timeout_seconds        = 3600
 cpu                    = "1"
 memory                 = "512Mi"
