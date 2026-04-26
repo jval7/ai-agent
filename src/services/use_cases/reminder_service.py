@@ -1,4 +1,5 @@
 import datetime
+import re
 import typing
 import zoneinfo
 
@@ -210,7 +211,11 @@ class ReminderService(reminder_service_port.ReminderServicePort):
                     extra={"reminder_id": reminder_id, "tenant_id": tenant_id},
                 )
                 return {"status": "skipped", "reason": "payment_details_missing"}
-            body_parameters = [reminder.patient_name, natural_date, payment_details]
+            body_parameters = [
+                reminder.patient_name,
+                natural_date,
+                _sanitize_template_param(payment_details),
+            ]
         else:
             # Legacy or custom template: fall back to the previous 2-parameter shape
             # so pre-migration reminders don't explode.
@@ -677,6 +682,20 @@ def _render_template_body(body_parameters: list[str]) -> str:
     context when the patient replies to the reminder.
     """
     return " | ".join(body_parameters)
+
+
+def _sanitize_template_param(value: str) -> str:
+    """Make a string safe to send as a WhatsApp template body parameter.
+
+    Meta rejects template parameters containing newline/tab characters or runs
+    of more than 4 consecutive spaces (error 132018). Convert any newline or
+    tab into a visible separator and collapse long whitespace runs so the
+    professional can still type multi-line text in the UI without breaking
+    the send.
+    """
+    no_breaks = re.sub(r"[\n\t\r]+", " · ", value)
+    collapsed = re.sub(r" {4,}", "   ", no_breaks)
+    return collapsed.strip()
 
 
 def _format_modality_text(

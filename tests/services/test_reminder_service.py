@@ -566,7 +566,11 @@ def test_execute_reminder_payment_injects_payment_details_from_profile() -> None
     body = wa_provider.sent_template_body_parameters[0]
     assert sent["template_name"] == _PAYMENT_CANONICAL_NAME
     assert body[0] == "Sofía"
-    assert body[2] == "Nequi 300 111 2222\nBancolombia ahorros 9999-8888"
+    # Newlines are sanitized to a visible separator so Meta does not reject
+    # the template (error 132018: param text cannot have new-line/tab).
+    assert body[2] == "Nequi 300 111 2222 · Bancolombia ahorros 9999-8888"
+    assert "\n" not in body[2]
+    assert "\t" not in body[2]
 
 
 def test_execute_reminder_payment_fails_when_details_missing() -> None:
