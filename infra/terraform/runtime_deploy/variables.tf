@@ -77,9 +77,9 @@ variable "container_concurrency" {
 }
 
 variable "timeout_seconds" {
-  description = "Request timeout in seconds."
+  description = "Request timeout in seconds. SSE streams need this high (max 3600)."
   type        = number
-  default     = 300
+  default     = 3600
 }
 
 variable "cpu" {

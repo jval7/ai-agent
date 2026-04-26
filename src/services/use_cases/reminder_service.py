@@ -2,10 +2,12 @@ import datetime
 import typing
 import zoneinfo
 
+import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.scheduled_reminder as scheduled_reminder_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.official_reminder_templates as official_reminder_templates
+import src.domain.whatsapp_template_params as whatsapp_template_params
 import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.clock_port as clock_port
@@ -20,6 +22,7 @@ import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.scheduled_reminder_dto as scheduled_reminder_dto
 import src.services.exceptions as service_exceptions
 import src.services.reminder_date_formatter as reminder_date_formatter
+import src.services.use_cases.conversation_provisioning as conversation_provisioning
 
 logger = app_logs.get_logger(__name__)
 
@@ -70,6 +73,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         appointment_start_at: datetime.datetime,
         payment_status: typing.Literal["PAID", "PENDING"],
         appointment_modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None = None,
+        meet_url: str | None = None,
     ) -> None:
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
         if agent_profile is None or not agent_profile.appointment_reminder_enabled:
@@ -124,6 +128,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             template_name=template_name,
             template_language=template_language,
             appointment_modality=appointment_modality,
+            meet_url=meet_url,
             status="PENDING",
             created_at=now_value,
             updated_at=now_value,
@@ -195,8 +200,16 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         template_kind = official_reminder_templates.by_name(reminder.template_name)
 
         if template_kind == "ATTENDANCE":
-            modality_text = _format_modality_text(reminder.appointment_modality)
-            body_parameters = [reminder.patient_name, natural_date, modality_text]
+            modality_text = _build_attendance_modality_text(
+                modality=reminder.appointment_modality,
+                meet_url=reminder.meet_url,
+                office_location=agent_profile.office_location,
+            )
+            body_parameters = [
+                reminder.patient_name,
+                natural_date,
+                whatsapp_template_params.sanitize_template_param(modality_text),
+            ]
         elif template_kind == "PAYMENT":
             payment_details = (
                 (agent_profile.payment_details_text or "").strip()
@@ -210,7 +223,11 @@ class ReminderService(reminder_service_port.ReminderServicePort):
                     extra={"reminder_id": reminder_id, "tenant_id": tenant_id},
                 )
                 return {"status": "skipped", "reason": "payment_details_missing"}
-            body_parameters = [reminder.patient_name, natural_date, payment_details]
+            body_parameters = [
+                reminder.patient_name,
+                natural_date,
+                whatsapp_template_params.sanitize_template_param(payment_details),
+            ]
         else:
             # Legacy or custom template: fall back to the previous 2-parameter shape
             # so pre-migration reminders don't explode.
@@ -471,6 +488,39 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             items=[self._to_dto(item) for item in sorted_reminders]
         )
 
+    def send_reminder_now(self, tenant_id: str, reminder_id: str) -> dict[str, str]:
+        reminder = self._scheduled_reminder_repository.get_by_id(tenant_id, reminder_id)
+        if reminder is None:
+            raise service_exceptions.EntityNotFoundError("scheduled reminder not found")
+        # Allow PENDING (manual early send) and FAILED (retry after a previous
+        # failure). For FAILED, reset to PENDING so execute_reminder accepts it
+        # and the previous failure_reason is cleared before re-attempting.
+        if reminder.status not in ("PENDING", "FAILED"):
+            raise service_exceptions.InvalidStateError(
+                f"reminder is not pending or failed (status={reminder.status})"
+            )
+
+        if reminder.status == "FAILED":
+            reminder.status = "PENDING"
+            reminder.failure_reason = None
+            reminder.updated_at = self._clock.now()
+            self._scheduled_reminder_repository.save(reminder)
+
+        if reminder.cloud_task_name is not None:
+            try:
+                self._task_scheduler.cancel_task(reminder.cloud_task_name)
+            except service_exceptions.ExternalProviderError:
+                logger.warning(
+                    "reminder.manual_send.cancel_task_failed",
+                    extra={
+                        "reminder_id": reminder.id,
+                        "cloud_task_name": reminder.cloud_task_name,
+                    },
+                    exc_info=True,
+                )
+
+        return self.execute_reminder(tenant_id, reminder_id)
+
     def _pre_position_conversation_state(
         self,
         tenant_id: str,
@@ -488,19 +538,20 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         assert self._scheduling_repository is not None
         assert self._conversation_repository is not None
 
-        # Resolve the conversation for this patient.
-        conversation = self._conversation_repository.get_conversation_by_whatsapp_user(
-            tenant_id, reminder.patient_whatsapp_user_id
-        )
-        if conversation is None:
-            logger.warning(
-                "reminder.pre_position.no_conversation",
-                extra={
-                    "reminder_id": reminder.id,
-                    "whatsapp_user_id": reminder.patient_whatsapp_user_id,
-                },
+        # Materialize the (whatsapp_user, conversation) pair if it does not
+        # exist yet. This covers the common case of a manual appointment for a
+        # patient who has never chatted with the bot before: we still want the
+        # bot to have context when the patient replies to the reminder.
+        _whatsapp_user, conversation = (
+            conversation_provisioning.ensure_conversation_for_whatsapp_user(
+                tenant_id=tenant_id,
+                whatsapp_user_id=reminder.patient_whatsapp_user_id,
+                display_name=reminder.patient_name,
+                now_value=now_value,
+                conversation_repository=self._conversation_repository,
+                id_generator=self._id_generator,
             )
-            return
+        )
 
         # Archive (mark CANCELLED) every open scheduling request for this conversation.
         open_requests = self._scheduling_repository.list_requests_by_conversation(
@@ -632,6 +683,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             reminder_scheduled_for=reminder.reminder_scheduled_for,
             template_name=reminder.template_name,
             status=reminder.status,
+            failure_reason=reminder.failure_reason,
             created_at=reminder.created_at,
         )
 
@@ -645,16 +697,26 @@ def _render_template_body(body_parameters: list[str]) -> str:
     return " | ".join(body_parameters)
 
 
-def _format_modality_text(
+def _build_attendance_modality_text(
     modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None,
+    meet_url: str | None,
+    office_location: agent_profile_entity.OfficeLocation | None,
 ) -> str:
-    """Render the modality placeholder for the ATTENDANCE template.
+    """Render the {{3}} placeholder for the ATTENDANCE template.
 
-    Defaults to ``"presencial"`` when the modality is unknown, which is the
-    safer fallback: we avoid promising a Meet link that may not exist.
+    Includes the Meet link when virtual, or the office address and arrival
+    instructions when presencial. Falls back to a plain modality label when
+    the corresponding details are missing so the template can still be sent.
     """
     if modality == "VIRTUAL":
+        if meet_url:
+            return f"virtual por Google Meet (link: {meet_url})"
         return "virtual por Google Meet"
+    if modality == "PRESENCIAL" and office_location is not None:
+        parts = [f"presencial. Dirección: {office_location.address}"]
+        if office_location.arrival_instructions:
+            parts.append(office_location.arrival_instructions)
+        return ". ".join(parts)
     return "presencial"
 
 

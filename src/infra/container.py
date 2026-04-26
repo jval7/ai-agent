@@ -56,6 +56,7 @@ import src.services.use_cases.blacklist_service as blacklist_service
 import src.services.use_cases.conversation_control_service as conversation_control_service
 import src.services.use_cases.conversation_query_service as conversation_query_service
 import src.services.use_cases.event_description_builder as event_description_builder
+import src.services.use_cases.event_stream_service as event_stream_service
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.manual_appointment_service as manual_appointment_service
 import src.services.use_cases.memory_admin_service as memory_admin_service
@@ -67,7 +68,6 @@ import src.services.use_cases.scheduling_service as scheduling_service
 import src.services.use_cases.tag_service as tag_service
 import src.services.use_cases.tenant_profile_service as tenant_profile_service
 import src.services.use_cases.webhook_service as webhook_service
-import src.services.use_cases.whatsapp_billing_service as whatsapp_billing_service
 import src.services.use_cases.whatsapp_onboarding_service as whatsapp_onboarding_service
 import src.services.use_cases.whatsapp_template_service as whatsapp_template_service
 
@@ -269,11 +269,11 @@ class AppContainer:
             clock=self.clock_adapter,
             reminder_service=self.reminder_service,
         )
-        self.whatsapp_billing_service = whatsapp_billing_service.WhatsappBillingService(
-            whatsapp_provider=self.whatsapp_provider_adapter,
-            whatsapp_connection_repository=self.whatsapp_connection_repository,
+        self.event_description_builder = event_description_builder.EventDescriptionBuilder(
             agent_profile_repository=self.agent_profile_repository,
-            clock=self.clock_adapter,
+        )
+        self.event_description_builder = event_description_builder.EventDescriptionBuilder(
+            agent_profile_repository=self.agent_profile_repository,
         )
         self.event_description_builder = event_description_builder.EventDescriptionBuilder(
             agent_profile_repository=self.agent_profile_repository,
@@ -316,6 +316,10 @@ class AppContainer:
             clock=self.clock_adapter,
             reminder_service=self.reminder_service,
             event_description_builder=self.event_description_builder,
+            conversation_repository=self.conversation_repository,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
+            whatsapp_provider=self.whatsapp_provider_adapter,
+            scheduling_repository=self.scheduling_repository,
         )
 
         self.patient_profile_resolver = patient_profile_resolver.PatientProfileResolver(
@@ -427,6 +431,9 @@ class AppContainer:
         self.onboarding_status_service = onboarding_status_service.OnboardingStatusService(
             whatsapp_onboarding_service=self.whatsapp_onboarding_service,
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
+        )
+        self.event_stream_service = event_stream_service.EventStreamService(
+            firestore_client=self.firestore_client,
         )
         self.patient_query_service = patient_query_service.PatientQueryService(
             patient_repository=self.patient_repository,

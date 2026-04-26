@@ -13,6 +13,7 @@ class ScheduledReminderDTO(pydantic.BaseModel):
     reminder_scheduled_for: datetime.datetime
     template_name: str
     status: str
+    failure_reason: str | None = None
     created_at: datetime.datetime
 
 

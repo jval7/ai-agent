@@ -5,7 +5,6 @@ import * as reactRouterDomModule from "react-router-dom";
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as billingDisclosureModalModule from "@adapters/inbound/react/components/BillingDisclosureModal";
-import * as billingPreflightModalModule from "@adapters/inbound/react/components/BillingPreflightModal";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
@@ -167,9 +166,7 @@ export function ConfiguracionesPage() {
   const [paymentDetailsText, setPaymentDetailsText] = reactModule.useState("");
   const [officeAddress, setOfficeAddress] = reactModule.useState("");
   const [officeArrivalInstructions, setOfficeArrivalInstructions] = reactModule.useState("");
-  const [activationStep, setActivationStep] = reactModule.useState<
-    "idle" | "disclosure" | "preflight"
-  >("idle");
+  const [activationStep, setActivationStep] = reactModule.useState<"idle" | "disclosure">("idle");
 
   reactModule.useEffect(() => {
     if (settingsQuery.data !== undefined) {
@@ -348,6 +345,13 @@ export function ConfiguracionesPage() {
     officeSettingsMutation.error,
     settingsQuery.error
   ]);
+
+  const savedOfficeAddress = settingsQuery.data?.officeLocation?.address ?? "";
+  const savedOfficeArrivalInstructions =
+    settingsQuery.data?.officeLocation?.arrivalInstructions ?? "";
+  const isOfficeDirty =
+    officeAddress.trim() !== savedOfficeAddress.trim() ||
+    officeArrivalInstructions.trim() !== savedOfficeArrivalInstructions.trim();
 
   // --- Tenant profile ---
   const profileQuery = reactQueryModule.useQuery({
@@ -591,7 +595,9 @@ export function ConfiguracionesPage() {
             <div className="mt-6 flex justify-end">
               <button
                 className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={officeSettingsMutation.isPending || settingsQuery.isLoading}
+                disabled={
+                  officeSettingsMutation.isPending || settingsQuery.isLoading || !isOfficeDirty
+                }
                 onClick={() => {
                   officeSettingsMutation.mutate();
                 }}
@@ -881,16 +887,6 @@ export function ConfiguracionesPage() {
                 setActivationStep("idle");
               }}
               onContinue={() => {
-                setActivationStep("preflight");
-              }}
-            />
-            <billingPreflightModalModule.BillingPreflightModal
-              defaultPhoneNumber={settingsQuery.data?.reminderBillingTestPhoneNumber ?? ""}
-              isOpen={activationStep === "preflight"}
-              onCancel={() => {
-                setActivationStep("idle");
-              }}
-              onSuccess={() => {
                 setActivationStep("idle");
                 activateAllMutation.mutate();
               }}
