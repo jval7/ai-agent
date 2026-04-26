@@ -4,15 +4,19 @@ import src.domain.entities.manual_appointment as manual_appointment_entity
 import src.domain.entities.patient as patient_entity
 import src.infra.logs as app_logs
 import src.ports.clock_port as clock_port
+import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.manual_appointment_repository_port as manual_appointment_repository_port
 import src.ports.patient_repository_port as patient_repository_port
+import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
+import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.constants as service_constants
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.manual_appointment_dto as manual_appointment_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.event_description_builder as event_description_builder_mod
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
+import src.services.use_cases.payment_confirmation_dispatcher as payment_confirmation_dispatcher
 import src.services.use_cases.reminder_service as reminder_service_module
 
 logger = app_logs.get_logger(__name__)
@@ -32,6 +36,13 @@ class ManualAppointmentService:
         clock: clock_port.ClockPort,
         event_description_builder: event_description_builder_mod.EventDescriptionBuilder,
         reminder_service: reminder_service_module.ReminderService | None = None,
+        conversation_repository: (
+            conversation_repository_port.ConversationRepositoryPort | None
+        ) = None,
+        whatsapp_connection_repository: (
+            whatsapp_connection_repository_port.WhatsappConnectionRepositoryPort | None
+        ) = None,
+        whatsapp_provider: whatsapp_provider_port.WhatsappProviderPort | None = None,
     ) -> None:
         self._manual_appointment_repository = manual_appointment_repository
         self._patient_repository = patient_repository
@@ -40,6 +51,9 @@ class ManualAppointmentService:
         self._clock = clock
         self._reminder_service = reminder_service
         self._event_description_builder = event_description_builder
+        self._conversation_repository = conversation_repository
+        self._whatsapp_connection_repository = whatsapp_connection_repository
+        self._whatsapp_provider = whatsapp_provider
 
     def list_appointments(
         self,
@@ -310,18 +324,36 @@ class ManualAppointmentService:
         appointment.updated_at = now_value
         self._manual_appointment_repository.save(appointment)
 
-        # If payment transitioned PENDING → PAID, swap the reminder template.
-        if (
-            previous_payment_status == "PENDING"
-            and input_dto.payment_status == "PAID"
-            and self._reminder_service is not None
-        ):
-            self._reminder_service.swap_template_for_source(
-                tenant_id=claims.tenant_id,
-                source_type="MANUAL_APPOINTMENT",
-                source_id=appointment.id,
-                new_kind="ATTENDANCE",
-            )
+        # If payment transitioned PENDING → PAID, swap the reminder template
+        # and notify the patient (if their chat is open within Meta's 24h
+        # window) so the UX matches the post-reminder approval path.
+        if previous_payment_status == "PENDING" and input_dto.payment_status == "PAID":
+            if self._reminder_service is not None:
+                self._reminder_service.swap_template_for_source(
+                    tenant_id=claims.tenant_id,
+                    source_type="MANUAL_APPOINTMENT",
+                    source_id=appointment.id,
+                    new_kind="ATTENDANCE",
+                )
+            if (
+                self._conversation_repository is not None
+                and self._whatsapp_connection_repository is not None
+                and self._whatsapp_provider is not None
+            ):
+                patient = self._patient_repository.get_by_whatsapp_user(
+                    claims.tenant_id, appointment.patient_whatsapp_user_id
+                )
+                payment_confirmation_dispatcher.confirm_payment_in_chat_if_open(
+                    tenant_id=claims.tenant_id,
+                    whatsapp_user_id=appointment.patient_whatsapp_user_id,
+                    patient_first_name=patient.first_name if patient is not None else None,
+                    now_value=now_value,
+                    conversation_repository=self._conversation_repository,
+                    whatsapp_connection_repository=self._whatsapp_connection_repository,
+                    whatsapp_provider=self._whatsapp_provider,
+                    id_generator=self._id_generator,
+                    clock=self._clock,
+                )
 
         logger.info(
             "manual_appointment.payment_updated",

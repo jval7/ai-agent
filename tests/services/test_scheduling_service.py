@@ -1070,6 +1070,27 @@ def _build_service_with_reminder_deps(
     )
 
 
+def _seed_recent_patient_inbound(
+    conversation_repo: conversation_repository_adapter.InMemoryConversationRepositoryAdapter,
+    conversation_id: str = "conv-1",
+    tenant_id: str = "tenant-1",
+) -> None:
+    """Persist a recent INBOUND so the 24h freeform window in
+    payment_confirmation_dispatcher accepts the send."""
+    conversation_repo.save_message(
+        message_entity.Message(
+            id="seed-inbound-1",
+            conversation_id=conversation_id,
+            tenant_id=tenant_id,
+            direction="INBOUND",
+            role="user",
+            content="ya pagué",
+            provider_message_id="prov-inbound-1",
+            created_at=_NOW,
+        )
+    )
+
+
 def _seed_payment_reminder_request(
     scheduling_repo: scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
     source_appointment_id: str,
@@ -1105,9 +1126,10 @@ def _seed_payment_reminder_request(
 def test_approve_payment_from_reminder_marks_manual_appointment_paid_and_closes_session() -> None:
     """Approving a reminder-reply request marks the ManualAppointment PAID and closes the session."""
     store = in_memory_store.InMemoryStore()
-    service, scheduling_repo, manual_appt_repo, _, wa_provider, _ = (
+    service, scheduling_repo, manual_appt_repo, _, wa_provider, conversation_repo = (
         _build_service_with_reminder_deps(["msg-id-1"], store)
     )
+    _seed_recent_patient_inbound(conversation_repo)
 
     # Create the source ManualAppointment.
     appt_id = "manual-appt-1"
@@ -1164,9 +1186,10 @@ def test_approve_payment_from_reminder_marks_manual_appointment_paid_and_closes_
 def test_approve_payment_from_reminder_marks_scheduling_request_paid() -> None:
     """Approving a reminder-reply request marks the source SchedulingRequest PAID."""
     store = in_memory_store.InMemoryStore()
-    service, scheduling_repo, _, _, wa_provider, _ = _build_service_with_reminder_deps(
-        ["msg-id-1"], store
+    service, scheduling_repo, _, _, wa_provider, conversation_repo = (
+        _build_service_with_reminder_deps(["msg-id-1"], store)
     )
+    _seed_recent_patient_inbound(conversation_repo)
 
     # Create the source SchedulingRequest (BOOKED).
     source_req = scheduling_request_entity.SchedulingRequest(
@@ -1224,9 +1247,10 @@ def test_approve_payment_from_reminder_marks_scheduling_request_paid() -> None:
 def test_approve_payment_from_reminder_handles_missing_source_gracefully() -> None:
     """If the source appointment is not found, the session is still closed and WA message sent."""
     store = in_memory_store.InMemoryStore()
-    service, scheduling_repo, _, _, wa_provider, _ = _build_service_with_reminder_deps(
-        ["msg-id-1"], store
+    service, scheduling_repo, _, _, wa_provider, conversation_repo = (
+        _build_service_with_reminder_deps(["msg-id-1"], store)
     )
+    _seed_recent_patient_inbound(conversation_repo)
 
     # Seed the synthetic request pointing to a non-existent source.
     _seed_payment_reminder_request(

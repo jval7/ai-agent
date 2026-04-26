@@ -309,6 +309,9 @@ class AppContainer:
             clock=self.clock_adapter,
             reminder_service=self.reminder_service,
             event_description_builder=self.event_description_builder,
+            conversation_repository=self.conversation_repository,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
+            whatsapp_provider=self.whatsapp_provider_adapter,
         )
 
         self.patient_profile_resolver = patient_profile_resolver.PatientProfileResolver(
