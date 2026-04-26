@@ -166,19 +166,17 @@ export function InboxPage() {
   const [fabOpen, setFabOpen] = reactModule.useState(false);
   const [conversationTab, setConversationTab] = reactModule.useState<"ACTIVE" | "ENDED">("ACTIVE");
 
+  // A conversation is "Terminada" only when its active session was archived
+  // (no active messages). The session-closed TAG and a SESSION_CLOSED
+  // SchedulingRequest can linger from a previous round even though the
+  // patient has already started a new chat — we used to misclassify those
+  // as ended. The active-session signal (last_message_preview cleared on
+  // archive) is the source of truth.
   const isConversationEnded = reactModule.useCallback(
     (conversation: conversationModel.ConversationSummary): boolean => {
-      const hasSessionClosedTag = conversation.tags.some((tag) => tag.slug === "session-closed");
-      if (hasSessionClosedTag) {
-        return true;
-      }
-      const request = latestRequestByConversationId.get(conversation.conversationId);
-      if (request?.status === "SESSION_CLOSED") {
-        return true;
-      }
-      return false;
+      return conversation.lastMessagePreview === null;
     },
-    [latestRequestByConversationId]
+    []
   );
 
   const filteredConversations = reactModule.useMemo(() => {
