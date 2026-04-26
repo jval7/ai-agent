@@ -15,3 +15,15 @@ def list_reminders(
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> scheduled_reminder_dto.ScheduledReminderListResponseDTO:
     return container.reminder_service.list_reminders(claims.tenant_id, status)
+
+
+@router.post("/{reminder_id}/send-now")
+def send_reminder_now(
+    reminder_id: str,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> dict[str, str]:
+    return container.reminder_service.send_reminder_now(
+        tenant_id=claims.tenant_id,
+        reminder_id=reminder_id,
+    )

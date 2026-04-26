@@ -41,7 +41,7 @@ vitestModule.describe("BillingDisclosureModal", () => {
       .expect(testingLibraryReactModule.screen.getByText(/Antes de activar los recordatorios/i))
       .toBeTruthy();
     vitestModule
-      .expect(testingLibraryReactModule.screen.getByText(/Meta cobra cada mensaje/i))
+      .expect(testingLibraryReactModule.screen.getByText(/Meta te cobra cada recordatorio/i))
       .toBeTruthy();
     const link = testingLibraryReactModule.screen.getByRole("link", {
       name: /Abrir Meta Business Manager/i

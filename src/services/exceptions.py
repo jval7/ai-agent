@@ -24,21 +24,3 @@ class InvalidStateError(ServiceError):
 
 class ExternalProviderError(ServiceError):
     """Raised when external adapter cannot complete operation."""
-
-
-class WhatsappBillingNotConfiguredError(ServiceError):
-    """Raised when Meta rejects a template send because the WABA has no payment method configured.
-
-    Maps to Meta error code 131042.
-    """
-
-
-class WhatsappPreflightError(ServiceError):
-    """Raised when the WhatsApp billing preflight fails for a non-billing reason.
-
-    Carries the Meta error code so the HTTP layer can surface it to the caller.
-    """
-
-    def __init__(self, message: str, meta_error_code: int | None = None) -> None:
-        super().__init__(message)
-        self.meta_error_code = meta_error_code

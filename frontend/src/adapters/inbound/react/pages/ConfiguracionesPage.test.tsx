@@ -79,7 +79,6 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
-        reminderBillingTestPhoneNumber: null,
         paymentDetailsText: null,
         officeLocation: null
       })),
@@ -90,7 +89,6 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
-        reminderBillingTestPhoneNumber: null,
         paymentDetailsText: null,
         officeLocation: null
       }))
@@ -112,12 +110,6 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
       ]),
       activateOfficialTemplate: vitestModule.vi.fn(async () => undefined),
       deactivateOfficialTemplate: vitestModule.vi.fn(async () => undefined)
-    },
-    whatsappBillingUseCase: {
-      runPreflight: vitestModule.vi.fn(async (phone: string) => ({
-        ok: true,
-        recipientPhoneNumber: phone
-      }))
     },
     tenantUseCase: {
       getProfile: vitestModule.vi.fn(async () => ({
@@ -272,7 +264,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
     });
   });
 
-  vitestModule.it("opens disclosure modal first and chains preflight + activate flow", async () => {
+  vitestModule.it("opens disclosure modal first and activates on confirm", async () => {
     const container = buildContainer();
 
     renderConfiguracionesPage(container);
@@ -296,30 +288,9 @@ vitestModule.describe("ConfiguracionesPage", () => {
           .length
       )
       .toBe(0);
-    vitestModule
-      .expect(
-        (container.whatsappBillingUseCase.runPreflight as vitestModule.Mock).mock.calls.length
-      )
-      .toBe(0);
 
     testingLibraryReactModule.fireEvent.click(continueButton);
 
-    const phoneInput =
-      await testingLibraryReactModule.screen.findByLabelText(/Tu número de WhatsApp/i);
-    testingLibraryReactModule.fireEvent.change(phoneInput, {
-      target: { value: "+573009998877" }
-    });
-
-    const verifyButton = testingLibraryReactModule.screen.getByRole("button", {
-      name: /Verificar/i
-    });
-    testingLibraryReactModule.fireEvent.click(verifyButton);
-
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule
-        .expect(container.whatsappBillingUseCase.runPreflight)
-        .toHaveBeenCalledWith("+573009998877");
-    });
     await testingLibraryReactModule.waitFor(() => {
       vitestModule
         .expect(container.whatsappTemplateUseCase.activateOfficialTemplate)
@@ -347,7 +318,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
     });
     testingLibraryReactModule.fireEvent.click(cancelButton);
 
-    vitestModule.expect(container.whatsappBillingUseCase.runPreflight).not.toHaveBeenCalled();
     vitestModule
       .expect(container.whatsappTemplateUseCase.activateOfficialTemplate)
       .not.toHaveBeenCalled();
@@ -371,7 +341,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderDaysBefore: null,
             appointmentReminderAttendanceTemplateName: null,
             appointmentReminderPaymentTemplateName: null,
-            reminderBillingTestPhoneNumber: null,
             paymentDetailsText: null,
             officeLocation: {
               address: "Calle 5 # 38-25, Edificio Azul, piso 3",
@@ -424,7 +393,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
-        reminderBillingTestPhoneNumber: null,
         paymentDetailsText: null,
         officeLocation: {
           address: "Avenida Siempre Viva 1234\nEdificio Azul, piso 5\nParqueadero en sotano",
@@ -444,7 +412,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderDaysBefore: null,
             appointmentReminderAttendanceTemplateName: null,
             appointmentReminderPaymentTemplateName: null,
-            reminderBillingTestPhoneNumber: null,
             paymentDetailsText: null,
             officeLocation: null
           })),
@@ -511,7 +478,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
-        reminderBillingTestPhoneNumber: null,
         paymentDetailsText: null,
         officeLocation: {
           address: "Calle 5 # 38-25, Cali",
@@ -529,7 +495,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderDaysBefore: null,
             appointmentReminderAttendanceTemplateName: null,
             appointmentReminderPaymentTemplateName: null,
-            reminderBillingTestPhoneNumber: null,
             paymentDetailsText: null,
             officeLocation: null
           })),
@@ -585,7 +550,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
-        reminderBillingTestPhoneNumber: null,
         paymentDetailsText: null,
         officeLocation: null
       }));
@@ -600,7 +564,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderDaysBefore: null,
             appointmentReminderAttendanceTemplateName: null,
             appointmentReminderPaymentTemplateName: null,
-            reminderBillingTestPhoneNumber: null,
             paymentDetailsText: null,
             officeLocation: null
           })),
@@ -643,7 +606,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
       appointmentReminderDaysBefore: null,
       appointmentReminderAttendanceTemplateName: null,
       appointmentReminderPaymentTemplateName: null,
-      reminderBillingTestPhoneNumber: null,
       paymentDetailsText: null,
       officeLocation: {
         address: "Calle 5 # 38-25, Cali",
@@ -661,7 +623,6 @@ vitestModule.describe("ConfiguracionesPage", () => {
           appointmentReminderDaysBefore: null,
           appointmentReminderAttendanceTemplateName: null,
           appointmentReminderPaymentTemplateName: null,
-          reminderBillingTestPhoneNumber: null,
           paymentDetailsText: null,
           officeLocation: null
         })),

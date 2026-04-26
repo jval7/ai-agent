@@ -763,6 +763,7 @@ class SchedulingService:
                 appointment_start_at=selected_slot.start_at,
                 payment_status="PAID",
                 appointment_modality=request.appointment_modality,
+                meet_url=event.meet_url,
             )
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="BOOKED",
@@ -1170,6 +1171,7 @@ class SchedulingService:
                 appointment_start_at=input_dto.start_at,
                 payment_status="PAID",
                 appointment_modality=request.appointment_modality,
+                meet_url=updated_event.meet_url,
             )
         logger.info(
             "scheduling.booked_slot_rescheduled",
