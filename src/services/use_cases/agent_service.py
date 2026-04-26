@@ -1,4 +1,5 @@
 import src.domain.entities.agent_profile as agent_profile_entity
+import src.domain.whatsapp_template_params as whatsapp_template_params
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.clock_port as clock_port
 import src.services.dto.agent_dto as agent_dto
@@ -20,10 +21,24 @@ def _office_location_dto_to_entity(
 ) -> agent_profile_entity.OfficeLocation | None:
     if dto is None:
         return None
+    # Sanitize fields that travel verbatim into a WhatsApp template parameter
+    # so what the professional sees in the UI matches what gets sent.
+    sanitized_arrival = (
+        whatsapp_template_params.sanitize_template_param(dto.arrival_instructions)
+        if dto.arrival_instructions is not None
+        else None
+    )
     return agent_profile_entity.OfficeLocation(
         address=dto.address,
-        arrival_instructions=dto.arrival_instructions,
+        arrival_instructions=sanitized_arrival or None,
     )
+
+
+def _sanitize_payment_details(value: str | None) -> str | None:
+    if value is None:
+        return None
+    sanitized = whatsapp_template_params.sanitize_template_param(value)
+    return sanitized or None
 
 
 class AgentService:
@@ -139,7 +154,7 @@ class AgentService:
             appointment_reminder_days_before=update_dto.appointment_reminder_days_before,
             appointment_reminder_attendance_template_name=update_dto.appointment_reminder_attendance_template_name,
             appointment_reminder_payment_template_name=update_dto.appointment_reminder_payment_template_name,
-            payment_details_text=update_dto.payment_details_text,
+            payment_details_text=_sanitize_payment_details(update_dto.payment_details_text),
             office_location=_office_location_dto_to_entity(update_dto.office_location),
             updated_at=now_value,
         )

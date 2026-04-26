@@ -126,6 +126,7 @@ class ManualAppointmentService:
                 appointment_start_at=appointment.start_at,
                 payment_status=appointment.payment_status,
                 appointment_modality="VIRTUAL" if appointment.is_virtual else "PRESENCIAL",
+                meet_url=appointment.meet_url,
             )
         logger.info(
             "manual_appointment.created",
@@ -211,6 +212,7 @@ class ManualAppointmentService:
                 appointment_start_at=appointment.start_at,
                 payment_status=appointment.payment_status,
                 appointment_modality="VIRTUAL" if appointment.is_virtual else "PRESENCIAL",
+                meet_url=appointment.meet_url,
             )
         logger.info(
             "manual_appointment.rescheduled",

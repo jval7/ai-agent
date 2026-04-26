@@ -1,12 +1,13 @@
 import datetime
-import re
 import typing
 import zoneinfo
 
+import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.scheduled_reminder as scheduled_reminder_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.official_reminder_templates as official_reminder_templates
+import src.domain.whatsapp_template_params as whatsapp_template_params
 import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.clock_port as clock_port
@@ -71,6 +72,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         appointment_start_at: datetime.datetime,
         payment_status: typing.Literal["PAID", "PENDING"],
         appointment_modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None = None,
+        meet_url: str | None = None,
     ) -> None:
         agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
         if agent_profile is None or not agent_profile.appointment_reminder_enabled:
@@ -125,6 +127,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             template_name=template_name,
             template_language=template_language,
             appointment_modality=appointment_modality,
+            meet_url=meet_url,
             status="PENDING",
             created_at=now_value,
             updated_at=now_value,
@@ -196,8 +199,16 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         template_kind = official_reminder_templates.by_name(reminder.template_name)
 
         if template_kind == "ATTENDANCE":
-            modality_text = _format_modality_text(reminder.appointment_modality)
-            body_parameters = [reminder.patient_name, natural_date, modality_text]
+            modality_text = _build_attendance_modality_text(
+                modality=reminder.appointment_modality,
+                meet_url=reminder.meet_url,
+                office_location=agent_profile.office_location,
+            )
+            body_parameters = [
+                reminder.patient_name,
+                natural_date,
+                whatsapp_template_params.sanitize_template_param(modality_text),
+            ]
         elif template_kind == "PAYMENT":
             payment_details = (
                 (agent_profile.payment_details_text or "").strip()
@@ -214,7 +225,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             body_parameters = [
                 reminder.patient_name,
                 natural_date,
-                _sanitize_template_param(payment_details),
+                whatsapp_template_params.sanitize_template_param(payment_details),
             ]
         else:
             # Legacy or custom template: fall back to the previous 2-parameter shape
@@ -684,30 +695,26 @@ def _render_template_body(body_parameters: list[str]) -> str:
     return " | ".join(body_parameters)
 
 
-def _sanitize_template_param(value: str) -> str:
-    """Make a string safe to send as a WhatsApp template body parameter.
-
-    Meta rejects template parameters containing newline/tab characters or runs
-    of more than 4 consecutive spaces (error 132018). Convert any newline or
-    tab into a visible separator and collapse long whitespace runs so the
-    professional can still type multi-line text in the UI without breaking
-    the send.
-    """
-    no_breaks = re.sub(r"[\n\t\r]+", " · ", value)
-    collapsed = re.sub(r" {4,}", "   ", no_breaks)
-    return collapsed.strip()
-
-
-def _format_modality_text(
+def _build_attendance_modality_text(
     modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None,
+    meet_url: str | None,
+    office_location: agent_profile_entity.OfficeLocation | None,
 ) -> str:
-    """Render the modality placeholder for the ATTENDANCE template.
+    """Render the {{3}} placeholder for the ATTENDANCE template.
 
-    Defaults to ``"presencial"`` when the modality is unknown, which is the
-    safer fallback: we avoid promising a Meet link that may not exist.
+    Includes the Meet link when virtual, or the office address and arrival
+    instructions when presencial. Falls back to a plain modality label when
+    the corresponding details are missing so the template can still be sent.
     """
     if modality == "VIRTUAL":
+        if meet_url:
+            return f"virtual por Google Meet (link: {meet_url})"
         return "virtual por Google Meet"
+    if modality == "PRESENCIAL" and office_location is not None:
+        parts = [f"presencial. Dirección: {office_location.address}"]
+        if office_location.arrival_instructions:
+            parts.append(office_location.arrival_instructions)
+        return ". ".join(parts)
     return "presencial"
 
 

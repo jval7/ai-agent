@@ -89,6 +89,29 @@ def test_get_agent_settings_returns_office_location_after_save() -> None:
     assert fetched.office_location.arrival_instructions is None
 
 
+def test_update_agent_settings_sanitizes_template_unsafe_chars() -> None:
+    """payment_details_text and arrival_instructions go to WhatsApp templates,
+    which reject \\n / \\t / 5+ spaces. Sanitize at write time so the UI shows
+    the same text that gets sent."""
+    service = build_agent_settings_service()
+
+    result = service.update_agent_settings(
+        "tenant-1",
+        agent_dto.UpdateAgentSettingsDTO(
+            message_debounce_delay_seconds=0,
+            payment_details_text="Nequi:123\nZelle: 456",
+            office_location=agent_dto.OfficeLocationDTO(
+                address="Calle 5 # 38-25",
+                arrival_instructions="Llegar 20 min antes\ncon cédula",
+            ),
+        ),
+    )
+
+    assert result.payment_details_text == "Nequi:123 · Zelle: 456"
+    assert result.office_location is not None
+    assert result.office_location.arrival_instructions == "Llegar 20 min antes · con cédula"
+
+
 def test_update_agent_settings_office_location_none_clears_field() -> None:
     service = build_agent_settings_service()
 

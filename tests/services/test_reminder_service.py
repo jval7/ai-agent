@@ -448,6 +448,7 @@ _PAYMENT_CANONICAL_NAME = official_reminder_templates.OFFICIAL_REMINDER_TEMPLATE
 
 def _build_profile_with_payment_details(
     payment_details_text: str | None = "Nequi 300 / Bancolombia 12345",
+    office_location: agent_profile_entity.OfficeLocation | None = None,
 ) -> agent_profile_entity.AgentProfile:
     return agent_profile_entity.AgentProfile(
         tenant_id="tenant-1",
@@ -457,6 +458,7 @@ def _build_profile_with_payment_details(
         appointment_reminder_attendance_template_name=_ATTENDANCE_CANONICAL_NAME,
         appointment_reminder_payment_template_name=_PAYMENT_CANONICAL_NAME,
         payment_details_text=payment_details_text,
+        office_location=office_location,
         updated_at=_NOW,
     )
 
@@ -537,6 +539,64 @@ def test_execute_reminder_attendance_maps_presencial_and_missing_modality() -> N
     assert presencial_body[2] == "presencial"
     # None modality fallback: also "presencial" (safer default).
     assert fallback_body[2] == "presencial"
+
+
+def test_execute_reminder_attendance_virtual_includes_meet_url() -> None:
+    profile = _build_profile_with_payment_details()
+    service, _, reminder_repo, _, wa_provider = _build_service(
+        ["reminder-1"], agent_profile=profile
+    )
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Juan",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+        appointment_modality="VIRTUAL",
+        meet_url="https://meet.google.com/abc-defg-hij",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    service.execute_reminder("tenant-1", pending[0].id)
+
+    body = wa_provider.sent_template_body_parameters[0]
+    assert body[2] == "virtual por Google Meet (link: https://meet.google.com/abc-defg-hij)"
+
+
+def test_execute_reminder_attendance_presencial_includes_office_location() -> None:
+    profile = _build_profile_with_payment_details(
+        office_location=agent_profile_entity.OfficeLocation(
+            address="Av Siempre Viva 1234",
+            arrival_instructions="Llegar 20 min antes con cédula",
+        )
+    )
+    service, _, reminder_repo, _, wa_provider = _build_service(
+        ["reminder-1"], agent_profile=profile
+    )
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Ana",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+        appointment_modality="PRESENCIAL",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    service.execute_reminder("tenant-1", pending[0].id)
+
+    body = wa_provider.sent_template_body_parameters[0]
+    assert body[2] == "presencial. Dirección: Av Siempre Viva 1234. Llegar 20 min antes con cédula"
 
 
 def test_execute_reminder_payment_injects_payment_details_from_profile() -> None:
