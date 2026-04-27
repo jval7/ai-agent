@@ -11,6 +11,7 @@ import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
+import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.use_cases.event_description_builder as event_description_builder_mod
@@ -229,6 +230,65 @@ def test_resolve_returns_post_booking_followup_for_booked_not_archived() -> None
     assert result.state == "POST_BOOKING_FOLLOWUP"
     assert result.request_id == "req-1"
     assert "close_session" in result.enabled_tool_names
+
+
+def test_resolve_post_booking_followup_injects_selected_slot_datetime() -> None:
+    """Ground the LLM with the booked slot's actual datetime so it can never
+    hallucinate the appointment date in POST_BOOKING_FOLLOWUP follow-ups.
+    """
+    resolver, scheduling_repo, conversation_repo, _ = _build_resolver_with_scheduling()
+    conversation_repo.save_conversation(
+        conversation_entity.Conversation(
+            id="conv-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            started_at=NOW,
+            updated_at=NOW,
+            last_message_preview=None,
+            message_ids=[],
+            control_mode="AI",
+        )
+    )
+    booked_start = datetime.datetime(2026, 5, 16, 14, 0, tzinfo=datetime.UTC)
+    booked_end = datetime.datetime(2026, 5, 16, 15, 0, tzinfo=datetime.UTC)
+    scheduling_repo.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="req-1",
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            request_kind="INITIAL",
+            status="BOOKED",
+            round_number=1,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            appointment_modality="PRESENCIAL",
+            patient_first_name="Danery",
+            slots=[
+                scheduling_slot_entity.SchedulingSlot(
+                    id="slot-1",
+                    start_at=booked_start,
+                    end_at=booked_end,
+                    timezone="America/Bogota",
+                    status="BOOKED",
+                ),
+            ],
+            slot_options_map={"1": "slot-1"},
+            selected_slot_id="slot-1",
+            calendar_event_id="cal-evt-1",
+            created_at=NOW,
+            updated_at=NOW,
+        )
+    )
+
+    result = resolver.resolve("tenant-1", "conv-1", None)
+
+    assert result.state == "POST_BOOKING_FOLLOWUP"
+    assert result.selected_slot_id == "slot-1"
+    assert result.appointment_start_at == booked_start
+    assert result.appointment_end_at == booked_end
+    assert result.patient_first_name == "Danery"
 
 
 def test_resolve_returns_no_active_request_for_booked_already_archived() -> None:

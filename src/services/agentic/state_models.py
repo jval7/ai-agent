@@ -1,3 +1,4 @@
+import datetime
 import typing
 
 import pydantic
@@ -21,6 +22,9 @@ class RuntimePromptContext(pydantic.BaseModel):
     patient_location: str | None = None
     patient_preference_note: str | None = None
     selected_slot_id: str | None = None
+    appointment_start_at: datetime.datetime | None = None
+    appointment_end_at: datetime.datetime | None = None
+    patient_first_name: str | None = None
     missing_confirmation_fields: list[str] = pydantic.Field(default_factory=list)
     enabled_tool_names: list[str] = pydantic.Field(default_factory=list)
 

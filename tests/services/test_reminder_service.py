@@ -1,6 +1,8 @@
 import datetime
+import typing
 import zoneinfo
 
+import google.api_core.datetime_helpers as google_datetime_helpers
 import pytest
 
 import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
@@ -280,6 +282,51 @@ def test_maybe_schedule_forces_noon_bogota_and_shifts_sunday_to_saturday() -> No
     scheduled_for = reminders[0].reminder_scheduled_for.astimezone(bogota)
     assert scheduled_for == datetime.datetime(2026, 1, 3, 12, 0, tzinfo=bogota)  # Sábado 12pm
     assert scheduled_for.weekday() == 5  # Saturday
+
+
+def test_maybe_schedule_handles_datetime_with_nanoseconds_from_firestore() -> None:
+    """Regression: Firestore loads datetimes as ``DatetimeWithNanoseconds`` and
+    that subclass loses ``_nanosecond`` after ``.replace(...)``. Saving the
+    resulting reminder used to crash inside the Firestore SDK with
+    ``AttributeError: 'DatetimeWithNanoseconds' object has no attribute
+    '_nanosecond'``. The service must compute ``reminder_scheduled_for`` as a
+    plain ``datetime.datetime`` so the encoder always finds the slot.
+    """
+    profile = _make_profile(attendance_name="appointment_reminder_attendance", days_before=2)
+    service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
+
+    # ``DatetimeWithNanoseconds.__new__`` is untyped in google-api-core, so cast
+    # via ``typing.cast`` to keep mypy happy across both pre-commit and CI.
+    nanos_factory = typing.cast(
+        typing.Callable[..., datetime.datetime],
+        google_datetime_helpers.DatetimeWithNanoseconds,
+    )
+    appointment = nanos_factory(
+        2026,
+        5,
+        16,
+        14,
+        0,
+        0,
+        nanosecond=0,
+        tzinfo=datetime.UTC,
+    )
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="SCHEDULING_REQUEST",
+        source_id="req-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Jane",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+    )
+
+    reminders = reminder_repo.list_by_tenant("tenant-1")
+    assert len(reminders) == 1
+    # ``reminder_scheduled_for`` must be a plain ``datetime.datetime`` so the
+    # Firestore encoder can serialize it without hitting the broken slot.
+    assert type(reminders[0].reminder_scheduled_for) is datetime.datetime
 
 
 def test_maybe_schedule_forces_noon_bogota_when_no_sunday_shift_needed() -> None:

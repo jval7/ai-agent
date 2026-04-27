@@ -37,6 +37,32 @@ def format_slot_option_line(
     return f"{option_number}) {date_text} a las {start_time_text}"
 
 
+def format_appointment_natural(
+    start_at: datetime.datetime,
+    end_at: datetime.datetime | None,
+    timezone_name: str,
+) -> str:
+    """Render an appointment as natural Spanish text in the given timezone.
+
+    Used to ground the LLM with the booked datetime so it can never paraphrase
+    or invent dates. Includes weekday, day, month, year, hour range and a
+    timezone label like ``hora Colombia``.
+    """
+    localized_start = _localize_datetime(start_at, timezone_name)
+    date_text = _format_spanish_date(localized_start)
+    start_time_text = _format_spanish_time(localized_start)
+    timezone_text = humanize_timezone(timezone_name)
+    base = f"{date_text} de {localized_start.year} a las {start_time_text} {timezone_text}"
+    if end_at is None:
+        return base
+    localized_end = _localize_datetime(end_at, timezone_name)
+    end_time_text = _format_spanish_time(localized_end)
+    return (
+        f"{date_text} de {localized_start.year} de "
+        f"{start_time_text} a {end_time_text} {timezone_text}"
+    )
+
+
 _TIMEZONE_DISPLAY_NAMES: dict[str, str] = {
     "America/Bogota": "hora Colombia",
     "America/Mexico_City": "hora México",

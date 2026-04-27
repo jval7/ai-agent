@@ -53,6 +53,10 @@ class RuntimeContextResolver:
                     enabled_tool_names=self._enabled_tools_for_state("AWAITING_PATIENT_CHOICE"),
                 )
 
+            selected_slot = self._find_slot(
+                request=latest_open_request,
+                slot_id=latest_open_request.selected_slot_id,
+            )
             return RuntimePromptContext(
                 state="COLLECTING_CONFIRMATION_DATA",
                 request_id=latest_open_request.request_id,
@@ -61,6 +65,9 @@ class RuntimeContextResolver:
                 patient_location=latest_open_request.patient_location,
                 patient_preference_note=latest_open_request.patient_preference_note,
                 selected_slot_id=latest_open_request.selected_slot_id,
+                appointment_start_at=selected_slot.start_at if selected_slot else None,
+                appointment_end_at=selected_slot.end_at if selected_slot else None,
+                patient_first_name=latest_open_request.patient_first_name,
                 missing_confirmation_fields=self._compute_missing_confirmation_fields(
                     request=latest_open_request,
                     known_patient=known_patient,
@@ -68,20 +75,34 @@ class RuntimeContextResolver:
                 enabled_tool_names=self._enabled_tools_for_state("COLLECTING_CONFIRMATION_DATA"),
             )
         if request_status == "AWAITING_PAYMENT_CONFIRMATION":
+            selected_slot = self._find_slot(
+                request=latest_open_request,
+                slot_id=latest_open_request.selected_slot_id,
+            )
             return RuntimePromptContext(
                 state="AWAITING_PAYMENT_CONFIRMATION",
                 request_id=latest_open_request.request_id,
                 request_status=request_status,
                 appointment_modality=latest_open_request.appointment_modality,
                 selected_slot_id=latest_open_request.selected_slot_id,
+                appointment_start_at=selected_slot.start_at if selected_slot else None,
+                appointment_end_at=selected_slot.end_at if selected_slot else None,
+                patient_first_name=latest_open_request.patient_first_name,
                 enabled_tool_names=self._enabled_tools_for_state("AWAITING_PAYMENT_CONFIRMATION"),
             )
         if request_status == "AWAITING_ATTENDANCE_CONFIRMATION":
+            selected_slot = self._find_slot(
+                request=latest_open_request,
+                slot_id=latest_open_request.selected_slot_id,
+            )
             return RuntimePromptContext(
                 state="AWAITING_ATTENDANCE_CONFIRMATION",
                 request_id=latest_open_request.request_id,
                 request_status=request_status,
                 appointment_modality=latest_open_request.appointment_modality,
+                appointment_start_at=selected_slot.start_at if selected_slot else None,
+                appointment_end_at=selected_slot.end_at if selected_slot else None,
+                patient_first_name=latest_open_request.patient_first_name,
                 enabled_tool_names=self._enabled_tools_for_state(
                     "AWAITING_ATTENDANCE_CONFIRMATION"
                 ),
@@ -104,12 +125,20 @@ class RuntimeContextResolver:
                     state="NO_ACTIVE_REQUEST",
                     enabled_tool_names=self._enabled_tools_for_state("NO_ACTIVE_REQUEST"),
                 )
+            selected_slot = self._find_slot(
+                request=latest_open_request,
+                slot_id=latest_open_request.selected_slot_id,
+            )
             return RuntimePromptContext(
                 state="POST_BOOKING_FOLLOWUP",
                 request_id=latest_open_request.request_id,
                 request_status=request_status,
                 appointment_modality=latest_open_request.appointment_modality,
                 patient_location=latest_open_request.patient_location,
+                selected_slot_id=latest_open_request.selected_slot_id,
+                appointment_start_at=selected_slot.start_at if selected_slot else None,
+                appointment_end_at=selected_slot.end_at if selected_slot else None,
+                patient_first_name=latest_open_request.patient_first_name,
                 enabled_tool_names=self._enabled_tools_for_state("POST_BOOKING_FOLLOWUP"),
             )
         return RuntimePromptContext(
@@ -139,6 +168,18 @@ class RuntimeContextResolver:
                 "BOOKED",
             ):
                 return request
+        return None
+
+    def _find_slot(
+        self,
+        request: scheduling_dto.SchedulingRequestSummaryDTO,
+        slot_id: str | None,
+    ) -> scheduling_dto.SchedulingSlotDTO | None:
+        if slot_id is None:
+            return None
+        for slot in request.slots:
+            if slot.slot_id == slot_id:
+                return slot
         return None
 
     def _is_session_already_archived(
