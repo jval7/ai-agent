@@ -74,6 +74,8 @@ def _instructions_for_state(
             "No menciones que alguien esta revisando el pago ni que la Doc lo va a confirmar.",
             "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
             "precios, datos de pago, horarios o informacion general del consultorio.",
+            "Si el paciente pregunta por el horario o fecha de su cita, responde usando EXACTAMENTE "
+            "el valor de `fecha_cita` del runtime context. NUNCA inventes ni parafrasees fechas u horas.",
             "No solicites el comprobante de nuevo ni avances el flujo de agendamiento.",
             "Sigue las reglas de medio de pago del system prompt. "
             "Solo usa handoff_to_human si el paciente dice explicitamente que NO puede pagar "
@@ -87,6 +89,8 @@ def _instructions_for_state(
             "Ambas cosas en el mismo turno: texto de respuesta + llamada a la tool.",
             "Puedes responder preguntas generales del paciente: informacion del consultorio, "
             "horarios, direccion, preparacion para la cita u otros datos generales.",
+            "Si el paciente pregunta por la fecha u hora de su cita, responde usando EXACTAMENTE "
+            "el valor de `fecha_cita` del runtime context. NUNCA inventes ni parafrasees fechas u horas.",
             "Si el paciente dice que NO puede asistir o pide reagendar/cancelar su cita, "
             "usa handoff_to_human — el bot no gestiona cambios de citas ya reservadas.",
             "No solicites confirmacion de nuevo si el paciente ya respondio.",
@@ -96,8 +100,13 @@ def _instructions_for_state(
         modality = runtime_context.appointment_modality
         lines = [
             "Flujo actual: la cita fue reservada exitosamente.",
-            "Si es el primer mensaje del estado, envia confirmacion con: nombre del paciente (si lo tienes), "
-            "fecha, hora en hora Colombia, y modalidad de la cita.",
+            "Si es el primer mensaje del estado, envia confirmacion con: el nombre del paciente "
+            "(usa `nombre_paciente` del runtime context si esta disponible), la fecha y hora "
+            "(USA EXACTAMENTE el valor de `fecha_cita` del runtime context), y la modalidad "
+            "(usa `modalidad_actual`).",
+            "REGLA DURA: NUNCA inventes ni parafrasees la fecha ni la hora. Si `fecha_cita` no "
+            "esta en el runtime context, NO menciones fecha ni hora; en su lugar di que el paciente "
+            "puede revisar la invitacion de Google Calendar enviada a su correo.",
         ]
         if modality == "PRESENCIAL":
             lines += [
