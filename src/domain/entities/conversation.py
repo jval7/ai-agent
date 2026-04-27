@@ -84,6 +84,11 @@ class Conversation(pydantic.BaseModel):
         scheduling_request_id: str | None = None,
         calendar_event_id: str | None = None,
     ) -> None:
+        # Closing a session brings the conversation back to AI: the next
+        # patient message starts a fresh round handled by the bot. The
+        # professional can flip it to HUMAN again later if needed.
+        self.control_mode = "AI"
+
         active_messages = [message.model_copy(deep=True) for message in messages]
         if not active_messages:
             active_messages = [message.model_copy(deep=True) for message in self.messages]
