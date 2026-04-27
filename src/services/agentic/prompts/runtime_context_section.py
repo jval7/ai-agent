@@ -2,6 +2,9 @@ import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.patient as patient_entity
 import src.services.agentic.prompts.prompt_section as prompt_section
 import src.services.agentic.state_models as agentic_state_models
+import src.services.scheduling_slot_formatter as scheduling_slot_formatter
+
+_BOGOTA_TIMEZONE = "America/Bogota"
 
 
 class RuntimeContextSection(prompt_section.PromptSection):
@@ -29,6 +32,17 @@ class RuntimeContextSection(prompt_section.PromptSection):
             lines.append(f"- preferencia_horaria_actual: {runtime_context.patient_preference_note}")
         if runtime_context.selected_slot_id is not None:
             lines.append(f"- slot_seleccionado_actual: {runtime_context.selected_slot_id}")
+        if runtime_context.appointment_start_at is not None:
+            lines.append(
+                "- fecha_cita: "
+                + scheduling_slot_formatter.format_appointment_natural(
+                    start_at=runtime_context.appointment_start_at,
+                    end_at=runtime_context.appointment_end_at,
+                    timezone_name=_BOGOTA_TIMEZONE,
+                )
+            )
+        if runtime_context.patient_first_name is not None:
+            lines.append(f"- nombre_paciente: {runtime_context.patient_first_name}")
         if runtime_context.professional_note is not None:
             lines.append(
                 "Notas del profesional para este paso (si existen, siguela al pedir datos): "

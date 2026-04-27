@@ -734,11 +734,20 @@ def _compute_reminder_datetime(
       earlier so it lands on Saturday instead.
     """
     shifted = appointment_start_at - datetime.timedelta(days=days_before)
-    local_datetime = shifted.astimezone(_REMINDER_TIMEZONE).replace(
-        hour=_REMINDER_HOUR_LOCAL,
-        minute=0,
-        second=0,
-        microsecond=0,
+    local = shifted.astimezone(_REMINDER_TIMEZONE)
+    # Build a fresh datetime instead of using ``.replace`` so we never propagate
+    # ``DatetimeWithNanoseconds`` instances coming from Firestore. ``replace`` on
+    # that subclass keeps the type but drops the ``_nanosecond`` slot, which then
+    # crashes the Firestore SDK when re-encoding the value.
+    local_datetime = datetime.datetime(
+        local.year,
+        local.month,
+        local.day,
+        _REMINDER_HOUR_LOCAL,
+        0,
+        0,
+        0,
+        tzinfo=_REMINDER_TIMEZONE,
     )
     if local_datetime.weekday() == _SUNDAY_WEEKDAY:
         local_datetime = local_datetime - datetime.timedelta(days=1)

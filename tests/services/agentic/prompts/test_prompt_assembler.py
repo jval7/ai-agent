@@ -172,6 +172,45 @@ class TestPromptAssemblerOutputParity:
         assert "VIRTUAL" in result
         assert "Meet" in result
 
+    def test_post_booking_followup_grounds_llm_with_fecha_cita_and_locks_format(
+        self,
+    ) -> None:
+        """Inject the booked datetime into the prompt and instruct the LLM to use
+        it verbatim, so it can never paraphrase or invent the appointment date.
+        """
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="POST_BOOKING_FOLLOWUP",
+            request_id="req-1",
+            request_status="BOOKED",
+            appointment_modality="PRESENCIAL",
+            appointment_start_at=datetime.datetime(2026, 5, 16, 14, 0, tzinfo=datetime.UTC),
+            appointment_end_at=datetime.datetime(2026, 5, 16, 15, 0, tzinfo=datetime.UTC),
+            patient_first_name="Danery",
+            enabled_tool_names=["close_session", "handoff_to_human"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "- fecha_cita: sabado 16 de mayo de 2026" in result
+        assert "9:00 am" in result
+        assert "10:00 am" in result
+        assert "hora Colombia" in result
+        assert "- nombre_paciente: Danery" in result
+        assert "USA EXACTAMENTE el valor de `fecha_cita`" in result
+        assert "NUNCA inventes ni parafrasees" in result
+
+    def test_post_booking_followup_without_slot_data_warns_against_inventing(self) -> None:
+        builder = _build_builder()
+        ctx = agentic_state_models.RuntimePromptContext(
+            state="POST_BOOKING_FOLLOWUP",
+            request_id="req-1",
+            request_status="BOOKED",
+            enabled_tool_names=["close_session", "handoff_to_human"],
+        )
+        result = builder.build_runtime_system_prompt(ctx, known_patient=None)
+        assert "fecha_cita" not in result.split("\n", 1)[0]
+        assert "NO menciones fecha ni hora" in result
+        assert "invitacion de Google Calendar" in result
+
     def test_compose_full_prompt(self) -> None:
         builder = _build_builder()
         ctx = agentic_state_models.RuntimePromptContext(
