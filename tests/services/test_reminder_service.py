@@ -1,4 +1,5 @@
 import datetime
+import typing
 import zoneinfo
 
 import google.api_core.datetime_helpers as google_datetime_helpers
@@ -294,7 +295,13 @@ def test_maybe_schedule_handles_datetime_with_nanoseconds_from_firestore() -> No
     profile = _make_profile(attendance_name="appointment_reminder_attendance", days_before=2)
     service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
 
-    appointment: datetime.datetime = google_datetime_helpers.DatetimeWithNanoseconds(
+    # ``DatetimeWithNanoseconds.__new__`` is untyped in google-api-core, so cast
+    # via ``typing.cast`` to keep mypy happy across both pre-commit and CI.
+    nanos_factory = typing.cast(
+        typing.Callable[..., datetime.datetime],
+        google_datetime_helpers.DatetimeWithNanoseconds,
+    )
+    appointment = nanos_factory(
         2026,
         5,
         16,
