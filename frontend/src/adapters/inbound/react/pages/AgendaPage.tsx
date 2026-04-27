@@ -89,6 +89,8 @@ interface PaymentFormState {
 type FinancePaymentStatusFilter = "ALL" | "PENDING" | "PAID";
 type FinancePaymentMethodFilter = "ALL" | "CASH" | "TRANSFER";
 type FinanceSourceFilter = "ALL" | "CHATBOT" | "MANUAL";
+type FinanceCurrencyFilter = "ALL" | "COP" | "USD";
+type FinancePaymentCurrency = "COP" | "USD";
 
 interface FinanceAppointmentItem {
   itemKey: string;
@@ -98,7 +100,8 @@ interface FinanceAppointmentItem {
   startAt: string;
   endAt: string;
   timezone: string;
-  paymentAmountCop: number | null;
+  paymentAmount: number | null;
+  paymentCurrency: FinancePaymentCurrency;
   paymentMethod: "CASH" | "TRANSFER" | null;
   paymentStatus: "PENDING" | "PAID";
   paymentUpdatedAt: string | null;
@@ -124,6 +127,31 @@ function formatCopCurrency(value: number): string {
     currency: "COP",
     maximumFractionDigits: 0
   }).format(value);
+}
+
+function formatPaymentAmount(value: number, currency: FinancePaymentCurrency): string {
+  if (currency === "USD") {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 2
+    }).format(value);
+  }
+  return formatCopCurrency(value);
+}
+
+function buildPatientInitials(displayName: string): string {
+  const parts = displayName
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0);
+  if (parts.length === 0) {
+    return "·";
+  }
+  if (parts.length === 1) {
+    return parts[0]!.slice(0, 2).toUpperCase();
+  }
+  return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
 }
 
 function resolvePatientDisplayName(
@@ -231,7 +259,10 @@ export function AgendaPage() {
     reactModule.useState<FinancePaymentMethodFilter>("ALL");
   const [financeSourceFilter, setFinanceSourceFilter] =
     reactModule.useState<FinanceSourceFilter>("ALL");
+  const [financeCurrencyFilter, setFinanceCurrencyFilter] =
+    reactModule.useState<FinanceCurrencyFilter>("ALL");
   const [financeSearchTerm, setFinanceSearchTerm] = reactModule.useState<string>("");
+  const [areFinanceFiltersOpen, setAreFinanceFiltersOpen] = reactModule.useState<boolean>(false);
   const [rescheduleSlotPickerMonth, setRescheduleSlotPickerMonth] = reactModule.useState<{
     year: number;
     month: number;
@@ -499,7 +530,8 @@ export function AgendaPage() {
           startAt: bookedSlot.startAt,
           endAt: bookedSlot.endAt,
           timezone: bookedSlot.timezone.trim() === "" ? timezone : bookedSlot.timezone,
-          paymentAmountCop: request.paymentAmountCop ?? null,
+          paymentAmount: request.paymentAmountCop ?? null,
+          paymentCurrency: request.paymentCurrency ?? "COP",
           paymentMethod: request.paymentMethod ?? null,
           paymentStatus: request.paymentStatus ?? "PENDING",
           paymentUpdatedAt: request.paymentUpdatedAt ?? null
@@ -521,7 +553,8 @@ export function AgendaPage() {
           startAt: appointment.startAt,
           endAt: appointment.endAt,
           timezone: appointment.timezone.trim() === "" ? colombiaTimezone : appointment.timezone,
-          paymentAmountCop: appointment.paymentAmountCop ?? null,
+          paymentAmount: appointment.paymentAmountCop ?? null,
+          paymentCurrency: appointment.paymentCurrency ?? "COP",
           paymentMethod: appointment.paymentMethod ?? null,
           paymentStatus: appointment.paymentStatus ?? "PENDING",
           paymentUpdatedAt: appointment.paymentUpdatedAt ?? null
@@ -561,6 +594,12 @@ export function AgendaPage() {
       if (financeSourceFilter !== "ALL" && appointment.source !== financeSourceFilter) {
         return false;
       }
+      if (
+        financeCurrencyFilter !== "ALL" &&
+        appointment.paymentCurrency !== financeCurrencyFilter
+      ) {
+        return false;
+      }
       if (normalizedSearchTerm === "") {
         return true;
       }
@@ -572,6 +611,7 @@ export function AgendaPage() {
     });
   }, [
     financeAppointments,
+    financeCurrencyFilter,
     financeFromDate,
     financePaymentMethodFilter,
     financePaymentStatusFilter,
@@ -588,19 +628,51 @@ export function AgendaPage() {
     const paidAppointments = filteredFinanceAppointments.filter(
       (appointment) => appointment.paymentStatus === "PAID"
     ).length;
-    const totalPaidCop = filteredFinanceAppointments.reduce((accumulator, appointment) => {
-      if (appointment.paymentStatus !== "PAID" || appointment.paymentAmountCop === null) {
-        return accumulator;
+    const byCurrency: Record<
+      FinancePaymentCurrency,
+      { totalPaid: number; paidCount: number; pendingCount: number }
+    > = {
+      COP: { totalPaid: 0, paidCount: 0, pendingCount: 0 },
+      USD: { totalPaid: 0, paidCount: 0, pendingCount: 0 }
+    };
+    filteredFinanceAppointments.forEach((appointment) => {
+      const bucket = byCurrency[appointment.paymentCurrency];
+      if (appointment.paymentStatus === "PAID") {
+        bucket.paidCount += 1;
+        if (appointment.paymentAmount !== null) {
+          bucket.totalPaid += appointment.paymentAmount;
+        }
+      } else {
+        bucket.pendingCount += 1;
       }
-      return accumulator + appointment.paymentAmountCop;
-    }, 0);
+    });
     return {
       totalAppointments,
       pendingAppointments,
       paidAppointments,
-      totalPaidCop
+      byCurrency
     };
   }, [filteredFinanceAppointments]);
+
+  const financeActiveFilterCount = reactModule.useMemo(() => {
+    let count = 0;
+    if (financeFromDate !== "") count += 1;
+    if (financeToDate !== "") count += 1;
+    if (financePaymentStatusFilter !== "ALL") count += 1;
+    if (financePaymentMethodFilter !== "ALL") count += 1;
+    if (financeSourceFilter !== "ALL") count += 1;
+    if (financeCurrencyFilter !== "ALL") count += 1;
+    if (financeSearchTerm.trim() !== "") count += 1;
+    return count;
+  }, [
+    financeCurrencyFilter,
+    financeFromDate,
+    financePaymentMethodFilter,
+    financePaymentStatusFilter,
+    financeSearchTerm,
+    financeSourceFilter,
+    financeToDate
+  ]);
 
   reactModule.useEffect(() => {
     if (!isBookedTab) {
@@ -2590,151 +2662,297 @@ export function AgendaPage() {
         <section className="mt-4 space-y-4 sm:mt-6">
           <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4">
             <header className="mb-4">
-              <h3 className="text-sm font-semibold text-brand-ink sm:text-base">Finanzas</h3>
+              <h3 className="text-base font-semibold text-brand-ink sm:text-lg">Finanzas</h3>
               <p className="text-[11px] text-slate-500 sm:text-xs">
-                Seguimiento de pagos para citas agendadas (chatbot y manuales).
+                Seguimiento de pagos por moneda — citas del chatbot y manuales.
               </p>
             </header>
 
-            <section className="rounded-lg border border-border-subtle p-3">
-              <h4 className="text-sm font-semibold text-brand-ink">Filtros</h4>
-              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Desde (fecha cita)
-                  <input
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) => setFinanceFromDate(event.target.value)}
-                    type="date"
-                    value={financeFromDate}
-                  />
-                </label>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Hasta (fecha cita)
-                  <input
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) => setFinanceToDate(event.target.value)}
-                    type="date"
-                    value={financeToDate}
-                  />
-                </label>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Estado de pago
-                  <select
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) =>
-                      setFinancePaymentStatusFilter(
-                        event.target.value as FinancePaymentStatusFilter
-                      )
-                    }
-                    value={financePaymentStatusFilter}
-                  >
-                    <option value="ALL">Todos</option>
-                    <option value="PENDING">Pendiente por pago</option>
-                    <option value="PAID">Pagada</option>
-                  </select>
-                </label>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Método de pago
-                  <select
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) =>
-                      setFinancePaymentMethodFilter(
-                        event.target.value as FinancePaymentMethodFilter
-                      )
-                    }
-                    value={financePaymentMethodFilter}
-                  >
-                    <option value="ALL">Todos</option>
-                    <option value="CASH">Efectivo</option>
-                    <option value="TRANSFER">Transferencia</option>
-                  </select>
-                </label>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Origen
-                  <select
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) =>
-                      setFinanceSourceFilter(event.target.value as FinanceSourceFilter)
-                    }
-                    value={financeSourceFilter}
-                  >
-                    <option value="ALL">Todos</option>
-                    <option value="CHATBOT">Chatbot</option>
-                    <option value="MANUAL">Manual</option>
-                  </select>
-                </label>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Buscar paciente
-                  <input
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) => setFinanceSearchTerm(event.target.value)}
-                    placeholder="Nombre o WhatsApp"
-                    type="text"
-                    value={financeSearchTerm}
-                  />
-                </label>
-              </div>
-              <div className="mt-3">
-                <button
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                  onClick={() => {
-                    setFinanceFromDate("");
-                    setFinanceToDate("");
-                    setFinancePaymentStatusFilter("ALL");
-                    setFinancePaymentMethodFilter("ALL");
-                    setFinanceSourceFilter("ALL");
-                    setFinanceSearchTerm("");
-                  }}
-                  type="button"
-                >
-                  Limpiar filtros
-                </button>
-              </div>
+            <section aria-label="Resumen por moneda" className="grid gap-3 sm:grid-cols-2">
+              {[
+                { currency: "COP" as const, bucket: financeMetrics.byCurrency.COP },
+                { currency: "USD" as const, bucket: financeMetrics.byCurrency.USD }
+              ].map(({ currency, bucket }) => {
+                const isCop = currency === "COP";
+                const flag = isCop ? "🇨🇴" : "🇺🇸";
+                const label = isCop ? "Total COP" : "Total USD";
+                const cardTone = isCop
+                  ? "border-emerald-200 bg-emerald-50"
+                  : "border-sky-200 bg-sky-50";
+                const accentTone = isCop ? "text-emerald-800" : "text-sky-800";
+                const subtleTone = isCop ? "text-emerald-700/80" : "text-sky-700/80";
+                return (
+                  <article className={`rounded-2xl border p-4 sm:p-5 ${cardTone}`} key={currency}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`text-[11px] font-semibold uppercase tracking-wider ${subtleTone}`}
+                      >
+                        {label}
+                      </span>
+                      <span aria-hidden="true" className="text-xl leading-none">
+                        {flag}
+                      </span>
+                    </div>
+                    <p
+                      className={`mt-2 text-2xl font-bold tracking-tight sm:text-3xl ${accentTone}`}
+                    >
+                      {formatPaymentAmount(bucket.totalPaid, currency)}
+                    </p>
+                    <dl className={`mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs ${subtleTone}`}>
+                      <div className="flex items-center gap-1">
+                        <dt className="font-semibold uppercase tracking-wide">Pagadas</dt>
+                        <dd className={`font-bold ${accentTone}`}>{bucket.paidCount}</dd>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <dt className="font-semibold uppercase tracking-wide">Pendientes</dt>
+                        <dd className={`font-bold ${accentTone}`}>{bucket.pendingCount}</dd>
+                      </div>
+                    </dl>
+                  </article>
+                );
+              })}
             </section>
 
-            <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <article className="rounded-lg border border-border-subtle bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Total citas
+            <section
+              aria-label="Indicadores generales"
+              className="mt-3 grid grid-cols-3 gap-2 sm:gap-3"
+            >
+              <article className="rounded-xl border border-border-subtle bg-slate-50 p-3 text-center">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Citas
                 </p>
-                <p className="mt-1 text-xl font-semibold text-brand-ink">
+                <p className="mt-1 text-lg font-bold text-brand-ink sm:text-xl">
                   {financeMetrics.totalAppointments}
                 </p>
               </article>
-              <article className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+              <article className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-center">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
                   Pendientes
                 </p>
-                <p className="mt-1 text-xl font-semibold text-amber-700">
+                <p className="mt-1 text-lg font-bold text-amber-800 sm:text-xl">
                   {financeMetrics.pendingAppointments}
                 </p>
               </article>
-              <article className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+              <article className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
                   Pagadas
                 </p>
-                <p className="mt-1 text-xl font-semibold text-emerald-700">
+                <p className="mt-1 text-lg font-bold text-emerald-800 sm:text-xl">
                   {financeMetrics.paidAppointments}
-                </p>
-              </article>
-              <article className="rounded-lg border border-palette-sage bg-brand-accent-light p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-brand-teal">
-                  Total pagado
-                </p>
-                <p className="mt-1 text-xl font-semibold text-brand-teal">
-                  {formatCopCurrency(financeMetrics.totalPaidCop)}
                 </p>
               </article>
             </section>
 
-            <section className="mt-4 rounded-lg border border-border-subtle p-3">
-              <h4 className="text-sm font-semibold text-brand-ink">Detalle de citas</h4>
+            <section className="mt-4 rounded-xl border border-border-subtle bg-slate-50/60">
+              <button
+                aria-expanded={areFinanceFiltersOpen}
+                className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-brand-ink transition-colors hover:bg-slate-100/80"
+                onClick={() => setAreFinanceFiltersOpen((current) => !current)}
+                type="button"
+              >
+                <span className="flex items-center gap-2">
+                  <span aria-hidden="true">🔍</span>
+                  <span>Filtros</span>
+                  {financeActiveFilterCount > 0 ? (
+                    <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-teal px-1.5 text-[11px] font-bold text-white">
+                      {financeActiveFilterCount}
+                    </span>
+                  ) : null}
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={`text-xs text-slate-500 transition-transform ${areFinanceFiltersOpen ? "rotate-180" : ""}`}
+                >
+                  ▾
+                </span>
+              </button>
+              {areFinanceFiltersOpen ? (
+                <div className="space-y-3 border-t border-border-subtle px-3 py-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Desde
+                      <input
+                        className="mt-1 w-full rounded-lg border border-border-subtle bg-white px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                        onChange={(event) => setFinanceFromDate(event.target.value)}
+                        type="date"
+                        value={financeFromDate}
+                      />
+                    </label>
+                    <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Hasta
+                      <input
+                        className="mt-1 w-full rounded-lg border border-border-subtle bg-white px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                        onChange={(event) => setFinanceToDate(event.target.value)}
+                        type="date"
+                        value={financeToDate}
+                      />
+                    </label>
+                  </div>
+
+                  <div>
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Moneda
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          { value: "ALL", label: "Todas" },
+                          { value: "COP", label: "🇨🇴 COP" },
+                          { value: "USD", label: "🇺🇸 USD" }
+                        ] as const
+                      ).map((option) => {
+                        const isActive = financeCurrencyFilter === option.value;
+                        return (
+                          <button
+                            className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                              isActive
+                                ? "bg-brand-teal text-white shadow-sm"
+                                : "border border-border-subtle bg-white text-slate-600 hover:bg-slate-100"
+                            }`}
+                            key={option.value}
+                            onClick={() =>
+                              setFinanceCurrencyFilter(option.value as FinanceCurrencyFilter)
+                            }
+                            type="button"
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Estado
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          { value: "ALL", label: "Todos" },
+                          { value: "PAID", label: "Pagadas" },
+                          { value: "PENDING", label: "Pendientes" }
+                        ] as const
+                      ).map((option) => {
+                        const isActive = financePaymentStatusFilter === option.value;
+                        return (
+                          <button
+                            className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                              isActive
+                                ? "bg-brand-teal text-white shadow-sm"
+                                : "border border-border-subtle bg-white text-slate-600 hover:bg-slate-100"
+                            }`}
+                            key={option.value}
+                            onClick={() =>
+                              setFinancePaymentStatusFilter(
+                                option.value as FinancePaymentStatusFilter
+                              )
+                            }
+                            type="button"
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Origen
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(
+                        [
+                          { value: "ALL", label: "Todos" },
+                          { value: "CHATBOT", label: "Chatbot" },
+                          { value: "MANUAL", label: "Manual" }
+                        ] as const
+                      ).map((option) => {
+                        const isActive = financeSourceFilter === option.value;
+                        return (
+                          <button
+                            className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                              isActive
+                                ? "bg-brand-teal text-white shadow-sm"
+                                : "border border-border-subtle bg-white text-slate-600 hover:bg-slate-100"
+                            }`}
+                            key={option.value}
+                            onClick={() =>
+                              setFinanceSourceFilter(option.value as FinanceSourceFilter)
+                            }
+                            type="button"
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Método de pago
+                    <select
+                      className="mt-1 w-full rounded-lg border border-border-subtle bg-white px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) =>
+                        setFinancePaymentMethodFilter(
+                          event.target.value as FinancePaymentMethodFilter
+                        )
+                      }
+                      value={financePaymentMethodFilter}
+                    >
+                      <option value="ALL">Todos</option>
+                      <option value="CASH">Efectivo</option>
+                      <option value="TRANSFER">Transferencia</option>
+                    </select>
+                  </label>
+
+                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Buscar paciente
+                    <input
+                      className="mt-1 w-full rounded-lg border border-border-subtle bg-white px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                      onChange={(event) => setFinanceSearchTerm(event.target.value)}
+                      placeholder="Nombre o WhatsApp"
+                      type="text"
+                      value={financeSearchTerm}
+                    />
+                  </label>
+
+                  {financeActiveFilterCount > 0 ? (
+                    <button
+                      className="text-xs font-semibold text-brand-teal hover:underline"
+                      onClick={() => {
+                        setFinanceFromDate("");
+                        setFinanceToDate("");
+                        setFinancePaymentStatusFilter("ALL");
+                        setFinancePaymentMethodFilter("ALL");
+                        setFinanceSourceFilter("ALL");
+                        setFinanceCurrencyFilter("ALL");
+                        setFinanceSearchTerm("");
+                      }}
+                      type="button"
+                    >
+                      Limpiar filtros
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+
+            <section className="mt-4">
+              <div className="mb-2 flex items-baseline justify-between">
+                <h4 className="text-sm font-semibold text-brand-ink">Detalle de citas</h4>
+                <span className="text-[11px] text-slate-500">
+                  {filteredFinanceAppointments.length}{" "}
+                  {filteredFinanceAppointments.length === 1 ? "registro" : "registros"}
+                </span>
+              </div>
               {filteredFinanceAppointments.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-500">
+                <p className="rounded-xl border border-dashed border-border-subtle bg-slate-50 px-3 py-6 text-center text-sm text-slate-500">
                   No hay citas que coincidan con los filtros seleccionados.
                 </p>
               ) : (
-                <div className="mt-3 space-y-2">
+                <div className="space-y-2">
                   {filteredFinanceAppointments.map((appointment) => {
                     const startAt = luxonModule.DateTime.fromISO(appointment.startAt, {
                       zone: appointment.timezone
@@ -2744,41 +2962,79 @@ export function AgendaPage() {
                     });
                     const dateText =
                       !startAt.isValid || !endAt.isValid
-                        ? "-"
-                        : `${startAt.toFormat("dd LLL yyyy HH:mm")} - ${endAt.toFormat("HH:mm")}`;
+                        ? "—"
+                        : `${startAt.toFormat("dd LLL yyyy")} · ${startAt.toFormat("HH:mm")}–${endAt.toFormat("HH:mm")}`;
                     const paymentMethodLabel =
                       appointment.paymentMethod === "CASH"
                         ? "Efectivo"
                         : appointment.paymentMethod === "TRANSFER"
                           ? "Transferencia"
-                          : "-";
+                          : "—";
                     const paymentStatusLabel =
-                      appointment.paymentStatus === "PAID" ? "Pagada" : "Pendiente por pago";
-                    const paymentAmountLabel =
-                      appointment.paymentAmountCop === null
-                        ? "-"
-                        : formatCopCurrency(appointment.paymentAmountCop);
+                      appointment.paymentStatus === "PAID" ? "Pagada" : "Pendiente";
+                    const amountText =
+                      appointment.paymentAmount === null
+                        ? "—"
+                        : formatPaymentAmount(
+                            appointment.paymentAmount,
+                            appointment.paymentCurrency
+                          );
+                    const sourceTone =
+                      appointment.source === "CHATBOT"
+                        ? "bg-brand-accent-light text-brand-teal"
+                        : "bg-slate-100 text-slate-600";
+                    const currencyTone =
+                      appointment.paymentCurrency === "COP"
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-sky-50 text-sky-700";
                     return (
                       <article
-                        className="rounded-md border border-slate-200 bg-white px-3 py-2"
+                        className="rounded-2xl border border-border-subtle bg-white p-3 shadow-sm transition-shadow hover:shadow-md sm:p-4"
                         key={appointment.itemKey}
                       >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-brand-ink">
-                            {appointment.patientDisplayName}
-                          </p>
-                          <statusBadgeModule.StatusBadge
-                            label={paymentStatusLabel}
-                            tone={appointment.paymentStatus === "PAID" ? "success" : "warning"}
-                          />
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-accent-light text-xs font-bold text-brand-teal">
+                            {buildPatientInitials(appointment.patientDisplayName)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-brand-ink">
+                                  {appointment.patientDisplayName}
+                                </p>
+                                <p className="truncate text-[11px] text-slate-500">
+                                  {appointment.whatsappUserId}
+                                </p>
+                              </div>
+                              <statusBadgeModule.StatusBadge
+                                label={paymentStatusLabel}
+                                tone={appointment.paymentStatus === "PAID" ? "success" : "warning"}
+                              />
+                            </div>
+                            <p className="mt-2 text-xs text-slate-600">
+                              <span aria-hidden="true">📅 </span>
+                              {dateText}
+                            </p>
+                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex flex-wrap gap-1.5">
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${sourceTone}`}
+                                >
+                                  {appointment.source === "CHATBOT" ? "Chatbot" : "Manual"}
+                                </span>
+                                <span
+                                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${currencyTone}`}
+                                >
+                                  {appointment.paymentCurrency}
+                                </span>
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                  {paymentMethodLabel}
+                                </span>
+                              </div>
+                              <p className="text-sm font-bold text-brand-ink">{amountText}</p>
+                            </div>
+                          </div>
                         </div>
-                        <p className="text-xs text-slate-600">
-                          WhatsApp: {appointment.whatsappUserId}
-                        </p>
-                        <p className="text-xs text-slate-600">Cita: {dateText}</p>
-                        <p className="text-xs text-slate-600">Origen: {appointment.source}</p>
-                        <p className="text-xs text-slate-600">Valor: {paymentAmountLabel}</p>
-                        <p className="text-xs text-slate-600">Método: {paymentMethodLabel}</p>
                       </article>
                     );
                   })}

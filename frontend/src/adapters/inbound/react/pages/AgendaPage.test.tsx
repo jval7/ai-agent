@@ -1343,14 +1343,15 @@ vitestModule.describe("AgendaPage", () => {
       expect(testingLibraryReactModule.screen.getByText("Paciente Manual")).toBeInTheDocument();
     });
 
-    testingLibraryReactModule.fireEvent.change(
-      testingLibraryReactModule.screen.getByRole("combobox", {
-        name: /Estado de pago/i
-      }),
-      {
-        target: { value: "PAID" }
-      }
-    );
+    const filtersToggle = testingLibraryReactModule.screen.getByRole("button", {
+      name: /Filtros/i
+    });
+    testingLibraryReactModule.fireEvent.click(filtersToggle);
+
+    const paidChip = await testingLibraryReactModule.screen.findByRole("button", {
+      name: /^Pagadas$/i
+    });
+    testingLibraryReactModule.fireEvent.click(paidChip);
 
     await testingLibraryReactModule.waitFor(() => {
       expect(testingLibraryReactModule.screen.getByText("Paciente Bot")).toBeInTheDocument();
