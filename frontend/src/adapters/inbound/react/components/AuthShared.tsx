@@ -71,7 +71,7 @@ function BrandLockup() {
         <ChatIcon />
       </div>
       <div>
-        <p className="text-3xl font-bold leading-none text-slate-900 md:text-4xl">AI-Agents</p>
+        <p className="text-3xl font-bold leading-none text-slate-900 md:text-4xl">Agendachat</p>
         <p className="mt-1 text-sm text-slate-500 md:text-lg">WhatsApp Multi-tenant</p>
       </div>
     </div>
