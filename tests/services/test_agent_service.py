@@ -260,3 +260,43 @@ def test_update_professional_profile_preserves_office_location_and_reminders() -
     assert settings.payment_details_text == "Nequi 318"
     assert settings.office_location is not None
     assert settings.office_location.address == "Calle 5 # 38-25, Cali"
+
+
+# ---------------------------------------------------------------------------
+# payment_timing tests
+# ---------------------------------------------------------------------------
+
+
+def test_update_agent_settings_payment_timing_default_is_before_session() -> None:
+    service = build_agent_settings_service()
+
+    result = service.update_agent_settings(
+        "tenant-1",
+        agent_dto.UpdateAgentSettingsDTO(message_debounce_delay_seconds=0),
+    )
+
+    assert result.payment_timing == "BEFORE_SESSION"
+
+
+def test_update_agent_settings_payment_timing_in_person_roundtrip() -> None:
+    service = build_agent_settings_service()
+
+    result = service.update_agent_settings(
+        "tenant-1",
+        agent_dto.UpdateAgentSettingsDTO(
+            message_debounce_delay_seconds=0,
+            payment_timing="IN_PERSON",
+        ),
+    )
+
+    assert result.payment_timing == "IN_PERSON"
+    fetched = service.get_agent_settings("tenant-1")
+    assert fetched.payment_timing == "IN_PERSON"
+
+
+def test_get_agent_settings_returns_default_payment_timing_when_no_profile() -> None:
+    service = build_agent_settings_service()
+
+    result = service.get_agent_settings("tenant-1")
+
+    assert result.payment_timing == "BEFORE_SESSION"

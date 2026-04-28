@@ -269,6 +269,11 @@ class AgentService:
             office_location=(
                 existing_profile.office_location if existing_profile is not None else None
             ),
+            payment_timing=(
+                existing_profile.payment_timing
+                if existing_profile is not None
+                else "BEFORE_SESSION"
+            ),
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
@@ -289,6 +294,7 @@ class AgentService:
                 appointment_reminder_payment_template_name=None,
                 payment_details_text=None,
                 office_location=None,
+                payment_timing="BEFORE_SESSION",
             )
         return agent_dto.AgentSettingsResponseDTO(
             tenant_id=tenant_id,
@@ -299,6 +305,7 @@ class AgentService:
             appointment_reminder_payment_template_name=agent_profile.appointment_reminder_payment_template_name,
             payment_details_text=agent_profile.payment_details_text,
             office_location=_office_location_to_dto(agent_profile.office_location),
+            payment_timing=agent_profile.payment_timing,
         )
 
     def update_agent_settings(
@@ -321,6 +328,7 @@ class AgentService:
             appointment_reminder_payment_template_name=update_dto.appointment_reminder_payment_template_name,
             payment_details_text=_sanitize_payment_details(update_dto.payment_details_text),
             office_location=_office_location_dto_to_entity(update_dto.office_location),
+            payment_timing=update_dto.payment_timing,
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
@@ -333,6 +341,7 @@ class AgentService:
             appointment_reminder_payment_template_name=agent_profile.appointment_reminder_payment_template_name,
             payment_details_text=agent_profile.payment_details_text,
             office_location=_office_location_to_dto(agent_profile.office_location),
+            payment_timing=agent_profile.payment_timing,
         )
 
     def get_professional_profile(self, tenant_id: str) -> agent_dto.ProfessionalProfileResponseDTO:

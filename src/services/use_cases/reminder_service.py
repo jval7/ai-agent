@@ -82,8 +82,10 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         if days_before is None:
             return
 
-        # Select template based on payment_status.
-        if payment_status == "PAID":
+        # Select template based on payment_timing and payment_status.
+        # IN_PERSON professionals always use the attendance template because
+        # payment happens after the session — no payment reminder is needed.
+        if agent_profile.payment_timing == "IN_PERSON" or payment_status == "PAID":
             template_name = agent_profile.appointment_reminder_attendance_template_name
         else:
             template_name = agent_profile.appointment_reminder_payment_template_name
@@ -197,6 +199,26 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             reminder.appointment_start_at,
             now_value,
         )
+
+        # Opción B: reselect template if payment_timing changed after the cloud task
+        # was scheduled. This covers the case where a professional switches from
+        # BEFORE_SESSION to IN_PERSON (or vice versa) after a reminder was already
+        # enqueued — we must send the template that matches the current configuration.
+        current_template_kind = official_reminder_templates.by_name(reminder.template_name)
+        if agent_profile.payment_timing == "IN_PERSON" and current_template_kind == "PAYMENT":
+            corrected_name = agent_profile.appointment_reminder_attendance_template_name
+            if corrected_name is not None:
+                reminder.template_name = corrected_name
+                self._scheduled_reminder_repository.save(reminder)
+                logger.info(
+                    "reminder.template_reselected",
+                    extra={
+                        "reminder_id": reminder_id,
+                        "reason": "payment_timing_is_in_person",
+                        "new_template": corrected_name,
+                    },
+                )
+
         template_kind = official_reminder_templates.by_name(reminder.template_name)
 
         if template_kind == "ATTENDANCE":
