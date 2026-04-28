@@ -24,6 +24,14 @@ export class AgentUseCase {
     return this.api.updateAgentSettings(input);
   }
 
+  async getProfessionalProfile() {
+    return this.api.getProfessionalProfile();
+  }
+
+  async updateProfessionalProfile(input: agentModel.UpdateProfessionalProfileInput) {
+    return this.api.updateProfessionalProfile(input);
+  }
+
   async getDevFeatures() {
     return this.api.getDevFeatures();
   }

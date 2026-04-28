@@ -122,6 +122,11 @@ export interface BackendApiPort {
   ): Promise<schedulingModel.SchedulingRequestSummary>;
   closeSession(conversationId: string): Promise<{ status: string }>;
 
+  getProfessionalProfile(): Promise<agentModel.ProfessionalProfile>;
+  updateProfessionalProfile(
+    input: agentModel.UpdateProfessionalProfileInput
+  ): Promise<agentModel.ProfessionalProfile>;
+
   getTenantProfile(): Promise<tenantModel.TenantProfile>;
   updateTenantProfile(
     input: tenantModel.UpdateTenantProfileInput
