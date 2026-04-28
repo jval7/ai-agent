@@ -2,7 +2,6 @@ import * as reactModule from "react";
 import * as reactQueryModule from "@tanstack/react-query";
 
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
-import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as uiErrorModule from "@shared/http/ui_error";
@@ -63,7 +62,7 @@ function DocumentTextIcon() {
   );
 }
 
-export function PlantillasPage() {
+export function PlantillasSection() {
   const appContainer = appContainerContextModule.useAppContainer();
   const queryClient = reactQueryModule.useQueryClient();
 
@@ -152,10 +151,10 @@ export function PlantillasPage() {
   const templates = templatesQuery.data ?? [];
 
   return (
-    <appShellModule.AppShell>
+    <div className="mt-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-brand-ink">Plantillas de mensajes</h1>
+          <h2 className="text-2xl font-bold text-brand-ink">Plantillas de mensajes</h2>
           <p className="mt-1 text-sm text-slate-500">
             Gestiona las plantillas de mensajes de WhatsApp Business.
           </p>
@@ -400,6 +399,6 @@ export function PlantillasPage() {
           </div>
         </div>
       ) : null}
-    </appShellModule.AppShell>
+    </div>
   );
 }

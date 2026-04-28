@@ -8,8 +8,8 @@ export class PatientUseCase {
     this.api = api;
   }
 
-  async listPatients() {
-    return this.api.listPatients();
+  async listPatients(params?: { search?: string }) {
+    return this.api.listPatients(params);
   }
 
   async getPatient(whatsappUserId: string) {

@@ -9,6 +9,7 @@ import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.llm_provider_port as llm_provider_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
+import src.ports.tenant_repository_port as tenant_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.prompt_builder as prompt_builder
@@ -44,6 +45,7 @@ class SchedulingInboxService:
             agent_profile_repository_port.AgentProfileRepositoryPort | None
         ) = None,
         default_system_prompt: str | None = None,
+        tenant_repository: tenant_repository_port.TenantRepositoryPort | None = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
         self._scheduling_service = scheduling_service
@@ -56,6 +58,7 @@ class SchedulingInboxService:
         self._llm_provider = llm_provider
         self._agent_profile_repository = agent_profile_repository
         self._default_system_prompt = default_system_prompt
+        self._tenant_repository = tenant_repository
         self._prompt_builder = prompt_builder.RuntimePromptBuilder()
 
     def list_requests(
@@ -230,9 +233,12 @@ class SchedulingInboxService:
                 "scheduling request is not waiting for professional slots"
             )
 
+        session_duration_minutes = self._resolve_session_duration_minutes(claims.tenant_id)
         valid_slots: list[scheduling_slot_entity.SchedulingSlot] = []
         for slot_input in submit_dto.slots:
-            self._validate_slot_duration(slot_input.start_at, slot_input.end_at)
+            self._validate_slot_duration(
+                slot_input.start_at, slot_input.end_at, session_duration_minutes
+            )
             has_conflict = self._google_calendar_onboarding_service.has_conflict(
                 tenant_id=claims.tenant_id,
                 start_at=slot_input.start_at,
@@ -462,14 +468,26 @@ class SchedulingInboxService:
             lines.append(f"Todos los horarios en {display_tz}")
         return "\n".join(lines)
 
+    def _resolve_session_duration_minutes(self, tenant_id: str) -> int:
+        if self._tenant_repository is None:
+            return 60
+        tenant = self._tenant_repository.get_by_id(tenant_id)
+        if tenant is None:
+            return 60
+        return tenant.session_duration_minutes
+
     def _validate_slot_duration(
         self,
         start_at: datetime.datetime,
         end_at: datetime.datetime,
+        session_duration_minutes: int = 60,
     ) -> None:
+        expected_seconds = session_duration_minutes * 60
         duration_seconds = (end_at - start_at).total_seconds()
-        if duration_seconds != 3600:
-            raise service_exceptions.InvalidStateError("slots must be exactly 60 minutes")
+        if duration_seconds != expected_seconds:
+            raise service_exceptions.InvalidStateError(
+                f"slots must be exactly {session_duration_minutes} minutes"
+            )
 
     def _build_payment_review_message(
         self,

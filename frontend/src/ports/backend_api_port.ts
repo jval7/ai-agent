@@ -59,7 +59,7 @@ export interface BackendApiPort {
   addBlacklist(whatsappUserId: string): Promise<blacklistModel.BlacklistEntry>;
   removeBlacklist(whatsappUserId: string): Promise<void>;
 
-  listPatients(): Promise<patientModel.Patient[]>;
+  listPatients(params?: { search?: string }): Promise<patientModel.Patient[]>;
   getPatient(whatsappUserId: string): Promise<patientModel.Patient>;
   createPatient(input: patientModel.CreatePatientInput): Promise<patientModel.Patient>;
   updatePatient(

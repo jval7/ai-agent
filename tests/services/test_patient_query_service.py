@@ -258,6 +258,188 @@ def test_delete_patient_requires_professional_role() -> None:
         service.delete_patient(build_claims("agent"), "wa-1")
 
 
+def test_list_patients_search_by_first_name_substring() -> None:
+    service, repository, _, _, _ = build_service()
+    repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Ana",
+            last_name="García",
+            email="ana@example.com",
+            age=30,
+            location="Bogota",
+            phone="573001112233",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-2",
+            first_name="Carlos",
+            last_name="López",
+            email="carlos@example.com",
+            age=35,
+            location="Cali",
+            phone="573009998877",
+            created_at=datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC),
+        )
+    )
+
+    response = service.list_patients(build_claims("professional"), search="ana")
+
+    assert len(response.items) == 1
+    assert response.items[0].first_name == "Ana"
+
+
+def test_list_patients_search_case_insensitive() -> None:
+    service, repository, _, _, _ = build_service()
+    repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Martina",
+            last_name="Ruiz",
+            email="martina@example.com",
+            age=28,
+            location="Bogota",
+            phone="573001119900",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    response = service.list_patients(build_claims("professional"), search="MARTINA")
+
+    assert len(response.items) == 1
+    assert response.items[0].whatsapp_user_id == "wa-1"
+
+
+def test_list_patients_search_by_phone_substring() -> None:
+    service, repository, _, _, _ = build_service()
+    repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Luis",
+            last_name="Pérez",
+            email="luis@example.com",
+            age=40,
+            location="Medellin",
+            phone="573001234567",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-2",
+            first_name="Sofia",
+            last_name="Mora",
+            email="sofia@example.com",
+            age=25,
+            location="Bogota",
+            phone="573009999999",
+            created_at=datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC),
+        )
+    )
+
+    response = service.list_patients(build_claims("professional"), search="1234567")
+
+    assert len(response.items) == 1
+    assert response.items[0].whatsapp_user_id == "wa-1"
+
+
+def test_list_patients_search_by_whatsapp_user_id_substring() -> None:
+    service, repository, _, _, _ = build_service()
+    repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="573001112233",
+            first_name="Jorge",
+            last_name="Silva",
+            email="jorge@example.com",
+            age=45,
+            location="Bogota",
+            phone="573001112233",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="573009876543",
+            first_name="Paula",
+            last_name="Vargas",
+            email="paula@example.com",
+            age=31,
+            location="Cali",
+            phone="573009876543",
+            created_at=datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC),
+        )
+    )
+
+    response = service.list_patients(build_claims("professional"), search="1112233")
+
+    assert len(response.items) == 1
+    assert response.items[0].first_name == "Jorge"
+
+
+def test_list_patients_search_none_returns_all() -> None:
+    service, repository, _, _, _ = build_service()
+    repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Alice",
+            last_name="Brown",
+            email="alice@example.com",
+            age=22,
+            location="Bogota",
+            phone="573001110001",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-2",
+            first_name="Bob",
+            last_name="Green",
+            email="bob@example.com",
+            age=33,
+            location="Medellin",
+            phone="573001110002",
+            created_at=datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC),
+        )
+    )
+
+    response = service.list_patients(build_claims("professional"), search=None)
+
+    assert len(response.items) == 2
+
+
+def test_list_patients_search_no_match_returns_empty() -> None:
+    service, repository, _, _, _ = build_service()
+    repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Helena",
+            last_name="Castro",
+            email="helena@example.com",
+            age=38,
+            location="Bogota",
+            phone="573001119911",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    response = service.list_patients(build_claims("professional"), search="zzzzz")
+
+    assert len(response.items) == 0
+
+
 def test_delete_patient_removes_patient_for_tenant() -> None:
     (
         service,

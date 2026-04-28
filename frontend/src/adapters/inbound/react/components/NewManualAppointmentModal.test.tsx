@@ -173,19 +173,22 @@ vitestModule.describe("NewManualAppointmentModal", () => {
       }
     });
 
-    // Wait for patient list to load then select a patient
+    const modalEl = testingLibraryReactModule.screen.getByTestId("new-manual-appointment-modal");
+    const withinModal = testingLibraryReactModule.within(modalEl);
+
+    // Open combobox and select patient
+    testingLibraryReactModule.fireEvent.focus(
+      withinModal.getByRole("combobox", { name: /Seleccionar paciente/i })
+    );
+
     await testingLibraryReactModule.waitFor(() => {
       expect(
         testingLibraryReactModule.screen.getByRole("option", { name: /Jane Doe/i })
       ).toBeInTheDocument();
     });
 
-    const modalEl = testingLibraryReactModule.screen.getByTestId("new-manual-appointment-modal");
-    const withinModal = testingLibraryReactModule.within(modalEl);
-
-    testingLibraryReactModule.fireEvent.change(
-      withinModal.getByRole("combobox", { name: /Seleccionar paciente/i }),
-      { target: { value: "wa-1" } }
+    testingLibraryReactModule.fireEvent.mouseDown(
+      testingLibraryReactModule.screen.getByRole("option", { name: /Jane Doe/i })
     );
 
     // Click day 12
@@ -287,18 +290,22 @@ vitestModule.describe("NewManualAppointmentModal", () => {
       }
     });
 
+    const modalEl = testingLibraryReactModule.screen.getByTestId("new-manual-appointment-modal");
+    const withinModal = testingLibraryReactModule.within(modalEl);
+
+    // Open combobox and select patient
+    testingLibraryReactModule.fireEvent.focus(
+      withinModal.getByRole("combobox", { name: /Seleccionar paciente/i })
+    );
+
     await testingLibraryReactModule.waitFor(() => {
       expect(
         testingLibraryReactModule.screen.getByRole("option", { name: /Jane Doe/i })
       ).toBeInTheDocument();
     });
 
-    const modalEl = testingLibraryReactModule.screen.getByTestId("new-manual-appointment-modal");
-    const withinModal = testingLibraryReactModule.within(modalEl);
-
-    testingLibraryReactModule.fireEvent.change(
-      withinModal.getByRole("combobox", { name: /Seleccionar paciente/i }),
-      { target: { value: "wa-1" } }
+    testingLibraryReactModule.fireEvent.mouseDown(
+      testingLibraryReactModule.screen.getByRole("option", { name: /Jane Doe/i })
     );
 
     // Select day 12
