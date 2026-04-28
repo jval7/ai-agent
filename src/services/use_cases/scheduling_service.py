@@ -668,34 +668,28 @@ class SchedulingService:
         )
         return self._to_summary_dto(open_request)
 
-    def _confirm_selected_slot_and_create_event_impl(
+    def _book_slot_and_create_event(
         self,
         tenant_id: str,
         conversation_id: str,
-        input_dto: scheduling_dto.ConfirmSelectedSlotInputDTO,
+        request: scheduling_request_entity.SchedulingRequest,
+        selected_slot: scheduling_slot_entity.SchedulingSlot,
+        event_summary: str,
+        attendee_emails: list[str],
+        reminder_payment_status: typing.Literal["PAID", "PENDING"],
+        now_value: datetime.datetime,
     ) -> scheduling_dto.ConfirmSelectedSlotResponseDTO:
-        request = self._scheduling_repository.get_request_by_id(tenant_id, input_dto.request_id)
-        if request is None:
-            raise service_exceptions.EntityNotFoundError("scheduling request not found")
-        if request.conversation_id != conversation_id:
-            raise service_exceptions.AuthorizationError(
-                "scheduling request does not belong to conversation"
-            )
-        if request.status != "AWAITING_PATIENT_CHOICE":
-            raise service_exceptions.InvalidStateError(
-                "scheduling request is not waiting for patient choice"
-            )
+        """Create a calendar event and transition the request to BOOKED.
 
-        selected_slot = self._find_selectable_slot(request, input_dto.slot_id)
-        if selected_slot is None:
-            raise service_exceptions.InvalidStateError("selected slot is not available")
-
+        Checks for conflicts first and returns SLOT_CONFLICT if one is found.
+        Schedules the auto-close task and the appointment reminder after a
+        successful booking.
+        """
         has_conflict = self._google_calendar_onboarding_service.has_conflict(
             tenant_id=tenant_id,
             start_at=selected_slot.start_at,
             end_at=selected_slot.end_at,
         )
-        now_value = self._clock.now()
         if has_conflict:
             return self._mark_selected_slot_conflict(request, selected_slot, now_value)
 
@@ -707,13 +701,13 @@ class SchedulingService:
                     "event_data": app_logs.build_log_event(
                         event_name="scheduling.confirm_slot.missing_modality",
                         message="appointment_modality is None; defaulting to PRESENCIAL",
-                        data={"tenant_id": tenant_id, "request_id": input_dto.request_id},
+                        data={"tenant_id": tenant_id, "request_id": request.id},
                     )
                 },
             )
 
         try:
-            normalized_summary = input_dto.event_summary.strip()
+            normalized_summary = event_summary.strip()
             if not normalized_summary:
                 raise service_exceptions.InvalidStateError("event summary cannot be empty")
             event_description_result = self._event_description_builder.build(
@@ -728,7 +722,7 @@ class SchedulingService:
                 start_at=selected_slot.start_at,
                 end_at=selected_slot.end_at,
                 summary=normalized_summary,
-                attendee_emails=input_dto.attendee_emails,
+                attendee_emails=attendee_emails,
                 with_meet=with_meet,
                 description=event_description,
                 location=event_location,
@@ -737,6 +731,7 @@ class SchedulingService:
             if self._is_google_conflict_error(str(error)):
                 return self._mark_selected_slot_conflict(request, selected_slot, now_value)
             raise
+
         for slot in request.slots:
             if slot.id == selected_slot.id:
                 slot.status = "BOOKED"
@@ -761,7 +756,7 @@ class SchedulingService:
                 patient_whatsapp_user_id=request.whatsapp_user_id,
                 patient_name=request.patient_first_name or "Paciente",
                 appointment_start_at=selected_slot.start_at,
-                payment_status="PAID",
+                payment_status=reminder_payment_status,
                 appointment_modality=request.appointment_modality,
                 meet_url=event.meet_url,
             )
@@ -771,6 +766,40 @@ class SchedulingService:
             selected_slot_id=selected_slot.id,
             calendar_event_id=event.event_id,
             remaining_slot_ids=[],
+        )
+
+    def _confirm_selected_slot_and_create_event_impl(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        input_dto: scheduling_dto.ConfirmSelectedSlotInputDTO,
+    ) -> scheduling_dto.ConfirmSelectedSlotResponseDTO:
+        request = self._scheduling_repository.get_request_by_id(tenant_id, input_dto.request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+        if request.conversation_id != conversation_id:
+            raise service_exceptions.AuthorizationError(
+                "scheduling request does not belong to conversation"
+            )
+        if request.status != "AWAITING_PATIENT_CHOICE":
+            raise service_exceptions.InvalidStateError(
+                "scheduling request is not waiting for patient choice"
+            )
+
+        selected_slot = self._find_selectable_slot(request, input_dto.slot_id)
+        if selected_slot is None:
+            raise service_exceptions.InvalidStateError("selected slot is not available")
+
+        now_value = self._clock.now()
+        return self._book_slot_and_create_event(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            request=request,
+            selected_slot=selected_slot,
+            event_summary=input_dto.event_summary,
+            attendee_emails=input_dto.attendee_emails,
+            reminder_payment_status="PAID",
+            now_value=now_value,
         )
 
     def _archive_conversation_subsession_after_booking(
