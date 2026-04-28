@@ -269,10 +269,10 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    const ajustesTab = await testingLibraryReactModule.screen.findByRole("button", {
-      name: /Ajustes del agente/i
+    const recordatoriosTab = await testingLibraryReactModule.screen.findByRole("button", {
+      name: /^Recordatorios$/i
     });
-    testingLibraryReactModule.fireEvent.click(ajustesTab);
+    testingLibraryReactModule.fireEvent.click(recordatoriosTab);
 
     const activateButton = await testingLibraryReactModule.screen.findByRole("button", {
       name: /Activar recordatorios/i
@@ -303,10 +303,10 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    const ajustesTab = await testingLibraryReactModule.screen.findByRole("button", {
-      name: /Ajustes del agente/i
+    const recordatoriosTab = await testingLibraryReactModule.screen.findByRole("button", {
+      name: /^Recordatorios$/i
     });
-    testingLibraryReactModule.fireEvent.click(ajustesTab);
+    testingLibraryReactModule.fireEvent.click(recordatoriosTab);
 
     const activateButton = await testingLibraryReactModule.screen.findByRole("button", {
       name: /Activar recordatorios/i

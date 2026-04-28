@@ -120,17 +120,7 @@ export function PlantillasSection() {
     }
   });
 
-  const deleteMutation = reactQueryModule.useMutation({
-    mutationFn: (name: string) => appContainer.whatsappTemplateUseCase.deleteTemplate(name),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: templatesQueryKey });
-    }
-  });
-
-  const listErrorMessage = uiErrorModule.resolveUiErrorMessage([
-    templatesQuery.error,
-    deleteMutation.error
-  ]);
+  const listErrorMessage = uiErrorModule.resolveUiErrorMessage([templatesQuery.error]);
 
   const createErrorMessage = uiErrorModule.resolveUiErrorMessage([createMutation.error]);
 
@@ -208,9 +198,6 @@ export function PlantillasSection() {
                 <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Estado
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Acciones
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
@@ -227,18 +214,6 @@ export function PlantillasSection() {
                     <td className="px-6 py-4 text-sm">{buildCategoryBadge(template.category)}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{template.language}</td>
                     <td className="px-6 py-4 text-sm">{buildStatusBadge(template.status)}</td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        className="text-sm font-medium text-red-600 transition-colors hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={deleteMutation.isPending}
-                        onClick={() => {
-                          deleteMutation.mutate(template.name);
-                        }}
-                        type="button"
-                      >
-                        Eliminar
-                      </button>
-                    </td>
                   </tr>
                 );
               })}
