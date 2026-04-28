@@ -131,3 +131,132 @@ def test_update_agent_settings_office_location_none_clears_field() -> None:
     )
 
     assert result.office_location is None
+
+
+# ---------------------------------------------------------------------------
+# Professional profile tests
+# ---------------------------------------------------------------------------
+
+
+def test_get_professional_profile_returns_empty_dto_when_unset() -> None:
+    service = build_agent_service()
+
+    result = service.get_professional_profile("tenant-1")
+
+    assert result.tenant_id == "tenant-1"
+    assert result.identity is None
+    assert result.professional_context is None
+    assert result.services == []
+    assert result.presencial_schedule == []
+    assert result.virtual_schedule == []
+    assert result.payment_methods == []
+
+
+def test_update_professional_profile_persists_structured_fields() -> None:
+    service = build_agent_service()
+
+    update_dto = agent_dto.UpdateProfessionalProfileDTO(
+        identity=agent_dto.AssistantIdentityDTO(
+            assistant_name="Claudia",
+            professional_title="Psicóloga",
+            main_city="Cali",
+        ),
+        professional_context=agent_dto.ProfessionalContextDTO(
+            approach="Enfoque humanista.",
+            common_topics=["ansiedad", "duelo"],
+        ),
+        services=[
+            agent_dto.ServiceOfferingDTO(
+                name="Consulta Adultos",
+                audience="Adultos",
+                modalities=["PRESENCIAL"],
+                tariffs_local=[
+                    agent_dto.TariffOptionDTO(label="Sesión", amount=130000, currency="COP")
+                ],
+            )
+        ],
+        presencial_schedule=[
+            agent_dto.ScheduleBlockDTO(
+                weekday_from="WED", weekday_to="FRI", start_time="08:00", end_time="16:00"
+            )
+        ],
+        virtual_schedule=[
+            agent_dto.ScheduleBlockDTO(
+                weekday_from="MON", weekday_to="FRI", start_time="08:00", end_time="18:00"
+            )
+        ],
+        payment_methods=[
+            agent_dto.PaymentMethodDTO(
+                currency="COP",
+                method_name="Nequi",
+                holder="Aleja",
+                instructions="318-000-0000",
+            )
+        ],
+    )
+
+    service.update_professional_profile("tenant-1", update_dto)
+    result = service.get_professional_profile("tenant-1")
+
+    assert result.tenant_id == "tenant-1"
+    assert result.identity is not None
+    assert result.identity.assistant_name == "Claudia"
+    assert result.identity.main_city == "Cali"
+    assert result.professional_context is not None
+    assert result.professional_context.approach == "Enfoque humanista."
+    assert "ansiedad" in result.professional_context.common_topics
+    assert len(result.services) == 1
+    assert result.services[0].name == "Consulta Adultos"
+    assert len(result.presencial_schedule) == 1
+    assert result.presencial_schedule[0].weekday_from == "WED"
+    assert len(result.virtual_schedule) == 1
+    assert len(result.payment_methods) == 1
+    assert result.payment_methods[0].method_name == "Nequi"
+
+
+def test_update_professional_profile_regenerates_system_prompt_xml() -> None:
+    service = build_agent_service()
+
+    update_dto = agent_dto.UpdateProfessionalProfileDTO(
+        identity=agent_dto.AssistantIdentityDTO(
+            assistant_name="Bot",
+            professional_title="Psicóloga",
+        ),
+    )
+
+    service.update_professional_profile("tenant-1", update_dto)
+    prompt_result = service.get_system_prompt("tenant-1")
+
+    assert "<base_system_prompt>" in prompt_result.system_prompt
+    assert "<style_rules>" in prompt_result.system_prompt
+    assert "Bot" in prompt_result.system_prompt
+    assert "</base_system_prompt>" in prompt_result.system_prompt
+
+
+def test_update_professional_profile_preserves_office_location_and_reminders() -> None:
+    service = build_agent_service()
+
+    # First set settings (office_location, reminders, debounce)
+    service.update_agent_settings(
+        "tenant-1",
+        agent_dto.UpdateAgentSettingsDTO(
+            message_debounce_delay_seconds=10,
+            payment_details_text="Nequi 318",
+            office_location=agent_dto.OfficeLocationDTO(address="Calle 5 # 38-25, Cali"),
+        ),
+    )
+
+    # Now update the professional profile
+    service.update_professional_profile(
+        "tenant-1",
+        agent_dto.UpdateProfessionalProfileDTO(
+            identity=agent_dto.AssistantIdentityDTO(assistant_name="Claudia"),
+        ),
+    )
+
+    # Agent settings should be unchanged
+    settings = service.get_agent_settings("tenant-1")
+    assert settings.message_debounce_delay_seconds == 10
+    assert settings.payment_details_text == "Nequi 318"
+    assert settings.office_location is not None
+    assert settings.office_location.address == "Calle 5 # 38-25, Cali"

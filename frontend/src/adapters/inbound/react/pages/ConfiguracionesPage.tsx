@@ -7,7 +7,7 @@ import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as billingDisclosureModalModule from "@adapters/inbound/react/components/BillingDisclosureModal";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
-import * as xmlTagEditorModule from "@adapters/inbound/react/components/XmlTagEditor";
+import * as professionalProfileFormModule from "@adapters/inbound/react/components/ProfessionalProfileForm/ProfessionalProfileForm";
 import * as uiErrorModule from "@shared/http/ui_error";
 import * as fbSdkModule from "@shared/facebook/fb_sdk";
 import * as dateUtilsModule from "@shared/utils/date";
@@ -34,12 +34,12 @@ function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   return <statusBadgeModule.StatusBadge label="DISCONNECTED" tone="danger" />;
 }
 
-type ConfigTab = "general" | "conexiones" | "prompt" | "ajustes";
+type ConfigTab = "general" | "conexiones" | "agente" | "ajustes";
 
 const CONFIG_TABS: { id: ConfigTab; label: string }[] = [
   { id: "general", label: "Información General" },
   { id: "conexiones", label: "Conexiones" },
-  { id: "prompt", label: "System Prompt" },
+  { id: "agente", label: "Agente" },
   { id: "ajustes", label: "Ajustes del agente" }
 ];
 
@@ -139,21 +139,6 @@ export function ConfiguracionesPage() {
   const promptQuery = reactQueryModule.useQuery({
     queryKey: promptQueryKey,
     queryFn: () => appContainer.agentUseCase.getSystemPrompt()
-  });
-
-  const [systemPrompt, setSystemPrompt] = reactModule.useState("");
-
-  reactModule.useEffect(() => {
-    if (promptQuery.data !== undefined) {
-      setSystemPrompt(promptQuery.data.systemPrompt);
-    }
-  }, [promptQuery.data]);
-
-  const updateMutation = reactQueryModule.useMutation({
-    mutationFn: () => appContainer.agentUseCase.updateSystemPrompt(systemPrompt),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: promptQueryKey });
-    }
   });
 
   const settingsQuery = reactQueryModule.useQuery({
@@ -389,11 +374,6 @@ export function ConfiguracionesPage() {
   const savedProfessionalName = profileQuery.data?.professionalName ?? null;
   const profileDraftTrimmed = profileDraft.professionalName.trim() || null;
   const isProfileDirty = profileDraftTrimmed !== savedProfessionalName;
-
-  const promptErrorMessage = uiErrorModule.resolveUiErrorMessage([
-    updateMutation.error,
-    promptQuery.error
-  ]);
 
   const daysBeforeTimeoutRef = reactModule.useRef<number | null>(null);
   const handleDaysBeforeChange = (event: reactModule.ChangeEvent<HTMLInputElement>) => {
@@ -791,39 +771,21 @@ export function ConfiguracionesPage() {
         </>
       ) : null}
 
-      {/* --- System Prompt --- */}
-      {activeTab === "prompt" ? (
-        <section className="mt-6 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <p className="mb-4 text-sm text-slate-600">
-            Define el comportamiento base del agente. Usa etiquetas XML para organizar secciones
-            colapsables.
-          </p>
-
-          <xmlTagEditorModule.XmlTagEditor
-            disabled={updateMutation.isPending || promptQuery.isLoading}
-            onChange={(nextValue) => {
-              setSystemPrompt(nextValue);
-            }}
-            value={systemPrompt}
-          />
-
-          {promptErrorMessage !== null ? (
-            <errorBannerModule.ErrorBanner className="mt-3" message={promptErrorMessage} />
+      {/* --- Agente --- */}
+      {activeTab === "agente" ? (
+        <div className="mt-6">
+          <professionalProfileFormModule.ProfessionalProfileForm />
+          {import.meta.env.DEV ? (
+            <div className="mt-8 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+              <h4 className="mb-3 text-sm font-semibold text-slate-500 uppercase tracking-wide">
+                Vista previa del prompt generado (solo en dev)
+              </h4>
+              <pre className="max-h-96 overflow-auto rounded-lg bg-slate-50 p-4 text-xs text-slate-600 whitespace-pre-wrap">
+                {promptQuery.data?.systemPrompt ?? "(cargando...)"}
+              </pre>
+            </div>
           ) : null}
-
-          <div className="mt-4 flex gap-3">
-            <button
-              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={updateMutation.isPending || promptQuery.isLoading}
-              onClick={() => {
-                updateMutation.mutate();
-              }}
-              type="button"
-            >
-              {updateMutation.isPending ? "Guardando..." : "Guardar prompt"}
-            </button>
-          </div>
-        </section>
+        </div>
       ) : null}
 
       {/* --- Ajustes del agente --- */}

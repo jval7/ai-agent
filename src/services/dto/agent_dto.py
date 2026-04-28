@@ -2,6 +2,81 @@ import typing
 
 import pydantic
 
+# ---------------------------------------------------------------------------
+# Professional Profile DTOs (structured form fields)
+# ---------------------------------------------------------------------------
+
+
+class AssistantIdentityDTO(pydantic.BaseModel):
+    assistant_name: str | None = None
+    professional_title: str | None = None
+    professional_address_term: str | None = None
+    main_city: str | None = None
+    tone: str | None = None
+    languages: list[str] = []
+
+
+class ScheduleBlockDTO(pydantic.BaseModel):
+    weekday_from: typing.Literal["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+    weekday_to: typing.Literal["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] | None = None
+    start_time: str
+    end_time: str
+
+
+class TariffOptionDTO(pydantic.BaseModel):
+    label: str
+    amount: float
+    currency: str
+    discount_percent: float | None = None
+
+
+class ServiceOfferingDTO(pydantic.BaseModel):
+    name: str | None = None
+    description: str | None = None
+    audience: str | None = None
+    modalities: list[typing.Literal["PRESENCIAL", "VIRTUAL"]] = []
+    tariffs_local: list[TariffOptionDTO] = []
+    tariffs_foreign: list[TariffOptionDTO] = []
+
+
+class PaymentMethodDTO(pydantic.BaseModel):
+    currency: str
+    method_name: str
+    holder: str | None = None
+    instructions: str | None = None
+    applies_when: str | None = None
+
+
+class ProfessionalContextDTO(pydantic.BaseModel):
+    approach: str | None = None
+    common_topics: list[str] = []
+    services_not_offered: list[str] = []
+    coverage_notes: str | None = None
+
+
+class ProfessionalProfileResponseDTO(pydantic.BaseModel):
+    tenant_id: str
+    identity: AssistantIdentityDTO | None = None
+    professional_context: ProfessionalContextDTO | None = None
+    services: list[ServiceOfferingDTO] = []
+    presencial_schedule: list[ScheduleBlockDTO] = []
+    virtual_schedule: list[ScheduleBlockDTO] = []
+    payment_methods: list[PaymentMethodDTO] = []
+
+
+class UpdateProfessionalProfileDTO(pydantic.BaseModel):
+    identity: AssistantIdentityDTO | None = None
+    professional_context: ProfessionalContextDTO | None = None
+    services: list[ServiceOfferingDTO] = []
+    presencial_schedule: list[ScheduleBlockDTO] = []
+    virtual_schedule: list[ScheduleBlockDTO] = []
+    payment_methods: list[PaymentMethodDTO] = []
+
+
+# ---------------------------------------------------------------------------
+# Legacy system-prompt and settings DTOs
+# ---------------------------------------------------------------------------
+
 
 class UpdateSystemPromptDTO(pydantic.BaseModel):
     system_prompt: str
