@@ -117,6 +117,30 @@ resource "google_compute_managed_ssl_certificate" "frontend_spa" {
   ]
 }
 
+# TODO(rebrand-cleanup): cert temporal solo para agendachat.app durante la migración
+# alejaescobar.com -> agendachat.app (2026-04-28).
+# Razón: `domains` es ForceNew + nombre fijo del cert original = recreate causaría
+# downtime de HTTPS hasta provisioning del cert nuevo (15min-24h).
+# Cuando decommissionemos alejaescobar.com:
+#   1. Cambiar var.frontend_domains a ["agendachat.app"] en envs/prod.tfvars
+#   2. Borrar este recurso (frontend_spa_agendachat) y la entrada en ssl_certificates del https_proxy
+#   3. terraform apply  -> recrea el cert original con solo agendachat.app y termina con un único cert
+# Alternativa de largo plazo: refactorizar a random_id + lifecycle.create_before_destroy.
+resource "google_compute_managed_ssl_certificate" "frontend_spa_agendachat" {
+  count = local.https_enabled ? 1 : 0
+
+  project = var.project_id
+  name    = "${local.resource_name_prefix_normalized}-cert-agendachat"
+
+  managed {
+    domains = ["agendachat.app"]
+  }
+
+  depends_on = [
+    google_project_service.apis,
+  ]
+}
+
 resource "google_compute_url_map" "frontend_spa_https" {
   count = local.https_enabled ? 1 : 0
 
@@ -134,6 +158,9 @@ resource "google_compute_target_https_proxy" "frontend_spa" {
 
   ssl_certificates = [
     google_compute_managed_ssl_certificate.frontend_spa[0].id,
+    # TODO(rebrand-cleanup): remover esta entrada cuando se decommissione alejaescobar.com
+    # (ver comentario sobre frontend_spa_agendachat arriba).
+    google_compute_managed_ssl_certificate.frontend_spa_agendachat[0].id,
   ]
 }
 
