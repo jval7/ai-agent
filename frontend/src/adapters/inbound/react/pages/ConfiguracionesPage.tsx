@@ -35,17 +35,25 @@ function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   return <statusBadgeModule.StatusBadge label="DISCONNECTED" tone="danger" />;
 }
 
-type ConfigTab = "general" | "conexiones" | "agente" | "ajustes" | "recordatorios";
+type ConfigTab = "general" | "conexiones" | "recordatorios";
 
 const CONFIG_TABS: { id: ConfigTab; label: string }[] = [
-  { id: "general", label: "Información General" },
+  { id: "general", label: "Configuración general" },
   { id: "conexiones", label: "Conexiones" },
-  { id: "agente", label: "Agente" },
-  { id: "ajustes", label: "Ajustes del agente" },
   { id: "recordatorios", label: "Recordatorios" }
 ];
 
 const VALID_TAB_IDS = new Set<string>(CONFIG_TABS.map((t) => t.id));
+
+// Map deprecated tab ids (kept for backward-compat with old bookmarks/links)
+// to their current home after the 2026-04 tabs consolidation.
+function resolveTabFromParam(value: string | null): ConfigTab | null {
+  if (value === null) return null;
+  if (VALID_TAB_IDS.has(value)) return value as ConfigTab;
+  if (value === "agente") return "general";
+  if (value === "ajustes") return "recordatorios";
+  return null;
+}
 
 export function ConfiguracionesPage() {
   const appContainer = appContainerContextModule.useAppContainer();
@@ -58,16 +66,14 @@ export function ConfiguracionesPage() {
 
   const [activeTab, setActiveTab] = reactModule.useState<ConfigTab>(() => {
     const tabParam = new URLSearchParams(window.location.search).get("tab");
-    if (tabParam !== null && VALID_TAB_IDS.has(tabParam)) {
-      return tabParam as ConfigTab;
-    }
-    return "general";
+    return resolveTabFromParam(tabParam) ?? "general";
   });
 
   reactModule.useEffect(() => {
     const tabParam = searchParams.get("tab");
-    if (tabParam !== null && VALID_TAB_IDS.has(tabParam)) {
-      setActiveTab(tabParam as ConfigTab);
+    const resolved = resolveTabFromParam(tabParam);
+    if (resolved !== null) {
+      setActiveTab(resolved);
     }
   }, [searchParams]);
 
@@ -430,6 +436,21 @@ export function ConfiguracionesPage() {
     }, 800);
   };
 
+  const debounceDelayTimeoutRef = reactModule.useRef<number | null>(null);
+  const handleDebounceDelayChange = (event: reactModule.ChangeEvent<HTMLInputElement>) => {
+    const parsed = Number(event.target.value);
+    setDebounceDelay(parsed);
+    if (Number.isNaN(parsed) || parsed < 0 || parsed > 30) {
+      return;
+    }
+    if (debounceDelayTimeoutRef.current !== null) {
+      window.clearTimeout(debounceDelayTimeoutRef.current);
+    }
+    debounceDelayTimeoutRef.current = window.setTimeout(() => {
+      settingsMutation.mutate();
+    }, 800);
+  };
+
   const settingsErrorMessage = uiErrorModule.resolveUiErrorMessage([
     settingsMutation.error,
     settingsQuery.error,
@@ -483,192 +504,241 @@ export function ConfiguracionesPage() {
         ))}
       </nav>
 
-      {/* --- Información General (Perfil + Consultorio) --- */}
+      {/* --- Configuración general (Perfil + Duración + Consultorio + Delay + Agente) --- */}
       {activeTab === "general" ? (
-        <div className="mt-6 max-w-2xl space-y-6">
-          {/* Sub-sección: Perfil del profesional */}
-          <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-            <h3 className="text-xl font-semibold text-brand-ink">Perfil del profesional</h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Este nombre aparece en los titulos de los eventos de Google Calendar cuando agendas
-              una cita.
-            </p>
-
-            <div className="mt-6">
-              <label
-                className="block text-sm font-medium text-slate-700"
-                htmlFor="professional-name"
-              >
-                Nombre del profesional
-              </label>
-              <input
-                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={profileQuery.isLoading}
-                id="professional-name"
-                maxLength={80}
-                onChange={(e) => {
-                  setProfileDraft((prev) => ({ ...prev, professionalName: e.target.value }));
-                  setProfileSuccessMessage(null);
-                }}
-                placeholder="Ej. Dra. Ana Garcia"
-                type="text"
-                value={profileDraft.professionalName}
-              />
-              <p className="mt-1.5 text-xs text-slate-500">
-                Formato del titulo en Calendar: {"{tu nombre}"}/{"{nombre del paciente}"}. Si dejas
-                este campo vacio se usara "Profesional" por defecto.
+        <>
+          <div className="mt-6 max-w-2xl space-y-6">
+            {/* Sub-sección: Perfil del profesional */}
+            <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+              <h3 className="text-xl font-semibold text-brand-ink">Perfil del profesional</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Este nombre aparece en los titulos de los eventos de Google Calendar cuando agendas
+                una cita.
               </p>
-            </div>
 
-            {profileSuccessMessage !== null ? (
-              <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {profileSuccessMessage}
-              </div>
-            ) : null}
-
-            {profileErrorMessage !== null ? (
-              <errorBannerModule.ErrorBanner className="mt-3" message={profileErrorMessage} />
-            ) : null}
-
-            <div className="mt-6 flex justify-end">
-              <button
-                className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={profileMutation.isPending || profileQuery.isLoading || !isProfileDirty}
-                onClick={() => {
-                  profileMutation.mutate();
-                }}
-                type="button"
-              >
-                {profileMutation.isPending ? "Guardando..." : "Guardar"}
-              </button>
-            </div>
-          </section>
-
-          {/* Sub-sección: Duración de sesión */}
-          <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-            <h3 className="text-xl font-semibold text-brand-ink">Duración de sesión</h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Aplica a todas las citas que se agenden a partir de ahora.
-            </p>
-
-            <div className="mt-6">
-              <label
-                className="block text-sm font-medium text-slate-700"
-                htmlFor="session-duration"
-              >
-                Duración de sesión
-              </label>
-              <select
-                className="mt-1 block w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={profileQuery.isLoading || sessionDurationMutation.isPending}
-                id="session-duration"
-                onChange={(e) => {
-                  const minutes = Number(e.target.value);
-                  setProfileDraft((prev) => ({ ...prev, sessionDurationMinutes: minutes }));
-                  setSessionDurationSuccessMessage(null);
-                  sessionDurationMutation.mutate(minutes);
-                }}
-                value={profileDraft.sessionDurationMinutes}
-              >
-                <option value={15}>15 min</option>
-                <option value={30}>30 min</option>
-                <option value={45}>45 min</option>
-                <option value={60}>60 min</option>
-                <option value={90}>90 min</option>
-                <option value={120}>120 min</option>
-              </select>
-            </div>
-
-            {sessionDurationSuccessMessage !== null ? (
-              <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {sessionDurationSuccessMessage}
-              </div>
-            ) : null}
-          </section>
-
-          {/* Sub-sección: Datos del consultorio */}
-          <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-            <h3 className="text-xl font-semibold text-brand-ink">Datos del consultorio</h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Esta informacion se incluye automaticamente en los mensajes de confirmacion de citas
-              presenciales y en los eventos de Google Calendar.
-            </p>
-
-            <div className="mt-6 space-y-4">
-              <div>
+              <div className="mt-6">
                 <label
                   className="block text-sm font-medium text-slate-700"
-                  htmlFor="office-address"
+                  htmlFor="professional-name"
                 >
-                  Direccion del consultorio
+                  Nombre del profesional
                 </label>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Si dejas este campo vacio, no se guardaran datos presenciales ni indicaciones de
-                  llegada. Puedes incluir edificio, piso, parqueadero y referencias en el mismo
-                  campo.
+                <input
+                  className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={profileQuery.isLoading}
+                  id="professional-name"
+                  maxLength={80}
+                  onChange={(e) => {
+                    setProfileDraft((prev) => ({ ...prev, professionalName: e.target.value }));
+                    setProfileSuccessMessage(null);
+                  }}
+                  placeholder="Ej. Dra. Ana Garcia"
+                  type="text"
+                  value={profileDraft.professionalName}
+                />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Formato del titulo en Calendar: {"{tu nombre}"}/{"{nombre del paciente}"}. Si
+                  dejas este campo vacio se usara "Profesional" por defecto.
                 </p>
-                <textarea
-                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={settingsQuery.isLoading}
-                  id="office-address"
-                  onChange={(e) => {
-                    setOfficeAddress(e.target.value);
-                    setOfficeSuccessMessage(null);
-                  }}
-                  placeholder="Ej. Avenida Siempre Viva 1234, Edificio Azul, piso 5, parqueadero en sotano"
-                  rows={3}
-                  value={officeAddress}
-                />
               </div>
 
-              <div>
+              {profileSuccessMessage !== null ? (
+                <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {profileSuccessMessage}
+                </div>
+              ) : null}
+
+              {profileErrorMessage !== null ? (
+                <errorBannerModule.ErrorBanner className="mt-3" message={profileErrorMessage} />
+              ) : null}
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={profileMutation.isPending || profileQuery.isLoading || !isProfileDirty}
+                  onClick={() => {
+                    profileMutation.mutate();
+                  }}
+                  type="button"
+                >
+                  {profileMutation.isPending ? "Guardando..." : "Guardar"}
+                </button>
+              </div>
+            </section>
+
+            {/* Sub-sección: Duración de sesión */}
+            <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+              <h3 className="text-xl font-semibold text-brand-ink">Duración de sesión</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Aplica a todas las citas que se agenden a partir de ahora.
+              </p>
+
+              <div className="mt-6">
                 <label
                   className="block text-sm font-medium text-slate-700"
-                  htmlFor="office-arrival-instructions"
+                  htmlFor="session-duration"
                 >
-                  Indicaciones de llegada
+                  Duración de sesión
                 </label>
-                <textarea
-                  className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={settingsQuery.isLoading}
-                  id="office-arrival-instructions"
+                <select
+                  className="mt-1 block w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={profileQuery.isLoading || sessionDurationMutation.isPending}
+                  id="session-duration"
                   onChange={(e) => {
-                    setOfficeArrivalInstructions(e.target.value);
-                    setOfficeSuccessMessage(null);
+                    const minutes = Number(e.target.value);
+                    setProfileDraft((prev) => ({ ...prev, sessionDurationMinutes: minutes }));
+                    setSessionDurationSuccessMessage(null);
+                    sessionDurationMutation.mutate(minutes);
                   }}
-                  placeholder="Ej. Llegar 20 minutos antes con cedula fisica"
-                  rows={2}
-                  value={officeArrivalInstructions}
+                  value={profileDraft.sessionDurationMinutes}
+                >
+                  <option value={15}>15 min</option>
+                  <option value={30}>30 min</option>
+                  <option value={45}>45 min</option>
+                  <option value={60}>60 min</option>
+                  <option value={90}>90 min</option>
+                  <option value={120}>120 min</option>
+                </select>
+              </div>
+
+              {sessionDurationSuccessMessage !== null ? (
+                <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {sessionDurationSuccessMessage}
+                </div>
+              ) : null}
+            </section>
+
+            {/* Sub-sección: Datos del consultorio */}
+            <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+              <h3 className="text-xl font-semibold text-brand-ink">Datos del consultorio</h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Esta informacion se incluye automaticamente en los mensajes de confirmacion de citas
+                presenciales y en los eventos de Google Calendar.
+              </p>
+
+              <div className="mt-6 space-y-4">
+                <div>
+                  <label
+                    className="block text-sm font-medium text-slate-700"
+                    htmlFor="office-address"
+                  >
+                    Direccion del consultorio
+                  </label>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Si dejas este campo vacio, no se guardaran datos presenciales ni indicaciones de
+                    llegada. Puedes incluir edificio, piso, parqueadero y referencias en el mismo
+                    campo.
+                  </p>
+                  <textarea
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={settingsQuery.isLoading}
+                    id="office-address"
+                    onChange={(e) => {
+                      setOfficeAddress(e.target.value);
+                      setOfficeSuccessMessage(null);
+                    }}
+                    placeholder="Ej. Avenida Siempre Viva 1234, Edificio Azul, piso 5, parqueadero en sotano"
+                    rows={3}
+                    value={officeAddress}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    className="block text-sm font-medium text-slate-700"
+                    htmlFor="office-arrival-instructions"
+                  >
+                    Indicaciones de llegada
+                  </label>
+                  <textarea
+                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={settingsQuery.isLoading}
+                    id="office-arrival-instructions"
+                    onChange={(e) => {
+                      setOfficeArrivalInstructions(e.target.value);
+                      setOfficeSuccessMessage(null);
+                    }}
+                    placeholder="Ej. Llegar 20 minutos antes con cedula fisica"
+                    rows={2}
+                    value={officeArrivalInstructions}
+                  />
+                </div>
+              </div>
+
+              {officeSuccessMessage !== null ? (
+                <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {officeSuccessMessage}
+                </div>
+              ) : null}
+
+              {officeErrorMessage !== null ? (
+                <errorBannerModule.ErrorBanner className="mt-3" message={officeErrorMessage} />
+              ) : null}
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={
+                    officeSettingsMutation.isPending || settingsQuery.isLoading || !isOfficeDirty
+                  }
+                  onClick={() => {
+                    officeSettingsMutation.mutate();
+                  }}
+                  type="button"
+                >
+                  {officeSettingsMutation.isPending ? "Guardando..." : "Guardar"}
+                </button>
+              </div>
+            </section>
+
+            {/* Sub-sección: Delay de respuesta del agente */}
+            <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+              <h3 className="text-xl font-semibold text-brand-ink">
+                Delay de respuesta del agente
+              </h3>
+              <p className="mt-1 text-sm text-slate-600">
+                Tiempo de espera despues de procesar un mensaje antes de responder. Permite capturar
+                mensajes adicionales enviados en rafaga. 0 = sin espera.
+              </p>
+              <div className="mt-6">
+                <label
+                  className="block text-sm font-medium text-slate-700"
+                  htmlFor="debounce-delay"
+                >
+                  Segundos
+                </label>
+                <input
+                  className="mt-1 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                  id="debounce-delay"
+                  max={30}
+                  min={0}
+                  onChange={handleDebounceDelayChange}
+                  step={1}
+                  type="number"
+                  value={debounceDelay}
                 />
+                <p className="mt-1 text-xs text-slate-500">
+                  Se guarda automáticamente. Entre 0 y 30 segundos.
+                </p>
               </div>
-            </div>
+            </section>
+          </div>
 
-            {officeSuccessMessage !== null ? (
-              <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {officeSuccessMessage}
+          {/* Sub-sección: Perfil del agente (formulario que genera el system prompt) */}
+          <div className="mt-6">
+            <professionalProfileFormModule.ProfessionalProfileForm />
+            {import.meta.env.DEV ? (
+              <div className="mt-8 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+                <h4 className="mb-3 text-sm font-semibold text-slate-500 uppercase tracking-wide">
+                  Vista previa del prompt generado (solo en dev)
+                </h4>
+                <pre className="max-h-96 overflow-auto rounded-lg bg-slate-50 p-4 text-xs text-slate-600 whitespace-pre-wrap">
+                  {promptQuery.data?.systemPrompt ?? "(cargando...)"}
+                </pre>
               </div>
             ) : null}
-
-            {officeErrorMessage !== null ? (
-              <errorBannerModule.ErrorBanner className="mt-3" message={officeErrorMessage} />
-            ) : null}
-
-            <div className="mt-6 flex justify-end">
-              <button
-                className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={
-                  officeSettingsMutation.isPending || settingsQuery.isLoading || !isOfficeDirty
-                }
-                onClick={() => {
-                  officeSettingsMutation.mutate();
-                }}
-                type="button"
-              >
-                {officeSettingsMutation.isPending ? "Guardando..." : "Guardar"}
-              </button>
-            </div>
-          </section>
-        </div>
+          </div>
+        </>
       ) : null}
 
       {/* --- Conexiones --- */}
@@ -852,52 +922,12 @@ export function ConfiguracionesPage() {
         </>
       ) : null}
 
-      {/* --- Agente --- */}
-      {activeTab === "agente" ? (
-        <div className="mt-6">
-          <professionalProfileFormModule.ProfessionalProfileForm />
-          {import.meta.env.DEV ? (
-            <div className="mt-8 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-              <h4 className="mb-3 text-sm font-semibold text-slate-500 uppercase tracking-wide">
-                Vista previa del prompt generado (solo en dev)
-              </h4>
-              <pre className="max-h-96 overflow-auto rounded-lg bg-slate-50 p-4 text-xs text-slate-600 whitespace-pre-wrap">
-                {promptQuery.data?.systemPrompt ?? "(cargando...)"}
-              </pre>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {/* --- Ajustes del agente --- */}
-      {activeTab === "ajustes" ? (
-        <section className="mt-6 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-          <div>
-            <label className="block text-sm font-medium text-slate-700" htmlFor="debounce-delay">
-              Delay de respuesta (segundos)
-            </label>
-            <p className="mt-0.5 text-xs text-slate-500">
-              Tiempo de espera despues de procesar un mensaje antes de responder. Permite capturar
-              mensajes adicionales enviados en rafaga. 0 = sin espera.
-            </p>
-            <input
-              className="mt-2 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-              id="debounce-delay"
-              max={30}
-              min={0}
-              onChange={(event) => {
-                setDebounceDelay(Number(event.target.value));
-              }}
-              step={1}
-              type="number"
-              value={debounceDelay}
-            />
-          </div>
-
-          {/* Recordatorios automaticos */}
-          <div className="mt-6 border-t border-border-subtle pt-6">
-            <h4 className="text-sm font-semibold text-brand-ink">Recordatorios automáticos</h4>
-            <p className="mt-0.5 text-xs text-slate-500">
+      {/* --- Recordatorios (activación + configuración + plantillas) --- */}
+      {activeTab === "recordatorios" ? (
+        <div className="mt-6 space-y-6">
+          <section className="max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+            <h3 className="text-xl font-semibold text-brand-ink">Recordatorios automáticos</h3>
+            <p className="mt-1 text-sm text-slate-600">
               Enviamos un mensaje de WhatsApp al paciente antes de su cita.
             </p>
 
@@ -1106,29 +1136,15 @@ export function ConfiguracionesPage() {
                 </div>
               </div>
             ) : null}
-          </div>
 
-          {settingsErrorMessage !== null ? (
-            <errorBannerModule.ErrorBanner className="mt-3" message={settingsErrorMessage} />
-          ) : null}
+            {settingsErrorMessage !== null ? (
+              <errorBannerModule.ErrorBanner className="mt-3" message={settingsErrorMessage} />
+            ) : null}
+          </section>
 
-          <div className="mt-4 flex gap-3">
-            <button
-              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={settingsMutation.isPending || settingsQuery.isLoading}
-              onClick={() => {
-                settingsMutation.mutate();
-              }}
-              type="button"
-            >
-              {settingsMutation.isPending ? "Guardando..." : "Guardar configuracion"}
-            </button>
-          </div>
-        </section>
+          <plantillasSectionModule.PlantillasSection />
+        </div>
       ) : null}
-
-      {/* --- Recordatorios (Plantillas) --- */}
-      {activeTab === "recordatorios" ? <plantillasSectionModule.PlantillasSection /> : null}
     </appShellModule.AppShell>
   );
 }
