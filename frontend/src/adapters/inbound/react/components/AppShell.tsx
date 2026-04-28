@@ -209,7 +209,7 @@ export function AppShell(props: { children: reactModule.ReactNode }) {
             </svg>
           </div>
           <div>
-            <p className="text-sm font-bold text-brand-ink">AI-Agents</p>
+            <p className="text-sm font-bold text-brand-ink">Agendachat</p>
             <p className="text-[11px] text-slate-400">Panel operativo</p>
           </div>
         </div>
@@ -262,7 +262,7 @@ export function AppShell(props: { children: reactModule.ReactNode }) {
           >
             <HamburgerIcon />
           </button>
-          <p className="ml-3 text-sm font-semibold text-brand-ink">AI-Agents</p>
+          <p className="ml-3 text-sm font-semibold text-brand-ink">Agendachat</p>
         </header>
 
         <main className="flex-1 overflow-y-auto p-3 sm:p-6">{props.children}</main>
