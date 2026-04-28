@@ -1,4 +1,6 @@
-# AI-Agent Contexto (Ligero)
+# Agendachat — Contexto (Ligero)
+
+> **Marca**: Agendachat (público). **Identidad técnica del repo/infra**: `ai-agent` (Cloud Run, buckets, secrets, IAM siguen así para no romper logs/alertas). Este doc usa "Agendachat" en copy y "ai-agent" cuando se refiere a recursos GCP concretos.
 
 ## Propósito
 Este archivo es la guía global mínima para trabajar en este repositorio.

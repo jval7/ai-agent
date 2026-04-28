@@ -1,7 +1,7 @@
 [project]
-name = "ai-agent"
+name = "agendachat"
 version = "0.1.0"
-description = "MVP backend for multi-tenant WhatsApp customer support agent"
+description = "Agendachat — backend del agente conversacional WhatsApp multi-tenant para agendamiento de citas"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

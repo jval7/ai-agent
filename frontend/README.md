@@ -1,6 +1,6 @@
-# AI-Agent Frontend
+# Agendachat — Frontend
 
-Frontend MVP para operar el agente de WhatsApp multi-tenant.
+Frontend para operar el agente conversacional de WhatsApp multi-tenant (panel admin para clínicas, salones y consultorios).
 
 ## Stack
 
