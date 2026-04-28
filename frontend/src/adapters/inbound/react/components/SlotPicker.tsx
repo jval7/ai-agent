@@ -12,6 +12,7 @@ interface SlotPickerProps {
   ) => void;
   isLoadingAvailability: boolean;
   onMonthChange?: (month: { year: number; month: number }) => void;
+  durationMinutes: number;
 }
 
 export function SlotPicker(props: SlotPickerProps) {
@@ -49,11 +50,19 @@ export function SlotPicker(props: SlotPickerProps) {
       selectedDayIso,
       busyIntervals: props.busyIntervals,
       now,
+      slotDurationMinutes: props.durationMinutes,
       startHour: 7,
       endHour: 22
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.requestId, props.timezone, selectedDayIso, props.busyIntervals, now.toMillis()]);
+  }, [
+    props.requestId,
+    props.timezone,
+    selectedDayIso,
+    props.busyIntervals,
+    now.toMillis(),
+    props.durationMinutes
+  ]);
 
   const morningSlots = calendarSlots.filter((slot) => slot.hour >= 7 && slot.hour < 12);
   const afternoonSlots = calendarSlots.filter((slot) => slot.hour >= 12 && slot.hour < 18);
@@ -61,11 +70,19 @@ export function SlotPicker(props: SlotPickerProps) {
 
   const selectedSlotIds = new Set(props.selectedSlots.map((slot) => slot.slotId));
 
-  function formatHourLabel(hour: number): string {
-    if (hour === 0) return "12 AM";
-    if (hour < 12) return `${hour} AM`;
-    if (hour === 12) return "12 PM";
-    return `${hour - 12} PM`;
+  function formatSlotLabel(slot: calendarUtilsModule.CalendarSlotCandidate): string {
+    const startDt = luxonModule.DateTime.fromISO(slot.startAt, { zone: props.timezone });
+    if (!startDt.isValid) {
+      const h = slot.hour;
+      if (h === 0) return "12 AM";
+      if (h < 12) return `${h} AM`;
+      if (h === 12) return "12 PM";
+      return `${h - 12} PM`;
+    }
+    if (startDt.minute !== 0) {
+      return startDt.toFormat("h:mm a");
+    }
+    return startDt.toFormat("h a");
   }
 
   function handleSlotClick(slot: calendarUtilsModule.CalendarSlotCandidate) {
@@ -128,7 +145,7 @@ export function SlotPicker(props: SlotPickerProps) {
                 onClick={() => handleSlotClick(slot)}
                 type="button"
               >
-                {formatHourLabel(slot.hour)}
+                {formatSlotLabel(slot)}
               </button>
             );
           })}

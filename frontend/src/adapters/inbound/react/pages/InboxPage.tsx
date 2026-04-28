@@ -18,6 +18,7 @@ const blacklistQueryKey = ["blacklist"] as const;
 const patientsQueryKey = ["patients"] as const;
 const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
 const devFeaturesQueryKey = ["dev-features"] as const;
+const tenantProfileQueryKey = ["tenant-profile"] as const;
 
 type AppointmentDisplayStatus =
   | "PENDIENTE_REVISION"
@@ -413,6 +414,13 @@ export function InboxPage() {
     queryFn: () => appContainer.agentUseCase.getDevFeatures(),
     staleTime: Infinity
   });
+
+  const tenantProfileQuery = reactQueryModule.useQuery({
+    queryKey: tenantProfileQueryKey,
+    queryFn: () => appContainer.tenantUseCase.getProfile()
+  });
+
+  const sessionDurationMinutes = tenantProfileQuery.data?.sessionDurationMinutes ?? 60;
 
   const devFeaturesEnabled = devFeaturesQuery.data?.enabled ?? false;
   const sandboxEnabled = devFeaturesQuery.data?.sandbox_enabled ?? false;
@@ -941,6 +949,7 @@ export function InboxPage() {
                   </div>
                   <slotPickerModule.SlotPicker
                     busyIntervals={busyIntervals}
+                    durationMinutes={sessionDurationMinutes}
                     isLoadingAvailability={availabilityQuery.isLoading}
                     onMonthChange={setSlotPickerMonth}
                     onSelectedSlotsChange={setSelectedSlots}
@@ -1238,6 +1247,7 @@ export function InboxPage() {
                       </div>
                       <slotPickerModule.SlotPicker
                         busyIntervals={busyIntervals}
+                        durationMinutes={sessionDurationMinutes}
                         isLoadingAvailability={availabilityQuery.isLoading}
                         onMonthChange={setSlotPickerMonth}
                         onSelectedSlotsChange={setSelectedSlots}

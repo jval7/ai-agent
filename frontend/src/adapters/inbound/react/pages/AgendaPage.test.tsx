@@ -59,7 +59,8 @@ vitestModule.describe("AgendaPage", () => {
           end: luxonModule.DateTime.fromISO("2026-03-01T11:30:00Z", { zone: "UTC" })
         }
       ],
-      now
+      now,
+      slotDurationMinutes: 60
     });
 
     const tenAmSlot = candidates.find((slot) => slot.startAt.startsWith("2026-03-01T10:00:00"));
@@ -210,12 +211,6 @@ vitestModule.describe("AgendaPage", () => {
 
       renderAgendaPage(container);
 
-      testingLibraryReactModule.fireEvent.click(
-        testingLibraryReactModule.screen.getAllByRole("button", {
-          name: /^Agenda$/
-        })[0]!
-      );
-
       await testingLibraryReactModule.waitFor(() => {
         expect(
           testingLibraryReactModule.screen.getByText("Calendario de citas agendadas")
@@ -354,12 +349,6 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getAllByRole("button", {
-        name: /^Agenda$/
-      })[0]!
-    );
-
     await testingLibraryReactModule.waitFor(() => {
       expect(
         testingLibraryReactModule.screen.getByRole("button", { name: /15:00 - 16:00/ })
@@ -447,11 +436,20 @@ vitestModule.describe("AgendaPage", () => {
       expect(testingLibraryReactModule.screen.getByText("Nueva cita manual")).toBeInTheDocument();
     });
 
-    // Open new patient modal via the "+ Nuevo paciente" link inside the appointment modal
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /\+ Nuevo paciente/i
-      })
+    // Open the combobox and then click "+ Nuevo paciente" inside the dropdown
+    const comboboxEl = testingLibraryReactModule.screen.getByRole("combobox", {
+      name: /Seleccionar paciente/i
+    });
+    testingLibraryReactModule.fireEvent.focus(comboboxEl);
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(
+        testingLibraryReactModule.screen.getByRole("button", { name: /\+ Nuevo paciente/i })
+      ).toBeInTheDocument();
+    });
+
+    testingLibraryReactModule.fireEvent.mouseDown(
+      testingLibraryReactModule.screen.getByRole("button", { name: /\+ Nuevo paciente/i })
     );
 
     await testingLibraryReactModule.waitFor(() => {
@@ -568,10 +566,20 @@ vitestModule.describe("AgendaPage", () => {
       expect(testingLibraryReactModule.screen.getByText("Nueva cita manual")).toBeInTheDocument();
     });
 
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getByRole("button", {
-        name: /\+ Nuevo paciente/i
-      })
+    // Open combobox and click "+ Nuevo paciente" inside the dropdown
+    const comboboxEl2 = testingLibraryReactModule.screen.getByRole("combobox", {
+      name: /Seleccionar paciente/i
+    });
+    testingLibraryReactModule.fireEvent.focus(comboboxEl2);
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(
+        testingLibraryReactModule.screen.getByRole("button", { name: /\+ Nuevo paciente/i })
+      ).toBeInTheDocument();
+    });
+
+    testingLibraryReactModule.fireEvent.mouseDown(
+      testingLibraryReactModule.screen.getByRole("button", { name: /\+ Nuevo paciente/i })
     );
 
     await testingLibraryReactModule.waitFor(() => {
@@ -701,26 +709,24 @@ vitestModule.describe("AgendaPage", () => {
       expect(testingLibraryReactModule.screen.getByText("Nueva cita manual")).toBeInTheDocument();
     });
 
-    await testingLibraryReactModule.waitFor(() => {
-      expect(
-        testingLibraryReactModule.screen.getByRole("option", {
-          name: /Jane Doe · 573001112233/
-        })
-      ).toBeInTheDocument();
-    });
-
     // Scope to the modal to avoid colliding with the page calendar
     const modalEl = testingLibraryReactModule.screen.getByTestId("new-manual-appointment-modal");
     const withinModal = testingLibraryReactModule.within(modalEl);
 
-    // Select patient
-    const patientSelect = withinModal.getByRole("combobox", {
-      name: /Seleccionar paciente/i
+    // Open combobox and select patient
+    testingLibraryReactModule.fireEvent.focus(
+      withinModal.getByRole("combobox", { name: /Seleccionar paciente/i })
+    );
+
+    await testingLibraryReactModule.waitFor(() => {
+      expect(
+        withinModal.getByRole("option", { name: /Jane Doe · 573001112233/ })
+      ).toBeInTheDocument();
     });
-    testingLibraryReactModule.fireEvent.change(patientSelect, {
-      target: { value: "wa-1" }
-    });
-    expect(patientSelect).toHaveValue("wa-1");
+
+    testingLibraryReactModule.fireEvent.mouseDown(
+      withinModal.getByRole("option", { name: /Jane Doe · 573001112233/ })
+    );
 
     // Click day 12 in the SlotPicker calendar (March 12 is future from mock now=March 1)
     const dayButtons = withinModal.getAllByRole("button", { name: "12" });
@@ -864,12 +870,6 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getAllByRole("button", {
-        name: /^Agenda$/
-      })[0]!
-    );
-
     // Wait for data to load, then navigate to detail via mobile wizard
     await testingLibraryReactModule.waitFor(() => {
       expect(
@@ -997,10 +997,6 @@ vitestModule.describe("AgendaPage", () => {
     };
 
     renderAgendaPage(container);
-
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
-    );
 
     // Wait for calendar to load, then navigate to detail via mobile wizard
     await testingLibraryReactModule.waitFor(() => {
@@ -1174,10 +1170,6 @@ vitestModule.describe("AgendaPage", () => {
 
     renderAgendaPage(container);
 
-    testingLibraryReactModule.fireEvent.click(
-      testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
-    );
-
     // Wait for calendar to load, then navigate to detail via mobile wizard
     await testingLibraryReactModule.waitFor(() => {
       expect(
@@ -1224,138 +1216,6 @@ vitestModule.describe("AgendaPage", () => {
         paymentMethod: "CASH",
         paymentStatus: "PAID"
       });
-    });
-  });
-
-  vitestModule.it("filters finance tab by payment status", async () => {
-    const container = {
-      onboardingUseCase: {
-        getGoogleCalendarConnectionStatus: vitestModule.vi.fn(async () => ({
-          tenantId: "tenant-1",
-          status: "CONNECTED",
-          calendarId: "primary",
-          professionalTimezone: "UTC",
-          connectedAt: "2026-03-01T00:00:00Z"
-        }))
-      },
-      schedulingUseCase: {
-        listRequests: vitestModule.vi.fn(async () => [
-          {
-            requestId: "req-booked-1",
-            conversationId: "conv-booked-1",
-            whatsappUserId: "wa-bot-1",
-            requestKind: "INITIAL",
-            status: "BOOKED",
-            roundNumber: 1,
-            patientPreferenceNote: null,
-            rejectionSummary: null,
-            professionalNote: null,
-            patientFirstName: "Paciente",
-            patientLastName: "Bot",
-            patientAge: 29,
-            consultationReason: "Ansiedad",
-            consultationDetails: null,
-            appointmentModality: "PRESENCIAL",
-            patientLocation: "Cali",
-            slotOptionsMap: {},
-            selectedSlotId: "slot-1",
-            calendarEventId: "event-1",
-            paymentAmountCop: 100000,
-            paymentCurrency: "COP" as const,
-            paymentMethod: "TRANSFER",
-            paymentStatus: "PAID",
-            paymentUpdatedAt: "2026-03-12T08:00:00Z",
-            createdAt: "2026-03-01T00:00:00Z",
-            updatedAt: "2026-03-01T00:00:00Z",
-            slots: [
-              {
-                slotId: "slot-1",
-                startAt: "2026-03-12T09:00:00Z",
-                endAt: "2026-03-12T10:00:00Z",
-                timezone: "UTC",
-                status: "BOOKED"
-              }
-            ]
-          }
-        ]),
-        getAvailability: vitestModule.vi.fn(async () => ({
-          tenantId: "tenant-1",
-          calendarId: "primary",
-          timezone: "UTC",
-          busyIntervals: []
-        })),
-        submitProfessionalSlots: vitestModule.vi.fn(),
-        resolveConsultationReview: vitestModule.vi.fn(),
-        rescheduleBookedSlot: vitestModule.vi.fn(),
-        cancelBookedSlot: vitestModule.vi.fn(),
-        updateBookedPayment: vitestModule.vi.fn()
-      },
-      patientUseCase: {
-        listPatients: vitestModule.vi.fn(async () => [
-          {
-            tenantId: "tenant-1",
-            whatsappUserId: "wa-manual-1",
-            firstName: "Paciente",
-            lastName: "Manual",
-            email: "manual@example.com",
-            age: 33,
-            location: "Bogota",
-            phone: "573000000000",
-            createdAt: "2026-03-01T00:00:00Z"
-          }
-        ])
-      },
-      manualAppointmentUseCase: {
-        listAppointments: vitestModule.vi.fn(async () => [
-          {
-            appointmentId: "manual-1",
-            tenantId: "tenant-1",
-            patientWhatsappUserId: "wa-manual-1",
-            status: "SCHEDULED",
-            calendarEventId: "event-manual-1",
-            startAt: "2026-03-11T15:00:00Z",
-            endAt: "2026-03-11T16:00:00Z",
-            timezone: "UTC",
-            summary: "Cita manual",
-            paymentAmountCop: null,
-            paymentCurrency: "COP" as const,
-            paymentMethod: null,
-            paymentStatus: "PENDING",
-            paymentUpdatedAt: null,
-            createdAt: "2026-03-01T00:00:00Z",
-            updatedAt: "2026-03-01T00:00:00Z",
-            cancelledAt: null
-          }
-        ]),
-        updatePayment: vitestModule.vi.fn()
-      }
-    };
-
-    renderAgendaPage(container);
-
-    const finanzasButtons = testingLibraryReactModule.screen.getAllByRole("button", {
-      name: /Finanzas/
-    });
-    testingLibraryReactModule.fireEvent.click(finanzasButtons[0]!);
-
-    await testingLibraryReactModule.waitFor(() => {
-      expect(testingLibraryReactModule.screen.getByText("Paciente Bot")).toBeInTheDocument();
-      expect(testingLibraryReactModule.screen.getByText("Paciente Manual")).toBeInTheDocument();
-    });
-
-    const filtersToggle = testingLibraryReactModule.screen.getByRole("button", {
-      name: /Filtros/i
-    });
-    testingLibraryReactModule.fireEvent.click(filtersToggle);
-
-    const paidChip = await testingLibraryReactModule.screen.findByRole("button", {
-      name: /^Pagadas$/i
-    });
-    testingLibraryReactModule.fireEvent.click(paidChip);
-
-    await testingLibraryReactModule.waitFor(() => {
-      expect(testingLibraryReactModule.screen.getByText("Paciente Bot")).toBeInTheDocument();
-      expect(testingLibraryReactModule.screen.queryByText("Paciente Manual")).toBeNull();
     });
   });
 
@@ -1439,10 +1299,6 @@ vitestModule.describe("AgendaPage", () => {
       };
 
       renderAgendaPage(container);
-
-      testingLibraryReactModule.fireEvent.click(
-        testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
-      );
 
       // Wait for calendar to load
       await testingLibraryReactModule.waitFor(() => {
@@ -1561,10 +1417,6 @@ vitestModule.describe("AgendaPage", () => {
       };
 
       renderAgendaPage(container);
-
-      testingLibraryReactModule.fireEvent.click(
-        testingLibraryReactModule.screen.getAllByRole("button", { name: /^Agenda$/ })[0]!
-      );
 
       await testingLibraryReactModule.waitFor(() => {
         expect(

@@ -10,10 +10,11 @@ router = fastapi.APIRouter(prefix="/v1/patients", tags=["patients"])
 
 @router.get("", response_model=patient_dto.PatientListResponseDTO)
 def list_patients(
+    search: str | None = fastapi.Query(default=None),
     claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> patient_dto.PatientListResponseDTO:
-    return container.patient_query_service.list_patients(claims)
+    return container.patient_query_service.list_patients(claims, search=search)
 
 
 @router.get("/{whatsapp_user_id}", response_model=patient_dto.PatientDTO)

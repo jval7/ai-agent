@@ -9,3 +9,4 @@ class Tenant(pydantic.BaseModel):
     created_at: datetime.datetime
     updated_at: datetime.datetime
     professional_name: str | None = None
+    session_duration_minutes: int = 60

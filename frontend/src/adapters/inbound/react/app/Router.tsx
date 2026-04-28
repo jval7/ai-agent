@@ -3,10 +3,10 @@ import * as reactRouterDomModule from "react-router-dom";
 import * as agendaPageModule from "@adapters/inbound/react/pages/AgendaPage";
 import * as clientsPageModule from "@adapters/inbound/react/pages/ClientsPage";
 import * as configuracionesPageModule from "@adapters/inbound/react/pages/ConfiguracionesPage";
+import * as finanzasPageModule from "@adapters/inbound/react/pages/FinanzasPage";
 import * as inboxPageModule from "@adapters/inbound/react/pages/InboxPage";
 import * as landingPageModule from "@adapters/inbound/react/pages/LandingPage";
 import * as loginPageModule from "@adapters/inbound/react/pages/LoginPage";
-import * as plantillasPageModule from "@adapters/inbound/react/pages/PlantillasPage";
 import * as recordatoriosPageModule from "@adapters/inbound/react/pages/RecordatoriosPage";
 
 import * as onboardingReadyRouteModule from "./OnboardingReadyRoute";
@@ -64,6 +64,16 @@ export function AppRouter() {
           element={
             <protectedRouteModule.ProtectedRoute>
               <onboardingReadyRouteModule.OnboardingReadyRoute>
+                <finanzasPageModule.FinanzasPage />
+              </onboardingReadyRouteModule.OnboardingReadyRoute>
+            </protectedRouteModule.ProtectedRoute>
+          }
+          path="/finanzas"
+        />
+        <reactRouterDomModule.Route
+          element={
+            <protectedRouteModule.ProtectedRoute>
+              <onboardingReadyRouteModule.OnboardingReadyRoute>
                 <inboxPageModule.InboxPage />
               </onboardingReadyRouteModule.OnboardingReadyRoute>
             </protectedRouteModule.ProtectedRoute>
@@ -82,11 +92,7 @@ export function AppRouter() {
         />
         <reactRouterDomModule.Route
           element={
-            <protectedRouteModule.ProtectedRoute>
-              <onboardingReadyRouteModule.OnboardingReadyRoute>
-                <plantillasPageModule.PlantillasPage />
-              </onboardingReadyRouteModule.OnboardingReadyRoute>
-            </protectedRouteModule.ProtectedRoute>
+            <reactRouterDomModule.Navigate replace to="/configuraciones?tab=recordatorios" />
           }
           path="/plantillas"
         />

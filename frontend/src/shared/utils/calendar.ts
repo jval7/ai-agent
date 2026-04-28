@@ -24,10 +24,11 @@ export function buildCalendarSlotCandidates(params: {
   selectedDayIso: string;
   busyIntervals: BusyIntervalRange[];
   now: luxonModule.DateTime;
+  slotDurationMinutes: number;
   startHour?: number;
   endHour?: number;
 }): CalendarSlotCandidate[] {
-  const startHour = params.startHour ?? 6;
+  const startHour = params.startHour ?? 7;
   const endHour = params.endHour ?? 22;
   const selectedDay = luxonModule.DateTime.fromISO(params.selectedDayIso, {
     zone: params.timezone
@@ -37,27 +38,32 @@ export function buildCalendarSlotCandidates(params: {
   }
 
   const slots: CalendarSlotCandidate[] = [];
-  for (let hour = startHour; hour < endHour; hour += 1) {
-    const startAt = selectedDay.set({ hour, minute: 0, second: 0, millisecond: 0 });
-    const endAt = startAt.plus({ hours: 1 });
+  let startAt = selectedDay.set({ hour: startHour, minute: 0, second: 0, millisecond: 0 });
+  const dayEnd = selectedDay.set({ hour: endHour, minute: 0, second: 0, millisecond: 0 });
+
+  while (startAt < dayEnd) {
+    const endAt = startAt.plus({ minutes: params.slotDurationMinutes });
+    if (endAt > dayEnd) {
+      break;
+    }
     const isBusy = params.busyIntervals.some((interval) => {
       return startAt < interval.end && interval.start < endAt;
     });
     const isPast = startAt <= params.now;
     const startAtIso = startAt.toISO();
     const endAtIso = endAt.toISO();
-    if (startAtIso === null || endAtIso === null) {
-      continue;
+    if (startAtIso !== null && endAtIso !== null) {
+      slots.push({
+        slotId: `${params.requestId}_${startAt.toFormat("yyyyLLdd_HHmm")}`,
+        startAt: startAtIso,
+        endAt: endAtIso,
+        timezone: params.timezone,
+        isBusy,
+        isPast,
+        hour: startAt.hour
+      });
     }
-    slots.push({
-      slotId: `${params.requestId}_${startAt.toFormat("yyyyLLdd_HHmm")}`,
-      startAt: startAtIso,
-      endAt: endAtIso,
-      timezone: params.timezone,
-      isBusy,
-      isPast,
-      hour
-    });
+    startAt = startAt.plus({ minutes: params.slotDurationMinutes });
   }
   return slots;
 }

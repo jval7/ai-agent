@@ -519,8 +519,10 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     });
   }
 
-  async listPatients(): Promise<patientModel.Patient[]> {
-    const payload = await this.request<httpTypes.PatientListApiResponse>("/v1/patients", {
+  async listPatients(params?: { search?: string }): Promise<patientModel.Patient[]> {
+    const search = params?.search?.trim();
+    const qs = search !== undefined && search !== "" ? `?search=${encodeURIComponent(search)}` : "";
+    const payload = await this.request<httpTypes.PatientListApiResponse>(`/v1/patients${qs}`, {
       method: "GET",
       authRequired: true
     });
@@ -893,12 +895,16 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
   async updateTenantProfile(
     input: tenantModel.UpdateTenantProfileInput
   ): Promise<tenantModel.TenantProfile> {
+    const requestBody: httpTypes.UpdateTenantProfileRequest = {
+      professional_name: input.professionalName
+    };
+    if (input.sessionDurationMinutes !== undefined) {
+      requestBody.session_duration_minutes = input.sessionDurationMinutes;
+    }
     const payload = await this.request<httpTypes.TenantProfileResponse>("/v1/tenant/profile", {
       method: "PUT",
       authRequired: true,
-      body: JSON.stringify({
-        professional_name: input.professionalName
-      } satisfies httpTypes.UpdateTenantProfileRequest)
+      body: JSON.stringify(requestBody)
     });
     return mapTenantProfile(payload);
   }
@@ -1238,7 +1244,8 @@ function mapTenantProfile(payload: httpTypes.TenantProfileResponse): tenantModel
   return {
     tenantId: payload.tenant_id,
     name: payload.name,
-    professionalName: payload.professional_name
+    professionalName: payload.professional_name,
+    sessionDurationMinutes: payload.session_duration_minutes
   };
 }
 

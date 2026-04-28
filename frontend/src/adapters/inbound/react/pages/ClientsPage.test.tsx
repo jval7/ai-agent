@@ -122,7 +122,7 @@ vitestModule.describe("ClientsPage", () => {
     testingLibraryReactModule.fireEvent.click(johnButton);
 
     await testingLibraryReactModule.waitFor(() => {
-      expect(testingLibraryReactModule.screen.getByText("Medellin")).toBeInTheDocument();
+      expect(testingLibraryReactModule.screen.getAllByText("Medellin").length).toBeGreaterThan(0);
     });
     expect(getPatientMock).toHaveBeenCalledWith("wa-2");
   });

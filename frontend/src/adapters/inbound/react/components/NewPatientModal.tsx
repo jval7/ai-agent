@@ -23,30 +23,71 @@ function emptyModalForm(): NewPatientModalFormState {
   };
 }
 
+function formFromPatient(patient: patientModel.Patient): NewPatientModalFormState {
+  return {
+    firstName: patient.firstName,
+    lastName: patient.lastName,
+    email: patient.email,
+    phonePrefix: patient.phonePrefix ?? "",
+    phone: patient.phone,
+    age: String(patient.age),
+    location: patient.location
+  };
+}
+
 function deriveWhatsappUserId(phone: string): string {
   return phone.replace(/\D/g, "");
 }
 
-interface NewPatientModalProps {
+interface NewPatientModalCreateProps {
   isOpen: boolean;
   onClose: () => void;
   onCreated: (whatsappUserId: string) => void;
+  onUpdated?: never;
+  patient?: never;
   onSubmit: (input: patientModel.CreatePatientInput) => Promise<void>;
   isSubmitting: boolean;
 }
+
+interface NewPatientModalEditProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onCreated?: never;
+  onUpdated: (patient: patientModel.Patient) => void;
+  patient: patientModel.Patient;
+  onSubmit: (input: patientModel.UpdatePatientInput) => Promise<patientModel.Patient>;
+  isSubmitting: boolean;
+}
+
+type NewPatientModalProps = NewPatientModalCreateProps | NewPatientModalEditProps;
 
 export function NewPatientModal({
   isOpen,
   onClose,
   onCreated,
+  onUpdated,
+  patient,
   onSubmit,
   isSubmitting
 }: NewPatientModalProps) {
-  const [formState, setFormState] =
-    reactModule.useState<NewPatientModalFormState>(emptyModalForm());
+  const isEditMode = patient !== undefined;
+
+  const [formState, setFormState] = reactModule.useState<NewPatientModalFormState>(() =>
+    isEditMode ? formFromPatient(patient) : emptyModalForm()
+  );
   const [phonePrefixError, setPhonePrefixError] = reactModule.useState<string | null>(null);
   const [phoneError, setPhoneError] = reactModule.useState<string | null>(null);
   const [submitError, setSubmitError] = reactModule.useState<string | null>(null);
+
+  reactModule.useEffect(() => {
+    if (isOpen) {
+      setFormState(isEditMode ? formFromPatient(patient) : emptyModalForm());
+      setPhonePrefixError(null);
+      setPhoneError(null);
+      setSubmitError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const handleClose = reactModule.useCallback(() => {
     setFormState(emptyModalForm());
@@ -103,36 +144,56 @@ export function NewPatientModal({
       return;
     }
 
-    if (trimmedPrefix === "") {
+    if (!isEditMode && trimmedPrefix === "") {
       setPhonePrefixError("Especifica el prefijo telefónico (ej. +57)");
       return;
     }
 
-    const whatsappUserId = deriveWhatsappUserId(trimmedPrefix + trimmedPhone);
-    if (whatsappUserId.length < 8) {
-      setPhoneError("El número debe tener al menos 8 dígitos.");
-      return;
-    }
-
     try {
-      await onSubmit({
-        whatsappUserId,
-        firstName: trimmedFirstName,
-        lastName: trimmedLastName,
-        email: trimmedEmail,
-        age: ageValue,
-        location: trimmedLocation,
-        phonePrefix: trimmedPrefix,
-        phone: trimmedPhone
-      });
-      onCreated(whatsappUserId);
+      if (isEditMode) {
+        const updateInput: patientModel.UpdatePatientInput = {
+          firstName: trimmedFirstName,
+          lastName: trimmedLastName,
+          email: trimmedEmail,
+          age: ageValue,
+          location: trimmedLocation,
+          phonePrefix: trimmedPrefix === "" ? null : trimmedPrefix,
+          phone: trimmedPhone
+        };
+        const updated = await (
+          onSubmit as (input: patientModel.UpdatePatientInput) => Promise<patientModel.Patient>
+        )(updateInput);
+        onUpdated(updated);
+      } else {
+        const whatsappUserId = deriveWhatsappUserId(trimmedPrefix + trimmedPhone);
+        if (whatsappUserId.length < 8) {
+          setPhoneError("El número debe tener al menos 8 dígitos.");
+          return;
+        }
+        const createInput: patientModel.CreatePatientInput = {
+          whatsappUserId,
+          firstName: trimmedFirstName,
+          lastName: trimmedLastName,
+          email: trimmedEmail,
+          age: ageValue,
+          location: trimmedLocation,
+          phonePrefix: trimmedPrefix,
+          phone: trimmedPhone
+        };
+        await (onSubmit as (input: patientModel.CreatePatientInput) => Promise<void>)(createInput);
+        onCreated(whatsappUserId);
+      }
       setFormState(emptyModalForm());
       setPhonePrefixError(null);
       setPhoneError(null);
       setSubmitError(null);
       onClose();
     } catch {
-      setSubmitError("Ocurrió un error al crear el paciente. Intenta de nuevo.");
+      setSubmitError(
+        isEditMode
+          ? "Ocurrió un error al actualizar el paciente. Intenta de nuevo."
+          : "Ocurrió un error al crear el paciente. Intenta de nuevo."
+      );
     }
   };
 
@@ -153,8 +214,14 @@ export function NewPatientModal({
         {/* Modal header */}
         <div className="flex items-center justify-between border-b border-border-subtle px-5 py-4">
           <div>
-            <h2 className="text-base font-semibold text-brand-ink">Nuevo paciente</h2>
-            <p className="text-xs text-slate-500">Completa los datos para registrar al paciente.</p>
+            <h2 className="text-base font-semibold text-brand-ink">
+              {isEditMode ? "Editar paciente" : "Nuevo paciente"}
+            </h2>
+            <p className="text-xs text-slate-500">
+              {isEditMode
+                ? "Actualiza los datos del paciente."
+                : "Completa los datos para registrar al paciente."}
+            </p>
           </div>
           <button
             className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
@@ -230,6 +297,7 @@ export function NewPatientModal({
                       ? "border-rose-400 focus:border-rose-400 focus:ring-rose-200"
                       : ""
                   ].join(" ")}
+                  disabled={isEditMode}
                   onChange={(event) => {
                     const nextValue = event.target.value;
                     setFormState((current) => ({ ...current, phonePrefix: nextValue }));
@@ -250,8 +318,10 @@ export function NewPatientModal({
                     inputClass,
                     phoneError !== null
                       ? "border-rose-400 focus:border-rose-400 focus:ring-rose-200"
-                      : ""
+                      : "",
+                    isEditMode ? "disabled:cursor-not-allowed disabled:opacity-60" : ""
                   ].join(" ")}
+                  disabled={isEditMode}
                   onChange={(event) => {
                     const nextValue = event.target.value;
                     setFormState((current) => ({ ...current, phone: nextValue }));
@@ -299,6 +369,12 @@ export function NewPatientModal({
             </label>
           </div>
 
+          {isEditMode ? (
+            <p className="text-[11px] text-slate-400">
+              El teléfono y prefijo no pueden modificarse (forman el ID de WhatsApp).
+            </p>
+          ) : null}
+
           {submitError !== null ? (
             <p className="rounded-md border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               {submitError}
@@ -323,7 +399,13 @@ export function NewPatientModal({
             }}
             type="button"
           >
-            {isSubmitting ? "Creando..." : "Crear paciente"}
+            {isSubmitting
+              ? isEditMode
+                ? "Guardando..."
+                : "Creando..."
+              : isEditMode
+                ? "Guardar cambios"
+                : "Crear paciente"}
           </button>
         </div>
       </div>
