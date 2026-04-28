@@ -410,7 +410,7 @@ def build_services_with_duration(
     return inbox_service, tenant_repo
 
 
-@pytest.mark.parametrize("duration_minutes", [30, 45, 90])  # type: ignore[misc]
+@pytest.mark.parametrize("duration_minutes", [30, 45, 90])  # type: ignore[misc, unused-ignore]
 def test_submit_professional_slots_accepts_configured_duration(duration_minutes: int) -> None:
     service, _ = build_services_with_duration(duration_minutes)
     end_at = datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC) + datetime.timedelta(
@@ -436,7 +436,7 @@ def test_submit_professional_slots_accepts_configured_duration(duration_minutes:
     assert response.status == "AWAITING_PATIENT_CHOICE"
 
 
-@pytest.mark.parametrize("duration_minutes", [30, 45, 60, 90])  # type: ignore[misc]
+@pytest.mark.parametrize("duration_minutes", [30, 45, 60, 90])  # type: ignore[misc, unused-ignore]
 def test_submit_professional_slots_rejects_wrong_duration_for_tenant(
     duration_minutes: int,
 ) -> None:

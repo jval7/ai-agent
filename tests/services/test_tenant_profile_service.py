@@ -151,7 +151,7 @@ def test_update_profile_keeps_existing_duration_when_none_provided() -> None:
     assert result.session_duration_minutes == 30
 
 
-@pytest.mark.parametrize("duration", [15, 30, 45, 60, 90, 120])  # type: ignore[misc]
+@pytest.mark.parametrize("duration", [15, 30, 45, 60, 90, 120])  # type: ignore[misc, unused-ignore]
 def test_update_profile_accepts_all_valid_preset_durations(duration: int) -> None:
     service, repo, _ = build_service()
     repo.save(_build_tenant())
@@ -166,7 +166,7 @@ def test_update_profile_accepts_all_valid_preset_durations(duration: int) -> Non
     assert result.session_duration_minutes == duration
 
 
-@pytest.mark.parametrize("invalid_duration", [0, 10, 20, 25, 50, 75, 100, 150, -1])  # type: ignore[misc]
+@pytest.mark.parametrize("invalid_duration", [0, 10, 20, 25, 50, 75, 100, 150, -1])  # type: ignore[misc, unused-ignore]
 def test_update_profile_rejects_invalid_session_duration(invalid_duration: int) -> None:
     service, repo, _ = build_service()
     repo.save(_build_tenant())
