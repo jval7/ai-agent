@@ -109,6 +109,7 @@ class AgentProfile(pydantic.BaseModel):
     presencial_schedule: list[ScheduleBlock] = []
     virtual_schedule: list[ScheduleBlock] = []
     payment_methods: list[PaymentMethod] = []
+    payment_timing: typing.Literal["BEFORE_SESSION", "IN_PERSON"] = "BEFORE_SESSION"
     updated_at: datetime.datetime
 
     @pydantic.field_validator("system_prompt")

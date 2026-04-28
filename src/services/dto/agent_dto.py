@@ -78,6 +78,9 @@ class UpdateProfessionalProfileDTO(pydantic.BaseModel):
 # ---------------------------------------------------------------------------
 
 
+PaymentTimingLiteral = typing.Literal["BEFORE_SESSION", "IN_PERSON"]
+
+
 class UpdateSystemPromptDTO(pydantic.BaseModel):
     system_prompt: str
 
@@ -108,6 +111,7 @@ class UpdateAgentSettingsDTO(pydantic.BaseModel):
     appointment_reminder_payment_template_name: str | None = None
     payment_details_text: str | None = None
     office_location: OfficeLocationDTO | None = None
+    payment_timing: PaymentTimingLiteral = "BEFORE_SESSION"
 
     @pydantic.field_validator("message_debounce_delay_seconds")
     @classmethod
@@ -146,3 +150,4 @@ class AgentSettingsResponseDTO(pydantic.BaseModel):
     appointment_reminder_payment_template_name: str | None
     payment_details_text: str | None
     office_location: OfficeLocationDTO | None = None
+    payment_timing: PaymentTimingLiteral = "BEFORE_SESSION"
