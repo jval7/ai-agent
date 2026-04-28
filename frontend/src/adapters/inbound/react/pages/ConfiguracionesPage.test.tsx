@@ -159,10 +159,11 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    const conexionesTab = await testingLibraryReactModule.screen.findByRole("button", {
-      name: "Conexiones"
+    // Navigate to Google Calendar section via the sidebar.
+    const googleCalendarSidebarItem = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Google Calendar"
     });
-    testingLibraryReactModule.fireEvent.click(conexionesTab);
+    testingLibraryReactModule.fireEvent.click(googleCalendarSidebarItem);
 
     const googleButton = await testingLibraryReactModule.screen.findByRole("button", {
       name: "Conectar Google Calendar"
@@ -280,10 +281,11 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    const recordatoriosTab = await testingLibraryReactModule.screen.findByRole("button", {
-      name: /^Recordatorios$/i
+    // Navigate to the reminders config section via the sidebar.
+    const recordatoriosSidebarItem = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Activación y configuración"
     });
-    testingLibraryReactModule.fireEvent.click(recordatoriosTab);
+    testingLibraryReactModule.fireEvent.click(recordatoriosSidebarItem);
 
     const activateButton = await testingLibraryReactModule.screen.findByRole("button", {
       name: /Activar recordatorios/i
@@ -314,10 +316,11 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    const recordatoriosTab = await testingLibraryReactModule.screen.findByRole("button", {
-      name: /^Recordatorios$/i
+    // Navigate to the reminders config section via the sidebar.
+    const recordatoriosSidebarItem2 = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Activación y configuración"
     });
-    testingLibraryReactModule.fireEvent.click(recordatoriosTab);
+    testingLibraryReactModule.fireEvent.click(recordatoriosSidebarItem2);
 
     const activateButton = await testingLibraryReactModule.screen.findByRole("button", {
       name: /Activar recordatorios/i
@@ -337,7 +340,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
   // --- Información General tab — consultorio section tests ---
 
   vitestModule.it(
-    "renders office location data from backend in Información General tab",
+    "renders office location data from backend in Datos del consultorio section",
     async () => {
       const container = buildContainer({
         agentUseCase: {
@@ -365,7 +368,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Datos del consultorio is collapsible and starts collapsed; expand to access fields.
+      // Navigate to Datos del consultorio section via sidebar.
       await expandCard(/Datos del consultorio/i);
       const addressTextarea = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
@@ -436,7 +439,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Datos del consultorio is collapsible and starts collapsed; expand to access fields.
+      // Navigate to Datos del consultorio section via sidebar.
       await expandCard(/Datos del consultorio/i);
       // Wait for settingsQuery to resolve so the fields become enabled.
       const addressTextarea = await testingLibraryReactModule.screen.findByLabelText(
@@ -456,12 +459,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
         target: { value: "Llegar 20 minutos antes" }
       });
 
-      // Office "Guardar" is the second save button (after profile's)
+      // The consultorio section is the only active section — only one "Guardar" button visible.
       const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
         name: "Guardar"
       });
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+      testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
 
       await testingLibraryReactModule.waitFor(() => {
         vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
@@ -522,7 +525,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Datos del consultorio is collapsible and starts collapsed; expand to access fields.
+      // Navigate to Datos del consultorio section via sidebar.
       await expandCard(/Datos del consultorio/i);
       // Wait for settingsQuery to resolve so the fields become enabled.
       const addressInput = await testingLibraryReactModule.screen.findByLabelText(
@@ -535,12 +538,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
         target: { value: "Calle 5 # 38-25, Cali" }
       });
 
-      // Office "Guardar" is the second save button (after profile's)
+      // The consultorio section is the only active section — only one "Guardar" button visible.
       const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
         name: "Guardar"
       });
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+      testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
 
       await testingLibraryReactModule.waitFor(() => {
         vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
@@ -594,7 +597,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Datos del consultorio is collapsible and starts collapsed; expand to access fields.
+      // Navigate to Datos del consultorio section via sidebar.
       await expandCard(/Datos del consultorio/i);
       // Leave address empty, fill arrival_instructions
       const arrivalInput =
@@ -606,12 +609,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
         target: { value: "Llegar 20 minutos antes" }
       });
 
-      // Office "Guardar" is the second save button (after profile's)
+      // The consultorio section is the only active section — only one "Guardar" button visible.
       const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
         name: "Guardar"
       });
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+      testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
 
       await testingLibraryReactModule.waitFor(() => {
         vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
@@ -659,7 +662,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    // Datos del consultorio is collapsible and starts collapsed; expand to access fields.
+    // Navigate to Datos del consultorio section via sidebar.
     await expandCard(/Datos del consultorio/i);
     const addressInput = await testingLibraryReactModule.screen.findByLabelText(
       "Direccion del consultorio"
@@ -671,12 +674,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
       target: { value: "Calle 5 # 38-25, Cali" }
     });
 
-    // Office "Guardar" is the second save button (after profile's)
+    // The consultorio section is the only active section — only one "Guardar" button visible.
     const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
       name: "Guardar"
     });
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+    testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
 
     await testingLibraryReactModule.waitFor(() => {
       vitestModule
