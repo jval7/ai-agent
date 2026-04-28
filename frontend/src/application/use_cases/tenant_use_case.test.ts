@@ -9,8 +9,7 @@ vitestModule.describe("TenantUseCase", () => {
     const profile = {
       tenantId: "tenant-1",
       name: "Dr. Ana Garcia",
-      professionalName: "Dra. Ana Garcia",
-      sessionDurationMinutes: 60
+      professionalName: "Dra. Ana Garcia"
     };
 
     const getProfileMock = vitestModule.vi.fn(async () => profile);

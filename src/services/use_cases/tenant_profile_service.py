@@ -27,23 +27,12 @@ class TenantProfileService:
         if tenant is None:
             raise service_exceptions.EntityNotFoundError("tenant not found")
 
-        new_duration = dto.session_duration_minutes
-        if new_duration is not None and new_duration not in tenant_dto._VALID_SESSION_DURATIONS:
-            raise service_exceptions.InvalidStateError(
-                f"session_duration_minutes must be one of {sorted(tenant_dto._VALID_SESSION_DURATIONS)}"
-            )
-
-        session_duration_minutes = (
-            new_duration if new_duration is not None else tenant.session_duration_minutes
-        )
-
         updated_tenant = tenant_entity.Tenant(
             id=tenant.id,
             name=tenant.name,
             created_at=tenant.created_at,
             updated_at=self._clock.now(),
             professional_name=dto.professional_name,
-            session_duration_minutes=session_duration_minutes,
         )
         self._tenant_repository.save(updated_tenant)
         return self._to_dto(updated_tenant)
@@ -53,5 +42,4 @@ class TenantProfileService:
             tenant_id=tenant.id,
             name=tenant.name,
             professional_name=tenant.professional_name,
-            session_duration_minutes=tenant.session_duration_minutes,
         )

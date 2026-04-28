@@ -381,12 +381,10 @@ export interface TenantProfileResponse {
   tenant_id: string;
   name: string;
   professional_name: string | null;
-  session_duration_minutes: number;
 }
 
 export interface UpdateTenantProfileRequest {
   professional_name: string | null;
-  session_duration_minutes?: number;
 }
 
 // --- Professional Profile wire types ---

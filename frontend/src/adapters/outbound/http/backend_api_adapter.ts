@@ -898,9 +898,6 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     const requestBody: httpTypes.UpdateTenantProfileRequest = {
       professional_name: input.professionalName
     };
-    if (input.sessionDurationMinutes !== undefined) {
-      requestBody.session_duration_minutes = input.sessionDurationMinutes;
-    }
     const payload = await this.request<httpTypes.TenantProfileResponse>("/v1/tenant/profile", {
       method: "PUT",
       authRequired: true,
@@ -1244,8 +1241,7 @@ function mapTenantProfile(payload: httpTypes.TenantProfileResponse): tenantModel
   return {
     tenantId: payload.tenant_id,
     name: payload.name,
-    professionalName: payload.professional_name,
-    sessionDurationMinutes: payload.session_duration_minutes
+    professionalName: payload.professional_name
   };
 }
 

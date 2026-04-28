@@ -308,7 +308,6 @@ class AppContainer:
             llm_provider=self.llm_provider_adapter,
             agent_profile_repository=self.agent_profile_repository,
             default_system_prompt=self.settings.default_system_prompt,
-            tenant_repository=self.tenant_repository,
         )
         self.manual_appointment_service = manual_appointment_service.ManualAppointmentService(
             manual_appointment_repository=self.manual_appointment_repository,
