@@ -77,6 +77,8 @@ export interface OfficeLocation {
   arrivalInstructions: string | null;
 }
 
+export type PaymentTiming = "BEFORE_SESSION" | "IN_PERSON";
+
 export interface AgentSettings {
   tenantId: string;
   messageDebounceDelaySeconds: number;
@@ -86,6 +88,7 @@ export interface AgentSettings {
   appointmentReminderPaymentTemplateName: string | null;
   paymentDetailsText: string | null;
   officeLocation: OfficeLocation | null;
+  paymentTiming: PaymentTiming;
 }
 
 export interface UpdateAgentSettingsInput {
@@ -96,4 +99,5 @@ export interface UpdateAgentSettingsInput {
   appointmentReminderPaymentTemplateName: string | null;
   paymentDetailsText: string | null;
   officeLocation: OfficeLocation | null;
+  paymentTiming: PaymentTiming;
 }

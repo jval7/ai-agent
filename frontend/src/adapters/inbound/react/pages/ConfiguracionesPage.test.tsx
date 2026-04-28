@@ -80,7 +80,8 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
         paymentDetailsText: null,
-        officeLocation: null
+        officeLocation: null,
+        paymentTiming: "BEFORE_SESSION" as const
       })),
       updateAgentSettings: vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
@@ -90,7 +91,8 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
         paymentDetailsText: null,
-        officeLocation: null
+        officeLocation: null,
+        paymentTiming: "BEFORE_SESSION" as const
       }))
     },
     whatsappTemplateUseCase: {
@@ -354,7 +356,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
             officeLocation: {
               address: "Calle 5 # 38-25, Edificio Azul, piso 3",
               arrivalInstructions: "Llegar 20 minutos antes con cedula fisica"
-            }
+            },
+            paymentTiming: "BEFORE_SESSION" as const
           })),
           updateAgentSettings: vitestModule.vi.fn(async () => undefined)
         }
@@ -407,7 +410,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
         officeLocation: {
           address: "Avenida Siempre Viva 1234\nEdificio Azul, piso 5\nParqueadero en sotano",
           arrivalInstructions: "Llegar 20 minutos antes"
-        }
+        },
+        paymentTiming: "BEFORE_SESSION" as const
       }));
       const container = buildContainer({
         agentUseCase: {
@@ -423,7 +427,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderAttendanceTemplateName: null,
             appointmentReminderPaymentTemplateName: null,
             paymentDetailsText: null,
-            officeLocation: null
+            officeLocation: null,
+            paymentTiming: "BEFORE_SESSION" as const
           })),
           updateAgentSettings: updateAgentSettingsMock
         }
@@ -493,7 +498,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
         officeLocation: {
           address: "Calle 5 # 38-25, Cali",
           arrivalInstructions: null
-        }
+        },
+        paymentTiming: "BEFORE_SESSION" as const
       }));
       const container = buildContainer({
         agentUseCase: {
@@ -507,7 +513,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderAttendanceTemplateName: null,
             appointmentReminderPaymentTemplateName: null,
             paymentDetailsText: null,
-            officeLocation: null
+            officeLocation: null,
+            paymentTiming: "BEFORE_SESSION" as const
           })),
           updateAgentSettings: updateAgentSettingsMock
         }
@@ -563,7 +570,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
         paymentDetailsText: null,
-        officeLocation: null
+        officeLocation: null,
+        paymentTiming: "BEFORE_SESSION" as const
       }));
       const container = buildContainer({
         agentUseCase: {
@@ -577,7 +585,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderAttendanceTemplateName: null,
             appointmentReminderPaymentTemplateName: null,
             paymentDetailsText: null,
-            officeLocation: null
+            officeLocation: null,
+            paymentTiming: "BEFORE_SESSION" as const
           })),
           updateAgentSettings: updateAgentSettingsMock
         }
@@ -626,7 +635,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
       officeLocation: {
         address: "Calle 5 # 38-25, Cali",
         arrivalInstructions: null
-      }
+      },
+      paymentTiming: "BEFORE_SESSION" as const
     }));
     const container = buildContainer({
       agentUseCase: {
@@ -640,7 +650,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
           appointmentReminderAttendanceTemplateName: null,
           appointmentReminderPaymentTemplateName: null,
           paymentDetailsText: null,
-          officeLocation: null
+          officeLocation: null,
+          paymentTiming: "BEFORE_SESSION" as const
         })),
         updateAgentSettings: updateAgentSettingsMock
       }
@@ -673,4 +684,58 @@ vitestModule.describe("ConfiguracionesPage", () => {
         .toBeInTheDocument();
     });
   });
+
+  vitestModule.it(
+    "renders payment timing radio and fires mutation with IN_PERSON when selected",
+    async () => {
+      const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        paymentDetailsText: null,
+        officeLocation: null,
+        paymentTiming: "IN_PERSON" as const
+      }));
+      const container = buildContainer({
+        agentUseCase: {
+          getSystemPrompt: vitestModule.vi.fn(async () => ({ systemPrompt: "" })),
+          updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+          getAgentSettings: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            messageDebounceDelaySeconds: 5,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: null,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            paymentDetailsText: null,
+            officeLocation: null,
+            paymentTiming: "BEFORE_SESSION" as const
+          })),
+          updateAgentSettings: updateAgentSettingsMock
+        }
+      });
+
+      renderConfiguracionesPage(container);
+
+      await expandCard(/Momento del cobro/i);
+
+      const inPersonRadio = await testingLibraryReactModule.screen.findByRole("radio", {
+        name: /Al terminar la sesión/i
+      });
+      vitestModule.expect(inPersonRadio).toBeInTheDocument();
+
+      testingLibraryReactModule.fireEvent.click(inPersonRadio);
+
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule
+          .expect(updateAgentSettingsMock)
+          .toHaveBeenCalledWith(
+            vitestModule.expect.objectContaining({ paymentTiming: "IN_PERSON" })
+          );
+      });
+    }
+  );
 });

@@ -108,6 +108,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         address: string;
         arrival_instructions: string | null;
       } | null;
+      payment_timing: agentModel.PaymentTiming | null | undefined;
     }>("/v1/agent/settings", { method: "GET", authRequired: true });
     return {
       tenantId: raw.tenant_id,
@@ -123,7 +124,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
               address: raw.office_location.address,
               arrivalInstructions: raw.office_location.arrival_instructions
             }
-          : null
+          : null,
+      paymentTiming: raw.payment_timing ?? "BEFORE_SESSION"
     };
   }
 
@@ -142,6 +144,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         address: string;
         arrival_instructions: string | null;
       } | null;
+      payment_timing: agentModel.PaymentTiming | null | undefined;
     }>("/v1/agent/settings", {
       method: "PUT",
       authRequired: true,
@@ -159,7 +162,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
                 address: input.officeLocation.address,
                 arrival_instructions: input.officeLocation.arrivalInstructions
               }
-            : null
+            : null,
+        payment_timing: input.paymentTiming
       })
     });
     return {
@@ -176,7 +180,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
               address: raw.office_location.address,
               arrivalInstructions: raw.office_location.arrival_instructions
             }
-          : null
+          : null,
+      paymentTiming: raw.payment_timing ?? "BEFORE_SESSION"
     };
   }
 

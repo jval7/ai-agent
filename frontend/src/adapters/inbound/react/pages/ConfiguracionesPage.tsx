@@ -2,6 +2,7 @@ import * as reactModule from "react";
 import * as reactQueryModule from "@tanstack/react-query";
 import * as reactRouterDomModule from "react-router-dom";
 
+import type { PaymentTiming } from "@domain/models/agent";
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as billingDisclosureModalModule from "@adapters/inbound/react/components/BillingDisclosureModal";
@@ -196,6 +197,7 @@ export function ConfiguracionesPage() {
   const [paymentDetailsText, setPaymentDetailsText] = reactModule.useState("");
   const [officeAddress, setOfficeAddress] = reactModule.useState("");
   const [officeArrivalInstructions, setOfficeArrivalInstructions] = reactModule.useState("");
+  const [paymentTiming, setPaymentTiming] = reactModule.useState<PaymentTiming>("BEFORE_SESSION");
   const [activationStep, setActivationStep] = reactModule.useState<"idle" | "disclosure">("idle");
 
   reactModule.useEffect(() => {
@@ -205,6 +207,7 @@ export function ConfiguracionesPage() {
       setPaymentDetailsText(settingsQuery.data.paymentDetailsText ?? "");
       setOfficeAddress(settingsQuery.data.officeLocation?.address ?? "");
       setOfficeArrivalInstructions(settingsQuery.data.officeLocation?.arrivalInstructions ?? "");
+      setPaymentTiming(settingsQuery.data.paymentTiming);
     }
   }, [settingsQuery.data]);
 
@@ -272,7 +275,8 @@ export function ConfiguracionesPage() {
         appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
         appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName,
         paymentDetailsText: fresh.paymentDetailsText,
-        officeLocation: fresh.officeLocation
+        officeLocation: fresh.officeLocation,
+        paymentTiming: fresh.paymentTiming
       });
     },
     onSuccess: async () => {
@@ -306,7 +310,8 @@ export function ConfiguracionesPage() {
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
         paymentDetailsText: fresh.paymentDetailsText,
-        officeLocation: fresh.officeLocation
+        officeLocation: fresh.officeLocation,
+        paymentTiming: fresh.paymentTiming
       });
     },
     onSuccess: async () => {
@@ -328,7 +333,8 @@ export function ConfiguracionesPage() {
         appointmentReminderPaymentTemplateName:
           settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null,
         paymentDetailsText: paymentDetailsText.trim() === "" ? null : paymentDetailsText,
-        officeLocation: settingsQuery.data?.officeLocation ?? null
+        officeLocation: settingsQuery.data?.officeLocation ?? null,
+        paymentTiming
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
@@ -348,6 +354,30 @@ export function ConfiguracionesPage() {
     };
   };
 
+  const paymentTimingMutation = reactQueryModule.useMutation({
+    mutationFn: (newTiming: PaymentTiming) =>
+      appContainer.agentUseCase.updateAgentSettings({
+        messageDebounceDelaySeconds: settingsQuery.data?.messageDebounceDelaySeconds ?? 0,
+        appointmentReminderEnabled: settingsQuery.data?.appointmentReminderEnabled ?? false,
+        appointmentReminderDaysBefore: settingsQuery.data?.appointmentReminderDaysBefore ?? null,
+        appointmentReminderAttendanceTemplateName:
+          settingsQuery.data?.appointmentReminderAttendanceTemplateName ?? null,
+        appointmentReminderPaymentTemplateName:
+          settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null,
+        paymentDetailsText: settingsQuery.data?.paymentDetailsText ?? null,
+        officeLocation: settingsQuery.data?.officeLocation ?? null,
+        paymentTiming: newTiming
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: settingsQueryKey });
+    }
+  });
+
+  const handlePaymentTimingChange = (newTiming: PaymentTiming): void => {
+    setPaymentTiming(newTiming);
+    paymentTimingMutation.mutate(newTiming);
+  };
+
   const [officeSuccessMessage, setOfficeSuccessMessage] = reactModule.useState<string | null>(null);
 
   const officeSettingsMutation = reactQueryModule.useMutation({
@@ -362,7 +392,8 @@ export function ConfiguracionesPage() {
         appointmentReminderPaymentTemplateName:
           settingsQuery.data?.appointmentReminderPaymentTemplateName ?? null,
         paymentDetailsText: settingsQuery.data?.paymentDetailsText ?? null,
-        officeLocation: officeLocationInput
+        officeLocation: officeLocationInput,
+        paymentTiming: settingsQuery.data?.paymentTiming ?? "BEFORE_SESSION"
       });
     },
     onSuccess: async () => {
@@ -457,6 +488,7 @@ export function ConfiguracionesPage() {
 
   const settingsErrorMessage = uiErrorModule.resolveUiErrorMessage([
     settingsMutation.error,
+    paymentTimingMutation.error,
     settingsQuery.error,
     activateAllMutation.error,
     deactivateAllMutation.error,
@@ -669,6 +701,66 @@ export function ConfiguracionesPage() {
 
           {/* Grupo 3: Configuraciones avanzadas (tono muted) */}
           <sectionGroupModule.SectionGroup title="Configuraciones avanzadas" tone="muted">
+            <sectionCardModule.SectionCard
+              collapsible
+              defaultOpen={false}
+              previewWhenCollapsed={
+                paymentTiming === "IN_PERSON" ? "Al terminar la sesión" : "Antes de la sesión"
+              }
+              storageKey="cfg.section.payment-timing"
+              subtitle="Define si el bot exige pago antes de confirmar la cita o si el cobro se hace en persona al terminar la sesión."
+              title="Momento del cobro"
+            >
+              <fieldset className="space-y-3">
+                <legend className="sr-only">Momento del cobro</legend>
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    checked={paymentTiming === "BEFORE_SESSION"}
+                    className="mt-0.5 h-4 w-4 cursor-pointer accent-brand-teal"
+                    id="payment-timing-before"
+                    name="payment-timing"
+                    onChange={() => {
+                      handlePaymentTimingChange("BEFORE_SESSION");
+                    }}
+                    type="radio"
+                    value="BEFORE_SESSION"
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium text-slate-700">
+                      Antes de la sesión (pago anticipado)
+                    </span>
+                    <span className="mt-0.5 text-xs text-slate-500">
+                      El bot exige comprobante de pago para confirmar la cita y envía recordatorios
+                      de pago a quienes aún no pagaron.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    checked={paymentTiming === "IN_PERSON"}
+                    className="mt-0.5 h-4 w-4 cursor-pointer accent-brand-teal"
+                    id="payment-timing-in-person"
+                    name="payment-timing"
+                    onChange={() => {
+                      handlePaymentTimingChange("IN_PERSON");
+                    }}
+                    type="radio"
+                    value="IN_PERSON"
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium text-slate-700">
+                      Al terminar la sesión (cobro en persona)
+                    </span>
+                    <span className="mt-0.5 text-xs text-slate-500">
+                      El bot confirma la cita sin pedir comprobante de pago. Los recordatorios solo
+                      notifican la asistencia — nunca cobros.
+                    </span>
+                  </span>
+                </label>
+              </fieldset>
+              <p className="mt-3 text-xs text-slate-500">Se guarda automáticamente.</p>
+            </sectionCardModule.SectionCard>
+
             <sectionCardModule.SectionCard
               collapsible
               defaultOpen={false}
