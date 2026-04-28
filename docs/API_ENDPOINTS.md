@@ -136,6 +136,102 @@ Este documento describe qué hace cada endpoint del backend.
 - Validación: `message_debounce_delay_seconds` debe ser entero entre 0 y 30.
 - Response body: igual que `GET /v1/agent/settings`.
 
+### `GET /v1/agent/professional-profile`
+- Auth: sí
+- Qué hace: retorna los campos estructurados del perfil profesional (identidad del asistente, contexto, servicios, horarios y medios de pago) que alimentan el formulario de configuración.
+- Response body:
+```json
+{
+  "tenant_id": "...",
+  "identity": {
+    "assistant_name": "Claudia",
+    "professional_title": "Psicóloga",
+    "professional_address_term": "la Doc",
+    "main_city": "Cali",
+    "tone": "Profesional y cálida.",
+    "languages": ["español"]
+  },
+  "professional_context": {
+    "approach": "Enfoque humanista.",
+    "common_topics": ["ansiedad", "duelo"],
+    "services_not_offered": ["terapia de pareja"],
+    "coverage_notes": null
+  },
+  "services": [
+    {
+      "name": "Consulta Individual Adultos",
+      "description": null,
+      "audience": "Adultos",
+      "modalities": ["PRESENCIAL", "VIRTUAL"],
+      "tariffs_local": [
+        {"label": "Sesión individual", "amount": 130000, "currency": "COP", "discount_percent": null}
+      ],
+      "tariffs_foreign": [
+        {"label": "Sesión individual", "amount": 90, "currency": "USD", "discount_percent": null}
+      ]
+    }
+  ],
+  "presencial_schedule": [
+    {"weekday_from": "WED", "weekday_to": "FRI", "start_time": "08:00", "end_time": "16:00"},
+    {"weekday_from": "SAT", "weekday_to": null, "start_time": "08:00", "end_time": "12:00"}
+  ],
+  "virtual_schedule": [
+    {"weekday_from": "MON", "weekday_to": "FRI", "start_time": "08:00", "end_time": "18:00"}
+  ],
+  "payment_methods": [
+    {
+      "currency": "COP",
+      "method_name": "Nequi",
+      "holder": "Alejandra Escobar",
+      "instructions": "318 732 6409",
+      "applies_when": "Colombia (COP)"
+    }
+  ]
+}
+```
+- Si el tenant todavía no tiene perfil, devuelve `tenant_id` con todos los campos en `null` o lista vacía.
+
+### `PUT /v1/agent/professional-profile`
+- Auth: sí
+- Qué hace: actualiza los campos estructurados del perfil profesional. Al guardar, el backend regenera el XML del `system_prompt` a partir de estos campos y lo persiste en `AgentProfile.system_prompt`. Los demás ajustes del agente (`message_debounce_delay_seconds`, recordatorios, `office_location`, `payment_details_text`) se preservan sin tocar.
+- Request body: mismo shape que la response de `GET /v1/agent/professional-profile` sin `tenant_id`. Todos los campos son opcionales:
+```json
+{
+  "identity": {
+    "assistant_name": "Claudia",
+    "professional_title": "Psicóloga",
+    "main_city": "Cali"
+  },
+  "professional_context": {
+    "approach": "Enfoque humanista.",
+    "common_topics": ["ansiedad", "duelo"]
+  },
+  "services": [
+    {
+      "name": "Consulta Adultos",
+      "audience": "Adultos",
+      "modalities": ["PRESENCIAL"],
+      "tariffs_local": [
+        {"label": "Sesión", "amount": 130000, "currency": "COP"}
+      ]
+    }
+  ],
+  "presencial_schedule": [
+    {"weekday_from": "WED", "weekday_to": "FRI", "start_time": "08:00", "end_time": "16:00"}
+  ],
+  "virtual_schedule": [],
+  "payment_methods": [
+    {"currency": "COP", "method_name": "Nequi", "holder": "Aleja", "instructions": "318-000-0000"}
+  ]
+}
+```
+- Validación:
+  - `weekday_from` / `weekday_to`: literal en `MON, TUE, WED, THU, FRI, SAT, SUN`.
+  - `start_time` / `end_time`: formato `HH:MM` 24h.
+  - `currency`: 3 caracteres (ej. `COP`, `USD`).
+  - `modalities`: subset de `["PRESENCIAL", "VIRTUAL"]`.
+- Response body: igual que `GET /v1/agent/professional-profile`.
+
 ---
 
 ## WhatsApp Onboarding

@@ -40,3 +40,20 @@ def update_agent_settings(
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> agent_dto.AgentSettingsResponseDTO:
     return container.agent_service.update_agent_settings(claims.tenant_id, update_dto)
+
+
+@router.get("/professional-profile", response_model=agent_dto.ProfessionalProfileResponseDTO)
+def get_professional_profile(
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> agent_dto.ProfessionalProfileResponseDTO:
+    return container.agent_service.get_professional_profile(claims.tenant_id)
+
+
+@router.put("/professional-profile", response_model=agent_dto.ProfessionalProfileResponseDTO)
+def update_professional_profile(
+    update_dto: agent_dto.UpdateProfessionalProfileDTO,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> agent_dto.ProfessionalProfileResponseDTO:
+    return container.agent_service.update_professional_profile(claims.tenant_id, update_dto)
