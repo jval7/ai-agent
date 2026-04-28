@@ -101,8 +101,17 @@ function renderForm(profile: agentModel.ProfessionalProfile) {
   return { ...result, container, queryClient, updateSpy };
 }
 
+async function expandCard(title: RegExp): Promise<void> {
+  const toggle = await testingLibraryReactModule.screen.findByRole("button", { name: title });
+  await testingLibraryReactModule.act(async () => {
+    testingLibraryReactModule.fireEvent.click(toggle);
+  });
+}
+
 vitestModule.describe("ProfessionalProfileForm", () => {
   vitestModule.beforeEach(() => {
+    // Reset persisted collapse state so each test starts with cards collapsed.
+    window.localStorage.clear();
     serverModule.server.use(
       mswModule.http.get("*/v1/agent/professional-profile", () => {
         return mswModule.HttpResponse.json(EMPTY_PROFILE);
@@ -131,17 +140,23 @@ vitestModule.describe("ProfessionalProfileForm", () => {
 
   vitestModule.it("renders pre-filled data from full profile", async () => {
     renderForm(FULL_PROFILE);
+    // Wait until the form has loaded the profile (sub-cards are present in collapsed state).
+    await testingLibraryReactModule.screen.findByRole("button", {
+      name: /Identidad del asistente/i
+    });
+
+    // Cards default to collapsed; expand the ones whose data we want to assert on.
+    await expandCard(/Identidad del asistente/i);
+    await expandCard(/Servicios y práctica/i);
+    await expandCard(/Medios de pago/i);
+
     await testingLibraryReactModule.waitFor(() => {
-      // Identity fields
       const assistantNameInput = testingLibraryReactModule.screen.getByDisplayValue("Claudia");
       vitestModule.expect(assistantNameInput).toBeTruthy();
-      // Chip for language
       vitestModule.expect(testingLibraryReactModule.screen.getByText("español")).toBeTruthy();
-      // Service name
       vitestModule
         .expect(testingLibraryReactModule.screen.getByDisplayValue("Consulta Individual"))
         .toBeTruthy();
-      // Payment method
       vitestModule.expect(testingLibraryReactModule.screen.getByDisplayValue("Nequi")).toBeTruthy();
     });
   });
@@ -158,6 +173,9 @@ vitestModule.describe("ProfessionalProfileForm", () => {
 
   vitestModule.it("Guardar button enables after user edits a field", async () => {
     renderForm(EMPTY_PROFILE);
+
+    // Cards start collapsed; expand "Identidad del asistente" to access the input.
+    await expandCard(/Identidad del asistente/i);
 
     // Wait for the form to fully load (input is present and not disabled)
     await testingLibraryReactModule.waitFor(() => {
@@ -184,6 +202,9 @@ vitestModule.describe("ProfessionalProfileForm", () => {
 
   vitestModule.it("calls updateProfessionalProfile when Guardar is clicked", async () => {
     const { updateSpy } = renderForm(EMPTY_PROFILE);
+
+    // Expand identity card to reach the input.
+    await expandCard(/Identidad del asistente/i);
 
     // Wait for the form to fully load
     await testingLibraryReactModule.waitFor(() => {

@@ -6,6 +6,8 @@ import * as appContainerContextModule from "@adapters/inbound/react/app/AppConta
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as billingDisclosureModalModule from "@adapters/inbound/react/components/BillingDisclosureModal";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
+import * as sectionCardModule from "@adapters/inbound/react/components/form/SectionCard";
+import * as sectionGroupModule from "@adapters/inbound/react/components/form/SectionGroup";
 import * as plantillasSectionModule from "@adapters/inbound/react/components/sections/PlantillasSection";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as professionalProfileFormModule from "@adapters/inbound/react/components/ProfessionalProfileForm/ProfessionalProfileForm";
@@ -20,6 +22,26 @@ const promptQueryKey = ["system-prompt"] as const;
 const settingsQueryKey = ["agent-settings"] as const;
 const officialTemplateStatusQueryKey = ["official-template-status"] as const;
 const tenantProfileQueryKey = ["tenant-profile"] as const;
+
+function truncatePreview(text: string, maxLength: number): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  return `${trimmed.slice(0, maxLength).trimEnd()}…`;
+}
+
+function buildOfficePreview(address: string, arrival: string): string {
+  const trimmedAddress = address.trim();
+  if (trimmedAddress === "") return "Sin configurar";
+  const addressPart = truncatePreview(trimmedAddress, 60);
+  const arrivalPart = arrival.trim();
+  if (arrivalPart === "") return addressPart;
+  return `${addressPart} · ${truncatePreview(arrivalPart, 40)}`;
+}
+
+function buildDelayPreview(delaySeconds: number): string {
+  if (Number.isNaN(delaySeconds)) return "—";
+  return `${delaySeconds} ${delaySeconds === 1 ? "segundo" : "segundos"}`;
+}
 
 function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   if (status === undefined) {
@@ -486,11 +508,15 @@ export function ConfiguracionesPage() {
         ))}
       </nav>
 
-      {/* --- Configuración general (Perfil + Duración + Consultorio + Delay + Agente) --- */}
+      {/* --- Configuración general (3 grupos: Profesional / Agente / Avanzadas) --- */}
       {activeTab === "general" ? (
-        <>
-          <div className="mt-6 max-w-2xl space-y-6">
-            {/* Sub-sección: Perfil del profesional */}
+        <div className="mt-6 max-w-3xl space-y-10">
+          {/* Grupo 1: Información del profesional */}
+          <sectionGroupModule.SectionGroup
+            description="Datos que aparecen en Google Calendar y mensajes operativos."
+            title="Información del profesional"
+          >
+            {/* Perfil del profesional */}
             <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
               <h3 className="text-xl font-semibold text-brand-ink">Perfil del profesional</h3>
               <p className="mt-1 text-sm text-slate-600">
@@ -548,15 +574,16 @@ export function ConfiguracionesPage() {
               </div>
             </section>
 
-            {/* Sub-sección: Datos del consultorio */}
-            <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-              <h3 className="text-xl font-semibold text-brand-ink">Datos del consultorio</h3>
-              <p className="mt-1 text-sm text-slate-600">
-                Esta informacion se incluye automaticamente en los mensajes de confirmacion de citas
-                presenciales y en los eventos de Google Calendar.
-              </p>
-
-              <div className="mt-6 space-y-4">
+            {/* Datos del consultorio (collapsible) */}
+            <sectionCardModule.SectionCard
+              collapsible
+              defaultOpen={false}
+              previewWhenCollapsed={buildOfficePreview(officeAddress, officeArrivalInstructions)}
+              storageKey="cfg.section.office"
+              subtitle="Esta informacion se incluye automaticamente en los mensajes de confirmacion de citas presenciales y en los eventos de Google Calendar."
+              title="Datos del consultorio"
+            >
+              <div className="space-y-4">
                 <div>
                   <label
                     className="block text-sm font-medium text-slate-700"
@@ -606,7 +633,7 @@ export function ConfiguracionesPage() {
               </div>
 
               {officeSuccessMessage !== null ? (
-                <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                <div className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
                   {officeSuccessMessage}
                 </div>
               ) : null}
@@ -629,56 +656,58 @@ export function ConfiguracionesPage() {
                   {officeSettingsMutation.isPending ? "Guardando..." : "Guardar"}
                 </button>
               </div>
-            </section>
+            </sectionCardModule.SectionCard>
+          </sectionGroupModule.SectionGroup>
 
-            {/* Sub-sección: Delay de respuesta del agente */}
-            <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-              <h3 className="text-xl font-semibold text-brand-ink">
-                Delay de respuesta del agente
-              </h3>
-              <p className="mt-1 text-sm text-slate-600">
-                Tiempo de espera despues de procesar un mensaje antes de responder. Permite capturar
-                mensajes adicionales enviados en rafaga. 0 = sin espera.
-              </p>
-              <div className="mt-6">
-                <label
-                  className="block text-sm font-medium text-slate-700"
-                  htmlFor="debounce-delay"
-                >
-                  Segundos
-                </label>
-                <input
-                  className="mt-1 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                  id="debounce-delay"
-                  max={30}
-                  min={0}
-                  onChange={handleDebounceDelayChange}
-                  step={1}
-                  type="number"
-                  value={debounceDelay}
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  Se guarda automáticamente. Entre 0 y 30 segundos.
-                </p>
-              </div>
-            </section>
-          </div>
-
-          {/* Sub-sección: Perfil del agente (formulario que genera el system prompt) */}
-          <div className="mt-6">
+          {/* Grupo 2: Configuración del agente */}
+          <sectionGroupModule.SectionGroup
+            description="Cómo se comporta tu asistente en WhatsApp."
+            title="Configuración del agente"
+          >
             <professionalProfileFormModule.ProfessionalProfileForm />
-            {import.meta.env.DEV ? (
-              <div className="mt-8 max-w-4xl rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-                <h4 className="mb-3 text-sm font-semibold text-slate-500 uppercase tracking-wide">
-                  Vista previa del prompt generado (solo en dev)
-                </h4>
-                <pre className="max-h-96 overflow-auto rounded-lg bg-slate-50 p-4 text-xs text-slate-600 whitespace-pre-wrap">
-                  {promptQuery.data?.systemPrompt ?? "(cargando...)"}
-                </pre>
-              </div>
-            ) : null}
-          </div>
-        </>
+          </sectionGroupModule.SectionGroup>
+
+          {/* Grupo 3: Configuraciones avanzadas (tono muted) */}
+          <sectionGroupModule.SectionGroup title="Configuraciones avanzadas" tone="muted">
+            <sectionCardModule.SectionCard
+              collapsible
+              defaultOpen={false}
+              previewWhenCollapsed={buildDelayPreview(debounceDelay)}
+              storageKey="cfg.section.delay"
+              subtitle="Tiempo de espera despues de procesar un mensaje antes de responder. Permite capturar mensajes adicionales enviados en rafaga. 0 = sin espera."
+              title="Delay de respuesta del agente"
+            >
+              <label className="block text-sm font-medium text-slate-700" htmlFor="debounce-delay">
+                Segundos
+              </label>
+              <input
+                className="mt-1 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                id="debounce-delay"
+                max={30}
+                min={0}
+                onChange={handleDebounceDelayChange}
+                step={1}
+                type="number"
+                value={debounceDelay}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Se guarda automáticamente. Entre 0 y 30 segundos.
+              </p>
+            </sectionCardModule.SectionCard>
+          </sectionGroupModule.SectionGroup>
+
+          {/* Vista previa del prompt generado (solo dev) — fuera de los grupos */}
+          {import.meta.env.DEV ? (
+            <div className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+              <h4 className="mb-3 text-sm font-semibold text-slate-500 uppercase tracking-wide">
+                Vista previa del prompt generado (solo en dev)
+              </h4>
+              <pre className="max-h-96 overflow-auto rounded-lg bg-slate-50 p-4 text-xs text-slate-600 whitespace-pre-wrap">
+                {promptQuery.data?.systemPrompt ?? "(cargando...)"}
+              </pre>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {/* --- Conexiones --- */}

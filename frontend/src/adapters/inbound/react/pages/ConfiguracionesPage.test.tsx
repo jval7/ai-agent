@@ -127,8 +127,17 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
   };
 }
 
+async function expandCard(title: RegExp): Promise<void> {
+  const toggle = await testingLibraryReactModule.screen.findByRole("button", { name: title });
+  await testingLibraryReactModule.act(async () => {
+    testingLibraryReactModule.fireEvent.click(toggle);
+  });
+}
+
 vitestModule.describe("ConfiguracionesPage", () => {
   vitestModule.beforeEach(() => {
+    // Reset persisted collapse state so each test starts with cards collapsed.
+    window.localStorage.clear();
     vitestModule.vi.spyOn(appShellModule, "AppShell").mockImplementation((props) => {
       return <div>{props.children}</div>;
     });
@@ -353,7 +362,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Información General is the default tab — office fields are visible without clicking
+      // Datos del consultorio is collapsible and starts collapsed; expand to access fields.
+      await expandCard(/Datos del consultorio/i);
       const addressTextarea = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
       );
@@ -421,7 +431,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Información General is the default tab — office fields are visible without clicking.
+      // Datos del consultorio is collapsible and starts collapsed; expand to access fields.
+      await expandCard(/Datos del consultorio/i);
       // Wait for settingsQuery to resolve so the fields become enabled.
       const addressTextarea = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
@@ -504,7 +515,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Información General is the default tab — office fields are visible without clicking.
+      // Datos del consultorio is collapsible and starts collapsed; expand to access fields.
+      await expandCard(/Datos del consultorio/i);
       // Wait for settingsQuery to resolve so the fields become enabled.
       const addressInput = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
@@ -573,7 +585,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Información General is the default tab — office fields are visible without clicking
+      // Datos del consultorio is collapsible and starts collapsed; expand to access fields.
+      await expandCard(/Datos del consultorio/i);
       // Leave address empty, fill arrival_instructions
       const arrivalInput =
         await testingLibraryReactModule.screen.findByLabelText("Indicaciones de llegada");
@@ -635,7 +648,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    // Información General is the default tab — office fields are visible without clicking
+    // Datos del consultorio is collapsible and starts collapsed; expand to access fields.
+    await expandCard(/Datos del consultorio/i);
     const addressInput = await testingLibraryReactModule.screen.findByLabelText(
       "Direccion del consultorio"
     );
