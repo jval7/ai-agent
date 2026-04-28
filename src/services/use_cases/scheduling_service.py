@@ -4,6 +4,7 @@ import typing
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.infra.logs as app_logs
+import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.agent_workflow_port as agent_workflow_port
 import src.ports.clock_port as clock_port
 import src.ports.conversation_repository_port as conversation_repository_port
@@ -98,6 +99,9 @@ class SchedulingService:
         whatsapp_connection_repository: (
             whatsapp_connection_repository_port.WhatsappConnectionRepositoryPort | None
         ) = None,
+        agent_profile_repository: (
+            agent_profile_repository_port.AgentProfileRepositoryPort | None
+        ) = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
         self._conversation_repository = conversation_repository
@@ -113,6 +117,7 @@ class SchedulingService:
         self._whatsapp_provider = whatsapp_provider
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._event_description_builder = event_description_builder
+        self._agent_profile_repository = agent_profile_repository
         self._agent_workflow: agent_workflow_port.AgentWorkflowPort
         if agent_workflow is None:
             self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
@@ -888,6 +893,19 @@ class SchedulingService:
             },
         )
 
+    def _get_payment_timing(self, tenant_id: str) -> typing.Literal["BEFORE_SESSION", "IN_PERSON"]:
+        """Return the current payment_timing for the tenant.
+
+        Falls back to "BEFORE_SESSION" when no agent profile repo is wired
+        (e.g. unit tests that don't inject it) — preserves existing behavior.
+        """
+        if self._agent_profile_repository is None:
+            return "BEFORE_SESSION"
+        profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+        if profile is None:
+            return "BEFORE_SESSION"
+        return profile.payment_timing
+
     def _select_slot_for_confirmation_impl(
         self,
         tenant_id: str,
@@ -911,7 +929,53 @@ class SchedulingService:
         if selected_slot is None:
             raise service_exceptions.InvalidStateError("selected slot is not available")
 
+        payment_timing = self._get_payment_timing(tenant_id)
         now_value = self._clock.now()
+
+        if payment_timing == "IN_PERSON":
+            # IN_PERSON: book directly without awaiting payment confirmation.
+            # Derive event summary and attendee emails the same way as reschedule does.
+            event_summary = self._resolve_booked_event_summary(request, None)
+            attendee_emails: list[str] = []
+            if self._patient_repository is not None:
+                patient = self._patient_repository.get_by_whatsapp_user(
+                    tenant_id, request.whatsapp_user_id
+                )
+                if patient is not None:
+                    attendee_emails = [patient.email]
+            result = self._book_slot_and_create_event(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                request=request,
+                selected_slot=selected_slot,
+                event_summary=event_summary,
+                attendee_emails=attendee_emails,
+                reminder_payment_status="PENDING",
+                now_value=now_value,
+            )
+            if result.status == "SLOT_CONFLICT":
+                # Return as a summary DTO re-reading the updated request.
+                reloaded = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
+                if reloaded is not None:
+                    return self._to_summary_dto(reloaded)
+            logger.info(
+                "scheduling.slot_booked_in_person",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="scheduling.slot_booked_in_person",
+                        message="slot booked directly (IN_PERSON payment_timing)",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation_id,
+                            "request_id": request.id,
+                            "slot_id": selected_slot.id,
+                        },
+                    )
+                },
+            )
+            return self._to_summary_dto(request)
+
+        # BEFORE_SESSION: standard flow — await payment confirmation.
         for slot in request.slots:
             if slot.id == selected_slot.id:
                 slot.status = "SELECTED"
