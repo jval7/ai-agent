@@ -39,6 +39,50 @@ function buildEmptyProfile(): agentModel.UpdateProfessionalProfileInput {
   };
 }
 
+function buildIdentityPreview(identity: agentModel.AssistantIdentity | null): string {
+  if (identity === null) return "Sin configurar";
+  const parts: string[] = [];
+  if (identity.assistantName !== null && identity.assistantName.trim() !== "") {
+    parts.push(identity.assistantName.trim());
+  }
+  if (identity.professionalTitle !== null && identity.professionalTitle.trim() !== "") {
+    parts.push(identity.professionalTitle.trim());
+  }
+  if (identity.mainCity !== null && identity.mainCity.trim() !== "") {
+    parts.push(identity.mainCity.trim());
+  }
+  if (parts.length === 0) return "Sin configurar";
+  return parts.join(" · ");
+}
+
+function buildServicesPreview(
+  services: agentModel.ServiceOffering[],
+  presencialSchedule: agentModel.ScheduleBlock[],
+  virtualSchedule: agentModel.ScheduleBlock[],
+  professionalContext: agentModel.ProfessionalContext | null
+): string {
+  const totalSchedules = presencialSchedule.length + virtualSchedule.length;
+  const totalTopics = professionalContext?.commonTopics.length ?? 0;
+  if (services.length === 0 && totalSchedules === 0 && totalTopics === 0) {
+    return "Sin configurar";
+  }
+  const parts: string[] = [];
+  parts.push(`${services.length} ${services.length === 1 ? "servicio" : "servicios"}`);
+  parts.push(`${totalSchedules} ${totalSchedules === 1 ? "horario" : "horarios"}`);
+  if (totalTopics > 0) {
+    parts.push(`${totalTopics} ${totalTopics === 1 ? "tema" : "temas"}`);
+  }
+  return parts.join(" · ");
+}
+
+function buildPaymentMethodsPreview(methods: agentModel.PaymentMethod[]): string {
+  if (methods.length === 0) return "Sin configurar";
+  return methods
+    .map((m) => `${m.methodName} (${m.currency})`)
+    .slice(0, 3)
+    .join(" · ");
+}
+
 function profileToInput(
   profile: agentModel.ProfessionalProfile
 ): agentModel.UpdateProfessionalProfileInput {
@@ -97,9 +141,13 @@ export function ProfessionalProfileForm() {
   const isSaving = saveMutation.isPending;
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="max-w-3xl space-y-4">
       {/* Identidad */}
       <sectionCardModule.SectionCard
+        collapsible
+        defaultOpen={false}
+        previewWhenCollapsed={buildIdentityPreview(draft.identity)}
+        storageKey="cfg.section.identity"
         subtitle="Configura como se presenta el asistente y que tono usa."
         title="Identidad del asistente"
       >
@@ -114,6 +162,15 @@ export function ProfessionalProfileForm() {
 
       {/* Servicios y practica */}
       <sectionCardModule.SectionCard
+        collapsible
+        defaultOpen={false}
+        previewWhenCollapsed={buildServicesPreview(
+          draft.services,
+          draft.presencialSchedule,
+          draft.virtualSchedule,
+          draft.professionalContext
+        )}
+        storageKey="cfg.section.services"
         subtitle="Contexto profesional, horarios y servicios ofrecidos."
         title="Servicios y práctica"
       >
@@ -140,6 +197,10 @@ export function ProfessionalProfileForm() {
 
       {/* Medios de pago */}
       <sectionCardModule.SectionCard
+        collapsible
+        defaultOpen={false}
+        previewWhenCollapsed={buildPaymentMethodsPreview(draft.paymentMethods)}
+        storageKey="cfg.section.payments"
         subtitle="Configura los canales de pago que el asistente puede informar a los pacientes."
         title="Medios de pago"
       >
