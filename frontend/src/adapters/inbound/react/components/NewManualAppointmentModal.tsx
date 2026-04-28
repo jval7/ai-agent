@@ -10,7 +10,6 @@ import * as calendarUtilsModule from "@shared/utils/calendar";
 
 const colombiaTimezone = "America/Bogota";
 const manualAppointmentsQueryKey = ["manual-appointments"] as const;
-const tenantProfileQueryKey = ["tenant-profile"] as const;
 
 type PaymentCurrency = "COP" | "USD";
 type PaymentStatus = "PENDING" | "PAID";
@@ -72,13 +71,6 @@ export function NewManualAppointmentModal({
     const now = luxonModule.DateTime.now().setZone(colombiaTimezone);
     return { year: now.year, month: now.month };
   });
-
-  const tenantProfileQuery = reactQueryModule.useQuery({
-    queryKey: tenantProfileQueryKey,
-    queryFn: () => appContainer.tenantUseCase.getProfile()
-  });
-
-  const sessionDurationMinutes = tenantProfileQuery.data?.sessionDurationMinutes ?? 60;
 
   const slotPickerMonthStart = luxonModule.DateTime.fromObject(
     { year: slotPickerMonth.year, month: slotPickerMonth.month, day: 1 },
@@ -266,7 +258,6 @@ export function NewManualAppointmentModal({
             <p className={sectionLabelClass}>Fecha y hora</p>
             <slotPickerModule.SlotPicker
               busyIntervals={busyIntervals}
-              durationMinutes={sessionDurationMinutes}
               isLoadingAvailability={availabilityQuery.isFetching}
               onMonthChange={setSlotPickerMonth}
               onSelectedSlotsChange={(slots) => {

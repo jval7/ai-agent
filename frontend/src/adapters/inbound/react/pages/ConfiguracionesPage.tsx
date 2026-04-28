@@ -362,21 +362,16 @@ export function ConfiguracionesPage() {
   });
 
   const [profileDraft, setProfileDraft] = reactModule.useState({
-    professionalName: "",
-    sessionDurationMinutes: 60
+    professionalName: ""
   });
   const [profileSuccessMessage, setProfileSuccessMessage] = reactModule.useState<string | null>(
     null
   );
-  const [sessionDurationSuccessMessage, setSessionDurationSuccessMessage] = reactModule.useState<
-    string | null
-  >(null);
 
   reactModule.useEffect(() => {
     if (profileQuery.data !== undefined) {
       setProfileDraft({
-        professionalName: profileQuery.data.professionalName ?? "",
-        sessionDurationMinutes: profileQuery.data.sessionDurationMinutes ?? 60
+        professionalName: profileQuery.data.professionalName ?? ""
       });
     }
   }, [profileQuery.data]);
@@ -392,21 +387,8 @@ export function ConfiguracionesPage() {
     }
   });
 
-  const sessionDurationMutation = reactQueryModule.useMutation({
-    mutationFn: (minutes: number) =>
-      appContainer.tenantUseCase.updateProfile({
-        professionalName: profileDraft.professionalName.trim() || null,
-        sessionDurationMinutes: minutes
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantProfileQueryKey });
-      setSessionDurationSuccessMessage("Duración de sesión guardada.");
-    }
-  });
-
   const profileErrorMessage = uiErrorModule.resolveUiErrorMessage([
     profileMutation.error,
-    sessionDurationMutation.error,
     profileQuery.error
   ]);
 
@@ -542,48 +524,6 @@ export function ConfiguracionesPage() {
                 {profileMutation.isPending ? "Guardando..." : "Guardar"}
               </button>
             </div>
-          </section>
-
-          {/* Sub-sección: Duración de sesión */}
-          <section className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-            <h3 className="text-xl font-semibold text-brand-ink">Duración de sesión</h3>
-            <p className="mt-1 text-sm text-slate-600">
-              Aplica a todas las citas que se agenden a partir de ahora.
-            </p>
-
-            <div className="mt-6">
-              <label
-                className="block text-sm font-medium text-slate-700"
-                htmlFor="session-duration"
-              >
-                Duración de sesión
-              </label>
-              <select
-                className="mt-1 block w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={profileQuery.isLoading || sessionDurationMutation.isPending}
-                id="session-duration"
-                onChange={(e) => {
-                  const minutes = Number(e.target.value);
-                  setProfileDraft((prev) => ({ ...prev, sessionDurationMinutes: minutes }));
-                  setSessionDurationSuccessMessage(null);
-                  sessionDurationMutation.mutate(minutes);
-                }}
-                value={profileDraft.sessionDurationMinutes}
-              >
-                <option value={15}>15 min</option>
-                <option value={30}>30 min</option>
-                <option value={45}>45 min</option>
-                <option value={60}>60 min</option>
-                <option value={90}>90 min</option>
-                <option value={120}>120 min</option>
-              </select>
-            </div>
-
-            {sessionDurationSuccessMessage !== null ? (
-              <div className="mt-3 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                {sessionDurationSuccessMessage}
-              </div>
-            ) : null}
           </section>
 
           {/* Sub-sección: Datos del consultorio */}

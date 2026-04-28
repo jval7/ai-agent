@@ -21,7 +21,6 @@ const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
 const googleCalendarConnectionQueryKey = ["google-calendar-connection"] as const;
 const patientsQueryKey = ["patients"] as const;
 const manualAppointmentsQueryKey = ["manual-appointments"] as const;
-const tenantProfileQueryKey = ["tenant-profile"] as const;
 const colombiaTimezone = "America/Bogota";
 
 const agendaStatuses: {
@@ -146,13 +145,6 @@ export function AgendaPage() {
     queryKey: manualAppointmentsQueryKey,
     queryFn: () => appContainer.manualAppointmentUseCase.listAppointments()
   });
-
-  const tenantProfileQuery = reactQueryModule.useQuery({
-    queryKey: tenantProfileQueryKey,
-    queryFn: () => appContainer.tenantUseCase.getProfile()
-  });
-
-  const sessionDurationMinutes = tenantProfileQuery.data?.sessionDurationMinutes ?? 60;
 
   const [activeTab, setActiveTab] =
     reactModule.useState<schedulingModel.SchedulingRequestStatus>("BOOKED");
@@ -1432,7 +1424,6 @@ export function AgendaPage() {
                 <slotPickerModule.SlotPicker
                   timezone={colombiaTimezone}
                   busyIntervals={rescheduleBusyIntervals}
-                  durationMinutes={sessionDurationMinutes}
                   requestId={
                     selectedBookedAppointment.source === "MANUAL"
                       ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")
@@ -1706,7 +1697,6 @@ export function AgendaPage() {
                         <slotPickerModule.SlotPicker
                           timezone={colombiaTimezone}
                           busyIntervals={rescheduleBusyIntervals}
-                          durationMinutes={sessionDurationMinutes}
                           requestId={selectedBookedAppointment?.requestId ?? "reschedule"}
                           selectedSlots={rescheduleSelectedSlots}
                           onSelectedSlotsChange={(slots) =>
@@ -2077,7 +2067,6 @@ export function AgendaPage() {
                     <slotPickerModule.SlotPicker
                       timezone={colombiaTimezone}
                       busyIntervals={rescheduleBusyIntervals}
-                      durationMinutes={sessionDurationMinutes}
                       requestId={
                         selectedBookedAppointment.source === "MANUAL"
                           ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")

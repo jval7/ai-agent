@@ -12,8 +12,10 @@ interface SlotPickerProps {
   ) => void;
   isLoadingAvailability: boolean;
   onMonthChange?: (month: { year: number; month: number }) => void;
-  durationMinutes: number;
 }
+
+const DURATION_PRESETS_MINUTES = [15, 30, 45, 60, 90, 120];
+const DEFAULT_DURATION_MINUTES = 60;
 
 export function SlotPicker(props: SlotPickerProps) {
   const now = luxonModule.DateTime.now().setZone(props.timezone);
@@ -22,6 +24,8 @@ export function SlotPicker(props: SlotPickerProps) {
     () => ({ year: now.year, month: now.month })
   );
   const [selectedDayIso, setSelectedDayIso] = reactModule.useState<string>("");
+  const [durationMinutes, setDurationMinutes] =
+    reactModule.useState<number>(DEFAULT_DURATION_MINUTES);
 
   const firstDayOfMonth = luxonModule.DateTime.fromObject(
     { year: visibleMonth.year, month: visibleMonth.month, day: 1 },
@@ -50,7 +54,7 @@ export function SlotPicker(props: SlotPickerProps) {
       selectedDayIso,
       busyIntervals: props.busyIntervals,
       now,
-      slotDurationMinutes: props.durationMinutes,
+      slotDurationMinutes: durationMinutes,
       startHour: 7,
       endHour: 22
     });
@@ -61,8 +65,15 @@ export function SlotPicker(props: SlotPickerProps) {
     selectedDayIso,
     props.busyIntervals,
     now.toMillis(),
-    props.durationMinutes
+    durationMinutes
   ]);
+
+  function handleDurationChange(nextMinutes: number) {
+    setDurationMinutes(nextMinutes);
+    if (props.selectedSlots.length > 0) {
+      props.onSelectedSlotsChange([]);
+    }
+  }
 
   const morningSlots = calendarSlots.filter((slot) => slot.hour >= 7 && slot.hour < 12);
   const afternoonSlots = calendarSlots.filter((slot) => slot.hour >= 12 && slot.hour < 18);
@@ -285,9 +296,31 @@ export function SlotPicker(props: SlotPickerProps) {
         </div>
       ) : null}
 
-      {/* Time grid */}
+      {/* Duration selector + Time grid */}
       {selectedDayIso !== "" ? (
         <div>
+          <div className="mb-3">
+            <label
+              className="block text-xs font-semibold text-slate-600 mb-1"
+              htmlFor={`slot-duration-${props.requestId}`}
+            >
+              Duración de la sesión
+            </label>
+            <select
+              className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal"
+              id={`slot-duration-${props.requestId}`}
+              onChange={(event) => {
+                handleDurationChange(Number(event.target.value));
+              }}
+              value={durationMinutes}
+            >
+              {DURATION_PRESETS_MINUTES.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes} min
+                </option>
+              ))}
+            </select>
+          </div>
           {renderSlotGroup("Mañana", morningSlots)}
           {renderSlotGroup("Tarde", afternoonSlots)}
           {renderSlotGroup("Noche", eveningSlots)}
