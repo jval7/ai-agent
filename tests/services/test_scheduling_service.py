@@ -1528,8 +1528,8 @@ def test_select_slot_books_directly_when_payment_timing_is_in_person() -> None:
     y el template de asistencia es el elegido."""
     # IDs consumed: req-1 (scheduling request), conference-token-1 (google meet token),
     # reminder-1 (maybe_schedule_reminder).
-    service, repository, provider, task_sched, reminder_repo = build_service_with_in_person_profile(
-        ["req-1", "conference-token-1", "reminder-1"]
+    service, repository, provider, _task_sched, reminder_repo = (
+        build_service_with_in_person_profile(["req-1", "conference-token-1", "reminder-1"])
     )
 
     request = create_awaiting_review_request(service)
