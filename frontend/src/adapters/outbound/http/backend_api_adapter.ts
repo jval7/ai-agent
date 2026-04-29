@@ -108,6 +108,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         address: string;
         arrival_instructions: string | null;
       } | null;
+      payment_timing: agentModel.PaymentTiming | null | undefined;
     }>("/v1/agent/settings", { method: "GET", authRequired: true });
     return {
       tenantId: raw.tenant_id,
@@ -123,7 +124,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
               address: raw.office_location.address,
               arrivalInstructions: raw.office_location.arrival_instructions
             }
-          : null
+          : null,
+      paymentTiming: raw.payment_timing ?? "BEFORE_SESSION"
     };
   }
 
@@ -142,6 +144,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         address: string;
         arrival_instructions: string | null;
       } | null;
+      payment_timing: agentModel.PaymentTiming | null | undefined;
     }>("/v1/agent/settings", {
       method: "PUT",
       authRequired: true,
@@ -159,7 +162,8 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
                 address: input.officeLocation.address,
                 arrival_instructions: input.officeLocation.arrivalInstructions
               }
-            : null
+            : null,
+        payment_timing: input.paymentTiming
       })
     });
     return {
@@ -176,8 +180,33 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
               address: raw.office_location.address,
               arrivalInstructions: raw.office_location.arrival_instructions
             }
-          : null
+          : null,
+      paymentTiming: raw.payment_timing ?? "BEFORE_SESSION"
     };
+  }
+
+  async getProfessionalProfile(): Promise<agentModel.ProfessionalProfile> {
+    const raw = await this.request<httpTypes.ProfessionalProfileApiResponse>(
+      "/v1/agent/professional-profile",
+      { method: "GET", authRequired: true }
+    );
+    return mapProfessionalProfile(raw);
+  }
+
+  async updateProfessionalProfile(
+    input: agentModel.UpdateProfessionalProfileInput
+  ): Promise<agentModel.ProfessionalProfile> {
+    const raw = await this.request<httpTypes.ProfessionalProfileApiResponse>(
+      "/v1/agent/professional-profile",
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify(
+          profileInputToApi(input) satisfies httpTypes.UpdateProfessionalProfileApiRequest
+        )
+      }
+    );
+    return mapProfessionalProfile(raw);
   }
 
   async listReminders(status?: string): Promise<scheduledReminderModel.ScheduledReminderList> {
@@ -495,8 +524,10 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     });
   }
 
-  async listPatients(): Promise<patientModel.Patient[]> {
-    const payload = await this.request<httpTypes.PatientListApiResponse>("/v1/patients", {
+  async listPatients(params?: { search?: string }): Promise<patientModel.Patient[]> {
+    const search = params?.search?.trim();
+    const qs = search !== undefined && search !== "" ? `?search=${encodeURIComponent(search)}` : "";
+    const payload = await this.request<httpTypes.PatientListApiResponse>(`/v1/patients${qs}`, {
       method: "GET",
       authRequired: true
     });
@@ -869,12 +900,13 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
   async updateTenantProfile(
     input: tenantModel.UpdateTenantProfileInput
   ): Promise<tenantModel.TenantProfile> {
+    const requestBody: httpTypes.UpdateTenantProfileRequest = {
+      professional_name: input.professionalName
+    };
     const payload = await this.request<httpTypes.TenantProfileResponse>("/v1/tenant/profile", {
       method: "PUT",
       authRequired: true,
-      body: JSON.stringify({
-        professional_name: input.professionalName
-      } satisfies httpTypes.UpdateTenantProfileRequest)
+      body: JSON.stringify(requestBody)
     });
     return mapTenantProfile(payload);
   }
@@ -1215,6 +1247,148 @@ function mapTenantProfile(payload: httpTypes.TenantProfileResponse): tenantModel
     tenantId: payload.tenant_id,
     name: payload.name,
     professionalName: payload.professional_name
+  };
+}
+
+function mapTariffOption(raw: httpTypes.TariffOptionApiResponse): agentModel.TariffOption {
+  return {
+    label: raw.label,
+    description: raw.description,
+    prices: raw.prices.map((p) => ({ currency: p.currency, amount: p.amount }))
+  };
+}
+
+function tariffOptionToApi(item: agentModel.TariffOption): httpTypes.TariffOptionApiResponse {
+  return {
+    label: item.label,
+    description: item.description,
+    prices: item.prices.map((p) => ({ currency: p.currency, amount: p.amount }))
+  };
+}
+
+function mapScheduleBlock(raw: httpTypes.ScheduleBlockApiResponse): agentModel.ScheduleBlock {
+  return {
+    weekdayFrom: raw.weekday_from as agentModel.Weekday,
+    weekdayTo:
+      raw.weekday_to !== null && raw.weekday_to !== undefined
+        ? (raw.weekday_to as agentModel.Weekday)
+        : null,
+    startTime: raw.start_time,
+    endTime: raw.end_time
+  };
+}
+
+function scheduleBlockToApi(item: agentModel.ScheduleBlock): httpTypes.ScheduleBlockApiResponse {
+  return {
+    weekday_from: item.weekdayFrom,
+    weekday_to: item.weekdayTo,
+    start_time: item.startTime,
+    end_time: item.endTime
+  };
+}
+
+function mapServiceOffering(raw: httpTypes.ServiceOfferingApiResponse): agentModel.ServiceOffering {
+  return {
+    name: raw.name,
+    description: raw.description,
+    modalities: raw.modalities as agentModel.Modality[],
+    tariffs: raw.tariffs.map(mapTariffOption)
+  };
+}
+
+function serviceOfferingToApi(
+  item: agentModel.ServiceOffering
+): httpTypes.ServiceOfferingApiResponse {
+  return {
+    name: item.name,
+    description: item.description,
+    modalities: item.modalities,
+    tariffs: item.tariffs.map(tariffOptionToApi)
+  };
+}
+
+function mapPaymentMethod(raw: httpTypes.PaymentMethodApiResponse): agentModel.PaymentMethod {
+  return {
+    currency: raw.currency,
+    methodName: raw.method_name,
+    holder: raw.holder,
+    instructions: raw.instructions,
+    appliesWhen: raw.applies_when
+  };
+}
+
+function paymentMethodToApi(item: agentModel.PaymentMethod): httpTypes.PaymentMethodApiResponse {
+  return {
+    currency: item.currency,
+    method_name: item.methodName,
+    holder: item.holder,
+    instructions: item.instructions,
+    applies_when: item.appliesWhen
+  };
+}
+
+function mapProfessionalProfile(
+  raw: httpTypes.ProfessionalProfileApiResponse
+): agentModel.ProfessionalProfile {
+  return {
+    tenantId: raw.tenant_id,
+    identity:
+      raw.identity !== null && raw.identity !== undefined
+        ? {
+            assistantName: raw.identity.assistant_name,
+            professionalTitle: raw.identity.professional_title,
+            professionalName: raw.identity.professional_name,
+            professionalAddressTerm: raw.identity.professional_address_term,
+            mainCity: raw.identity.main_city,
+            tone: raw.identity.tone,
+            languages: raw.identity.languages
+          }
+        : null,
+    professionalContext:
+      raw.professional_context !== null && raw.professional_context !== undefined
+        ? {
+            approach: raw.professional_context.approach,
+            commonTopics: raw.professional_context.common_topics,
+            servicesNotOffered: raw.professional_context.services_not_offered,
+            coverageNotes: raw.professional_context.coverage_notes
+          }
+        : null,
+    services: raw.services.map(mapServiceOffering),
+    presencialSchedule: raw.presencial_schedule.map(mapScheduleBlock),
+    virtualSchedule: raw.virtual_schedule.map(mapScheduleBlock),
+    paymentMethods: raw.payment_methods.map(mapPaymentMethod)
+  };
+}
+
+function profileInputToApi(
+  input: agentModel.UpdateProfessionalProfileInput
+): httpTypes.UpdateProfessionalProfileApiRequest {
+  return {
+    identity:
+      input.identity !== null
+        ? {
+            assistant_name: input.identity.assistantName,
+            professional_title: input.identity.professionalTitle,
+            professional_name: input.identity.professionalName,
+            professional_address_term: input.identity.professionalAddressTerm,
+            main_city: input.identity.mainCity,
+            tone: input.identity.tone,
+            languages: input.identity.languages
+          }
+        : null,
+    professional_context:
+      input.professionalContext !== null
+        ? {
+            approach: input.professionalContext.approach,
+            common_topics: input.professionalContext.commonTopics,
+            services_not_offered: input.professionalContext.servicesNotOffered,
+            coverage_notes: input.professionalContext.coverageNotes
+          }
+        : null,
+    services: input.services.map(serviceOfferingToApi),
+    presencial_schedule: input.presencialSchedule.map(scheduleBlockToApi),
+    virtual_schedule: input.virtualSchedule.map(scheduleBlockToApi),
+    payment_methods: input.paymentMethods.map(paymentMethodToApi)
   };
 }
 

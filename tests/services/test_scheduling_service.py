@@ -7,6 +7,7 @@ import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_
 import src.adapters.outbound.inmemory.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.inmemory.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.inmemory.manual_appointment_repository_adapter as manual_appointment_repository_adapter
+import src.adapters.outbound.inmemory.scheduled_reminder_repository_adapter as scheduled_reminder_repository_adapter
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.task_scheduler_adapter as task_scheduler_adapter
@@ -19,11 +20,13 @@ import src.domain.entities.message as message_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
+import src.domain.official_reminder_templates as official_reminder_templates
 import src.services.dto.google_calendar_dto as google_calendar_dto
 import src.services.dto.scheduling_dto as scheduling_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.event_description_builder as event_description_builder_mod
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
+import src.services.use_cases.reminder_service as reminder_service_module
 import src.services.use_cases.scheduling_service as scheduling_service
 import tests.fakes.fake_adapters as fake_adapters
 
@@ -113,6 +116,131 @@ def build_service(
         event_description_builder=builder,
     )
     return service, scheduling_repository, provider, task_sched
+
+
+_ATTENDANCE_TEMPLATE_NAME = official_reminder_templates.OFFICIAL_REMINDER_TEMPLATES[
+    "ATTENDANCE"
+].name
+
+
+def build_service_with_in_person_profile(
+    id_values: list[str],
+) -> tuple[
+    scheduling_service.SchedulingService,
+    scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
+    fake_adapters.FakeGoogleCalendarProvider,
+    task_scheduler_adapter.InMemoryTaskSchedulerAdapter,
+    scheduled_reminder_repository_adapter.InMemoryScheduledReminderRepositoryAdapter,
+]:
+    """Build a SchedulingService wired with an AFTER_SESSION agent profile and reminder service."""
+    store = in_memory_store.InMemoryStore()
+    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
+        store
+    )
+    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
+    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
+        store
+    )
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    reminder_repo = (
+        scheduled_reminder_repository_adapter.InMemoryScheduledReminderRepositoryAdapter()
+    )
+    wa_connection_repo = (
+        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
+    )
+    provider = fake_adapters.FakeGoogleCalendarProvider()
+    clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
+    id_generator = fake_adapters.SequenceIdGenerator(id_values)
+
+    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
+        google_calendar_connection_repository=calendar_connection_repository,
+        google_calendar_provider=provider,
+        id_generator=id_generator,
+        clock=clock,
+    )
+
+    # Seed an AFTER_SESSION agent profile with reminders enabled.
+    agent_profile_repo.save(
+        agent_profile_entity.AgentProfile(
+            tenant_id="tenant-1",
+            system_prompt="prompt",
+            appointment_reminder_enabled=True,
+            appointment_reminder_days_before=2,
+            appointment_reminder_attendance_template_name=_ATTENDANCE_TEMPLATE_NAME,
+            appointment_reminder_payment_template_name=None,
+            payment_timing="AFTER_SESSION",
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    calendar_connection_repository.save(
+        google_calendar_connection_entity.GoogleCalendarConnection(
+            tenant_id="tenant-1",
+            professional_user_id="user-1",
+            status="CONNECTED",
+            calendar_id="primary",
+            timezone="America/Bogota",
+            access_token="access-1",
+            refresh_token="refresh-1",
+            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
+            oauth_state=None,
+            scope="calendar",
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            connected_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    conversation_repository.save_conversation(
+        conversation_entity.Conversation(
+            id="conv-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            started_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            last_message_preview=None,
+            message_ids=[],
+            control_mode="AI",
+        )
+    )
+
+    task_sched = task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
+    wa_provider = fake_adapters.FakeWhatsappProvider()
+    wa_connection_repo.save(
+        whatsapp_connection_entity.WhatsappConnection(
+            tenant_id="tenant-1",
+            phone_number_id="phone-1",
+            business_account_id="business-1",
+            access_token="wa-token-1",
+            status="CONNECTED",
+            embedded_signup_state=None,
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    builder = event_description_builder_mod.EventDescriptionBuilder(
+        agent_profile_repository=agent_profile_repo
+    )
+    reminder_svc = reminder_service_module.ReminderService(
+        scheduled_reminder_repository=reminder_repo,
+        agent_profile_repository=agent_profile_repo,
+        whatsapp_connection_repository=wa_connection_repo,
+        whatsapp_provider=wa_provider,
+        task_scheduler=task_sched,
+        id_generator=id_generator,
+        clock=clock,
+    )
+    service = scheduling_service.SchedulingService(
+        scheduling_repository=scheduling_repository,
+        conversation_repository=conversation_repository,
+        google_calendar_onboarding_service=google_service,
+        id_generator=id_generator,
+        clock=clock,
+        task_scheduler=task_sched,
+        event_description_builder=builder,
+        agent_profile_repository=agent_profile_repo,
+        reminder_service=reminder_svc,
+    )
+    return service, scheduling_repository, provider, task_sched, reminder_repo
 
 
 def create_awaiting_review_request(
@@ -1386,3 +1514,61 @@ def test_approve_payment_original_flow_unchanged() -> None:
     assert stored.status == "AWAITING_PATIENT_CHOICE"
     assert stored.payment_status == "PAID"
     assert stored.payment_amount_cop == 75000
+
+
+# ---------------------------------------------------------------------------
+# payment_timing = AFTER_SESSION
+# ---------------------------------------------------------------------------
+
+
+def test_select_slot_stays_awaiting_patient_choice_when_payment_timing_is_after_session() -> None:
+    """Con payment_timing=AFTER_SESSION, al llamar select_slot_for_confirmation el
+    request debe permanecer en AWAITING_PATIENT_CHOICE (no pasa a AWAITING_PAYMENT_CONFIRMATION
+    ni a BOOKED inline). El selected_slot_id queda set para que el runtime resolver
+    derive state=COLLECTING_CONFIRMATION_DATA y el bot recoja email/edad/etc.
+    No se crea evento de calendar en este paso ni se agenda recordatorio todavía."""
+    service, repository, provider, _task_sched, reminder_repo = (
+        build_service_with_in_person_profile(["req-1"])
+    )
+
+    request = create_awaiting_review_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "AWAITING_PATIENT_CHOICE"
+    far_start = datetime.datetime(2026, 2, 1, 10, 0, tzinfo=datetime.UTC)
+    far_end = datetime.datetime(2026, 2, 1, 11, 0, tzinfo=datetime.UTC)
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=far_start,
+            end_at=far_end,
+            timezone="America/Bogota",
+            status="PROPOSED",
+        )
+    ]
+    repository.save_request(stored)
+
+    result = service.select_slot_for_confirmation(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        request_id=request.request_id,
+        slot_id="slot-1",
+    )
+
+    # AFTER_SESSION: permanece en AWAITING_PATIENT_CHOICE con selected_slot_id set.
+    assert result.status == "AWAITING_PATIENT_CHOICE"
+    assert result.selected_slot_id == "slot-1"
+    reloaded = repository.get_request_by_id("tenant-1", request.request_id)
+    assert reloaded is not None
+    assert reloaded.status == "AWAITING_PATIENT_CHOICE"
+    assert reloaded.selected_slot_id == "slot-1"
+
+    # No se crea evento de calendar todavía — eso ocurre en confirm_selected_slot_and_create_event.
+    assert len(provider.created_event_summaries) == 0
+
+    # No se agenda recordatorio todavía.
+    reminders = reminder_repo.list_by_tenant("tenant-1")
+    assert len(reminders) == 0
+
+    # Nunca transiciona a AWAITING_PAYMENT_CONFIRMATION.
+    assert result.status != "AWAITING_PAYMENT_CONFIRMATION"

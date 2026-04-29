@@ -32,9 +32,23 @@ class PatientQueryService:
         self._google_calendar_onboarding_service = google_calendar_onboarding_service
         self._clock = clock
 
-    def list_patients(self, claims: auth_dto.TokenClaimsDTO) -> patient_dto.PatientListResponseDTO:
+    def list_patients(
+        self,
+        claims: auth_dto.TokenClaimsDTO,
+        search: str | None = None,
+    ) -> patient_dto.PatientListResponseDTO:
         self._ensure_professional(claims)
         patients = self._patient_repository.list_by_tenant(claims.tenant_id)
+        if search is not None:
+            needle = search.casefold()
+            patients = [
+                p
+                for p in patients
+                if needle in (p.first_name or "").casefold()
+                or needle in (p.last_name or "").casefold()
+                or needle in (p.phone or "").casefold()
+                or needle in (p.whatsapp_user_id or "").casefold()
+            ]
         sorted_patients = sorted(patients, key=lambda item: item.created_at, reverse=True)
         return patient_dto.PatientListResponseDTO(
             items=[self._to_patient_dto(item) for item in sorted_patients]

@@ -2,7 +2,6 @@ import * as reactModule from "react";
 import * as reactQueryModule from "@tanstack/react-query";
 
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
-import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as errorBannerModule from "@adapters/inbound/react/components/ErrorBanner";
 import * as statusBadgeModule from "@adapters/inbound/react/components/StatusBadge";
 import * as uiErrorModule from "@shared/http/ui_error";
@@ -63,7 +62,7 @@ function DocumentTextIcon() {
   );
 }
 
-export function PlantillasPage() {
+export function PlantillasSection() {
   const appContainer = appContainerContextModule.useAppContainer();
   const queryClient = reactQueryModule.useQueryClient();
 
@@ -121,17 +120,7 @@ export function PlantillasPage() {
     }
   });
 
-  const deleteMutation = reactQueryModule.useMutation({
-    mutationFn: (name: string) => appContainer.whatsappTemplateUseCase.deleteTemplate(name),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: templatesQueryKey });
-    }
-  });
-
-  const listErrorMessage = uiErrorModule.resolveUiErrorMessage([
-    templatesQuery.error,
-    deleteMutation.error
-  ]);
+  const listErrorMessage = uiErrorModule.resolveUiErrorMessage([templatesQuery.error]);
 
   const createErrorMessage = uiErrorModule.resolveUiErrorMessage([createMutation.error]);
 
@@ -152,10 +141,10 @@ export function PlantillasPage() {
   const templates = templatesQuery.data ?? [];
 
   return (
-    <appShellModule.AppShell>
+    <div className="mt-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-brand-ink">Plantillas de mensajes</h1>
+          <h2 className="text-2xl font-bold text-brand-ink">Plantillas de mensajes</h2>
           <p className="mt-1 text-sm text-slate-500">
             Gestiona las plantillas de mensajes de WhatsApp Business.
           </p>
@@ -209,9 +198,6 @@ export function PlantillasPage() {
                 <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Estado
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Acciones
-                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
@@ -228,18 +214,6 @@ export function PlantillasPage() {
                     <td className="px-6 py-4 text-sm">{buildCategoryBadge(template.category)}</td>
                     <td className="px-6 py-4 text-sm text-slate-600">{template.language}</td>
                     <td className="px-6 py-4 text-sm">{buildStatusBadge(template.status)}</td>
-                    <td className="px-6 py-4 text-right">
-                      <button
-                        className="text-sm font-medium text-red-600 transition-colors hover:text-red-800 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={deleteMutation.isPending}
-                        onClick={() => {
-                          deleteMutation.mutate(template.name);
-                        }}
-                        type="button"
-                      >
-                        Eliminar
-                      </button>
-                    </td>
                   </tr>
                 );
               })}
@@ -400,6 +374,6 @@ export function PlantillasPage() {
           </div>
         </div>
       ) : null}
-    </appShellModule.AppShell>
+    </div>
   );
 }

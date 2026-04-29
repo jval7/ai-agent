@@ -2,6 +2,7 @@ import datetime
 
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
 import src.infra.logs as app_logs
+import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.clock_port as clock_port
 import src.ports.google_calendar_connection_repository_port as google_calendar_connection_repository_port
 import src.ports.google_calendar_provider_port as google_calendar_provider_port
@@ -23,11 +24,15 @@ class GoogleCalendarOnboardingService:
         id_generator: id_generator_port.IdGeneratorPort,
         clock: clock_port.ClockPort,
         tenant_repository: tenant_repository_port.TenantRepositoryPort | None = None,
+        agent_profile_repository: (
+            agent_profile_repository_port.AgentProfileRepositoryPort | None
+        ) = None,
     ) -> None:
         self._google_calendar_connection_repository = google_calendar_connection_repository
         self._google_calendar_provider = google_calendar_provider
         self._id_generator = id_generator
         self._clock = clock
+        self._agent_profile_repository = agent_profile_repository
         self._tenant_repository = tenant_repository
         self._oauth_scopes = ["https://www.googleapis.com/auth/calendar"]
 
@@ -189,6 +194,21 @@ class GoogleCalendarOnboardingService:
         return False
 
     def get_professional_name(self, tenant_id: str) -> str | None:
+        """Resolve the name shown in Google Calendar event titles.
+
+        Source of truth is the agent profile identity (title + name combined,
+        e.g. "Doc. Ana Rodriguez") so the same value drives both the bot's
+        prompt and the Calendar event titles. Falls back to the legacy
+        Tenant.professional_name only when the form has not been populated.
+        """
+        if self._agent_profile_repository is not None:
+            profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+            if profile is not None and profile.identity is not None:
+                title = (profile.identity.professional_title or "").strip()
+                name = (profile.identity.professional_name or "").strip()
+                combined = f"{title} {name}".strip()
+                if combined:
+                    return combined
         if self._tenant_repository is None:
             return None
         tenant = self._tenant_repository.get_by_id(tenant_id)

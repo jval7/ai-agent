@@ -1,3 +1,75 @@
+export type Weekday = "MON" | "TUE" | "WED" | "THU" | "FRI" | "SAT" | "SUN";
+export type Modality = "PRESENCIAL" | "VIRTUAL";
+
+export interface AssistantIdentity {
+  assistantName: string | null;
+  professionalTitle: string | null;
+  professionalName: string | null;
+  professionalAddressTerm: string | null;
+  mainCity: string | null;
+  tone: string | null;
+  languages: string[];
+}
+
+export interface ScheduleBlock {
+  weekdayFrom: Weekday;
+  weekdayTo: Weekday | null;
+  startTime: string; // "HH:MM"
+  endTime: string;
+}
+
+export interface TariffPrice {
+  currency: string;
+  amount: number;
+}
+
+export interface TariffOption {
+  label: string;
+  description: string | null;
+  prices: TariffPrice[];
+}
+
+export interface ServiceOffering {
+  name: string | null;
+  description: string | null;
+  modalities: Modality[];
+  tariffs: TariffOption[];
+}
+
+export interface PaymentMethod {
+  currency: string;
+  methodName: string;
+  holder: string | null;
+  instructions: string | null;
+  appliesWhen: string | null;
+}
+
+export interface ProfessionalContext {
+  approach: string | null;
+  commonTopics: string[];
+  servicesNotOffered: string[];
+  coverageNotes: string | null;
+}
+
+export interface ProfessionalProfile {
+  tenantId: string;
+  identity: AssistantIdentity | null;
+  professionalContext: ProfessionalContext | null;
+  services: ServiceOffering[];
+  presencialSchedule: ScheduleBlock[];
+  virtualSchedule: ScheduleBlock[];
+  paymentMethods: PaymentMethod[];
+}
+
+export interface UpdateProfessionalProfileInput {
+  identity: AssistantIdentity | null;
+  professionalContext: ProfessionalContext | null;
+  services: ServiceOffering[];
+  presencialSchedule: ScheduleBlock[];
+  virtualSchedule: ScheduleBlock[];
+  paymentMethods: PaymentMethod[];
+}
+
 export interface SystemPrompt {
   tenantId: string;
   systemPrompt: string;
@@ -8,6 +80,8 @@ export interface OfficeLocation {
   arrivalInstructions: string | null;
 }
 
+export type PaymentTiming = "BEFORE_SESSION" | "AFTER_SESSION";
+
 export interface AgentSettings {
   tenantId: string;
   messageDebounceDelaySeconds: number;
@@ -17,6 +91,7 @@ export interface AgentSettings {
   appointmentReminderPaymentTemplateName: string | null;
   paymentDetailsText: string | null;
   officeLocation: OfficeLocation | null;
+  paymentTiming: PaymentTiming;
 }
 
 export interface UpdateAgentSettingsInput {
@@ -27,4 +102,5 @@ export interface UpdateAgentSettingsInput {
   appointmentReminderPaymentTemplateName: string | null;
   paymentDetailsText: string | null;
   officeLocation: OfficeLocation | null;
+  paymentTiming: PaymentTiming;
 }

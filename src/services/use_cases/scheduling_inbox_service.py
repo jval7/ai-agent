@@ -12,6 +12,7 @@ import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.prompt_builder as prompt_builder
+import src.services.agentic.prompts.professional_profile_xml_renderer as xml_renderer
 import src.services.constants as service_constants
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.llm_dto as llm_dto
@@ -387,7 +388,7 @@ class SchedulingInboxService:
         if self._agent_profile_repository is not None:
             agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
             if agent_profile is not None:
-                return agent_profile.system_prompt
+                return xml_renderer.effective_system_prompt(agent_profile)
 
         if self._default_system_prompt is not None:
             return self._default_system_prompt
@@ -462,14 +463,24 @@ class SchedulingInboxService:
             lines.append(f"Todos los horarios en {display_tz}")
         return "\n".join(lines)
 
+    _VALID_SLOT_DURATION_MINUTES: frozenset[int] = frozenset({15, 30, 45, 60, 90, 120})
+
     def _validate_slot_duration(
         self,
         start_at: datetime.datetime,
         end_at: datetime.datetime,
     ) -> None:
         duration_seconds = (end_at - start_at).total_seconds()
-        if duration_seconds != 3600:
-            raise service_exceptions.InvalidStateError("slots must be exactly 60 minutes")
+        if duration_seconds <= 0 or duration_seconds % 60 != 0:
+            raise service_exceptions.InvalidStateError(
+                "slot duration must be a positive whole number of minutes"
+            )
+        duration_minutes = int(duration_seconds // 60)
+        if duration_minutes not in self._VALID_SLOT_DURATION_MINUTES:
+            valid = sorted(self._VALID_SLOT_DURATION_MINUTES)
+            raise service_exceptions.InvalidStateError(
+                f"slot duration must be one of {valid} minutes"
+            )
 
     def _build_payment_review_message(
         self,

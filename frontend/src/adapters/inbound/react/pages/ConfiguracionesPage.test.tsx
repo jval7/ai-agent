@@ -80,7 +80,8 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
         paymentDetailsText: null,
-        officeLocation: null
+        officeLocation: null,
+        paymentTiming: "BEFORE_SESSION" as const
       })),
       updateAgentSettings: vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
@@ -90,7 +91,8 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
         paymentDetailsText: null,
-        officeLocation: null
+        officeLocation: null,
+        paymentTiming: "BEFORE_SESSION" as const
       }))
     },
     whatsappTemplateUseCase: {
@@ -127,8 +129,17 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
   };
 }
 
+async function expandCard(title: RegExp): Promise<void> {
+  const toggle = await testingLibraryReactModule.screen.findByRole("button", { name: title });
+  await testingLibraryReactModule.act(async () => {
+    testingLibraryReactModule.fireEvent.click(toggle);
+  });
+}
+
 vitestModule.describe("ConfiguracionesPage", () => {
   vitestModule.beforeEach(() => {
+    // Reset persisted collapse state so each test starts with cards collapsed.
+    window.localStorage.clear();
     vitestModule.vi.spyOn(appShellModule, "AppShell").mockImplementation((props) => {
       return <div>{props.children}</div>;
     });
@@ -148,10 +159,11 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    const conexionesTab = await testingLibraryReactModule.screen.findByRole("button", {
-      name: "Conexiones"
+    // Navigate to Google Calendar section via the sidebar.
+    const googleCalendarSidebarItem = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Google Calendar"
     });
-    testingLibraryReactModule.fireEvent.click(conexionesTab);
+    testingLibraryReactModule.fireEvent.click(googleCalendarSidebarItem);
 
     const googleButton = await testingLibraryReactModule.screen.findByRole("button", {
       name: "Conectar Google Calendar"
@@ -163,90 +175,10 @@ vitestModule.describe("ConfiguracionesPage", () => {
     });
   });
 
-  vitestModule.it(
-    "renders Información General tab by default with professional name input",
-    async () => {
-      const container = buildContainer();
-
-      renderConfiguracionesPage(container);
-
-      const input =
-        await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
-      vitestModule.expect(input).toBeInTheDocument();
-      await testingLibraryReactModule.waitFor(() => {
-        vitestModule.expect((input as HTMLInputElement).value).toBe("Dra. Ana Garcia");
-      });
-    }
-  );
-
-  vitestModule.it("shows empty professional name input when professionalName is null", async () => {
-    const container = buildContainer({
-      tenantUseCase: {
-        getProfile: vitestModule.vi.fn(async () => ({
-          tenantId: "tenant-1",
-          name: "Ana Garcia",
-          professionalName: null
-        })),
-        updateProfile: vitestModule.vi.fn(async () => ({
-          tenantId: "tenant-1",
-          name: "Ana Garcia",
-          professionalName: null
-        }))
-      }
-    });
-
-    renderConfiguracionesPage(container);
-
-    const input = await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
-    vitestModule.expect((input as HTMLInputElement).value).toBe("");
-  });
-
-  vitestModule.it("submits updated professional name and shows success banner", async () => {
-    const updateProfileMock = vitestModule.vi.fn(async () => ({
-      tenantId: "tenant-1",
-      name: "Ana Garcia",
-      professionalName: "Dra. Ana M. Garcia"
-    }));
-    const container = buildContainer({
-      tenantUseCase: {
-        getProfile: vitestModule.vi.fn(async () => ({
-          tenantId: "tenant-1",
-          name: "Ana Garcia",
-          professionalName: "Dra. Ana Garcia"
-        })),
-        updateProfile: updateProfileMock
-      }
-    });
-
-    renderConfiguracionesPage(container);
-
-    const input = await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule.expect((input as HTMLInputElement).value).toBe("Dra. Ana Garcia");
-    });
-    testingLibraryReactModule.fireEvent.change(input, {
-      target: { value: "Dra. Ana M. Garcia" }
-    });
-
-    // Profile "Guardar" is the first of the two save buttons (profile and consultorio)
-    const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
-      name: "Guardar"
-    });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
-
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule.expect(updateProfileMock).toHaveBeenCalledWith({
-        professionalName: "Dra. Ana M. Garcia"
-      });
-    });
-
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule
-        .expect(testingLibraryReactModule.screen.getByText("Perfil actualizado."))
-        .toBeInTheDocument();
-    });
-  });
+  // Tests for the standalone "Perfil del profesional" section were removed:
+  // that section no longer exists in the UI. The professional name now lives
+  // exclusively under "Identidad del asistente" (in the agent profile form),
+  // and Calendar event titles read from there too.
 
   vitestModule.it("shows oauth callback error banner from query params", async () => {
     const container = buildContainer();
@@ -269,10 +201,11 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    const ajustesTab = await testingLibraryReactModule.screen.findByRole("button", {
-      name: /Ajustes del agente/i
+    // Navigate to the reminders config section via the sidebar.
+    const recordatoriosSidebarItem = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Activación y configuración"
     });
-    testingLibraryReactModule.fireEvent.click(ajustesTab);
+    testingLibraryReactModule.fireEvent.click(recordatoriosSidebarItem);
 
     const activateButton = await testingLibraryReactModule.screen.findByRole("button", {
       name: /Activar recordatorios/i
@@ -303,10 +236,11 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    const ajustesTab = await testingLibraryReactModule.screen.findByRole("button", {
-      name: /Ajustes del agente/i
+    // Navigate to the reminders config section via the sidebar.
+    const recordatoriosSidebarItem2 = await testingLibraryReactModule.screen.findByRole("button", {
+      name: "Activación y configuración"
     });
-    testingLibraryReactModule.fireEvent.click(ajustesTab);
+    testingLibraryReactModule.fireEvent.click(recordatoriosSidebarItem2);
 
     const activateButton = await testingLibraryReactModule.screen.findByRole("button", {
       name: /Activar recordatorios/i
@@ -326,7 +260,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
   // --- Información General tab — consultorio section tests ---
 
   vitestModule.it(
-    "renders office location data from backend in Información General tab",
+    "renders office location data from backend in Datos del consultorio section",
     async () => {
       const container = buildContainer({
         agentUseCase: {
@@ -345,7 +279,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
             officeLocation: {
               address: "Calle 5 # 38-25, Edificio Azul, piso 3",
               arrivalInstructions: "Llegar 20 minutos antes con cedula fisica"
-            }
+            },
+            paymentTiming: "BEFORE_SESSION" as const
           })),
           updateAgentSettings: vitestModule.vi.fn(async () => undefined)
         }
@@ -353,7 +288,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Información General is the default tab — office fields are visible without clicking
+      // Navigate to Datos del consultorio section via sidebar.
+      await expandCard(/Datos del consultorio/i);
       const addressTextarea = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
       );
@@ -397,7 +333,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
         officeLocation: {
           address: "Avenida Siempre Viva 1234\nEdificio Azul, piso 5\nParqueadero en sotano",
           arrivalInstructions: "Llegar 20 minutos antes"
-        }
+        },
+        paymentTiming: "BEFORE_SESSION" as const
       }));
       const container = buildContainer({
         agentUseCase: {
@@ -413,7 +350,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderAttendanceTemplateName: null,
             appointmentReminderPaymentTemplateName: null,
             paymentDetailsText: null,
-            officeLocation: null
+            officeLocation: null,
+            paymentTiming: "BEFORE_SESSION" as const
           })),
           updateAgentSettings: updateAgentSettingsMock
         }
@@ -421,7 +359,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Información General is the default tab — office fields are visible without clicking.
+      // Navigate to Datos del consultorio section via sidebar.
+      await expandCard(/Datos del consultorio/i);
       // Wait for settingsQuery to resolve so the fields become enabled.
       const addressTextarea = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
@@ -440,12 +379,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
         target: { value: "Llegar 20 minutos antes" }
       });
 
-      // Office "Guardar" is the second save button (after profile's)
+      // The consultorio section is the only active section — only one "Guardar" button visible.
       const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
         name: "Guardar"
       });
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+      testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
 
       await testingLibraryReactModule.waitFor(() => {
         vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
@@ -482,7 +421,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
         officeLocation: {
           address: "Calle 5 # 38-25, Cali",
           arrivalInstructions: null
-        }
+        },
+        paymentTiming: "BEFORE_SESSION" as const
       }));
       const container = buildContainer({
         agentUseCase: {
@@ -496,7 +436,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderAttendanceTemplateName: null,
             appointmentReminderPaymentTemplateName: null,
             paymentDetailsText: null,
-            officeLocation: null
+            officeLocation: null,
+            paymentTiming: "BEFORE_SESSION" as const
           })),
           updateAgentSettings: updateAgentSettingsMock
         }
@@ -504,7 +445,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Información General is the default tab — office fields are visible without clicking.
+      // Navigate to Datos del consultorio section via sidebar.
+      await expandCard(/Datos del consultorio/i);
       // Wait for settingsQuery to resolve so the fields become enabled.
       const addressInput = await testingLibraryReactModule.screen.findByLabelText(
         "Direccion del consultorio"
@@ -516,12 +458,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
         target: { value: "Calle 5 # 38-25, Cali" }
       });
 
-      // Office "Guardar" is the second save button (after profile's)
+      // The consultorio section is the only active section — only one "Guardar" button visible.
       const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
         name: "Guardar"
       });
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+      testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
 
       await testingLibraryReactModule.waitFor(() => {
         vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
@@ -551,7 +493,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
         appointmentReminderAttendanceTemplateName: null,
         appointmentReminderPaymentTemplateName: null,
         paymentDetailsText: null,
-        officeLocation: null
+        officeLocation: null,
+        paymentTiming: "BEFORE_SESSION" as const
       }));
       const container = buildContainer({
         agentUseCase: {
@@ -565,7 +508,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
             appointmentReminderAttendanceTemplateName: null,
             appointmentReminderPaymentTemplateName: null,
             paymentDetailsText: null,
-            officeLocation: null
+            officeLocation: null,
+            paymentTiming: "BEFORE_SESSION" as const
           })),
           updateAgentSettings: updateAgentSettingsMock
         }
@@ -573,7 +517,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
       renderConfiguracionesPage(container);
 
-      // Información General is the default tab — office fields are visible without clicking
+      // Navigate to Datos del consultorio section via sidebar.
+      await expandCard(/Datos del consultorio/i);
       // Leave address empty, fill arrival_instructions
       const arrivalInput =
         await testingLibraryReactModule.screen.findByLabelText("Indicaciones de llegada");
@@ -584,12 +529,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
         target: { value: "Llegar 20 minutos antes" }
       });
 
-      // Office "Guardar" is the second save button (after profile's)
+      // The consultorio section is the only active section — only one "Guardar" button visible.
       const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
         name: "Guardar"
       });
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+      testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
 
       await testingLibraryReactModule.waitFor(() => {
         vitestModule.expect(updateAgentSettingsMock).toHaveBeenCalledWith(
@@ -613,7 +558,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
       officeLocation: {
         address: "Calle 5 # 38-25, Cali",
         arrivalInstructions: null
-      }
+      },
+      paymentTiming: "BEFORE_SESSION" as const
     }));
     const container = buildContainer({
       agentUseCase: {
@@ -627,7 +573,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
           appointmentReminderAttendanceTemplateName: null,
           appointmentReminderPaymentTemplateName: null,
           paymentDetailsText: null,
-          officeLocation: null
+          officeLocation: null,
+          paymentTiming: "BEFORE_SESSION" as const
         })),
         updateAgentSettings: updateAgentSettingsMock
       }
@@ -635,7 +582,8 @@ vitestModule.describe("ConfiguracionesPage", () => {
 
     renderConfiguracionesPage(container);
 
-    // Información General is the default tab — office fields are visible without clicking
+    // Navigate to Datos del consultorio section via sidebar.
+    await expandCard(/Datos del consultorio/i);
     const addressInput = await testingLibraryReactModule.screen.findByLabelText(
       "Direccion del consultorio"
     );
@@ -646,12 +594,12 @@ vitestModule.describe("ConfiguracionesPage", () => {
       target: { value: "Calle 5 # 38-25, Cali" }
     });
 
-    // Office "Guardar" is the second save button (after profile's)
+    // The consultorio section is the only active section — only one "Guardar" button visible.
     const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
       name: "Guardar"
     });
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    testingLibraryReactModule.fireEvent.click(saveButtons[1]!);
+    testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
 
     await testingLibraryReactModule.waitFor(() => {
       vitestModule
@@ -659,4 +607,58 @@ vitestModule.describe("ConfiguracionesPage", () => {
         .toBeInTheDocument();
     });
   });
+
+  vitestModule.it(
+    "renders payment timing radio and fires mutation with AFTER_SESSION when selected",
+    async () => {
+      const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
+        tenantId: "tenant-1",
+        messageDebounceDelaySeconds: 5,
+        appointmentReminderEnabled: false,
+        appointmentReminderDaysBefore: null,
+        appointmentReminderAttendanceTemplateName: null,
+        appointmentReminderPaymentTemplateName: null,
+        paymentDetailsText: null,
+        officeLocation: null,
+        paymentTiming: "AFTER_SESSION" as const
+      }));
+      const container = buildContainer({
+        agentUseCase: {
+          getSystemPrompt: vitestModule.vi.fn(async () => ({ systemPrompt: "" })),
+          updateSystemPrompt: vitestModule.vi.fn(async () => undefined),
+          getAgentSettings: vitestModule.vi.fn(async () => ({
+            tenantId: "tenant-1",
+            messageDebounceDelaySeconds: 5,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: null,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            paymentDetailsText: null,
+            officeLocation: null,
+            paymentTiming: "BEFORE_SESSION" as const
+          })),
+          updateAgentSettings: updateAgentSettingsMock
+        }
+      });
+
+      renderConfiguracionesPage(container);
+
+      await expandCard(/Momento del cobro/i);
+
+      const inPersonRadio = await testingLibraryReactModule.screen.findByRole("radio", {
+        name: /Al terminar la sesión/i
+      });
+      vitestModule.expect(inPersonRadio).toBeInTheDocument();
+
+      testingLibraryReactModule.fireEvent.click(inPersonRadio);
+
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule
+          .expect(updateAgentSettingsMock)
+          .toHaveBeenCalledWith(
+            vitestModule.expect.objectContaining({ paymentTiming: "AFTER_SESSION" })
+          );
+      });
+    }
+  );
 });

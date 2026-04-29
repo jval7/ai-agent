@@ -85,6 +85,9 @@ MAX_TURNS = 20  # maximo de mensajes por paciente (evita loops infinitos)
 _PATIENT_SYSTEM_INSTRUCTION = """\
 Eres {display_name}. Escribes por WhatsApp a un consultorio de psicologia.
 
+Hoy es {today_human}. Cualquier fecha posterior a hoy es FUTURA. No asumas
+que estamos en otro año o mes — usa esta fecha como referencia absoluta.
+
 {persona}
 
 IMPORTANTE — como escribir:
@@ -220,10 +223,12 @@ async def _generate_patient_message(
     """
     client = _get_gemini_client()
 
+    today_human = _format_today_human()
     system_instruction = _PATIENT_SYSTEM_INSTRUCTION.format(
         display_name=display_name,
         persona=persona,
         patient_email=PATIENT_EMAIL,
+        today_human=today_human,
     )
 
     # Mapear historial al formato Gemini:
@@ -513,21 +518,76 @@ async def _get_scheduling_status(
     return typing.cast(str, request.get("status"))
 
 
+_SPANISH_DAYS = {
+    0: "lunes",
+    1: "martes",
+    2: "miércoles",
+    3: "jueves",
+    4: "viernes",
+    5: "sábado",
+    6: "domingo",
+}
+_SPANISH_MONTHS = {
+    1: "enero",
+    2: "febrero",
+    3: "marzo",
+    4: "abril",
+    5: "mayo",
+    6: "junio",
+    7: "julio",
+    8: "agosto",
+    9: "septiembre",
+    10: "octubre",
+    11: "noviembre",
+    12: "diciembre",
+}
+
+
+def _format_today_human() -> str:
+    """Return today's date in Spanish, e.g. 'miércoles 29 de abril de 2026'."""
+    now = datetime.datetime.now(tz=_BOGOTA_TZ)
+    return f"{_SPANISH_DAYS[now.weekday()]} {now.day} de {_SPANISH_MONTHS[now.month]} de {now.year}"
+
+
+# Module-level state so successive calls during the same load test propose
+# different slot windows (avoids the infinite "same slot" loop when the patient
+# rejects the first proposal).
+_slot_call_counter = 0
+
+
 def _build_future_slots(num_slots: int) -> list[dict[str, str]]:
     """Genera N slots futuros en horario habil del consultorio.
 
-    Reglas: miercoles a viernes 8am-4pm Colombia (presencial), lunes a viernes
-    para virtual. Para que sirva ambos casos, usamos miercoles/jueves/viernes
-    a 10am/2pm respetando el horario presencial (que es subset del virtual).
+    Reglas:
+      - Empieza al menos 2 semanas en el futuro (evita confusion del paciente
+        cuando un LLM piensa que la fecha es 'ayer').
+      - Solo miercoles/jueves/viernes (interseccion de horarios presencial y
+        virtual del consultorio).
+      - Horas variadas: 9, 10, 11, 14, 15.
+      - Cada llamada arranca un poco mas adelante para dar variedad si la
+        misma cita pasa por varias rondas de propuesta.
     """
+    global _slot_call_counter
+    call_index = _slot_call_counter
+    _slot_call_counter += 1
+
     now_bogota = datetime.datetime.now(tz=_BOGOTA_TZ)
-    slot_hours = [10, 14]
+    base_offset_days = 14 + call_index * 7  # 2 semanas + 1 semana extra por ronda
+    cursor = now_bogota.replace(minute=0, second=0, microsecond=0) + datetime.timedelta(
+        days=base_offset_days
+    )
+    slot_hours = [9, 10, 11, 14, 15]
+    # Rotar el orden de horas por ronda para que las propuestas no se vean
+    # identicas si la misma request pasa por varias rondas.
+    rotated_hours = (
+        slot_hours[call_index % len(slot_hours) :] + slot_hours[: call_index % len(slot_hours)]
+    )
+
     candidates: list[datetime.datetime] = []
-    cursor = now_bogota.replace(minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)
     while len(candidates) < num_slots:
         # Miercoles=2, Jueves=3, Viernes=4
         if cursor.weekday() in {2, 3, 4}:
-            for hour in slot_hours:
+            for hour in rotated_hours:
                 slot_start = cursor.replace(hour=hour)
                 if slot_start > now_bogota and len(candidates) < num_slots:
                     candidates.append(slot_start)

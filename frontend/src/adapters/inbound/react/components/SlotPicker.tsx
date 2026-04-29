@@ -14,6 +14,9 @@ interface SlotPickerProps {
   onMonthChange?: (month: { year: number; month: number }) => void;
 }
 
+const DURATION_PRESETS_MINUTES = [15, 30, 45, 60, 90, 120];
+const DEFAULT_DURATION_MINUTES = 60;
+
 export function SlotPicker(props: SlotPickerProps) {
   const now = luxonModule.DateTime.now().setZone(props.timezone);
 
@@ -21,6 +24,8 @@ export function SlotPicker(props: SlotPickerProps) {
     () => ({ year: now.year, month: now.month })
   );
   const [selectedDayIso, setSelectedDayIso] = reactModule.useState<string>("");
+  const [durationMinutes, setDurationMinutes] =
+    reactModule.useState<number>(DEFAULT_DURATION_MINUTES);
 
   const firstDayOfMonth = luxonModule.DateTime.fromObject(
     { year: visibleMonth.year, month: visibleMonth.month, day: 1 },
@@ -49,11 +54,26 @@ export function SlotPicker(props: SlotPickerProps) {
       selectedDayIso,
       busyIntervals: props.busyIntervals,
       now,
+      slotDurationMinutes: durationMinutes,
       startHour: 7,
       endHour: 22
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.requestId, props.timezone, selectedDayIso, props.busyIntervals, now.toMillis()]);
+  }, [
+    props.requestId,
+    props.timezone,
+    selectedDayIso,
+    props.busyIntervals,
+    now.toMillis(),
+    durationMinutes
+  ]);
+
+  function handleDurationChange(nextMinutes: number) {
+    setDurationMinutes(nextMinutes);
+    if (props.selectedSlots.length > 0) {
+      props.onSelectedSlotsChange([]);
+    }
+  }
 
   const morningSlots = calendarSlots.filter((slot) => slot.hour >= 7 && slot.hour < 12);
   const afternoonSlots = calendarSlots.filter((slot) => slot.hour >= 12 && slot.hour < 18);
@@ -61,11 +81,19 @@ export function SlotPicker(props: SlotPickerProps) {
 
   const selectedSlotIds = new Set(props.selectedSlots.map((slot) => slot.slotId));
 
-  function formatHourLabel(hour: number): string {
-    if (hour === 0) return "12 AM";
-    if (hour < 12) return `${hour} AM`;
-    if (hour === 12) return "12 PM";
-    return `${hour - 12} PM`;
+  function formatSlotLabel(slot: calendarUtilsModule.CalendarSlotCandidate): string {
+    const startDt = luxonModule.DateTime.fromISO(slot.startAt, { zone: props.timezone });
+    if (!startDt.isValid) {
+      const h = slot.hour;
+      if (h === 0) return "12 AM";
+      if (h < 12) return `${h} AM`;
+      if (h === 12) return "12 PM";
+      return `${h - 12} PM`;
+    }
+    if (startDt.minute !== 0) {
+      return startDt.toFormat("h:mm a");
+    }
+    return startDt.toFormat("h a");
   }
 
   function handleSlotClick(slot: calendarUtilsModule.CalendarSlotCandidate) {
@@ -128,7 +156,7 @@ export function SlotPicker(props: SlotPickerProps) {
                 onClick={() => handleSlotClick(slot)}
                 type="button"
               >
-                {formatHourLabel(slot.hour)}
+                {formatSlotLabel(slot)}
               </button>
             );
           })}
@@ -268,9 +296,31 @@ export function SlotPicker(props: SlotPickerProps) {
         </div>
       ) : null}
 
-      {/* Time grid */}
+      {/* Duration selector + Time grid */}
       {selectedDayIso !== "" ? (
         <div>
+          <div className="mb-3">
+            <label
+              className="block text-xs font-semibold text-slate-600 mb-1"
+              htmlFor={`slot-duration-${props.requestId}`}
+            >
+              Duración de la sesión
+            </label>
+            <select
+              className="w-full sm:w-auto rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal"
+              id={`slot-duration-${props.requestId}`}
+              onChange={(event) => {
+                handleDurationChange(Number(event.target.value));
+              }}
+              value={durationMinutes}
+            >
+              {DURATION_PRESETS_MINUTES.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes} min
+                </option>
+              ))}
+            </select>
+          </div>
           {renderSlotGroup("Mañana", morningSlots)}
           {renderSlotGroup("Tarde", afternoonSlots)}
           {renderSlotGroup("Noche", eveningSlots)}

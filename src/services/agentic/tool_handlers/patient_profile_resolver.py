@@ -106,12 +106,16 @@ class PatientProfileResolver:
             tenant_id=tenant_id,
             resolved_patient_profile=resolved_patient_profile,
         )
+        resolved_first_name = self._extract_first_name(resolved_patient_profile.full_name)
+        resolved_last_name = self._extract_last_name(resolved_patient_profile.full_name)
         return ResolvedConfirmSelection(
             confirm_input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
                 request_id=target_request.request_id,
                 slot_id=resolved_slot_id,
                 event_summary=event_summary,
                 attendee_emails=[resolved_patient_profile.email],
+                patient_first_name=resolved_first_name or None,
+                patient_last_name=resolved_last_name or None,
             ),
             patient_profile=resolved_patient_profile,
             patient_exists=patient_exists,

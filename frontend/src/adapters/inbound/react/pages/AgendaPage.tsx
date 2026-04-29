@@ -23,31 +23,14 @@ const patientsQueryKey = ["patients"] as const;
 const manualAppointmentsQueryKey = ["manual-appointments"] as const;
 const colombiaTimezone = "America/Bogota";
 
-interface AgendaSection {
-  id: string;
+const agendaStatuses: {
+  status: schedulingModel.SchedulingRequestStatus;
   label: string;
-  statuses: {
-    status: schedulingModel.SchedulingRequestStatus;
-    label: string;
-  }[];
-}
-
-const agendaSections: AgendaSection[] = [
-  {
-    id: "FINALIZED",
-    label: "Agenda",
-    statuses: [
-      { status: "BOOKED", label: "Agendadas" },
-      { status: "SESSION_CLOSED", label: "Cerradas" },
-      { status: "CANCELLED", label: "Canceladas" },
-      { status: "HUMAN_HANDOFF", label: "Human Handoff" }
-    ]
-  },
-  {
-    id: "FINANCE",
-    label: "Finanzas",
-    statuses: []
-  }
+}[] = [
+  { status: "BOOKED", label: "Agendadas" },
+  { status: "SESSION_CLOSED", label: "Cerradas" },
+  { status: "CANCELLED", label: "Canceladas" },
+  { status: "HUMAN_HANDOFF", label: "Human Handoff" }
 ];
 
 const approvalStatusLabels: Record<
@@ -86,24 +69,6 @@ interface PaymentFormState {
   paymentStatus: "PENDING" | "PAID";
 }
 
-type FinancePaymentStatusFilter = "ALL" | "PENDING" | "PAID";
-type FinancePaymentMethodFilter = "ALL" | "CASH" | "TRANSFER";
-type FinanceSourceFilter = "ALL" | "CHATBOT" | "MANUAL";
-
-interface FinanceAppointmentItem {
-  itemKey: string;
-  source: "CHATBOT" | "MANUAL";
-  patientDisplayName: string;
-  whatsappUserId: string;
-  startAt: string;
-  endAt: string;
-  timezone: string;
-  paymentAmountCop: number | null;
-  paymentMethod: "CASH" | "TRANSFER" | null;
-  paymentStatus: "PENDING" | "PAID";
-  paymentUpdatedAt: string | null;
-}
-
 function emptyBookedAppointmentForm(): BookedAppointmentFormState {
   return {
     cancelReason: ""
@@ -116,14 +81,6 @@ function emptyPaymentForm(): PaymentFormState {
     paymentMethod: "CASH",
     paymentStatus: "PENDING"
   };
-}
-
-function formatCopCurrency(value: number): string {
-  return new Intl.NumberFormat("es-CO", {
-    style: "currency",
-    currency: "COP",
-    maximumFractionDigits: 0
-  }).format(value);
 }
 
 function resolvePatientDisplayName(
@@ -189,7 +146,6 @@ export function AgendaPage() {
     queryFn: () => appContainer.manualAppointmentUseCase.listAppointments()
   });
 
-  const [activeSectionId, setActiveSectionId] = reactModule.useState<string>("FINALIZED");
   const [activeTab, setActiveTab] =
     reactModule.useState<schedulingModel.SchedulingRequestStatus>("BOOKED");
   const [selectedRequestId, setSelectedRequestId] = reactModule.useState<string | null>(null);
@@ -223,15 +179,6 @@ export function AgendaPage() {
     amountCop: string;
     category: string;
   }>({ amountCop: "", category: "CASH" });
-  const [financeFromDate, setFinanceFromDate] = reactModule.useState<string>("");
-  const [financeToDate, setFinanceToDate] = reactModule.useState<string>("");
-  const [financePaymentStatusFilter, setFinancePaymentStatusFilter] =
-    reactModule.useState<FinancePaymentStatusFilter>("ALL");
-  const [financePaymentMethodFilter, setFinancePaymentMethodFilter] =
-    reactModule.useState<FinancePaymentMethodFilter>("ALL");
-  const [financeSourceFilter, setFinanceSourceFilter] =
-    reactModule.useState<FinanceSourceFilter>("ALL");
-  const [financeSearchTerm, setFinanceSearchTerm] = reactModule.useState<string>("");
   const [rescheduleSlotPickerMonth, setRescheduleSlotPickerMonth] = reactModule.useState<{
     year: number;
     month: number;
@@ -255,39 +202,9 @@ export function AgendaPage() {
     return countMap;
   }, [allRequests]);
 
-  const sectionCounts = reactModule.useMemo(() => {
-    const counts: Record<string, number> = {};
-    agendaSections.forEach((section) => {
-      if (section.id === "FINANCE") {
-        const bookedCount = allRequests.filter(
-          (request) => request.status === "BOOKED" || request.status === "SESSION_CLOSED"
-        ).length;
-        const manualCount = allManualAppointments.filter(
-          (appointment) => appointment.status === "SCHEDULED"
-        ).length;
-        counts[section.id] = bookedCount + manualCount;
-        return;
-      }
-      if (section.id === "FINALIZED") {
-        counts[section.id] =
-          (requestCountByStatus.get("BOOKED") ?? 0) +
-          (requestCountByStatus.get("SESSION_CLOSED") ?? 0);
-        return;
-      }
-      let sectionCount = 0;
-      section.statuses.forEach((statusConfig) => {
-        sectionCount += requestCountByStatus.get(statusConfig.status) ?? 0;
-      });
-      counts[section.id] = sectionCount;
-    });
-    return counts;
-  }, [allManualAppointments, allRequests, requestCountByStatus]);
-
   const filteredRequests = reactModule.useMemo(() => {
     return allRequests.filter((request) => request.status === activeTab);
   }, [allRequests, activeTab]);
-  const isFinanceSection = activeSectionId === "FINANCE";
-  const isFinalizedSection = activeSectionId === "FINALIZED";
   const isBookedTab = activeTab === "BOOKED";
   // Legacy: manual scheduling is now handled by NewManualAppointmentModal
   const [isNewManualModalOpen, setIsNewManualModalOpen] = reactModule.useState(false);
@@ -299,24 +216,6 @@ export function AgendaPage() {
     });
     return map;
   }, [allPatients]);
-
-  const handleSectionChange = (sectionId: string) => {
-    setActiveSectionId(sectionId);
-    setSelectedBookedItemKey(null);
-    setSelectedRequestId(null);
-    setSubmitSuccessMessage(null);
-    setLocalSubmitErrorMessage(null);
-    setMobileBookedStep("calendar");
-    const section = agendaSections.find((s) => s.id === sectionId);
-    if (section && section.statuses.length > 0) {
-      const firstStatus = section.statuses[0];
-      if (firstStatus) {
-        setActiveTab(firstStatus.status);
-      }
-      setSubmitSuccessMessage(null);
-      setLocalSubmitErrorMessage(null);
-    }
-  };
 
   reactModule.useEffect(() => {
     if (isBookedTab) {
@@ -481,126 +380,6 @@ export function AgendaPage() {
     }
     return bookedAppointmentsByDay.get(selectedDayIso) ?? [];
   }, [bookedAppointmentsByDay, isBookedTab, selectedDayIso]);
-
-  const financeAppointments = reactModule.useMemo<FinanceAppointmentItem[]>(() => {
-    const items: FinanceAppointmentItem[] = [];
-    allRequests
-      .filter((request) => request.status === "BOOKED" || request.status === "SESSION_CLOSED")
-      .forEach((request) => {
-        const bookedSlot = resolveBookedSlot(request);
-        if (bookedSlot === null) {
-          return;
-        }
-        items.push({
-          itemKey: `finance-bot:${request.requestId}`,
-          source: "CHATBOT",
-          patientDisplayName: resolvePatientDisplayName(request, patientsByWhatsappUserId),
-          whatsappUserId: request.whatsappUserId,
-          startAt: bookedSlot.startAt,
-          endAt: bookedSlot.endAt,
-          timezone: bookedSlot.timezone.trim() === "" ? timezone : bookedSlot.timezone,
-          paymentAmountCop: request.paymentAmountCop ?? null,
-          paymentMethod: request.paymentMethod ?? null,
-          paymentStatus: request.paymentStatus ?? "PENDING",
-          paymentUpdatedAt: request.paymentUpdatedAt ?? null
-        });
-      });
-
-    allManualAppointments
-      .filter((appointment) => appointment.status === "SCHEDULED")
-      .forEach((appointment) => {
-        const patient = patientsByWhatsappUserId.get(appointment.patientWhatsappUserId);
-        items.push({
-          itemKey: `finance-manual:${appointment.appointmentId}`,
-          source: "MANUAL",
-          patientDisplayName:
-            patient === undefined
-              ? appointment.patientWhatsappUserId
-              : `${patient.firstName} ${patient.lastName}`,
-          whatsappUserId: appointment.patientWhatsappUserId,
-          startAt: appointment.startAt,
-          endAt: appointment.endAt,
-          timezone: appointment.timezone.trim() === "" ? colombiaTimezone : appointment.timezone,
-          paymentAmountCop: appointment.paymentAmountCop ?? null,
-          paymentMethod: appointment.paymentMethod ?? null,
-          paymentStatus: appointment.paymentStatus ?? "PENDING",
-          paymentUpdatedAt: appointment.paymentUpdatedAt ?? null
-        });
-      });
-
-    return items.sort((left, right) => left.startAt.localeCompare(right.startAt));
-  }, [allManualAppointments, allRequests, patientsByWhatsappUserId, timezone]);
-
-  const filteredFinanceAppointments = reactModule.useMemo(() => {
-    const normalizedSearchTerm = financeSearchTerm.trim().toLowerCase();
-    return financeAppointments.filter((appointment) => {
-      const startDate = luxonModule.DateTime.fromISO(appointment.startAt, {
-        zone: appointment.timezone
-      }).toISODate();
-      if (startDate === null) {
-        return false;
-      }
-      if (financeFromDate !== "" && startDate < financeFromDate) {
-        return false;
-      }
-      if (financeToDate !== "" && startDate > financeToDate) {
-        return false;
-      }
-      if (
-        financePaymentStatusFilter !== "ALL" &&
-        appointment.paymentStatus !== financePaymentStatusFilter
-      ) {
-        return false;
-      }
-      if (
-        financePaymentMethodFilter !== "ALL" &&
-        appointment.paymentMethod !== financePaymentMethodFilter
-      ) {
-        return false;
-      }
-      if (financeSourceFilter !== "ALL" && appointment.source !== financeSourceFilter) {
-        return false;
-      }
-      if (normalizedSearchTerm === "") {
-        return true;
-      }
-      const patientName = appointment.patientDisplayName.toLowerCase();
-      const whatsappUserId = appointment.whatsappUserId.toLowerCase();
-      return (
-        patientName.includes(normalizedSearchTerm) || whatsappUserId.includes(normalizedSearchTerm)
-      );
-    });
-  }, [
-    financeAppointments,
-    financeFromDate,
-    financePaymentMethodFilter,
-    financePaymentStatusFilter,
-    financeSearchTerm,
-    financeSourceFilter,
-    financeToDate
-  ]);
-
-  const financeMetrics = reactModule.useMemo(() => {
-    const totalAppointments = filteredFinanceAppointments.length;
-    const pendingAppointments = filteredFinanceAppointments.filter(
-      (appointment) => appointment.paymentStatus === "PENDING"
-    ).length;
-    const paidAppointments = filteredFinanceAppointments.filter(
-      (appointment) => appointment.paymentStatus === "PAID"
-    ).length;
-    const totalPaidCop = filteredFinanceAppointments.reduce((accumulator, appointment) => {
-      if (appointment.paymentStatus !== "PAID" || appointment.paymentAmountCop === null) {
-        return accumulator;
-      }
-      return accumulator + appointment.paymentAmountCop;
-    }, 0);
-    return {
-      totalAppointments,
-      pendingAppointments,
-      paidAppointments,
-      totalPaidCop
-    };
-  }, [filteredFinanceAppointments]);
 
   reactModule.useEffect(() => {
     if (!isBookedTab) {
@@ -951,681 +730,1205 @@ export function AgendaPage() {
           </button>
         </div>
 
-        <div className="flex flex-col gap-4">
-          {/* Mobile: bottom-tab-bar style grid */}
-          <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:hidden">
-            {agendaSections.map((section) => {
-              const isActive = activeSectionId === section.id;
-              const count = sectionCounts[section.id] ?? 0;
-              const iconBySection: Record<string, React.ReactNode> = {
-                FINALIZED: (
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
-                    />
-                  </svg>
-                ),
-                FINANCE: (
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"
-                    />
-                  </svg>
-                )
-              };
-              const shortLabels: Record<string, string> = {
-                FINALIZED: "Agenda",
-                FINANCE: "Finanzas"
-              };
-              return (
-                <button
-                  className={[
-                    "relative flex flex-col items-center gap-0.5 rounded-lg px-1 py-2 text-[10px] font-semibold transition-colors",
-                    isActive ? "bg-white text-brand-teal shadow-sm" : "text-slate-500"
-                  ].join(" ")}
-                  key={section.id}
-                  onClick={() => handleSectionChange(section.id)}
-                  type="button"
-                >
-                  {iconBySection[section.id]}
-                  <span>{shortLabels[section.id]}</span>
-                  {count > 0 ? (
-                    <span
-                      className={[
-                        "absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9px] font-bold",
-                        isActive ? "bg-brand-teal text-white" : "bg-slate-300 text-slate-700"
-                      ].join(" ")}
-                    >
-                      {count}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-          {/* Desktop: horizontal tab bar */}
-          <div className="hidden border-b border-border-subtle sm:flex sm:gap-1 sm:pb-1">
-            {agendaSections.map((section) => {
-              const isActive = activeSectionId === section.id;
-              const count = sectionCounts[section.id] ?? 0;
-              return (
-                <button
-                  className={[
-                    "relative -mb-px shrink-0 whitespace-nowrap px-6 py-3 text-sm font-semibold transition-colors",
-                    isActive
-                      ? "border-b-2 border-brand-teal text-brand-teal"
-                      : "text-slate-500 hover:border-b-2 hover:border-slate-300 hover:text-slate-700"
-                  ].join(" ")}
-                  key={section.id}
-                  onClick={() => handleSectionChange(section.id)}
-                  type="button"
-                >
-                  {section.label}
-                  {count > 0 ? (
-                    <span
-                      className={[
-                        "ml-2 rounded-full px-2 text-xs",
-                        isActive
-                          ? "bg-brand-accent-light text-brand-teal"
-                          : "bg-slate-100 text-slate-600"
-                      ].join(" ")}
-                    >
-                      {count}
-                    </span>
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-
-          {!isFinalizedSection &&
-          (agendaSections.find((s) => s.id === activeSectionId)?.statuses.length ?? 0) > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {agendaSections
-                .find((s) => s.id === activeSectionId)
-                ?.statuses.map((tab) => (
-                  <button
-                    className={[
-                      "rounded-md border px-3 py-2 text-sm font-semibold",
-                      activeTab === tab.status
-                        ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                        : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                    ].join(" ")}
-                    key={tab.status}
-                    onClick={() => {
-                      setActiveTab(tab.status);
-                      setSelectedBookedItemKey(null);
-                      setSubmitSuccessMessage(null);
-                      setLocalSubmitErrorMessage(null);
-                      setMobileBookedStep("calendar");
-                    }}
-                    type="button"
-                  >
-                    {tab.label} ({requestCountByStatus.get(tab.status) ?? 0})
-                  </button>
-                ))}
-            </div>
-          ) : null}
+        <div className="flex flex-wrap gap-2">
+          {agendaStatuses.map((tab) => (
+            <button
+              className={[
+                "rounded-md border px-3 py-2 text-sm font-semibold",
+                activeTab === tab.status
+                  ? "border-brand-teal bg-brand-accent-light text-brand-teal"
+                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+              ].join(" ")}
+              key={tab.status}
+              onClick={() => {
+                setActiveTab(tab.status);
+                setSelectedBookedItemKey(null);
+                setSubmitSuccessMessage(null);
+                setLocalSubmitErrorMessage(null);
+                setMobileBookedStep("calendar");
+              }}
+              type="button"
+            >
+              {tab.label} ({requestCountByStatus.get(tab.status) ?? 0})
+            </button>
+          ))}
         </div>
       </section>
 
-      {!isFinanceSection ? (
-        <section className="mt-4">
-          <div
-            className={["grid gap-4", isBookedTab ? "" : "lg:grid-cols-[320px_minmax(0,1fr)]"].join(
-              " "
-            )}
-          >
-            {isBookedTab ? (
-              <article
+      <section className="mt-4">
+        <div
+          className={["grid gap-4", isBookedTab ? "" : "lg:grid-cols-[320px_minmax(0,1fr)]"].join(
+            " "
+          )}
+        >
+          {isBookedTab ? (
+            <article
+              className={[
+                "rounded-xl border border-border-subtle bg-white shadow-card",
+                mobileBookedStep === "detail" ? "hidden sm:block" : ""
+              ].join(" ")}
+            >
+              <header
                 className={[
-                  "rounded-xl border border-border-subtle bg-white shadow-card",
-                  mobileBookedStep === "detail" ? "hidden sm:block" : ""
+                  "border-b border-border-subtle px-3 py-3 sm:p-4",
+                  mobileBookedStep !== "calendar" ? "hidden sm:block" : ""
                 ].join(" ")}
               >
-                <header
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-semibold sm:text-base">
+                      Calendario de citas agendadas
+                    </h3>
+                    <p className="text-[11px] text-slate-500 sm:text-xs">
+                      Integra citas del chatbot y manuales. Toca un día para ver detalle.
+                    </p>
+                  </div>
+                  <button
+                    className="hidden shrink-0 rounded-lg bg-brand-teal px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover sm:block"
+                    onClick={() => setIsNewManualModalOpen(true)}
+                    type="button"
+                  >
+                    + Nueva cita manual
+                  </button>
+                </div>
+              </header>
+              <div className="space-y-3 p-2 sm:p-3">
+                <div
                   className={[
-                    "border-b border-border-subtle px-3 py-3 sm:p-4",
-                    mobileBookedStep !== "calendar" ? "hidden sm:block" : ""
+                    "flex items-center justify-between gap-2",
+                    mobileBookedStep !== "calendar" ? "hidden sm:flex" : ""
                   ].join(" ")}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3 className="text-sm font-semibold sm:text-base">
-                        Calendario de citas agendadas
-                      </h3>
-                      <p className="text-[11px] text-slate-500 sm:text-xs">
-                        Integra citas del chatbot y manuales. Toca un día para ver detalle.
-                      </p>
-                    </div>
+                  <p className="text-sm font-semibold capitalize text-brand-ink">
+                    {visibleMonthStart.toFormat("LLLL yyyy")}
+                  </p>
+                  <div className="flex gap-1.5 sm:gap-2">
                     <button
-                      className="hidden shrink-0 rounded-lg bg-brand-teal px-3 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover sm:block"
-                      onClick={() => setIsNewManualModalOpen(true)}
+                      className="rounded-lg border border-border-subtle px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 sm:px-3 sm:text-sm"
+                      onClick={() => {
+                        const previous = visibleMonthStart.minus({ months: 1 });
+                        setVisibleMonth({
+                          year: previous.year,
+                          month: previous.month as luxonModule.MonthNumbers
+                        });
+                      }}
                       type="button"
                     >
-                      + Nueva cita manual
+                      Anterior
+                    </button>
+                    <button
+                      className="rounded-lg border border-border-subtle px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 sm:px-3 sm:text-sm"
+                      onClick={() => {
+                        const next = visibleMonthStart.plus({ months: 1 });
+                        setVisibleMonth({
+                          year: next.year,
+                          month: next.month as luxonModule.MonthNumbers
+                        });
+                      }}
+                      type="button"
+                    >
+                      Siguiente
                     </button>
                   </div>
-                </header>
-                <div className="space-y-3 p-2 sm:p-3">
-                  <div
-                    className={[
-                      "flex items-center justify-between gap-2",
-                      mobileBookedStep !== "calendar" ? "hidden sm:flex" : ""
-                    ].join(" ")}
-                  >
-                    <p className="text-sm font-semibold capitalize text-brand-ink">
-                      {visibleMonthStart.toFormat("LLLL yyyy")}
-                    </p>
-                    <div className="flex gap-1.5 sm:gap-2">
-                      <button
-                        className="rounded-lg border border-border-subtle px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 sm:px-3 sm:text-sm"
-                        onClick={() => {
-                          const previous = visibleMonthStart.minus({ months: 1 });
-                          setVisibleMonth({
-                            year: previous.year,
-                            month: previous.month as luxonModule.MonthNumbers
-                          });
-                        }}
-                        type="button"
-                      >
-                        Anterior
-                      </button>
-                      <button
-                        className="rounded-lg border border-border-subtle px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50 sm:px-3 sm:text-sm"
-                        onClick={() => {
-                          const next = visibleMonthStart.plus({ months: 1 });
-                          setVisibleMonth({
-                            year: next.year,
-                            month: next.month as luxonModule.MonthNumbers
-                          });
-                        }}
-                        type="button"
-                      >
-                        Siguiente
-                      </button>
-                    </div>
-                  </div>
+                </div>
 
-                  {/* Mobile compact calendar - only visible in calendar step */}
-                  <div className={mobileBookedStep === "calendar" ? "sm:hidden" : "hidden"}>
-                    <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] font-semibold text-slate-500">
-                      {calendarUtilsModule.weekDayLabels.map((label) => (
-                        <span key={`mobile-${label}`}>{label}</span>
-                      ))}
-                    </div>
-                    <div className="mt-1 grid grid-cols-7 gap-0.5">
-                      {dayGrid.map((dateCell, index) => {
-                        if (dateCell === null) {
-                          return (
-                            <div
-                              className="aspect-square rounded-md"
-                              key={`mobile-empty-${index}`}
+                {/* Mobile compact calendar - only visible in calendar step */}
+                <div className={mobileBookedStep === "calendar" ? "sm:hidden" : "hidden"}>
+                  <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] font-semibold text-slate-500">
+                    {calendarUtilsModule.weekDayLabels.map((label) => (
+                      <span key={`mobile-${label}`}>{label}</span>
+                    ))}
+                  </div>
+                  <div className="mt-1 grid grid-cols-7 gap-0.5">
+                    {dayGrid.map((dateCell, index) => {
+                      if (dateCell === null) {
+                        return (
+                          <div className="aspect-square rounded-md" key={`mobile-empty-${index}`} />
+                        );
+                      }
+                      const isoDate = dateCell.toISODate();
+                      const dayAppointments =
+                        isoDate === null ? [] : (bookedAppointmentsByDay.get(isoDate) ?? []);
+                      const isSelectedDay = isoDate === selectedDayIso;
+                      const hasAppointments = dayAppointments.length > 0;
+                      return (
+                        <button
+                          className={[
+                            "relative flex aspect-square flex-col items-center justify-center rounded-md text-xs font-medium transition-colors",
+                            isSelectedDay
+                              ? "bg-brand-teal font-bold text-white"
+                              : hasAppointments
+                                ? "bg-brand-accent-light font-semibold text-brand-teal"
+                                : "text-slate-700 hover:bg-slate-100"
+                          ].join(" ")}
+                          key={dateCell.toISODate() ?? `mobile-day-${dateCell.day}-${index}`}
+                          onClick={() => {
+                            if (isoDate === null) {
+                              return;
+                            }
+                            setSelectedDayIso(isoDate);
+                            const firstAppointment = dayAppointments[0];
+                            if (firstAppointment !== undefined) {
+                              setSelectedBookedItemKey(firstAppointment.itemKey);
+                              setSelectedRequestId(firstAppointment.requestId);
+                              setMobileBookedStep("dayList");
+                            }
+                          }}
+                          type="button"
+                        >
+                          {dateCell.day}
+                          {hasAppointments ? (
+                            <span
+                              className={[
+                                "absolute bottom-0.5 h-1 w-1 rounded-full",
+                                isSelectedDay ? "bg-white" : "bg-brand-teal"
+                              ].join(" ")}
                             />
-                          );
-                        }
-                        const isoDate = dateCell.toISODate();
-                        const dayAppointments =
-                          isoDate === null ? [] : (bookedAppointmentsByDay.get(isoDate) ?? []);
-                        const isSelectedDay = isoDate === selectedDayIso;
-                        const hasAppointments = dayAppointments.length > 0;
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Mobile day list - visible when a day with appointments is selected */}
+                <div className={mobileBookedStep === "dayList" ? "sm:hidden" : "hidden"}>
+                  <button
+                    className="mb-2 flex items-center gap-1 text-xs font-semibold text-brand-teal"
+                    onClick={() => setMobileBookedStep("calendar")}
+                    type="button"
+                  >
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        d="M15 19l-7-7 7-7"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                      />
+                    </svg>
+                    Volver al calendario
+                  </button>
+                  <h4 className="text-sm font-semibold text-brand-ink">
+                    {selectedDayIso !== ""
+                      ? `Citas del ${luxonModule.DateTime.fromISO(selectedDayIso, {
+                          zone: timezone
+                        }).toFormat("dd LLL yyyy")}`
+                      : "Citas del día"}
+                  </h4>
+                  {selectedDayAppointments.length === 0 ? (
+                    <p className="mt-2 text-xs text-slate-500">No hay citas para este día.</p>
+                  ) : (
+                    <div className="mt-2 space-y-1.5">
+                      {selectedDayAppointments.map((appointment) => {
+                        const isSelectedAppointment = appointment.itemKey === selectedBookedItemKey;
+                        const isVirtualAppointment =
+                          appointment.source === "MANUAL"
+                            ? (appointment.manualAppointment?.isVirtual ?? false)
+                            : appointment.request?.appointmentModality === "VIRTUAL";
                         return (
                           <button
                             className={[
-                              "relative flex aspect-square flex-col items-center justify-center rounded-md text-xs font-medium transition-colors",
-                              isSelectedDay
-                                ? "bg-brand-teal font-bold text-white"
-                                : hasAppointments
-                                  ? "bg-brand-accent-light font-semibold text-brand-teal"
-                                  : "text-slate-700 hover:bg-slate-100"
+                              "w-full rounded-md border px-2.5 py-2 text-left",
+                              isSelectedAppointment
+                                ? "border-brand-teal bg-brand-accent-light text-brand-teal"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
                             ].join(" ")}
-                            key={dateCell.toISODate() ?? `mobile-day-${dateCell.day}-${index}`}
+                            key={`mobile-day-${appointment.itemKey}`}
                             onClick={() => {
-                              if (isoDate === null) {
-                                return;
-                              }
-                              setSelectedDayIso(isoDate);
-                              const firstAppointment = dayAppointments[0];
-                              if (firstAppointment !== undefined) {
-                                setSelectedBookedItemKey(firstAppointment.itemKey);
-                                setSelectedRequestId(firstAppointment.requestId);
-                                setMobileBookedStep("dayList");
-                              }
+                              setSelectedDayIso(appointment.dayIso);
+                              setSelectedBookedItemKey(appointment.itemKey);
+                              setSelectedRequestId(appointment.requestId);
+                              setSubmitSuccessMessage(null);
+                              setLocalSubmitErrorMessage(null);
+                              setMobileBookedStep("detail");
                             }}
                             type="button"
                           >
-                            {dateCell.day}
-                            {hasAppointments ? (
+                            <p className="text-xs font-semibold">
+                              {appointment.startAt.toFormat("HH:mm")} -{" "}
+                              {appointment.endAt.toFormat("HH:mm")}
+                            </p>
+                            {appointment.patientDisplayName !== appointment.patientPhone ? (
+                              <p className="text-xs">{appointment.patientDisplayName}</p>
+                            ) : null}
+                            <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[11px] uppercase text-slate-500">
+                                {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
+                              </span>
                               <span
                                 className={[
-                                  "absolute bottom-0.5 h-1 w-1 rounded-full",
-                                  isSelectedDay ? "bg-white" : "bg-brand-teal"
+                                  "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                  isVirtualAppointment
+                                    ? "bg-brand-accent-light text-brand-teal"
+                                    : "bg-slate-100 text-slate-600"
                                 ].join(" ")}
-                              />
-                            ) : null}
+                              >
+                                {isVirtualAppointment ? "Google Meet" : "Presencial"}
+                              </span>
+                            </div>
                           </button>
                         );
                       })}
                     </div>
-                  </div>
+                  )}
+                </div>
 
-                  {/* Mobile day list - visible when a day with appointments is selected */}
-                  <div className={mobileBookedStep === "dayList" ? "sm:hidden" : "hidden"}>
-                    <button
-                      className="mb-2 flex items-center gap-1 text-xs font-semibold text-brand-teal"
-                      onClick={() => setMobileBookedStep("calendar")}
-                      type="button"
+                {/* Mobile FAB — only in calendar step */}
+                {mobileBookedStep === "calendar" ? (
+                  <button
+                    aria-label="Nueva cita manual"
+                    className="fixed bottom-4 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-teal text-white shadow-lg transition-colors hover:bg-brand-teal-hover sm:hidden"
+                    onClick={() => setIsNewManualModalOpen(true)}
+                    type="button"
+                  >
+                    <svg
+                      className="h-7 w-7"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                      viewBox="0 0 24 24"
                     >
-                      <svg
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          d="M15 19l-7-7 7-7"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                        />
-                      </svg>
-                      Volver al calendario
-                    </button>
-                    <h4 className="text-sm font-semibold text-brand-ink">
-                      {selectedDayIso !== ""
-                        ? `Citas del ${luxonModule.DateTime.fromISO(selectedDayIso, {
-                            zone: timezone
-                          }).toFormat("dd LLL yyyy")}`
-                        : "Citas del día"}
-                    </h4>
-                    {selectedDayAppointments.length === 0 ? (
-                      <p className="mt-2 text-xs text-slate-500">No hay citas para este día.</p>
-                    ) : (
-                      <div className="mt-2 space-y-1.5">
-                        {selectedDayAppointments.map((appointment) => {
-                          const isSelectedAppointment =
-                            appointment.itemKey === selectedBookedItemKey;
-                          const isVirtualAppointment =
-                            appointment.source === "MANUAL"
-                              ? (appointment.manualAppointment?.isVirtual ?? false)
-                              : appointment.request?.appointmentModality === "VIRTUAL";
-                          return (
-                            <button
-                              className={[
-                                "w-full rounded-md border px-2.5 py-2 text-left",
-                                isSelectedAppointment
-                                  ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
-                              ].join(" ")}
-                              key={`mobile-day-${appointment.itemKey}`}
-                              onClick={() => {
-                                setSelectedDayIso(appointment.dayIso);
-                                setSelectedBookedItemKey(appointment.itemKey);
-                                setSelectedRequestId(appointment.requestId);
-                                setSubmitSuccessMessage(null);
-                                setLocalSubmitErrorMessage(null);
-                                setMobileBookedStep("detail");
-                              }}
-                              type="button"
-                            >
-                              <p className="text-xs font-semibold">
-                                {appointment.startAt.toFormat("HH:mm")} -{" "}
-                                {appointment.endAt.toFormat("HH:mm")}
-                              </p>
-                              {appointment.patientDisplayName !== appointment.patientPhone ? (
-                                <p className="text-xs">{appointment.patientDisplayName}</p>
-                              ) : null}
-                              <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
-                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                <span className="text-[11px] uppercase text-slate-500">
-                                  {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
-                                </span>
-                                <span
-                                  className={[
-                                    "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                                    isVirtualAppointment
-                                      ? "bg-brand-accent-light text-brand-teal"
-                                      : "bg-slate-100 text-slate-600"
-                                  ].join(" ")}
-                                >
-                                  {isVirtualAppointment ? "Google Meet" : "Presencial"}
-                                </span>
-                              </div>
-                            </button>
-                          );
-                        })}
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 4.5v15m7.5-7.5h-15"
+                      />
+                    </svg>
+                  </button>
+                ) : null}
+
+                {/* Desktop full calendar */}
+                <div className="hidden sm:block">
+                  <div className="overflow-x-auto pb-1">
+                    <div className="min-w-[42rem]">
+                      <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
+                        {calendarUtilsModule.weekDayLabels.map((label) => (
+                          <span key={label}>{label}</span>
+                        ))}
                       </div>
-                    )}
-                  </div>
-
-                  {/* Mobile FAB — only in calendar step */}
-                  {mobileBookedStep === "calendar" ? (
-                    <button
-                      aria-label="Nueva cita manual"
-                      className="fixed bottom-4 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-teal text-white shadow-lg transition-colors hover:bg-brand-teal-hover sm:hidden"
-                      onClick={() => setIsNewManualModalOpen(true)}
-                      type="button"
-                    >
-                      <svg
-                        className="h-7 w-7"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M12 4.5v15m7.5-7.5h-15"
-                        />
-                      </svg>
-                    </button>
-                  ) : null}
-
-                  {/* Desktop full calendar */}
-                  <div className="hidden sm:block">
-                    <div className="overflow-x-auto pb-1">
-                      <div className="min-w-[42rem]">
-                        <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-slate-600">
-                          {calendarUtilsModule.weekDayLabels.map((label) => (
-                            <span key={label}>{label}</span>
-                          ))}
-                        </div>
-                        <div className="grid grid-cols-7 gap-1">
-                          {dayGrid.map((dateCell, index) => {
-                            if (dateCell === null) {
-                              return (
-                                <div
-                                  className="min-h-32 rounded-md bg-slate-50"
-                                  key={`empty-${index}`}
-                                />
-                              );
-                            }
-                            const isoDate = dateCell.toISODate();
-                            const dayAppointments =
-                              isoDate === null ? [] : (bookedAppointmentsByDay.get(isoDate) ?? []);
-                            const isSelectedDay = isoDate === selectedDayIso;
-                            const isPastDay =
-                              isoDate !== null && isoDate < (nowDate.toISODate() ?? "");
+                      <div className="grid grid-cols-7 gap-1">
+                        {dayGrid.map((dateCell, index) => {
+                          if (dateCell === null) {
                             return (
                               <div
-                                className={[
-                                  "min-h-32 rounded-md border p-1.5",
-                                  isSelectedDay
-                                    ? "border-brand-teal bg-brand-accent-light/40"
-                                    : isPastDay
-                                      ? "border-slate-200 bg-slate-50 opacity-70"
-                                      : "border-slate-200 bg-white"
-                                ].join(" ")}
-                                key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
-                              >
-                                <button
-                                  className={[
-                                    "w-full rounded px-1 text-left text-xs font-semibold",
-                                    isSelectedDay
-                                      ? "bg-brand-accent-light text-brand-teal"
-                                      : "text-slate-700 hover:bg-slate-100"
-                                  ].join(" ")}
-                                  onClick={() => {
-                                    if (isoDate === null) {
-                                      return;
-                                    }
-                                    setSelectedDayIso(isoDate);
-                                    const firstAppointment = dayAppointments[0];
-                                    if (firstAppointment !== undefined) {
-                                      setSelectedBookedItemKey(firstAppointment.itemKey);
-                                      setSelectedRequestId(firstAppointment.requestId);
-                                    }
-                                  }}
-                                  type="button"
-                                >
-                                  {dateCell.day}
-                                </button>
-
-                                <div className="mt-1 space-y-1">
-                                  {dayAppointments.slice(0, 2).map((appointment) => {
-                                    const isChatbot = appointment.source === "BOT";
-                                    return (
-                                      <button
-                                        className={[
-                                          "w-full rounded border px-1.5 py-1.5 text-left text-[11px] font-semibold transition-colors",
-                                          isChatbot
-                                            ? "border-brand-teal/40 bg-brand-accent-light text-brand-teal hover:bg-brand-accent-light/70"
-                                            : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
-                                        ].join(" ")}
-                                        key={appointment.itemKey}
-                                        onClick={() => {
-                                          setSelectedDayIso(appointment.dayIso);
-                                          setSelectedBookedItemKey(appointment.itemKey);
-                                          setSelectedRequestId(appointment.requestId);
-                                          setSubmitSuccessMessage(null);
-                                          setLocalSubmitErrorMessage(null);
-                                          setExpandedBookedAction(null);
-                                          setDesktopDrawerOpen(true);
-                                        }}
-                                        title={`${appointment.startAt.toFormat(
-                                          "HH:mm"
-                                        )} - ${appointment.endAt.toFormat("HH:mm")} | ${
-                                          appointment.patientDisplayName
-                                        } | ${appointment.source === "MANUAL" ? "Manual" : "Chatbot"}`}
-                                        type="button"
-                                      >
-                                        <span className="block leading-tight">
-                                          {appointment.startAt.toFormat("HH:mm")} -{" "}
-                                          {appointment.endAt.toFormat("HH:mm")}
-                                        </span>
-                                        <span className="block truncate leading-tight opacity-80">
-                                          {appointment.patientDisplayName}
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
-                                  {dayAppointments.length > 2 ? (
-                                    <p className="px-1 text-[11px] font-semibold text-slate-500">
-                                      +{dayAppointments.length - 2} más
-                                    </p>
-                                  ) : null}
-                                </div>
-                              </div>
+                                className="min-h-32 rounded-md bg-slate-50"
+                                key={`empty-${index}`}
+                              />
                             );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                    {/* Legend */}
-                    <div className="mt-2 hidden items-center gap-4 sm:flex">
-                      <div className="flex items-center gap-1.5">
-                        <span className="inline-block h-2.5 w-2.5 rounded-full bg-brand-teal" />
-                        <span className="text-[11px] text-slate-500">Chatbot</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="inline-block h-2.5 w-2.5 rounded-full bg-slate-400" />
-                        <span className="text-[11px] text-slate-500">Manual</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <section className="hidden rounded-lg border border-border-subtle p-2.5 sm:block sm:p-3">
-                    <h4 className="text-xs font-semibold text-brand-ink sm:text-sm">
-                      {selectedDayIso !== ""
-                        ? `Citas del ${luxonModule.DateTime.fromISO(selectedDayIso, {
-                            zone: timezone
-                          }).toFormat("dd LLL yyyy")}`
-                        : "Citas del día seleccionado"}
-                    </h4>
-                    {selectedDayAppointments.length === 0 ? (
-                      <p className="mt-2 text-xs text-slate-500">No hay citas para este día.</p>
-                    ) : (
-                      <div className="mt-2 space-y-1.5 sm:space-y-2">
-                        {selectedDayAppointments.map((appointment) => {
-                          const isSelectedAppointment =
-                            appointment.itemKey === selectedBookedItemKey;
-                          const isChatbot = appointment.source === "BOT";
-                          const isVirtualAppointment =
-                            appointment.source === "MANUAL"
-                              ? (appointment.manualAppointment?.isVirtual ?? false)
-                              : appointment.request?.appointmentModality === "VIRTUAL";
+                          }
+                          const isoDate = dateCell.toISODate();
+                          const dayAppointments =
+                            isoDate === null ? [] : (bookedAppointmentsByDay.get(isoDate) ?? []);
+                          const isSelectedDay = isoDate === selectedDayIso;
+                          const isPastDay =
+                            isoDate !== null && isoDate < (nowDate.toISODate() ?? "");
                           return (
-                            <button
+                            <div
                               className={[
-                                "w-full rounded-md border px-2.5 py-2 text-left sm:px-3",
-                                isSelectedAppointment && desktopDrawerOpen
-                                  ? "border-brand-teal bg-brand-accent-light text-brand-teal"
-                                  : isChatbot
-                                    ? "border-brand-teal/30 bg-brand-accent-light/50 text-brand-teal hover:border-brand-teal"
-                                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                                "min-h-32 rounded-md border p-1.5",
+                                isSelectedDay
+                                  ? "border-brand-teal bg-brand-accent-light/40"
+                                  : isPastDay
+                                    ? "border-slate-200 bg-slate-50 opacity-70"
+                                    : "border-slate-200 bg-white"
                               ].join(" ")}
-                              key={`day-${appointment.itemKey}`}
-                              onClick={() => {
-                                setSelectedDayIso(appointment.dayIso);
-                                setSelectedBookedItemKey(appointment.itemKey);
-                                setSelectedRequestId(appointment.requestId);
-                                setSubmitSuccessMessage(null);
-                                setLocalSubmitErrorMessage(null);
-                                setExpandedBookedAction(null);
-                                setDesktopDrawerOpen(true);
-                              }}
-                              type="button"
+                              key={dateCell.toISODate() ?? `day-${dateCell.day}-${index}`}
                             >
-                              <p className="text-xs font-semibold sm:text-sm">
-                                {appointment.startAt.toFormat("HH:mm")} -{" "}
-                                {appointment.endAt.toFormat("HH:mm")}
-                              </p>
-                              {appointment.patientDisplayName !== appointment.patientPhone ? (
-                                <p className="text-xs">{appointment.patientDisplayName}</p>
-                              ) : null}
-                              <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
-                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                                <span className="text-[11px] uppercase text-slate-500">
-                                  {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
-                                </span>
-                                <span
-                                  className={[
-                                    "rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                                    isVirtualAppointment
-                                      ? "bg-brand-accent-light text-brand-teal"
-                                      : "bg-slate-100 text-slate-600"
-                                  ].join(" ")}
-                                >
-                                  {isVirtualAppointment ? "Google Meet" : "Presencial"}
-                                </span>
+                              <button
+                                className={[
+                                  "w-full rounded px-1 text-left text-xs font-semibold",
+                                  isSelectedDay
+                                    ? "bg-brand-accent-light text-brand-teal"
+                                    : "text-slate-700 hover:bg-slate-100"
+                                ].join(" ")}
+                                onClick={() => {
+                                  if (isoDate === null) {
+                                    return;
+                                  }
+                                  setSelectedDayIso(isoDate);
+                                  const firstAppointment = dayAppointments[0];
+                                  if (firstAppointment !== undefined) {
+                                    setSelectedBookedItemKey(firstAppointment.itemKey);
+                                    setSelectedRequestId(firstAppointment.requestId);
+                                  }
+                                }}
+                                type="button"
+                              >
+                                {dateCell.day}
+                              </button>
+
+                              <div className="mt-1 space-y-1">
+                                {dayAppointments.slice(0, 2).map((appointment) => {
+                                  const isChatbot = appointment.source === "BOT";
+                                  return (
+                                    <button
+                                      className={[
+                                        "w-full rounded border px-1.5 py-1.5 text-left text-[11px] font-semibold transition-colors",
+                                        isChatbot
+                                          ? "border-brand-teal/40 bg-brand-accent-light text-brand-teal hover:bg-brand-accent-light/70"
+                                          : "border-slate-300 bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                      ].join(" ")}
+                                      key={appointment.itemKey}
+                                      onClick={() => {
+                                        setSelectedDayIso(appointment.dayIso);
+                                        setSelectedBookedItemKey(appointment.itemKey);
+                                        setSelectedRequestId(appointment.requestId);
+                                        setSubmitSuccessMessage(null);
+                                        setLocalSubmitErrorMessage(null);
+                                        setExpandedBookedAction(null);
+                                        setDesktopDrawerOpen(true);
+                                      }}
+                                      title={`${appointment.startAt.toFormat(
+                                        "HH:mm"
+                                      )} - ${appointment.endAt.toFormat("HH:mm")} | ${
+                                        appointment.patientDisplayName
+                                      } | ${appointment.source === "MANUAL" ? "Manual" : "Chatbot"}`}
+                                      type="button"
+                                    >
+                                      <span className="block leading-tight">
+                                        {appointment.startAt.toFormat("HH:mm")} -{" "}
+                                        {appointment.endAt.toFormat("HH:mm")}
+                                      </span>
+                                      <span className="block truncate leading-tight opacity-80">
+                                        {appointment.patientDisplayName}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                                {dayAppointments.length > 2 ? (
+                                  <p className="px-1 text-[11px] font-semibold text-slate-500">
+                                    +{dayAppointments.length - 2} más
+                                  </p>
+                                ) : null}
                               </div>
-                            </button>
+                            </div>
                           );
                         })}
                       </div>
-                    )}
-                  </section>
+                    </div>
+                  </div>
+                  {/* Legend */}
+                  <div className="mt-2 hidden items-center gap-4 sm:flex">
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-brand-teal" />
+                      <span className="text-[11px] text-slate-500">Chatbot</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-slate-400" />
+                      <span className="text-[11px] text-slate-500">Manual</span>
+                    </div>
+                  </div>
+                </div>
 
-                  <p className="text-[11px] text-slate-500 sm:text-xs">
-                    Zona horaria de visualización: {timezone}
+                <section className="hidden rounded-lg border border-border-subtle p-2.5 sm:block sm:p-3">
+                  <h4 className="text-xs font-semibold text-brand-ink sm:text-sm">
+                    {selectedDayIso !== ""
+                      ? `Citas del ${luxonModule.DateTime.fromISO(selectedDayIso, {
+                          zone: timezone
+                        }).toFormat("dd LLL yyyy")}`
+                      : "Citas del día seleccionado"}
+                  </h4>
+                  {selectedDayAppointments.length === 0 ? (
+                    <p className="mt-2 text-xs text-slate-500">No hay citas para este día.</p>
+                  ) : (
+                    <div className="mt-2 space-y-1.5 sm:space-y-2">
+                      {selectedDayAppointments.map((appointment) => {
+                        const isSelectedAppointment = appointment.itemKey === selectedBookedItemKey;
+                        const isChatbot = appointment.source === "BOT";
+                        const isVirtualAppointment =
+                          appointment.source === "MANUAL"
+                            ? (appointment.manualAppointment?.isVirtual ?? false)
+                            : appointment.request?.appointmentModality === "VIRTUAL";
+                        return (
+                          <button
+                            className={[
+                              "w-full rounded-md border px-2.5 py-2 text-left sm:px-3",
+                              isSelectedAppointment && desktopDrawerOpen
+                                ? "border-brand-teal bg-brand-accent-light text-brand-teal"
+                                : isChatbot
+                                  ? "border-brand-teal/30 bg-brand-accent-light/50 text-brand-teal hover:border-brand-teal"
+                                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                            ].join(" ")}
+                            key={`day-${appointment.itemKey}`}
+                            onClick={() => {
+                              setSelectedDayIso(appointment.dayIso);
+                              setSelectedBookedItemKey(appointment.itemKey);
+                              setSelectedRequestId(appointment.requestId);
+                              setSubmitSuccessMessage(null);
+                              setLocalSubmitErrorMessage(null);
+                              setExpandedBookedAction(null);
+                              setDesktopDrawerOpen(true);
+                            }}
+                            type="button"
+                          >
+                            <p className="text-xs font-semibold sm:text-sm">
+                              {appointment.startAt.toFormat("HH:mm")} -{" "}
+                              {appointment.endAt.toFormat("HH:mm")}
+                            </p>
+                            {appointment.patientDisplayName !== appointment.patientPhone ? (
+                              <p className="text-xs">{appointment.patientDisplayName}</p>
+                            ) : null}
+                            <p className="text-xs text-slate-500">{appointment.patientPhone}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[11px] uppercase text-slate-500">
+                                {appointment.source === "MANUAL" ? "Manual" : "Chatbot"}
+                              </span>
+                              <span
+                                className={[
+                                  "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                                  isVirtualAppointment
+                                    ? "bg-brand-accent-light text-brand-teal"
+                                    : "bg-slate-100 text-slate-600"
+                                ].join(" ")}
+                              >
+                                {isVirtualAppointment ? "Google Meet" : "Presencial"}
+                              </span>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                <p className="text-[11px] text-slate-500 sm:text-xs">
+                  Zona horaria de visualización: {timezone}
+                </p>
+              </div>
+            </article>
+          ) : (
+            <article className="rounded-xl border border-border-subtle bg-white shadow-card">
+              <header className="border-b border-border-subtle px-3 py-3 sm:p-4">
+                <h3 className="text-sm font-semibold sm:text-base">Solicitudes</h3>
+                <p className="text-[11px] text-slate-500 sm:text-xs">
+                  {`Estado actual: ${activeTab}`}
+                </p>
+              </header>
+              <div className="max-h-[calc(100vh-12rem)] space-y-2 overflow-auto p-2 sm:p-3">
+                {requestsQuery.isLoading ? (
+                  <p className="text-sm text-slate-500">Cargando...</p>
+                ) : null}
+                {filteredRequests.length === 0 ? (
+                  <p className="text-sm text-slate-500">No hay solicitudes en este estado.</p>
+                ) : null}
+                {filteredRequests.map((request) => {
+                  const isSelected = request.requestId === selectedRequestId;
+                  const statusConfig = approvalStatusLabels[request.status];
+                  return (
+                    <button
+                      className={[
+                        "w-full rounded-lg border p-3 text-left",
+                        isSelected
+                          ? "border-brand-teal bg-brand-accent-light"
+                          : "border-slate-200 bg-white hover:border-slate-300"
+                      ].join(" ")}
+                      key={request.requestId}
+                      onClick={() => {
+                        setSelectedRequestId(request.requestId);
+                        setSubmitSuccessMessage(null);
+                        setLocalSubmitErrorMessage(null);
+                      }}
+                      type="button"
+                    >
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <p className="truncate text-sm font-semibold text-brand-ink">
+                          {resolvePatientDisplayName(request, patientsByWhatsappUserId)}
+                        </p>
+                        <statusBadgeModule.StatusBadge
+                          label={statusConfig?.label ?? request.status}
+                          tone={statusConfig?.tone ?? "neutral"}
+                        />
+                      </div>
+                      {request.audienceType !== null ? (
+                        <span className="text-xs font-medium text-violet-600">
+                          {request.audienceType === "CHILDREN" ? "Infantil" : "Adulto"}
+                        </span>
+                      ) : null}
+                      {request.consultationReason !== null ? (
+                        <p className="truncate text-xs text-slate-600">
+                          {request.consultationReason}
+                        </p>
+                      ) : null}
+                      <p className="mt-1 text-xs text-slate-500">
+                        {dateUtilsModule.formatDateTime(request.updatedAt)}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </article>
+          )}
+
+          <article
+            className={[
+              "space-y-4 rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4",
+              isBookedTab && mobileBookedStep !== "detail" ? "hidden" : "",
+              isBookedTab && mobileBookedStep === "detail" ? "sm:hidden" : ""
+            ].join(" ")}
+          >
+            {isBookedTab && mobileBookedStep === "detail" ? (
+              <button
+                className="flex items-center gap-1 text-xs font-semibold text-brand-teal sm:hidden"
+                onClick={() => setMobileBookedStep("dayList")}
+                type="button"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    d="M15 19l-7-7 7-7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                  />
+                </svg>
+                Volver a citas del día
+              </button>
+            ) : null}
+            {isBookedTab && selectedBookedAppointment !== null ? (
+              <appointmentDetailCardModule.AppointmentDetailCard
+                origin={selectedBookedAppointment.source === "MANUAL" ? "MANUAL" : "CHATBOT"}
+                modality={
+                  selectedBookedAppointment.source === "MANUAL" &&
+                  selectedBookedAppointment.manualAppointment !== null
+                    ? selectedBookedAppointment.manualAppointment.isVirtual
+                      ? "VIRTUAL"
+                      : "PRESENCIAL"
+                    : selectedBookedAppointment.request?.appointmentModality === "PRESENCIAL"
+                      ? "PRESENCIAL"
+                      : "VIRTUAL"
+                }
+                patientFullName={selectedBookedAppointment.patientDisplayName}
+                summary={
+                  selectedBookedAppointment.source === "MANUAL"
+                    ? selectedBookedAppointment.summary
+                    : (selectedBookedAppointment.request?.consultationReason ?? null)
+                }
+                startAt={selectedBookedAppointment.startAt.toISO() ?? ""}
+                endAt={selectedBookedAppointment.endAt.toISO() ?? ""}
+                timezone={timezone}
+                durationMinutes={Math.round(
+                  selectedBookedAppointment.endAt.diff(selectedBookedAppointment.startAt, "minutes")
+                    .minutes
+                )}
+                payment={
+                  selectedBookedAppointment.source === "MANUAL" &&
+                  selectedBookedAppointment.manualAppointment !== null
+                    ? {
+                        status: selectedBookedAppointment.manualAppointment.paymentStatus ?? null,
+                        amountCop: selectedBookedAppointment.manualAppointment.paymentAmountCop,
+                        currency: selectedBookedAppointment.manualAppointment.paymentCurrency,
+                        category: selectedBookedAppointment.manualAppointment.paymentMethod
+                      }
+                    : {
+                        status: selectedBookedAppointment.request?.paymentStatus ?? null,
+                        amountCop: selectedBookedAppointment.request?.paymentAmountCop ?? null,
+                        currency: selectedBookedAppointment.request?.paymentCurrency ?? "COP",
+                        category: selectedBookedAppointment.request?.paymentMethod ?? null
+                      }
+                }
+                paymentDraft={drawerPaymentDraft}
+                onPaymentDraftChange={setDrawerPaymentDraft}
+                isSavingPayment={
+                  updateManualPaymentMutation.isPending || updateBookedPaymentMutation.isPending
+                }
+                onSavePayment={() => {
+                  const amountCop = Number.parseInt(drawerPaymentDraft.amountCop, 10);
+                  if (Number.isNaN(amountCop) || amountCop <= 0) {
+                    setLocalSubmitErrorMessage("El valor del pago debe ser mayor a cero.");
+                    return;
+                  }
+                  setLocalSubmitErrorMessage(null);
+                  setSubmitSuccessMessage(null);
+                  if (
+                    selectedBookedAppointment.source === "MANUAL" &&
+                    selectedBookedAppointment.manualAppointmentId !== null
+                  ) {
+                    updateManualPaymentMutation.mutate({
+                      appointmentId: selectedBookedAppointment.manualAppointmentId,
+                      input: {
+                        paymentAmountCop: amountCop,
+                        paymentCurrency:
+                          selectedBookedAppointment.manualAppointment?.paymentCurrency ?? "COP",
+                        paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
+                        paymentStatus: "PAID"
+                      }
+                    });
+                  } else if (
+                    selectedBookedAppointment.source === "BOT" &&
+                    selectedBookedAppointment.requestId !== null
+                  ) {
+                    updateBookedPaymentMutation.mutate({
+                      requestId: selectedBookedAppointment.requestId,
+                      input: {
+                        paymentAmountCop: amountCop,
+                        paymentCurrency:
+                          selectedBookedAppointment.request?.paymentCurrency ?? "COP",
+                        paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
+                        paymentStatus: "PAID"
+                      }
+                    });
+                  }
+                }}
+                onReschedule={() => {
+                  setExpandedBookedAction(
+                    expandedBookedAction === "reschedule" ? null : "reschedule"
+                  );
+                }}
+                onCancel={() => {
+                  if (selectedBookedAppointment === null) {
+                    return;
+                  }
+                  const isConfirmed = window.confirm("¿Seguro que quieres cancelar esta cita?");
+                  if (!isConfirmed) {
+                    return;
+                  }
+                  setLocalSubmitErrorMessage(null);
+                  setSubmitSuccessMessage(null);
+                  if (
+                    selectedBookedAppointment.source === "BOT" &&
+                    selectedBookedBotRequest !== null
+                  ) {
+                    cancelBookedSlotMutation.mutate({
+                      requestId: selectedBookedBotRequest.requestId,
+                      input: { reason: null }
+                    });
+                  } else if (
+                    selectedBookedAppointment.source === "MANUAL" &&
+                    selectedBookedAppointment.manualAppointmentId !== null
+                  ) {
+                    cancelManualAppointmentMutation.mutate({
+                      appointmentId: selectedBookedAppointment.manualAppointmentId,
+                      input: { reason: null }
+                    });
+                  }
+                }}
+                errorMessage={localSubmitErrorMessage ?? submitErrorMessage}
+                successMessage={submitSuccessMessage}
+              />
+            ) : null}
+
+            {/* Expanded action forms for booked tab — shared mobile/desktop */}
+            {isBookedTab &&
+            selectedBookedAppointment !== null &&
+            expandedBookedAction === "reschedule" ? (
+              <div
+                className="rounded-lg border border-border-subtle p-4 space-y-4"
+                data-testid="reschedule-slotpicker-panel"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Selecciona un nuevo horario disponible.
                   </p>
                 </div>
-              </article>
-            ) : (
-              <article className="rounded-xl border border-border-subtle bg-white shadow-card">
-                <header className="border-b border-border-subtle px-3 py-3 sm:p-4">
-                  <h3 className="text-sm font-semibold sm:text-base">Solicitudes</h3>
-                  <p className="text-[11px] text-slate-500 sm:text-xs">
-                    {`Estado actual: ${activeTab}`}
-                  </p>
-                </header>
-                <div className="max-h-[calc(100vh-12rem)] space-y-2 overflow-auto p-2 sm:p-3">
-                  {requestsQuery.isLoading ? (
-                    <p className="text-sm text-slate-500">Cargando...</p>
+                <slotPickerModule.SlotPicker
+                  timezone={colombiaTimezone}
+                  busyIntervals={rescheduleBusyIntervals}
+                  requestId={
+                    selectedBookedAppointment.source === "MANUAL"
+                      ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")
+                      : (selectedBookedAppointment.requestId ?? "reschedule")
+                  }
+                  selectedSlots={rescheduleSelectedSlots}
+                  onSelectedSlotsChange={(slots) => setRescheduleSelectedSlots(slots.slice(-1))}
+                  isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
+                  onMonthChange={setRescheduleSlotPickerMonth}
+                />
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={
+                      rescheduleSelectedSlots.length !== 1 ||
+                      rescheduleManualAppointmentMutation.isPending ||
+                      rescheduleBookedSlotMutation.isPending
+                    }
+                    onClick={() => {
+                      const slot = rescheduleSelectedSlots[0];
+                      if (slot === undefined) {
+                        return;
+                      }
+                      setLocalSubmitErrorMessage(null);
+                      setSubmitSuccessMessage(null);
+                      if (
+                        selectedBookedAppointment.source === "MANUAL" &&
+                        selectedBookedAppointment.manualAppointmentId !== null
+                      ) {
+                        rescheduleManualAppointmentMutation.mutate({
+                          appointmentId: selectedBookedAppointment.manualAppointmentId,
+                          input: {
+                            startAt: slot.startAt,
+                            endAt: slot.endAt,
+                            timezone: slot.timezone,
+                            summary:
+                              selectedBookedAppointment.manualAppointment?.summary.trim() === ""
+                                ? null
+                                : (selectedBookedAppointment.manualAppointment?.summary ?? null)
+                          }
+                        });
+                      } else if (
+                        selectedBookedAppointment.source === "BOT" &&
+                        selectedBookedBotRequest !== null
+                      ) {
+                        const eventSummary =
+                          selectedBookedAppointment.patientDisplayName.trim() === ""
+                            ? "Cita"
+                            : `Cita - ${selectedBookedAppointment.patientDisplayName}`;
+                        rescheduleBookedSlotMutation.mutate({
+                          requestId: selectedBookedBotRequest.requestId,
+                          input: {
+                            startAt: slot.startAt,
+                            endAt: slot.endAt,
+                            timezone: slot.timezone,
+                            eventSummary
+                          }
+                        });
+                      }
+                    }}
+                    type="button"
+                  >
+                    {rescheduleManualAppointmentMutation.isPending ||
+                    rescheduleBookedSlotMutation.isPending
+                      ? "Guardando..."
+                      : "Guardar reprogramación"}
+                  </button>
+                  <button
+                    className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                    onClick={() => {
+                      setExpandedBookedAction(null);
+                      setRescheduleSelectedSlots([]);
+                    }}
+                    type="button"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {isBookedTab && selectedBookedAppointment === null ? (
+              <p className="text-sm text-slate-500">
+                Selecciona una cita en el calendario para ver todos los detalles.
+              </p>
+            ) : !isBookedTab && selectedRequest === undefined ? (
+              <p className="text-sm text-slate-500">
+                Selecciona una solicitud para ver detalle y gestionar slots.
+              </p>
+            ) : !isBookedTab && selectedRequest !== undefined ? (
+              <>
+                <section className="rounded-lg border border-border-subtle p-4">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-brand-ink">
+                      Información del paciente
+                    </h4>
+                    <statusBadgeModule.StatusBadge
+                      label={
+                        approvalStatusLabels[selectedRequest.status]?.label ??
+                        selectedRequest.status
+                      }
+                      tone={approvalStatusLabels[selectedRequest.status]?.tone ?? "neutral"}
+                    />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2 text-sm text-slate-700">
+                      <p>
+                        <span className="font-semibold text-slate-500">Nombre</span>
+                        <br />
+                        {resolvePatientDisplayName(selectedRequest, patientsByWhatsappUserId)}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-slate-500">Motivo</span>
+                        <br />
+                        {selectedRequest.consultationReason ?? "-"}
+                      </p>
+                      {selectedRequest.consultationDetails !== null ? (
+                        <p>
+                          <span className="font-semibold text-slate-500">Detalles</span>
+                          <br />
+                          {selectedRequest.consultationDetails}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="space-y-2 text-sm text-slate-700">
+                      <p>
+                        <span className="font-semibold text-slate-500">Teléfono</span>
+                        <br />
+                        {selectedRequest.whatsappUserId}
+                      </p>
+                      {selectedRequest.patientLocation !== null ? (
+                        <p>
+                          <span className="font-semibold text-slate-500">Ubicación</span>
+                          <br />
+                          {selectedRequest.patientLocation}
+                        </p>
+                      ) : null}
+                      {selectedRequest.appointmentModality !== null ? (
+                        <p>
+                          <span className="font-semibold text-slate-500">Modalidad</span>
+                          <br />
+                          {selectedRequest.appointmentModality}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                  {selectedRequest.patientPreferenceNote !== null ? (
+                    <div className="mt-3 rounded-md bg-slate-50 p-3">
+                      <p className="text-xs font-semibold text-slate-500">
+                        Preferencias del paciente
+                      </p>
+                      <p className="mt-1 text-sm text-slate-700">
+                        {selectedRequest.patientPreferenceNote}
+                      </p>
+                    </div>
                   ) : null}
-                  {filteredRequests.length === 0 ? (
-                    <p className="text-sm text-slate-500">No hay solicitudes en este estado.</p>
+                  {selectedRequest.rejectionSummary !== null ? (
+                    <div className="mt-2 rounded-md bg-red-50 p-3">
+                      <p className="text-xs font-semibold text-red-600">Resumen rechazo</p>
+                      <p className="mt-1 text-sm text-red-700">
+                        {selectedRequest.rejectionSummary}
+                      </p>
+                    </div>
                   ) : null}
-                  {filteredRequests.map((request) => {
-                    const isSelected = request.requestId === selectedRequestId;
-                    const statusConfig = approvalStatusLabels[request.status];
-                    return (
+                  {isBookedTab && selectedBookedAppointment !== null ? (
+                    <div className="mt-3 rounded-md bg-brand-accent-light p-3">
+                      <p className="text-xs font-semibold text-brand-teal">Cita agendada</p>
+                      <p className="mt-1 text-sm text-brand-ink">
+                        {selectedBookedAppointment.startAt.toFormat("dd LLL yyyy HH:mm")} -{" "}
+                        {selectedBookedAppointment.endAt.toFormat("HH:mm")}
+                      </p>
+                    </div>
+                  ) : null}
+                </section>
+
+                {selectedRequest.status === "BOOKED" ||
+                selectedRequest.status === "SESSION_CLOSED" ? (
+                  <section className="rounded-lg border border-border-subtle p-3">
+                    <h4 className="text-sm font-semibold text-brand-ink">
+                      Gestionar cita del chatbot
+                    </h4>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide ${selectedRequest.paymentStatus === "PAID" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
+                      >
+                        {selectedRequest.paymentStatus === "PAID"
+                          ? "Pago confirmado"
+                          : "Pago pendiente"}
+                      </span>
+                      {selectedRequest.paymentAmountCop != null ? (
+                        <span className="text-xs text-slate-500">
+                          ${selectedRequest.paymentAmountCop.toLocaleString("es-CO")} COP
+                        </span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
                       <button
-                        className={[
-                          "w-full rounded-lg border p-3 text-left",
-                          isSelected
-                            ? "border-brand-teal bg-brand-accent-light"
-                            : "border-slate-200 bg-white hover:border-slate-300"
-                        ].join(" ")}
-                        key={request.requestId}
-                        onClick={() => {
-                          setSelectedRequestId(request.requestId);
-                          setSubmitSuccessMessage(null);
-                          setLocalSubmitErrorMessage(null);
-                        }}
+                        className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${expandedBookedAction === "reschedule" ? "bg-brand-teal text-white" : "border border-brand-teal text-brand-teal hover:bg-brand-accent-light"}`}
+                        onClick={() =>
+                          setExpandedBookedAction(
+                            expandedBookedAction === "reschedule" ? null : "reschedule"
+                          )
+                        }
                         type="button"
                       >
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <p className="truncate text-sm font-semibold text-brand-ink">
-                            {resolvePatientDisplayName(request, patientsByWhatsappUserId)}
-                          </p>
-                          <statusBadgeModule.StatusBadge
-                            label={statusConfig?.label ?? request.status}
-                            tone={statusConfig?.tone ?? "neutral"}
-                          />
-                        </div>
-                        {request.audienceType !== null ? (
-                          <span className="text-xs font-medium text-violet-600">
-                            {request.audienceType === "CHILDREN" ? "Infantil" : "Adulto"}
-                          </span>
-                        ) : null}
-                        {request.consultationReason !== null ? (
-                          <p className="truncate text-xs text-slate-600">
-                            {request.consultationReason}
-                          </p>
-                        ) : null}
-                        <p className="mt-1 text-xs text-slate-500">
-                          {dateUtilsModule.formatDateTime(request.updatedAt)}
-                        </p>
+                        Reprogramar
                       </button>
-                    );
-                  })}
-                </div>
-              </article>
-            )}
+                      <button
+                        className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${expandedBookedAction === "cancel" ? "bg-rose-600 text-white" : "border border-rose-600 text-rose-600 hover:bg-rose-50"}`}
+                        onClick={() =>
+                          setExpandedBookedAction(
+                            expandedBookedAction === "cancel" ? null : "cancel"
+                          )
+                        }
+                        type="button"
+                      >
+                        Cancelar
+                      </button>
+                      {selectedRequest.paymentStatus !== "PAID" ? (
+                        <button
+                          className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${expandedBookedAction === "payment" ? "bg-brand-teal text-white" : "border border-brand-teal text-brand-teal hover:bg-brand-accent-light"}`}
+                          onClick={() =>
+                            setExpandedBookedAction(
+                              expandedBookedAction === "payment" ? null : "payment"
+                            )
+                          }
+                          type="button"
+                        >
+                          Agregar pago
+                        </button>
+                      ) : null}
+                      {selectedRequest.paymentStatus !== "PAID" ? (
+                        <button
+                          className="rounded-md border border-amber-500 px-4 py-2 text-sm font-semibold text-amber-600 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={resolvePaymentReviewMutation.isPending}
+                          onClick={() => {
+                            if (selectedBookedBotRequest === null) {
+                              return;
+                            }
+                            setLocalSubmitErrorMessage(null);
+                            setSubmitSuccessMessage(null);
+                            resolvePaymentReviewMutation.mutate({
+                              request: selectedRequest,
+                              decision: "SEND_REMINDER",
+                              professionalNote: null,
+                              paymentAmountCop: null,
+                              paymentCurrency: "COP"
+                            });
+                          }}
+                          type="button"
+                        >
+                          {resolvePaymentReviewMutation.isPending
+                            ? "Enviando..."
+                            : "Recordatorio de pago"}
+                        </button>
+                      ) : null}
+                    </div>
 
-            <article
-              className={[
-                "space-y-4 rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4",
-                isBookedTab && mobileBookedStep !== "detail" ? "hidden" : "",
-                isBookedTab && mobileBookedStep === "detail" ? "sm:hidden" : ""
-              ].join(" ")}
-            >
-              {isBookedTab && mobileBookedStep === "detail" ? (
-                <button
-                  className="flex items-center gap-1 text-xs font-semibold text-brand-teal sm:hidden"
-                  onClick={() => setMobileBookedStep("dayList")}
-                  type="button"
-                >
-                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path
-                      d="M15 19l-7-7 7-7"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                    />
-                  </svg>
-                  Volver a citas del día
-                </button>
-              ) : null}
-              {isBookedTab && selectedBookedAppointment !== null ? (
+                    {expandedBookedAction === "reschedule" ? (
+                      <div
+                        className="mt-3 rounded-lg border border-border-subtle p-4 space-y-4"
+                        data-testid="reschedule-slotpicker-bot"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Selecciona un nuevo horario disponible.
+                          </p>
+                        </div>
+                        <slotPickerModule.SlotPicker
+                          timezone={colombiaTimezone}
+                          busyIntervals={rescheduleBusyIntervals}
+                          requestId={selectedBookedAppointment?.requestId ?? "reschedule"}
+                          selectedSlots={rescheduleSelectedSlots}
+                          onSelectedSlotsChange={(slots) =>
+                            setRescheduleSelectedSlots(slots.slice(-1))
+                          }
+                          isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
+                          onMonthChange={setRescheduleSlotPickerMonth}
+                        />
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          <button
+                            className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={
+                              rescheduleSelectedSlots.length !== 1 ||
+                              rescheduleBookedSlotMutation.isPending
+                            }
+                            onClick={() => {
+                              const slot = rescheduleSelectedSlots[0];
+                              if (slot === undefined || selectedBookedBotRequest === null) {
+                                return;
+                              }
+                              const eventSummary =
+                                selectedBookedAppointment?.patientDisplayName.trim() === ""
+                                  ? "Cita"
+                                  : `Cita - ${selectedBookedAppointment?.patientDisplayName ?? ""}`;
+                              setLocalSubmitErrorMessage(null);
+                              setSubmitSuccessMessage(null);
+                              rescheduleBookedSlotMutation.mutate({
+                                requestId: selectedBookedBotRequest.requestId,
+                                input: {
+                                  startAt: slot.startAt,
+                                  endAt: slot.endAt,
+                                  timezone: slot.timezone,
+                                  eventSummary
+                                }
+                              });
+                            }}
+                            type="button"
+                          >
+                            {rescheduleBookedSlotMutation.isPending
+                              ? "Guardando..."
+                              : "Guardar reprogramación"}
+                          </button>
+                          <button
+                            className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                            onClick={() => {
+                              setExpandedBookedAction(null);
+                              setRescheduleSelectedSlots([]);
+                            }}
+                            type="button"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {expandedBookedAction === "cancel" ? (
+                      <div className="mt-3 rounded-lg border border-border-subtle p-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Motivo de cancelación (opcional)
+                          <textarea
+                            className="mt-1 min-h-20 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              setBookedAppointmentFormState((currentValue) => ({
+                                ...currentValue,
+                                cancelReason: nextValue
+                              }));
+                            }}
+                            value={bookedAppointmentFormState.cancelReason}
+                          />
+                        </label>
+                        <div className="mt-3">
+                          <button
+                            className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={cancelBookedSlotMutation.isPending}
+                            onClick={() => {
+                              if (selectedBookedBotRequest === null) {
+                                return;
+                              }
+                              const isConfirmed = window.confirm(
+                                "¿Seguro que quieres cancelar esta cita del chatbot?"
+                              );
+                              if (!isConfirmed) {
+                                return;
+                              }
+                              setLocalSubmitErrorMessage(null);
+                              setSubmitSuccessMessage(null);
+                              cancelBookedSlotMutation.mutate({
+                                requestId: selectedBookedBotRequest.requestId,
+                                input: {
+                                  reason:
+                                    bookedAppointmentFormState.cancelReason.trim() === ""
+                                      ? null
+                                      : bookedAppointmentFormState.cancelReason.trim()
+                                }
+                              });
+                            }}
+                            type="button"
+                          >
+                            {cancelBookedSlotMutation.isPending ? "Cancelando..." : "Cancelar cita"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {expandedBookedAction === "payment" ? (
+                      <div className="mt-3 rounded-lg border border-border-subtle p-3">
+                        <div className="grid gap-3 md:grid-cols-3">
+                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Valor (COP)
+                            <input
+                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                              min={1}
+                              onChange={(event) => {
+                                setBookedPaymentFormState((currentValue) => ({
+                                  ...currentValue,
+                                  paymentAmountCop: event.target.value
+                                }));
+                              }}
+                              type="number"
+                              value={bookedPaymentFormState.paymentAmountCop}
+                            />
+                          </label>
+                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Categoría
+                            <select
+                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                              onChange={(event) => {
+                                setBookedPaymentFormState((currentValue) => ({
+                                  ...currentValue,
+                                  paymentMethod: event.target.value as "CASH" | "TRANSFER"
+                                }));
+                              }}
+                              value={bookedPaymentFormState.paymentMethod}
+                            >
+                              <option value="CASH">Efectivo</option>
+                              <option value="TRANSFER">Transferencia</option>
+                            </select>
+                          </label>
+                          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Estado
+                            <select
+                              className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                              onChange={(event) => {
+                                setBookedPaymentFormState((currentValue) => ({
+                                  ...currentValue,
+                                  paymentStatus: event.target.value as "PENDING" | "PAID"
+                                }));
+                              }}
+                              value={bookedPaymentFormState.paymentStatus}
+                            >
+                              <option value="PENDING">Pendiente por pago</option>
+                              <option value="PAID">Pagada</option>
+                            </select>
+                          </label>
+                        </div>
+                        <div className="mt-3">
+                          <button
+                            className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={updateBookedPaymentMutation.isPending}
+                            onClick={() => {
+                              if (selectedBookedBotRequest === null) {
+                                return;
+                              }
+                              const paymentAmountCop = Number.parseInt(
+                                bookedPaymentFormState.paymentAmountCop,
+                                10
+                              );
+                              if (Number.isNaN(paymentAmountCop) || paymentAmountCop <= 0) {
+                                setLocalSubmitErrorMessage(
+                                  "El valor del pago debe ser mayor a cero."
+                                );
+                                return;
+                              }
+                              setLocalSubmitErrorMessage(null);
+                              setSubmitSuccessMessage(null);
+                              updateBookedPaymentMutation.mutate({
+                                requestId: selectedBookedBotRequest.requestId,
+                                input: {
+                                  paymentAmountCop,
+                                  paymentCurrency:
+                                    selectedBookedBotRequest.paymentCurrency ?? "COP",
+                                  paymentMethod: bookedPaymentFormState.paymentMethod,
+                                  paymentStatus: bookedPaymentFormState.paymentStatus
+                                }
+                              });
+                            }}
+                            type="button"
+                          >
+                            {updateBookedPaymentMutation.isPending
+                              ? "Guardando pago..."
+                              : "Guardar pago"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </section>
+                ) : null}
+              </>
+            ) : null}
+
+            {loadingErrorMessage !== null ? (
+              <errorBannerModule.ErrorBanner message={loadingErrorMessage} />
+            ) : null}
+            {submitErrorMessage !== null ? (
+              <errorBannerModule.ErrorBanner message={submitErrorMessage} />
+            ) : null}
+            {localSubmitErrorMessage !== null ? (
+              <errorBannerModule.ErrorBanner message={localSubmitErrorMessage} />
+            ) : null}
+            {submitSuccessMessage !== null ? (
+              <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                {submitSuccessMessage}
+              </div>
+            ) : null}
+          </article>
+        </div>
+
+        {/* Desktop drawer — only for booked tab */}
+        {isBookedTab ? (
+          <appointmentDrawerModule.AppointmentDrawer
+            isOpen={desktopDrawerOpen && selectedBookedAppointment !== null}
+            onClose={() => {
+              setDesktopDrawerOpen(false);
+              setExpandedBookedAction(null);
+              setLocalSubmitErrorMessage(null);
+              setSubmitSuccessMessage(null);
+            }}
+          >
+            {selectedBookedAppointment !== null ? (
+              <>
                 <appointmentDetailCardModule.AppointmentDetailCard
                   origin={selectedBookedAppointment.source === "MANUAL" ? "MANUAL" : "CHATBOT"}
                   modality={
@@ -1748,1046 +2051,190 @@ export function AgendaPage() {
                   errorMessage={localSubmitErrorMessage ?? submitErrorMessage}
                   successMessage={submitSuccessMessage}
                 />
-              ) : null}
 
-              {/* Expanded action forms for booked tab — shared mobile/desktop */}
-              {isBookedTab &&
-              selectedBookedAppointment !== null &&
-              expandedBookedAction === "reschedule" ? (
-                <div
-                  className="rounded-lg border border-border-subtle p-4 space-y-4"
-                  data-testid="reschedule-slotpicker-panel"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Selecciona un nuevo horario disponible.
-                    </p>
-                  </div>
-                  <slotPickerModule.SlotPicker
-                    timezone={colombiaTimezone}
-                    busyIntervals={rescheduleBusyIntervals}
-                    requestId={
-                      selectedBookedAppointment.source === "MANUAL"
-                        ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")
-                        : (selectedBookedAppointment.requestId ?? "reschedule")
-                    }
-                    selectedSlots={rescheduleSelectedSlots}
-                    onSelectedSlotsChange={(slots) => setRescheduleSelectedSlots(slots.slice(-1))}
-                    isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
-                    onMonthChange={setRescheduleSlotPickerMonth}
-                  />
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <button
-                      className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={
-                        rescheduleSelectedSlots.length !== 1 ||
-                        rescheduleManualAppointmentMutation.isPending ||
-                        rescheduleBookedSlotMutation.isPending
-                      }
-                      onClick={() => {
-                        const slot = rescheduleSelectedSlots[0];
-                        if (slot === undefined) {
-                          return;
-                        }
-                        setLocalSubmitErrorMessage(null);
-                        setSubmitSuccessMessage(null);
-                        if (
-                          selectedBookedAppointment.source === "MANUAL" &&
-                          selectedBookedAppointment.manualAppointmentId !== null
-                        ) {
-                          rescheduleManualAppointmentMutation.mutate({
-                            appointmentId: selectedBookedAppointment.manualAppointmentId,
-                            input: {
-                              startAt: slot.startAt,
-                              endAt: slot.endAt,
-                              timezone: slot.timezone,
-                              summary:
-                                selectedBookedAppointment.manualAppointment?.summary.trim() === ""
-                                  ? null
-                                  : (selectedBookedAppointment.manualAppointment?.summary ?? null)
-                            }
-                          });
-                        } else if (
-                          selectedBookedAppointment.source === "BOT" &&
-                          selectedBookedBotRequest !== null
-                        ) {
-                          const eventSummary =
-                            selectedBookedAppointment.patientDisplayName.trim() === ""
-                              ? "Cita"
-                              : `Cita - ${selectedBookedAppointment.patientDisplayName}`;
-                          rescheduleBookedSlotMutation.mutate({
-                            requestId: selectedBookedBotRequest.requestId,
-                            input: {
-                              startAt: slot.startAt,
-                              endAt: slot.endAt,
-                              timezone: slot.timezone,
-                              eventSummary
-                            }
-                          });
-                        }
-                      }}
-                      type="button"
-                    >
-                      {rescheduleManualAppointmentMutation.isPending ||
-                      rescheduleBookedSlotMutation.isPending
-                        ? "Guardando..."
-                        : "Guardar reprogramación"}
-                    </button>
-                    <button
-                      className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                      onClick={() => {
-                        setExpandedBookedAction(null);
-                        setRescheduleSelectedSlots([]);
-                      }}
-                      type="button"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-
-              {isBookedTab && selectedBookedAppointment === null ? (
-                <p className="text-sm text-slate-500">
-                  Selecciona una cita en el calendario para ver todos los detalles.
-                </p>
-              ) : !isBookedTab && selectedRequest === undefined ? (
-                <p className="text-sm text-slate-500">
-                  Selecciona una solicitud para ver detalle y gestionar slots.
-                </p>
-              ) : !isBookedTab && selectedRequest !== undefined ? (
-                <>
-                  <section className="rounded-lg border border-border-subtle p-4">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h4 className="text-sm font-semibold text-brand-ink">
-                        Información del paciente
-                      </h4>
-                      <statusBadgeModule.StatusBadge
-                        label={
-                          approvalStatusLabels[selectedRequest.status]?.label ??
-                          selectedRequest.status
-                        }
-                        tone={approvalStatusLabels[selectedRequest.status]?.tone ?? "neutral"}
-                      />
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-2 text-sm text-slate-700">
-                        <p>
-                          <span className="font-semibold text-slate-500">Nombre</span>
-                          <br />
-                          {resolvePatientDisplayName(selectedRequest, patientsByWhatsappUserId)}
-                        </p>
-                        <p>
-                          <span className="font-semibold text-slate-500">Motivo</span>
-                          <br />
-                          {selectedRequest.consultationReason ?? "-"}
-                        </p>
-                        {selectedRequest.consultationDetails !== null ? (
-                          <p>
-                            <span className="font-semibold text-slate-500">Detalles</span>
-                            <br />
-                            {selectedRequest.consultationDetails}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="space-y-2 text-sm text-slate-700">
-                        <p>
-                          <span className="font-semibold text-slate-500">Teléfono</span>
-                          <br />
-                          {selectedRequest.whatsappUserId}
-                        </p>
-                        {selectedRequest.patientLocation !== null ? (
-                          <p>
-                            <span className="font-semibold text-slate-500">Ubicación</span>
-                            <br />
-                            {selectedRequest.patientLocation}
-                          </p>
-                        ) : null}
-                        {selectedRequest.appointmentModality !== null ? (
-                          <p>
-                            <span className="font-semibold text-slate-500">Modalidad</span>
-                            <br />
-                            {selectedRequest.appointmentModality}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                    {selectedRequest.patientPreferenceNote !== null ? (
-                      <div className="mt-3 rounded-md bg-slate-50 p-3">
-                        <p className="text-xs font-semibold text-slate-500">
-                          Preferencias del paciente
-                        </p>
-                        <p className="mt-1 text-sm text-slate-700">
-                          {selectedRequest.patientPreferenceNote}
-                        </p>
-                      </div>
-                    ) : null}
-                    {selectedRequest.rejectionSummary !== null ? (
-                      <div className="mt-2 rounded-md bg-red-50 p-3">
-                        <p className="text-xs font-semibold text-red-600">Resumen rechazo</p>
-                        <p className="mt-1 text-sm text-red-700">
-                          {selectedRequest.rejectionSummary}
-                        </p>
-                      </div>
-                    ) : null}
-                    {isBookedTab && selectedBookedAppointment !== null ? (
-                      <div className="mt-3 rounded-md bg-brand-accent-light p-3">
-                        <p className="text-xs font-semibold text-brand-teal">Cita agendada</p>
-                        <p className="mt-1 text-sm text-brand-ink">
-                          {selectedBookedAppointment.startAt.toFormat("dd LLL yyyy HH:mm")} -{" "}
-                          {selectedBookedAppointment.endAt.toFormat("HH:mm")}
-                        </p>
-                      </div>
-                    ) : null}
-                  </section>
-
-                  {selectedRequest.status === "BOOKED" ||
-                  selectedRequest.status === "SESSION_CLOSED" ? (
-                    <section className="rounded-lg border border-border-subtle p-3">
-                      <h4 className="text-sm font-semibold text-brand-ink">
-                        Gestionar cita del chatbot
-                      </h4>
-                      <div className="mt-2 flex items-center gap-2">
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide ${selectedRequest.paymentStatus === "PAID" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}
-                        >
-                          {selectedRequest.paymentStatus === "PAID"
-                            ? "Pago confirmado"
-                            : "Pago pendiente"}
-                        </span>
-                        {selectedRequest.paymentAmountCop != null ? (
-                          <span className="text-xs text-slate-500">
-                            ${selectedRequest.paymentAmountCop.toLocaleString("es-CO")} COP
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${expandedBookedAction === "reschedule" ? "bg-brand-teal text-white" : "border border-brand-teal text-brand-teal hover:bg-brand-accent-light"}`}
-                          onClick={() =>
-                            setExpandedBookedAction(
-                              expandedBookedAction === "reschedule" ? null : "reschedule"
-                            )
-                          }
-                          type="button"
-                        >
-                          Reprogramar
-                        </button>
-                        <button
-                          className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${expandedBookedAction === "cancel" ? "bg-rose-600 text-white" : "border border-rose-600 text-rose-600 hover:bg-rose-50"}`}
-                          onClick={() =>
-                            setExpandedBookedAction(
-                              expandedBookedAction === "cancel" ? null : "cancel"
-                            )
-                          }
-                          type="button"
-                        >
-                          Cancelar
-                        </button>
-                        {selectedRequest.paymentStatus !== "PAID" ? (
-                          <button
-                            className={`rounded-md px-4 py-2 text-sm font-semibold transition-colors ${expandedBookedAction === "payment" ? "bg-brand-teal text-white" : "border border-brand-teal text-brand-teal hover:bg-brand-accent-light"}`}
-                            onClick={() =>
-                              setExpandedBookedAction(
-                                expandedBookedAction === "payment" ? null : "payment"
-                              )
-                            }
-                            type="button"
-                          >
-                            Agregar pago
-                          </button>
-                        ) : null}
-                        {selectedRequest.paymentStatus !== "PAID" ? (
-                          <button
-                            className="rounded-md border border-amber-500 px-4 py-2 text-sm font-semibold text-amber-600 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={resolvePaymentReviewMutation.isPending}
-                            onClick={() => {
-                              if (selectedBookedBotRequest === null) {
-                                return;
-                              }
-                              setLocalSubmitErrorMessage(null);
-                              setSubmitSuccessMessage(null);
-                              resolvePaymentReviewMutation.mutate({
-                                request: selectedRequest,
-                                decision: "SEND_REMINDER",
-                                professionalNote: null,
-                                paymentAmountCop: null,
-                                paymentCurrency: "COP"
-                              });
-                            }}
-                            type="button"
-                          >
-                            {resolvePaymentReviewMutation.isPending
-                              ? "Enviando..."
-                              : "Recordatorio de pago"}
-                          </button>
-                        ) : null}
-                      </div>
-
-                      {expandedBookedAction === "reschedule" ? (
-                        <div
-                          className="mt-3 rounded-lg border border-border-subtle p-4 space-y-4"
-                          data-testid="reschedule-slotpicker-bot"
-                        >
-                          <div>
-                            <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
-                            <p className="text-xs text-slate-500 mt-0.5">
-                              Selecciona un nuevo horario disponible.
-                            </p>
-                          </div>
-                          <slotPickerModule.SlotPicker
-                            timezone={colombiaTimezone}
-                            busyIntervals={rescheduleBusyIntervals}
-                            requestId={selectedBookedAppointment?.requestId ?? "reschedule"}
-                            selectedSlots={rescheduleSelectedSlots}
-                            onSelectedSlotsChange={(slots) =>
-                              setRescheduleSelectedSlots(slots.slice(-1))
-                            }
-                            isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
-                            onMonthChange={setRescheduleSlotPickerMonth}
-                          />
-                          <div className="flex flex-wrap gap-2 pt-1">
-                            <button
-                              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={
-                                rescheduleSelectedSlots.length !== 1 ||
-                                rescheduleBookedSlotMutation.isPending
-                              }
-                              onClick={() => {
-                                const slot = rescheduleSelectedSlots[0];
-                                if (slot === undefined || selectedBookedBotRequest === null) {
-                                  return;
-                                }
-                                const eventSummary =
-                                  selectedBookedAppointment?.patientDisplayName.trim() === ""
-                                    ? "Cita"
-                                    : `Cita - ${selectedBookedAppointment?.patientDisplayName ?? ""}`;
-                                setLocalSubmitErrorMessage(null);
-                                setSubmitSuccessMessage(null);
-                                rescheduleBookedSlotMutation.mutate({
-                                  requestId: selectedBookedBotRequest.requestId,
-                                  input: {
-                                    startAt: slot.startAt,
-                                    endAt: slot.endAt,
-                                    timezone: slot.timezone,
-                                    eventSummary
-                                  }
-                                });
-                              }}
-                              type="button"
-                            >
-                              {rescheduleBookedSlotMutation.isPending
-                                ? "Guardando..."
-                                : "Guardar reprogramación"}
-                            </button>
-                            <button
-                              className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                              onClick={() => {
-                                setExpandedBookedAction(null);
-                                setRescheduleSelectedSlots([]);
-                              }}
-                              type="button"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {expandedBookedAction === "cancel" ? (
-                        <div className="mt-3 rounded-lg border border-border-subtle p-3">
-                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Motivo de cancelación (opcional)
-                            <textarea
-                              className="mt-1 min-h-20 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 text-slate-700"
-                              onChange={(event) => {
-                                const nextValue = event.target.value;
-                                setBookedAppointmentFormState((currentValue) => ({
-                                  ...currentValue,
-                                  cancelReason: nextValue
-                                }));
-                              }}
-                              value={bookedAppointmentFormState.cancelReason}
-                            />
-                          </label>
-                          <div className="mt-3">
-                            <button
-                              className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={cancelBookedSlotMutation.isPending}
-                              onClick={() => {
-                                if (selectedBookedBotRequest === null) {
-                                  return;
-                                }
-                                const isConfirmed = window.confirm(
-                                  "¿Seguro que quieres cancelar esta cita del chatbot?"
-                                );
-                                if (!isConfirmed) {
-                                  return;
-                                }
-                                setLocalSubmitErrorMessage(null);
-                                setSubmitSuccessMessage(null);
-                                cancelBookedSlotMutation.mutate({
-                                  requestId: selectedBookedBotRequest.requestId,
-                                  input: {
-                                    reason:
-                                      bookedAppointmentFormState.cancelReason.trim() === ""
-                                        ? null
-                                        : bookedAppointmentFormState.cancelReason.trim()
-                                  }
-                                });
-                              }}
-                              type="button"
-                            >
-                              {cancelBookedSlotMutation.isPending
-                                ? "Cancelando..."
-                                : "Cancelar cita"}
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {expandedBookedAction === "payment" ? (
-                        <div className="mt-3 rounded-lg border border-border-subtle p-3">
-                          <div className="grid gap-3 md:grid-cols-3">
-                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Valor (COP)
-                              <input
-                                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                min={1}
-                                onChange={(event) => {
-                                  setBookedPaymentFormState((currentValue) => ({
-                                    ...currentValue,
-                                    paymentAmountCop: event.target.value
-                                  }));
-                                }}
-                                type="number"
-                                value={bookedPaymentFormState.paymentAmountCop}
-                              />
-                            </label>
-                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Categoría
-                              <select
-                                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                onChange={(event) => {
-                                  setBookedPaymentFormState((currentValue) => ({
-                                    ...currentValue,
-                                    paymentMethod: event.target.value as "CASH" | "TRANSFER"
-                                  }));
-                                }}
-                                value={bookedPaymentFormState.paymentMethod}
-                              >
-                                <option value="CASH">Efectivo</option>
-                                <option value="TRANSFER">Transferencia</option>
-                              </select>
-                            </label>
-                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                              Estado
-                              <select
-                                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                                onChange={(event) => {
-                                  setBookedPaymentFormState((currentValue) => ({
-                                    ...currentValue,
-                                    paymentStatus: event.target.value as "PENDING" | "PAID"
-                                  }));
-                                }}
-                                value={bookedPaymentFormState.paymentStatus}
-                              >
-                                <option value="PENDING">Pendiente por pago</option>
-                                <option value="PAID">Pagada</option>
-                              </select>
-                            </label>
-                          </div>
-                          <div className="mt-3">
-                            <button
-                              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                              disabled={updateBookedPaymentMutation.isPending}
-                              onClick={() => {
-                                if (selectedBookedBotRequest === null) {
-                                  return;
-                                }
-                                const paymentAmountCop = Number.parseInt(
-                                  bookedPaymentFormState.paymentAmountCop,
-                                  10
-                                );
-                                if (Number.isNaN(paymentAmountCop) || paymentAmountCop <= 0) {
-                                  setLocalSubmitErrorMessage(
-                                    "El valor del pago debe ser mayor a cero."
-                                  );
-                                  return;
-                                }
-                                setLocalSubmitErrorMessage(null);
-                                setSubmitSuccessMessage(null);
-                                updateBookedPaymentMutation.mutate({
-                                  requestId: selectedBookedBotRequest.requestId,
-                                  input: {
-                                    paymentAmountCop,
-                                    paymentCurrency:
-                                      selectedBookedBotRequest.paymentCurrency ?? "COP",
-                                    paymentMethod: bookedPaymentFormState.paymentMethod,
-                                    paymentStatus: bookedPaymentFormState.paymentStatus
-                                  }
-                                });
-                              }}
-                              type="button"
-                            >
-                              {updateBookedPaymentMutation.isPending
-                                ? "Guardando pago..."
-                                : "Guardar pago"}
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                    </section>
-                  ) : null}
-                </>
-              ) : null}
-
-              {loadingErrorMessage !== null ? (
-                <errorBannerModule.ErrorBanner message={loadingErrorMessage} />
-              ) : null}
-              {submitErrorMessage !== null ? (
-                <errorBannerModule.ErrorBanner message={submitErrorMessage} />
-              ) : null}
-              {localSubmitErrorMessage !== null ? (
-                <errorBannerModule.ErrorBanner message={localSubmitErrorMessage} />
-              ) : null}
-              {submitSuccessMessage !== null ? (
-                <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                  {submitSuccessMessage}
-                </div>
-              ) : null}
-            </article>
-          </div>
-
-          {/* Desktop drawer — only for Agenda e Historial (booked tab) */}
-          {isFinalizedSection && isBookedTab ? (
-            <appointmentDrawerModule.AppointmentDrawer
-              isOpen={desktopDrawerOpen && selectedBookedAppointment !== null}
-              onClose={() => {
-                setDesktopDrawerOpen(false);
-                setExpandedBookedAction(null);
-                setLocalSubmitErrorMessage(null);
-                setSubmitSuccessMessage(null);
-              }}
-            >
-              {selectedBookedAppointment !== null ? (
-                <>
-                  <appointmentDetailCardModule.AppointmentDetailCard
-                    origin={selectedBookedAppointment.source === "MANUAL" ? "MANUAL" : "CHATBOT"}
-                    modality={
-                      selectedBookedAppointment.source === "MANUAL" &&
-                      selectedBookedAppointment.manualAppointment !== null
-                        ? selectedBookedAppointment.manualAppointment.isVirtual
-                          ? "VIRTUAL"
-                          : "PRESENCIAL"
-                        : selectedBookedAppointment.request?.appointmentModality === "PRESENCIAL"
-                          ? "PRESENCIAL"
-                          : "VIRTUAL"
-                    }
-                    patientFullName={selectedBookedAppointment.patientDisplayName}
-                    summary={
-                      selectedBookedAppointment.source === "MANUAL"
-                        ? selectedBookedAppointment.summary
-                        : (selectedBookedAppointment.request?.consultationReason ?? null)
-                    }
-                    startAt={selectedBookedAppointment.startAt.toISO() ?? ""}
-                    endAt={selectedBookedAppointment.endAt.toISO() ?? ""}
-                    timezone={timezone}
-                    durationMinutes={Math.round(
-                      selectedBookedAppointment.endAt.diff(
-                        selectedBookedAppointment.startAt,
-                        "minutes"
-                      ).minutes
-                    )}
-                    payment={
-                      selectedBookedAppointment.source === "MANUAL" &&
-                      selectedBookedAppointment.manualAppointment !== null
-                        ? {
-                            status:
-                              selectedBookedAppointment.manualAppointment.paymentStatus ?? null,
-                            amountCop: selectedBookedAppointment.manualAppointment.paymentAmountCop,
-                            currency: selectedBookedAppointment.manualAppointment.paymentCurrency,
-                            category: selectedBookedAppointment.manualAppointment.paymentMethod
-                          }
-                        : {
-                            status: selectedBookedAppointment.request?.paymentStatus ?? null,
-                            amountCop: selectedBookedAppointment.request?.paymentAmountCop ?? null,
-                            currency: selectedBookedAppointment.request?.paymentCurrency ?? "COP",
-                            category: selectedBookedAppointment.request?.paymentMethod ?? null
-                          }
-                    }
-                    paymentDraft={drawerPaymentDraft}
-                    onPaymentDraftChange={setDrawerPaymentDraft}
-                    isSavingPayment={
-                      updateManualPaymentMutation.isPending || updateBookedPaymentMutation.isPending
-                    }
-                    onSavePayment={() => {
-                      const amountCop = Number.parseInt(drawerPaymentDraft.amountCop, 10);
-                      if (Number.isNaN(amountCop) || amountCop <= 0) {
-                        setLocalSubmitErrorMessage("El valor del pago debe ser mayor a cero.");
-                        return;
-                      }
-                      setLocalSubmitErrorMessage(null);
-                      setSubmitSuccessMessage(null);
-                      if (
-                        selectedBookedAppointment.source === "MANUAL" &&
-                        selectedBookedAppointment.manualAppointmentId !== null
-                      ) {
-                        updateManualPaymentMutation.mutate({
-                          appointmentId: selectedBookedAppointment.manualAppointmentId,
-                          input: {
-                            paymentAmountCop: amountCop,
-                            paymentCurrency:
-                              selectedBookedAppointment.manualAppointment?.paymentCurrency ?? "COP",
-                            paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
-                            paymentStatus: "PAID"
-                          }
-                        });
-                      } else if (
-                        selectedBookedAppointment.source === "BOT" &&
-                        selectedBookedAppointment.requestId !== null
-                      ) {
-                        updateBookedPaymentMutation.mutate({
-                          requestId: selectedBookedAppointment.requestId,
-                          input: {
-                            paymentAmountCop: amountCop,
-                            paymentCurrency:
-                              selectedBookedAppointment.request?.paymentCurrency ?? "COP",
-                            paymentMethod: drawerPaymentDraft.category as "CASH" | "TRANSFER",
-                            paymentStatus: "PAID"
-                          }
-                        });
-                      }
-                    }}
-                    onReschedule={() => {
-                      setExpandedBookedAction(
-                        expandedBookedAction === "reschedule" ? null : "reschedule"
-                      );
-                    }}
-                    onCancel={() => {
-                      if (selectedBookedAppointment === null) {
-                        return;
-                      }
-                      const isConfirmed = window.confirm("¿Seguro que quieres cancelar esta cita?");
-                      if (!isConfirmed) {
-                        return;
-                      }
-                      setLocalSubmitErrorMessage(null);
-                      setSubmitSuccessMessage(null);
-                      if (
-                        selectedBookedAppointment.source === "BOT" &&
-                        selectedBookedBotRequest !== null
-                      ) {
-                        cancelBookedSlotMutation.mutate({
-                          requestId: selectedBookedBotRequest.requestId,
-                          input: { reason: null }
-                        });
-                      } else if (
-                        selectedBookedAppointment.source === "MANUAL" &&
-                        selectedBookedAppointment.manualAppointmentId !== null
-                      ) {
-                        cancelManualAppointmentMutation.mutate({
-                          appointmentId: selectedBookedAppointment.manualAppointmentId,
-                          input: { reason: null }
-                        });
-                      }
-                    }}
-                    errorMessage={localSubmitErrorMessage ?? submitErrorMessage}
-                    successMessage={submitSuccessMessage}
-                  />
-
-                  {/* Expanded reschedule form */}
-                  {expandedBookedAction === "reschedule" ? (
-                    <div
-                      className="border-t border-border-subtle px-5 py-4 space-y-4"
-                      data-testid="reschedule-slotpicker-drawer"
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          Selecciona un nuevo horario disponible.
-                        </p>
-                      </div>
-                      <slotPickerModule.SlotPicker
-                        timezone={colombiaTimezone}
-                        busyIntervals={rescheduleBusyIntervals}
-                        requestId={
-                          selectedBookedAppointment.source === "MANUAL"
-                            ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")
-                            : (selectedBookedAppointment.requestId ?? "reschedule")
-                        }
-                        selectedSlots={rescheduleSelectedSlots}
-                        onSelectedSlotsChange={(slots) =>
-                          setRescheduleSelectedSlots(slots.slice(-1))
-                        }
-                        isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
-                        onMonthChange={setRescheduleSlotPickerMonth}
-                      />
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        <button
-                          className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={
-                            rescheduleSelectedSlots.length !== 1 ||
-                            rescheduleManualAppointmentMutation.isPending ||
-                            rescheduleBookedSlotMutation.isPending
-                          }
-                          onClick={() => {
-                            const slot = rescheduleSelectedSlots[0];
-                            if (slot === undefined) {
-                              return;
-                            }
-                            setLocalSubmitErrorMessage(null);
-                            setSubmitSuccessMessage(null);
-                            if (
-                              selectedBookedAppointment.source === "MANUAL" &&
-                              selectedBookedAppointment.manualAppointmentId !== null
-                            ) {
-                              rescheduleManualAppointmentMutation.mutate({
-                                appointmentId: selectedBookedAppointment.manualAppointmentId,
-                                input: {
-                                  startAt: slot.startAt,
-                                  endAt: slot.endAt,
-                                  timezone: slot.timezone,
-                                  summary:
-                                    selectedBookedAppointment.manualAppointment?.summary.trim() ===
-                                    ""
-                                      ? null
-                                      : (selectedBookedAppointment.manualAppointment?.summary ??
-                                        null)
-                                }
-                              });
-                            } else if (
-                              selectedBookedAppointment.source === "BOT" &&
-                              selectedBookedBotRequest !== null
-                            ) {
-                              const eventSummary =
-                                selectedBookedAppointment.patientDisplayName.trim() === ""
-                                  ? "Cita"
-                                  : `Cita - ${selectedBookedAppointment.patientDisplayName}`;
-                              rescheduleBookedSlotMutation.mutate({
-                                requestId: selectedBookedBotRequest.requestId,
-                                input: {
-                                  startAt: slot.startAt,
-                                  endAt: slot.endAt,
-                                  timezone: slot.timezone,
-                                  eventSummary
-                                }
-                              });
-                            }
-                          }}
-                          type="button"
-                        >
-                          {rescheduleManualAppointmentMutation.isPending ||
-                          rescheduleBookedSlotMutation.isPending
-                            ? "Guardando..."
-                            : "Guardar reprogramación"}
-                        </button>
-                        <button
-                          className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                          onClick={() => {
-                            setExpandedBookedAction(null);
-                            setRescheduleSelectedSlots([]);
-                          }}
-                          type="button"
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {/* Expanded cancel form */}
-                  {expandedBookedAction === "cancel" ? (
-                    <div className="border-t border-border-subtle px-5 py-4">
-                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Cancelar cita
+                {/* Expanded reschedule form */}
+                {expandedBookedAction === "reschedule" ? (
+                  <div
+                    className="border-t border-border-subtle px-5 py-4 space-y-4"
+                    data-testid="reschedule-slotpicker-drawer"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-brand-ink">Reprogramar cita</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Selecciona un nuevo horario disponible.
                       </p>
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Motivo de cancelación (opcional)
-                        <textarea
-                          className="mt-1 min-h-20 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                          onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setBookedAppointmentFormState((currentValue) => ({
-                              ...currentValue,
-                              cancelReason: nextValue
-                            }));
-                          }}
-                          value={bookedAppointmentFormState.cancelReason}
-                        />
-                      </label>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={
-                            cancelBookedSlotMutation.isPending ||
-                            cancelManualAppointmentMutation.isPending
-                          }
-                          onClick={() => {
-                            const isConfirmed = window.confirm(
-                              "¿Seguro que quieres cancelar esta cita?"
-                            );
-                            if (!isConfirmed) {
-                              return;
-                            }
-                            setLocalSubmitErrorMessage(null);
-                            setSubmitSuccessMessage(null);
-                            if (
-                              selectedBookedAppointment.source === "BOT" &&
-                              selectedBookedBotRequest !== null
-                            ) {
-                              cancelBookedSlotMutation.mutate({
-                                requestId: selectedBookedBotRequest.requestId,
-                                input: {
-                                  reason:
-                                    bookedAppointmentFormState.cancelReason.trim() === ""
-                                      ? null
-                                      : bookedAppointmentFormState.cancelReason.trim()
-                                }
-                              });
-                            } else if (
-                              selectedBookedAppointment.source === "MANUAL" &&
-                              selectedBookedAppointment.manualAppointmentId !== null
-                            ) {
-                              cancelManualAppointmentMutation.mutate({
-                                appointmentId: selectedBookedAppointment.manualAppointmentId,
-                                input: {
-                                  reason:
-                                    bookedAppointmentFormState.cancelReason.trim() === ""
-                                      ? null
-                                      : bookedAppointmentFormState.cancelReason.trim()
-                                }
-                              });
-                            }
-                          }}
-                          type="button"
-                        >
-                          {cancelBookedSlotMutation.isPending ||
-                          cancelManualAppointmentMutation.isPending
-                            ? "Cancelando..."
-                            : "Cancelar cita"}
-                        </button>
-                        <button
-                          className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
-                          onClick={() => setExpandedBookedAction(null)}
-                          type="button"
-                        >
-                          Cerrar
-                        </button>
-                      </div>
                     </div>
-                  ) : null}
-                </>
-              ) : null}
-            </appointmentDrawerModule.AppointmentDrawer>
-          ) : null}
-        </section>
-      ) : null}
-
-      {isFinanceSection ? (
-        <section className="mt-4 space-y-4 sm:mt-6">
-          <article className="rounded-xl border border-border-subtle bg-white p-3 shadow-card sm:p-4">
-            <header className="mb-4">
-              <h3 className="text-sm font-semibold text-brand-ink sm:text-base">Finanzas</h3>
-              <p className="text-[11px] text-slate-500 sm:text-xs">
-                Seguimiento de pagos para citas agendadas (chatbot y manuales).
-              </p>
-            </header>
-
-            <section className="rounded-lg border border-border-subtle p-3">
-              <h4 className="text-sm font-semibold text-brand-ink">Filtros</h4>
-              <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Desde (fecha cita)
-                  <input
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) => setFinanceFromDate(event.target.value)}
-                    type="date"
-                    value={financeFromDate}
-                  />
-                </label>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Hasta (fecha cita)
-                  <input
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) => setFinanceToDate(event.target.value)}
-                    type="date"
-                    value={financeToDate}
-                  />
-                </label>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Estado de pago
-                  <select
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) =>
-                      setFinancePaymentStatusFilter(
-                        event.target.value as FinancePaymentStatusFilter
-                      )
-                    }
-                    value={financePaymentStatusFilter}
-                  >
-                    <option value="ALL">Todos</option>
-                    <option value="PENDING">Pendiente por pago</option>
-                    <option value="PAID">Pagada</option>
-                  </select>
-                </label>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Método de pago
-                  <select
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) =>
-                      setFinancePaymentMethodFilter(
-                        event.target.value as FinancePaymentMethodFilter
-                      )
-                    }
-                    value={financePaymentMethodFilter}
-                  >
-                    <option value="ALL">Todos</option>
-                    <option value="CASH">Efectivo</option>
-                    <option value="TRANSFER">Transferencia</option>
-                  </select>
-                </label>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Origen
-                  <select
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) =>
-                      setFinanceSourceFilter(event.target.value as FinanceSourceFilter)
-                    }
-                    value={financeSourceFilter}
-                  >
-                    <option value="ALL">Todos</option>
-                    <option value="CHATBOT">Chatbot</option>
-                    <option value="MANUAL">Manual</option>
-                  </select>
-                </label>
-                <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Buscar paciente
-                  <input
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    onChange={(event) => setFinanceSearchTerm(event.target.value)}
-                    placeholder="Nombre o WhatsApp"
-                    type="text"
-                    value={financeSearchTerm}
-                  />
-                </label>
-              </div>
-              <div className="mt-3">
-                <button
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                  onClick={() => {
-                    setFinanceFromDate("");
-                    setFinanceToDate("");
-                    setFinancePaymentStatusFilter("ALL");
-                    setFinancePaymentMethodFilter("ALL");
-                    setFinanceSourceFilter("ALL");
-                    setFinanceSearchTerm("");
-                  }}
-                  type="button"
-                >
-                  Limpiar filtros
-                </button>
-              </div>
-            </section>
-
-            <section className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <article className="rounded-lg border border-border-subtle bg-slate-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Total citas
-                </p>
-                <p className="mt-1 text-xl font-semibold text-brand-ink">
-                  {financeMetrics.totalAppointments}
-                </p>
-              </article>
-              <article className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
-                  Pendientes
-                </p>
-                <p className="mt-1 text-xl font-semibold text-amber-700">
-                  {financeMetrics.pendingAppointments}
-                </p>
-              </article>
-              <article className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                  Pagadas
-                </p>
-                <p className="mt-1 text-xl font-semibold text-emerald-700">
-                  {financeMetrics.paidAppointments}
-                </p>
-              </article>
-              <article className="rounded-lg border border-palette-sage bg-brand-accent-light p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-brand-teal">
-                  Total pagado
-                </p>
-                <p className="mt-1 text-xl font-semibold text-brand-teal">
-                  {formatCopCurrency(financeMetrics.totalPaidCop)}
-                </p>
-              </article>
-            </section>
-
-            <section className="mt-4 rounded-lg border border-border-subtle p-3">
-              <h4 className="text-sm font-semibold text-brand-ink">Detalle de citas</h4>
-              {filteredFinanceAppointments.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-500">
-                  No hay citas que coincidan con los filtros seleccionados.
-                </p>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  {filteredFinanceAppointments.map((appointment) => {
-                    const startAt = luxonModule.DateTime.fromISO(appointment.startAt, {
-                      zone: appointment.timezone
-                    });
-                    const endAt = luxonModule.DateTime.fromISO(appointment.endAt, {
-                      zone: appointment.timezone
-                    });
-                    const dateText =
-                      !startAt.isValid || !endAt.isValid
-                        ? "-"
-                        : `${startAt.toFormat("dd LLL yyyy HH:mm")} - ${endAt.toFormat("HH:mm")}`;
-                    const paymentMethodLabel =
-                      appointment.paymentMethod === "CASH"
-                        ? "Efectivo"
-                        : appointment.paymentMethod === "TRANSFER"
-                          ? "Transferencia"
-                          : "-";
-                    const paymentStatusLabel =
-                      appointment.paymentStatus === "PAID" ? "Pagada" : "Pendiente por pago";
-                    const paymentAmountLabel =
-                      appointment.paymentAmountCop === null
-                        ? "-"
-                        : formatCopCurrency(appointment.paymentAmountCop);
-                    return (
-                      <article
-                        className="rounded-md border border-slate-200 bg-white px-3 py-2"
-                        key={appointment.itemKey}
+                    <slotPickerModule.SlotPicker
+                      timezone={colombiaTimezone}
+                      busyIntervals={rescheduleBusyIntervals}
+                      requestId={
+                        selectedBookedAppointment.source === "MANUAL"
+                          ? (selectedBookedAppointment.manualAppointmentId ?? "reschedule")
+                          : (selectedBookedAppointment.requestId ?? "reschedule")
+                      }
+                      selectedSlots={rescheduleSelectedSlots}
+                      onSelectedSlotsChange={(slots) => setRescheduleSelectedSlots(slots.slice(-1))}
+                      isLoadingAvailability={rescheduleAvailabilityQuery.isLoading}
+                      onMonthChange={setRescheduleSlotPickerMonth}
+                    />
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button
+                        className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={
+                          rescheduleSelectedSlots.length !== 1 ||
+                          rescheduleManualAppointmentMutation.isPending ||
+                          rescheduleBookedSlotMutation.isPending
+                        }
+                        onClick={() => {
+                          const slot = rescheduleSelectedSlots[0];
+                          if (slot === undefined) {
+                            return;
+                          }
+                          setLocalSubmitErrorMessage(null);
+                          setSubmitSuccessMessage(null);
+                          if (
+                            selectedBookedAppointment.source === "MANUAL" &&
+                            selectedBookedAppointment.manualAppointmentId !== null
+                          ) {
+                            rescheduleManualAppointmentMutation.mutate({
+                              appointmentId: selectedBookedAppointment.manualAppointmentId,
+                              input: {
+                                startAt: slot.startAt,
+                                endAt: slot.endAt,
+                                timezone: slot.timezone,
+                                summary:
+                                  selectedBookedAppointment.manualAppointment?.summary.trim() === ""
+                                    ? null
+                                    : (selectedBookedAppointment.manualAppointment?.summary ?? null)
+                              }
+                            });
+                          } else if (
+                            selectedBookedAppointment.source === "BOT" &&
+                            selectedBookedBotRequest !== null
+                          ) {
+                            const eventSummary =
+                              selectedBookedAppointment.patientDisplayName.trim() === ""
+                                ? "Cita"
+                                : `Cita - ${selectedBookedAppointment.patientDisplayName}`;
+                            rescheduleBookedSlotMutation.mutate({
+                              requestId: selectedBookedBotRequest.requestId,
+                              input: {
+                                startAt: slot.startAt,
+                                endAt: slot.endAt,
+                                timezone: slot.timezone,
+                                eventSummary
+                              }
+                            });
+                          }
+                        }}
+                        type="button"
                       >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-brand-ink">
-                            {appointment.patientDisplayName}
-                          </p>
-                          <statusBadgeModule.StatusBadge
-                            label={paymentStatusLabel}
-                            tone={appointment.paymentStatus === "PAID" ? "success" : "warning"}
-                          />
-                        </div>
-                        <p className="text-xs text-slate-600">
-                          WhatsApp: {appointment.whatsappUserId}
-                        </p>
-                        <p className="text-xs text-slate-600">Cita: {dateText}</p>
-                        <p className="text-xs text-slate-600">Origen: {appointment.source}</p>
-                        <p className="text-xs text-slate-600">Valor: {paymentAmountLabel}</p>
-                        <p className="text-xs text-slate-600">Método: {paymentMethodLabel}</p>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          </article>
-        </section>
-      ) : null}
+                        {rescheduleManualAppointmentMutation.isPending ||
+                        rescheduleBookedSlotMutation.isPending
+                          ? "Guardando..."
+                          : "Guardar reprogramación"}
+                      </button>
+                      <button
+                        className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                        onClick={() => {
+                          setExpandedBookedAction(null);
+                          setRescheduleSelectedSlots([]);
+                        }}
+                        type="button"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Expanded cancel form */}
+                {expandedBookedAction === "cancel" ? (
+                  <div className="border-t border-border-subtle px-5 py-4">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Cancelar cita
+                    </p>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Motivo de cancelación (opcional)
+                      <textarea
+                        className="mt-1 min-h-20 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm text-slate-700 transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                        onChange={(event) => {
+                          const nextValue = event.target.value;
+                          setBookedAppointmentFormState((currentValue) => ({
+                            ...currentValue,
+                            cancelReason: nextValue
+                          }));
+                        }}
+                        value={bookedAppointmentFormState.cancelReason}
+                      />
+                    </label>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        className="rounded-md bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={
+                          cancelBookedSlotMutation.isPending ||
+                          cancelManualAppointmentMutation.isPending
+                        }
+                        onClick={() => {
+                          const isConfirmed = window.confirm(
+                            "¿Seguro que quieres cancelar esta cita?"
+                          );
+                          if (!isConfirmed) {
+                            return;
+                          }
+                          setLocalSubmitErrorMessage(null);
+                          setSubmitSuccessMessage(null);
+                          if (
+                            selectedBookedAppointment.source === "BOT" &&
+                            selectedBookedBotRequest !== null
+                          ) {
+                            cancelBookedSlotMutation.mutate({
+                              requestId: selectedBookedBotRequest.requestId,
+                              input: {
+                                reason:
+                                  bookedAppointmentFormState.cancelReason.trim() === ""
+                                    ? null
+                                    : bookedAppointmentFormState.cancelReason.trim()
+                              }
+                            });
+                          } else if (
+                            selectedBookedAppointment.source === "MANUAL" &&
+                            selectedBookedAppointment.manualAppointmentId !== null
+                          ) {
+                            cancelManualAppointmentMutation.mutate({
+                              appointmentId: selectedBookedAppointment.manualAppointmentId,
+                              input: {
+                                reason:
+                                  bookedAppointmentFormState.cancelReason.trim() === ""
+                                    ? null
+                                    : bookedAppointmentFormState.cancelReason.trim()
+                              }
+                            });
+                          }
+                        }}
+                        type="button"
+                      >
+                        {cancelBookedSlotMutation.isPending ||
+                        cancelManualAppointmentMutation.isPending
+                          ? "Cancelando..."
+                          : "Cancelar cita"}
+                      </button>
+                      <button
+                        className="rounded-lg border border-border-subtle px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                        onClick={() => setExpandedBookedAction(null)}
+                        type="button"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </appointmentDrawerModule.AppointmentDrawer>
+        ) : null}
+      </section>
+
       <NewManualAppointmentModal
         isOpen={isNewManualModalOpen}
         onClose={() => setIsNewManualModalOpen(false)}

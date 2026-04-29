@@ -59,7 +59,7 @@ export interface BackendApiPort {
   addBlacklist(whatsappUserId: string): Promise<blacklistModel.BlacklistEntry>;
   removeBlacklist(whatsappUserId: string): Promise<void>;
 
-  listPatients(): Promise<patientModel.Patient[]>;
+  listPatients(params?: { search?: string }): Promise<patientModel.Patient[]>;
   getPatient(whatsappUserId: string): Promise<patientModel.Patient>;
   createPatient(input: patientModel.CreatePatientInput): Promise<patientModel.Patient>;
   updatePatient(
@@ -121,6 +121,11 @@ export interface BackendApiPort {
     input: schedulingModel.UpdateBookedSlotPaymentInput
   ): Promise<schedulingModel.SchedulingRequestSummary>;
   closeSession(conversationId: string): Promise<{ status: string }>;
+
+  getProfessionalProfile(): Promise<agentModel.ProfessionalProfile>;
+  updateProfessionalProfile(
+    input: agentModel.UpdateProfessionalProfileInput
+  ): Promise<agentModel.ProfessionalProfile>;
 
   getTenantProfile(): Promise<tenantModel.TenantProfile>;
   updateTenantProfile(

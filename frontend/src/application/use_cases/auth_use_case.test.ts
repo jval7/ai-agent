@@ -94,6 +94,16 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async getProfessionalProfile(): Promise<agentModel.ProfessionalProfile> {
+    throw new Error("not used");
+  }
+
+  async updateProfessionalProfile(
+    _input: agentModel.UpdateProfessionalProfileInput
+  ): Promise<agentModel.ProfessionalProfile> {
+    throw new Error("not used");
+  }
+
   async getTenantProfile(): Promise<tenantModel.TenantProfile> {
     throw new Error("not used");
   }

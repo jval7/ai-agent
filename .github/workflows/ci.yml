@@ -113,6 +113,10 @@ jobs:
         if: steps.filter.outputs.changed == 'true'
         uses: hashicorp/setup-terraform@v3
         with:
+          # Pinned to match the version used locally and in deploy workflows.
+          # Newer terraform (1.10+) rejects empty `backend "gcs" {}` blocks
+          # during `validate`, even after `init -backend=false`.
+          terraform_version: 1.5.7
           terraform_wrapper: false
 
       # ── fmt + validate (push to develop, no creds needed) ──────────

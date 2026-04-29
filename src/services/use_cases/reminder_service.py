@@ -7,6 +7,7 @@ import src.domain.entities.message as message_entity
 import src.domain.entities.scheduled_reminder as scheduled_reminder_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.official_reminder_templates as official_reminder_templates
+import src.domain.payment_methods_formatter as payment_methods_formatter
 import src.domain.whatsapp_template_params as whatsapp_template_params
 import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
@@ -82,8 +83,10 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         if days_before is None:
             return
 
-        # Select template based on payment_status.
-        if payment_status == "PAID":
+        # Select template based on payment_timing and payment_status.
+        # AFTER_SESSION professionals always use the attendance template because
+        # payment happens after the session — no payment reminder is needed.
+        if agent_profile.payment_timing == "AFTER_SESSION" or payment_status == "PAID":
             template_name = agent_profile.appointment_reminder_attendance_template_name
         else:
             template_name = agent_profile.appointment_reminder_payment_template_name
@@ -197,6 +200,26 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             reminder.appointment_start_at,
             now_value,
         )
+
+        # Opción B: reselect template if payment_timing changed after the cloud task
+        # was scheduled. This covers the case where a professional switches from
+        # BEFORE_SESSION to AFTER_SESSION (or vice versa) after a reminder was already
+        # enqueued — we must send the template that matches the current configuration.
+        current_template_kind = official_reminder_templates.by_name(reminder.template_name)
+        if agent_profile.payment_timing == "AFTER_SESSION" and current_template_kind == "PAYMENT":
+            corrected_name = agent_profile.appointment_reminder_attendance_template_name
+            if corrected_name is not None:
+                reminder.template_name = corrected_name
+                self._scheduled_reminder_repository.save(reminder)
+                logger.info(
+                    "reminder.template_reselected",
+                    extra={
+                        "reminder_id": reminder_id,
+                        "reason": "payment_timing_is_in_person",
+                        "new_template": corrected_name,
+                    },
+                )
+
         template_kind = official_reminder_templates.by_name(reminder.template_name)
 
         if template_kind == "ATTENDANCE":
@@ -211,11 +234,14 @@ class ReminderService(reminder_service_port.ReminderServicePort):
                 whatsapp_template_params.sanitize_template_param(modality_text),
             ]
         elif template_kind == "PAYMENT":
-            payment_details = (
-                (agent_profile.payment_details_text or "").strip()
-                if agent_profile.payment_details_text is not None
-                else ""
+            # Source of truth: structured payment_methods configured in the
+            # agent form. Fall back to the legacy free-text field only when the
+            # tenant hasn't populated the structured list yet.
+            payment_details = payment_methods_formatter.format_payment_methods_for_template(
+                agent_profile.payment_methods
             )
+            if not payment_details and agent_profile.payment_details_text is not None:
+                payment_details = agent_profile.payment_details_text.strip()
             if not payment_details:
                 self._mark_reminder_failed(reminder, "payment_details_not_configured")
                 logger.warning(

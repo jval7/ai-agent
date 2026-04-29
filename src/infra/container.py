@@ -230,6 +230,7 @@ class AppContainer:
                 id_generator=self.id_generator_adapter,
                 clock=self.clock_adapter,
                 tenant_repository=self.tenant_repository,
+                agent_profile_repository=self.agent_profile_repository,
             )
         )
         self.task_scheduler: task_scheduler_port.TaskSchedulerPort
@@ -294,6 +295,7 @@ class AppContainer:
             whatsapp_provider=self.whatsapp_provider_adapter,
             whatsapp_connection_repository=self.whatsapp_connection_repository,
             event_description_builder=self.event_description_builder,
+            agent_profile_repository=self.agent_profile_repository,
         )
         self.scheduling_inbox_service = scheduling_inbox_service.SchedulingInboxService(
             scheduling_repository=self.scheduling_repository,

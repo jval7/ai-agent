@@ -386,3 +386,74 @@ export interface TenantProfileResponse {
 export interface UpdateTenantProfileRequest {
   professional_name: string | null;
 }
+
+// --- Professional Profile wire types ---
+
+export interface AssistantIdentityApiResponse {
+  assistant_name: string | null;
+  professional_title: string | null;
+  professional_name: string | null;
+  professional_address_term: string | null;
+  main_city: string | null;
+  tone: string | null;
+  languages: string[];
+}
+
+export interface ScheduleBlockApiResponse {
+  weekday_from: string;
+  weekday_to: string | null;
+  start_time: string;
+  end_time: string;
+}
+
+export interface TariffPriceApiResponse {
+  currency: string;
+  amount: number;
+}
+
+export interface TariffOptionApiResponse {
+  label: string;
+  description: string | null;
+  prices: TariffPriceApiResponse[];
+}
+
+export interface ServiceOfferingApiResponse {
+  name: string | null;
+  description: string | null;
+  modalities: string[];
+  tariffs: TariffOptionApiResponse[];
+}
+
+export interface PaymentMethodApiResponse {
+  currency: string;
+  method_name: string;
+  holder: string | null;
+  instructions: string | null;
+  applies_when: string | null;
+}
+
+export interface ProfessionalContextApiResponse {
+  approach: string | null;
+  common_topics: string[];
+  services_not_offered: string[];
+  coverage_notes: string | null;
+}
+
+export interface ProfessionalProfileApiResponse {
+  tenant_id: string;
+  identity: AssistantIdentityApiResponse | null;
+  professional_context: ProfessionalContextApiResponse | null;
+  services: ServiceOfferingApiResponse[];
+  presencial_schedule: ScheduleBlockApiResponse[];
+  virtual_schedule: ScheduleBlockApiResponse[];
+  payment_methods: PaymentMethodApiResponse[];
+}
+
+export interface UpdateProfessionalProfileApiRequest {
+  identity: AssistantIdentityApiResponse | null;
+  professional_context: ProfessionalContextApiResponse | null;
+  services: ServiceOfferingApiResponse[];
+  presencial_schedule: ScheduleBlockApiResponse[];
+  virtual_schedule: ScheduleBlockApiResponse[];
+  payment_methods: PaymentMethodApiResponse[];
+}

@@ -190,7 +190,7 @@ def test_submit_professional_slots_resumes_conversation() -> None:
     assert saved.slot_options_map == {"1": "slot-1"}
 
 
-def test_submit_professional_slots_rejects_non_60_min_slots() -> None:
+def test_submit_professional_slots_rejects_off_grid_duration() -> None:
     service, _, _, _ = build_services()
 
     with pytest.raises(service_exceptions.InvalidStateError):
@@ -203,7 +203,7 @@ def test_submit_professional_slots_rejects_non_60_min_slots() -> None:
                     scheduling_dto.ProfessionalSlotInputDTO(
                         slot_id="slot-1",
                         start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
-                        end_at=datetime.datetime(2026, 1, 1, 10, 30, tzinfo=datetime.UTC),
+                        end_at=datetime.datetime(2026, 1, 1, 10, 25, tzinfo=datetime.UTC),
                         timezone="America/Bogota",
                     )
                 ],
@@ -262,6 +262,62 @@ def test_submit_professional_slots_requires_professional_role() -> None:
                         slot_id="slot-1",
                         start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
                         end_at=datetime.datetime(2026, 1, 1, 11, 0, tzinfo=datetime.UTC),
+                        timezone="America/Bogota",
+                    )
+                ],
+                professional_note=None,
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Slot duration preset validation (per-appointment, picked by professional)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("duration_minutes", [15, 30, 45, 60, 90, 120])  # type: ignore[misc, unused-ignore]
+def test_submit_professional_slots_accepts_any_preset_duration(duration_minutes: int) -> None:
+    service, _, _, _ = build_services()
+    end_at = datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC) + datetime.timedelta(
+        minutes=duration_minutes
+    )
+    response = service.submit_professional_slots(
+        claims=build_claims(),
+        conversation_id="conv-1",
+        request_id="req-1",
+        submit_dto=scheduling_dto.ProfessionalSubmitSlotsDTO(
+            slots=[
+                scheduling_dto.ProfessionalSlotInputDTO(
+                    slot_id="slot-1",
+                    start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+                    end_at=end_at,
+                    timezone="America/Bogota",
+                )
+            ],
+            professional_note=None,
+        ),
+    )
+
+    assert response.status == "AWAITING_PATIENT_CHOICE"
+
+
+@pytest.mark.parametrize("duration_minutes", [10, 25, 50, 75, 100, 150])  # type: ignore[misc, unused-ignore]
+def test_submit_professional_slots_rejects_non_preset_duration(duration_minutes: int) -> None:
+    service, _, _, _ = build_services()
+    end_at = datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC) + datetime.timedelta(
+        minutes=duration_minutes
+    )
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.submit_professional_slots(
+            claims=build_claims(),
+            conversation_id="conv-1",
+            request_id="req-1",
+            submit_dto=scheduling_dto.ProfessionalSubmitSlotsDTO(
+                slots=[
+                    scheduling_dto.ProfessionalSlotInputDTO(
+                        slot_id="slot-1",
+                        start_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+                        end_at=end_at,
                         timezone="America/Bogota",
                     )
                 ],

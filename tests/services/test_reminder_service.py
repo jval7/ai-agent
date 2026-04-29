@@ -1023,3 +1023,103 @@ def test_send_reminder_now_raises_when_reminder_missing() -> None:
 
     with pytest.raises(service_exceptions.EntityNotFoundError):
         service.send_reminder_now("tenant-1", "unknown-id")
+
+
+# ---------------------------------------------------------------------------
+# payment_timing = AFTER_SESSION
+# ---------------------------------------------------------------------------
+
+
+def test_after_session_profile_uses_attendance_template_with_pending_payment() -> None:
+    """Cuando payment_timing es AFTER_SESSION, maybe_schedule_reminder siempre elige
+    el template de asistencia — incluso cuando payment_status es PENDING."""
+    profile = agent_profile_entity.AgentProfile(
+        tenant_id="tenant-1",
+        system_prompt="prompt",
+        appointment_reminder_enabled=True,
+        appointment_reminder_days_before=2,
+        appointment_reminder_attendance_template_name=_ATTENDANCE_CANONICAL_NAME,
+        appointment_reminder_payment_template_name=_PAYMENT_CANONICAL_NAME,
+        payment_timing="AFTER_SESSION",
+        updated_at=_NOW,
+    )
+    service, _, reminder_repo, task_sched, _ = _build_service(["reminder-1"], agent_profile=profile)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="SCHEDULING_REQUEST",
+        source_id="req-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Maria",
+        appointment_start_at=_APPOINTMENT_FAR,
+        payment_status="PENDING",
+    )
+
+    reminders = reminder_repo.list_by_tenant("tenant-1")
+    assert len(reminders) == 1
+    assert reminders[0].template_name == _ATTENDANCE_CANONICAL_NAME
+    assert len(task_sched.scheduled_tasks) == 1
+
+
+def test_execute_reminder_reselects_template_when_payment_timing_changed() -> None:
+    """Opción B: si un recordatorio fue agendado con el template de pago pero el
+    profesional luego cambia su payment_timing a AFTER_SESSION, execute_reminder debe
+    corregir el template a asistencia antes de enviar."""
+    # Perfil original: BEFORE_SESSION con ambos templates configurados.
+    initial_profile = agent_profile_entity.AgentProfile(
+        tenant_id="tenant-1",
+        system_prompt="prompt",
+        appointment_reminder_enabled=True,
+        appointment_reminder_days_before=1,
+        appointment_reminder_attendance_template_name=_ATTENDANCE_CANONICAL_NAME,
+        appointment_reminder_payment_template_name=_PAYMENT_CANONICAL_NAME,
+        payment_details_text="Nequi 300 111 2222",
+        payment_timing="BEFORE_SESSION",
+        updated_at=_NOW,
+    )
+    service, agent_profile_repo, reminder_repo, _, wa_provider = _build_service(
+        ["reminder-1"], agent_profile=initial_profile
+    )
+
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)
+
+    # Agendar recordatorio de PAGO (porque en ese momento el perfil era BEFORE_SESSION/PENDING).
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Carlos",
+        appointment_start_at=appointment,
+        payment_status="PENDING",
+    )
+
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    assert len(pending) == 1
+    assert pending[0].template_name == _PAYMENT_CANONICAL_NAME
+
+    # Simular que el profesional cambia a AFTER_SESSION después de agendar el cloud task.
+    updated_profile = agent_profile_entity.AgentProfile(
+        tenant_id="tenant-1",
+        system_prompt="prompt",
+        appointment_reminder_enabled=True,
+        appointment_reminder_days_before=1,
+        appointment_reminder_attendance_template_name=_ATTENDANCE_CANONICAL_NAME,
+        appointment_reminder_payment_template_name=_PAYMENT_CANONICAL_NAME,
+        payment_details_text="Nequi 300 111 2222",
+        payment_timing="AFTER_SESSION",
+        updated_at=_NOW,
+    )
+    agent_profile_repo.save(updated_profile)
+
+    result = service.execute_reminder("tenant-1", pending[0].id)
+
+    assert result["status"] == "sent"
+    # El template enviado debe ser el de asistencia, no el de pago.
+    assert len(wa_provider.sent_messages) == 1
+    assert wa_provider.sent_messages[0]["template_name"] == _ATTENDANCE_CANONICAL_NAME
+    # El reminder en repo también debe tener el template corregido.
+    updated_reminder = reminder_repo.get_by_id("tenant-1", pending[0].id)
+    assert updated_reminder is not None
+    assert updated_reminder.template_name == _ATTENDANCE_CANONICAL_NAME

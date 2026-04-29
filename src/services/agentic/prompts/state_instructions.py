@@ -1,7 +1,17 @@
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.patient as patient_entity
+import src.services.agentic.prompts.professional_reference as professional_reference
 import src.services.agentic.prompts.prompt_section as prompt_section
 import src.services.agentic.state_models as agentic_state_models
+
+# Runtime enforcement: data injected by the backend must be used verbatim.
+# Lives here (not in style_rules_template) because it references internal
+# runtime variable names that a professional would never see in the UI form.
+_NEVER_INVENT_INJECTED_DATA = (
+    "Si el contexto inyectado tiene `fecha_cita`, `nombre_paciente`, `modalidad_actual` u otro dato "
+    "del paciente o de la cita, usalos EXACTAMENTE como aparecen. "
+    "NUNCA inventes ni parafrasees fechas, horas, nombres ni datos del paciente."
+)
 
 
 class StateInstructionsSection(prompt_section.PromptSection):
@@ -12,18 +22,37 @@ class StateInstructionsSection(prompt_section.PromptSection):
         agent_profile: agent_profile_entity.AgentProfile | None = None,
     ) -> list[str]:
         del known_patient
-        del agent_profile
-        return _instructions_for_state(runtime_context)
+        return _instructions_for_state(runtime_context, agent_profile)
 
 
 def _instructions_for_state(
     runtime_context: agentic_state_models.RuntimePromptContext,
+    agent_profile: agent_profile_entity.AgentProfile | None = None,
 ) -> list[str]:
+    identity = agent_profile.identity if agent_profile is not None else None
+    ref = professional_reference.professional_reference(identity)
+
     if runtime_context.state == "NO_ACTIVE_REQUEST":
         return [
-            "Flujo actual: inicio de agendamiento. Sigue las instrucciones del system prompt para recoger los datos necesarios.",
-            "Cuando tengas consultation_reason y appointment_modality (y patient_location si es VIRTUAL), "
-            "llama submit_consultation_reason_for_review.",
+            "Flujo actual: inicio de agendamiento.",
+            "Sigue esta secuencia conversacional, agrupando preguntas relacionadas en un mismo mensaje:\n"
+            "  1. Si es el primer mensaje, presentate y pregunta el nombre del paciente.\n"
+            "  2. Presenta los servicios disponibles (de la seccion <services> del system prompt) "
+            "y pregunta cual le interesa.\n"
+            "  3. Pregunta el motivo (consultation_reason). En el mismo mensaje, pregunta la "
+            "modalidad SOLO si el servicio elegido en el paso 2 soporta ambas (revisa "
+            "`<modalities>` del `<service>` correspondiente). Si el servicio solo soporta una "
+            "modalidad, asume esa automaticamente y no preguntes.\n"
+            "  4. Si la modalidad resultante es VIRTUAL, pregunta ciudad o pais desde donde "
+            "se conectara. Si es PRESENCIAL, omite este paso.",
+            "Datos a recolectar antes de llamar submit_consultation_reason_for_review:\n"
+            "  • Nombre del paciente\n"
+            "  • Tipo de servicio (de la seccion <services>)\n"
+            "  • consultation_reason (motivo breve)\n"
+            "  • appointment_modality (PRESENCIAL o VIRTUAL — inferida del servicio si solo "
+            "soporta una; preguntada al paciente si soporta ambas)\n"
+            "  • patient_location (solo si modalidad es VIRTUAL)",
+            "Cuando tengas todos los datos, llama submit_consultation_reason_for_review.",
             "No llames confirm_selected_slot_and_create_event en este estado.",
             "Si el paciente pregunta por un servicio que no se ofrece y no le interesa ninguna alternativa, "
             "usa close_session para cerrar la conversacion de forma amable.",
@@ -71,11 +100,15 @@ def _instructions_for_state(
         return [
             "Flujo actual: pago pendiente de aprobacion.",
             "Si el paciente avisa que ya pago o envia comprobante, responde solo 'Gracias, dame un momento'. "
-            "No menciones que alguien esta revisando el pago ni que la Doc lo va a confirmar.",
+            f"No menciones que alguien esta revisando el pago ni que {ref} lo va a confirmar.",
+            "Cuando indiques como pagar, da las instrucciones directas (monto, medio, "
+            "numero o referencia, beneficiario). No preguntes si el paciente puede pagar por ese medio.",
+            "Si el paciente pregunta por otros medios de pago (efectivo, tarjeta, otra app, etc.), "
+            "responde que solo se aceptan los metodos listados en la seccion <payment_info> del "
+            "system prompt y repitele las instrucciones del medio que aplica a su caso.",
             "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
             "precios, datos de pago, horarios o informacion general del consultorio.",
-            "Si el paciente pregunta por el horario o fecha de su cita, responde usando EXACTAMENTE "
-            "el valor de `fecha_cita` del runtime context. NUNCA inventes ni parafrasees fechas u horas.",
+            _NEVER_INVENT_INJECTED_DATA,
             "No solicites el comprobante de nuevo ni avances el flujo de agendamiento.",
             "Sigue las reglas de medio de pago del system prompt. "
             "Solo usa handoff_to_human si el paciente dice explicitamente que NO puede pagar "
@@ -89,8 +122,7 @@ def _instructions_for_state(
             "Ambas cosas en el mismo turno: texto de respuesta + llamada a la tool.",
             "Puedes responder preguntas generales del paciente: informacion del consultorio, "
             "horarios, direccion, preparacion para la cita u otros datos generales.",
-            "Si el paciente pregunta por la fecha u hora de su cita, responde usando EXACTAMENTE "
-            "el valor de `fecha_cita` del runtime context. NUNCA inventes ni parafrasees fechas u horas.",
+            _NEVER_INVENT_INJECTED_DATA,
             "Si el paciente dice que NO puede asistir o pide reagendar/cancelar su cita, "
             "usa handoff_to_human — el bot no gestiona cambios de citas ya reservadas.",
             "No solicites confirmacion de nuevo si el paciente ya respondio.",
@@ -104,9 +136,9 @@ def _instructions_for_state(
             "(usa `nombre_paciente` del runtime context si esta disponible), la fecha y hora "
             "(USA EXACTAMENTE el valor de `fecha_cita` del runtime context), y la modalidad "
             "(usa `modalidad_actual`).",
-            "REGLA DURA: NUNCA inventes ni parafrasees la fecha ni la hora. Si `fecha_cita` no "
-            "esta en el runtime context, NO menciones fecha ni hora; en su lugar di que el paciente "
-            "puede revisar la invitacion de Google Calendar enviada a su correo.",
+            _NEVER_INVENT_INJECTED_DATA,
+            "Si `fecha_cita` no esta en el runtime context, NO menciones fecha ni hora; "
+            "en su lugar di que el paciente puede revisar la invitacion de Google Calendar enviada a su correo.",
         ]
         if modality == "PRESENCIAL":
             lines += [
