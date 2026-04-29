@@ -1255,7 +1255,7 @@ function mapTariffOption(raw: httpTypes.TariffOptionApiResponse): agentModel.Tar
     label: raw.label,
     amount: raw.amount,
     currency: raw.currency,
-    discountPercent: raw.discount_percent
+    description: raw.description
   };
 }
 
@@ -1264,7 +1264,7 @@ function tariffOptionToApi(item: agentModel.TariffOption): httpTypes.TariffOptio
     label: item.label,
     amount: item.amount,
     currency: item.currency,
-    discount_percent: item.discountPercent
+    description: item.description
   };
 }
 
@@ -1293,10 +1293,8 @@ function mapServiceOffering(raw: httpTypes.ServiceOfferingApiResponse): agentMod
   return {
     name: raw.name,
     description: raw.description,
-    audience: raw.audience,
     modalities: raw.modalities as agentModel.Modality[],
-    tariffsLocal: raw.tariffs_local.map(mapTariffOption),
-    tariffsForeign: raw.tariffs_foreign.map(mapTariffOption)
+    tariffs: raw.tariffs.map(mapTariffOption)
   };
 }
 
@@ -1306,10 +1304,8 @@ function serviceOfferingToApi(
   return {
     name: item.name,
     description: item.description,
-    audience: item.audience,
     modalities: item.modalities,
-    tariffs_local: item.tariffsLocal.map(tariffOptionToApi),
-    tariffs_foreign: item.tariffsForeign.map(tariffOptionToApi)
+    tariffs: item.tariffs.map(tariffOptionToApi)
   };
 }
 

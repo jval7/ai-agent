@@ -27,16 +27,14 @@ class TariffOptionDTO(pydantic.BaseModel):
     label: str
     amount: float
     currency: str
-    discount_percent: float | None = None
+    description: str | None = None
 
 
 class ServiceOfferingDTO(pydantic.BaseModel):
     name: str | None = None
     description: str | None = None
-    audience: str | None = None
     modalities: list[typing.Literal["PRESENCIAL", "VIRTUAL"]] = []
-    tariffs_local: list[TariffOptionDTO] = []
-    tariffs_foreign: list[TariffOptionDTO] = []
+    tariffs: list[TariffOptionDTO] = []
 
 
 class PaymentMethodDTO(pydantic.BaseModel):

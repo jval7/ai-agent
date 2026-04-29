@@ -108,7 +108,7 @@ def _tariff_to_dto(t: agent_profile_entity.TariffOption) -> agent_dto.TariffOpti
         label=t.label,
         amount=t.amount,
         currency=t.currency,
-        discount_percent=t.discount_percent,
+        description=t.description,
     )
 
 
@@ -117,7 +117,7 @@ def _tariff_dto_to_entity(dto: agent_dto.TariffOptionDTO) -> agent_profile_entit
         label=dto.label,
         amount=dto.amount,
         currency=dto.currency,
-        discount_percent=dto.discount_percent,
+        description=dto.description,
     )
 
 
@@ -127,10 +127,8 @@ def _service_offering_to_dto(
     return agent_dto.ServiceOfferingDTO(
         name=svc.name,
         description=svc.description,
-        audience=svc.audience,
         modalities=list(svc.modalities),
-        tariffs_local=[_tariff_to_dto(t) for t in svc.tariffs_local],
-        tariffs_foreign=[_tariff_to_dto(t) for t in svc.tariffs_foreign],
+        tariffs=[_tariff_to_dto(t) for t in svc.tariffs],
     )
 
 
@@ -140,10 +138,8 @@ def _service_offering_dto_to_entity(
     return agent_profile_entity.ServiceOffering(
         name=dto.name,
         description=dto.description,
-        audience=dto.audience,
         modalities=list(dto.modalities),
-        tariffs_local=[_tariff_dto_to_entity(t) for t in dto.tariffs_local],
-        tariffs_foreign=[_tariff_dto_to_entity(t) for t in dto.tariffs_foreign],
+        tariffs=[_tariff_dto_to_entity(t) for t in dto.tariffs],
     )
 
 

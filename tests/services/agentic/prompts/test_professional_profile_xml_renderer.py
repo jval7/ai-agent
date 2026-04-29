@@ -32,9 +32,8 @@ def _full_profile() -> agent_profile_entity.AgentProfile:
         services=[
             agent_profile_entity.ServiceOffering(
                 name="Consulta Individual Adultos",
-                audience="Adultos",
                 modalities=["PRESENCIAL", "VIRTUAL"],
-                tariffs_local=[
+                tariffs=[
                     agent_profile_entity.TariffOption(
                         label="Sesión individual", amount=130000, currency="COP"
                     ),
@@ -42,12 +41,13 @@ def _full_profile() -> agent_profile_entity.AgentProfile:
                         label="Paquete 3 sesiones",
                         amount=370500,
                         currency="COP",
-                        discount_percent=5,
+                        description="5% descuento",
                     ),
-                ],
-                tariffs_foreign=[
                     agent_profile_entity.TariffOption(
-                        label="Sesión individual", amount=90, currency="USD"
+                        label="Sesión individual extranjeros",
+                        amount=90,
+                        currency="USD",
+                        description="Pacientes fuera de Colombia",
                     ),
                 ],
             ),
@@ -285,44 +285,81 @@ class TestRendererPaymentMethods:
         assert "<account_details>786-000-0000</account_details>" in result
 
 
-class TestRendererForeignTariffs:
-    def test_foreign_tariffs_included_only_when_set(self) -> None:
-        profile_with_foreign = agent_profile_entity.AgentProfile(
+class TestRendererUnifiedTariffs:
+    def test_tariffs_in_multiple_currencies_are_emitted_together(self) -> None:
+        # The new schema has a single `tariffs` list per service. Multiple
+        # currencies coexist; the renderer emits each tariff with its own
+        # <amount> tag including the currency.
+        profile = agent_profile_entity.AgentProfile(
             tenant_id="t-1",
             services=[
                 agent_profile_entity.ServiceOffering(
                     name="Adultos",
-                    tariffs_local=[
+                    tariffs=[
                         agent_profile_entity.TariffOption(
-                            label="Sesión", amount=130000, currency="COP"
-                        )
-                    ],
-                    tariffs_foreign=[
-                        agent_profile_entity.TariffOption(label="Sesión", amount=90, currency="USD")
+                            label="Sesión local", amount=130000, currency="COP"
+                        ),
+                        agent_profile_entity.TariffOption(
+                            label="Sesión extranjero", amount=90, currency="USD"
+                        ),
                     ],
                 )
             ],
             updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         )
-        result = renderer.render_system_prompt_xml(profile_with_foreign)
-        assert "extranjeros" in result.lower()
-        assert "90 USD" in result
+        result = renderer.render_system_prompt_xml(profile)
+        assert "<label>Sesión local</label>" in result
+        assert "<amount>130,000 COP</amount>" in result
+        assert "<label>Sesión extranjero</label>" in result
+        assert "<amount>90 USD</amount>" in result
 
-    def test_foreign_tariffs_omitted_when_not_set(self) -> None:
-        profile_local_only = agent_profile_entity.AgentProfile(
+    def test_tariff_description_is_emitted_when_set(self) -> None:
+        profile = agent_profile_entity.AgentProfile(
             tenant_id="t-1",
             services=[
                 agent_profile_entity.ServiceOffering(
                     name="Adultos",
-                    tariffs_local=[
+                    tariffs=[
                         agent_profile_entity.TariffOption(
-                            label="Sesión", amount=130000, currency="COP"
+                            label="Paquete 3",
+                            amount=370500,
+                            currency="COP",
+                            description="5% descuento",
                         )
                     ],
                 )
             ],
             updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         )
-        result = renderer.render_system_prompt_xml(profile_local_only)
-        assert "extranjeros" not in result.lower()
-        assert "USD" not in result
+        result = renderer.render_system_prompt_xml(profile)
+        assert "<description>5% descuento</description>" in result
+
+    def test_legacy_split_tariffs_are_migrated_on_read(self) -> None:
+        # Pre-existing Firestore data may have `tariffs_local` and
+        # `tariffs_foreign`. The model validator merges them into `tariffs`.
+        legacy_dict = {
+            "name": "Adultos",
+            "tariffs_local": [{"label": "Local", "amount": 100, "currency": "COP"}],
+            "tariffs_foreign": [{"label": "Foreign", "amount": 90, "currency": "USD"}],
+        }
+        svc = agent_profile_entity.ServiceOffering.model_validate(legacy_dict)
+        assert len(svc.tariffs) == 2
+        assert svc.tariffs[0].currency == "COP"
+        assert svc.tariffs[1].currency == "USD"
+
+    def test_legacy_discount_percent_is_migrated_to_description(self) -> None:
+        legacy_tariff = {
+            "label": "Paquete",
+            "amount": 100,
+            "currency": "COP",
+            "discount_percent": 5,
+        }
+        tariff = agent_profile_entity.TariffOption.model_validate(legacy_tariff)
+        assert tariff.description == "5% descuento"
+
+    def test_legacy_audience_is_dropped_silently(self) -> None:
+        legacy_dict = {"name": "Adultos", "audience": "should disappear"}
+        svc = agent_profile_entity.ServiceOffering.model_validate(legacy_dict)
+        assert svc.name == "Adultos"
+        # `audience` no longer exists on the model: not in serialized output.
+        assert "audience" not in svc.model_dump()

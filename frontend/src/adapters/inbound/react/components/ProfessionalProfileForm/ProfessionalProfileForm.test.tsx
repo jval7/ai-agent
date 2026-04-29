@@ -42,10 +42,8 @@ const FULL_PROFILE: agentModel.ProfessionalProfile = {
     {
       name: "Consulta Individual",
       description: null,
-      audience: "Adultos",
       modalities: ["PRESENCIAL", "VIRTUAL"],
-      tariffsLocal: [{ label: "Sesión", amount: 130000, currency: "COP", discountPercent: null }],
-      tariffsForeign: []
+      tariffs: [{ label: "Sesión", amount: 130000, currency: "COP", description: null }]
     }
   ],
   presencialSchedule: [
@@ -149,6 +147,12 @@ vitestModule.describe("ProfessionalProfileForm", () => {
     await expandCard(/Identidad del asistente/i);
     await expandCard(/Servicios y práctica/i);
     await expandCard(/Medios de pago/i);
+
+    // Now expand the inner item cards (services and payment methods are also
+    // collapsible cards in the new UX; the inner button label is the item
+    // summary text).
+    await expandCard(/Consulta Individual/i);
+    await expandCard(/Nequi/i);
 
     await testingLibraryReactModule.waitFor(() => {
       const assistantNameInput = testingLibraryReactModule.screen.getByDisplayValue("Claudia");

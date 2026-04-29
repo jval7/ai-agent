@@ -16,10 +16,8 @@ function newServiceOffering(): agentModel.ServiceOffering {
   return {
     name: null,
     description: null,
-    audience: null,
     modalities: [],
-    tariffsLocal: [],
-    tariffsForeign: []
+    tariffs: []
   };
 }
 

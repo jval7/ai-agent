@@ -21,16 +21,14 @@ export interface TariffOption {
   label: string;
   amount: number;
   currency: string;
-  discountPercent: number | null;
+  description: string | null;
 }
 
 export interface ServiceOffering {
   name: string | null;
   description: string | null;
-  audience: string | null;
   modalities: Modality[];
-  tariffsLocal: TariffOption[];
-  tariffsForeign: TariffOption[];
+  tariffs: TariffOption[];
 }
 
 export interface PaymentMethod {

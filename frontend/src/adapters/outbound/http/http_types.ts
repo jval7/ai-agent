@@ -409,16 +409,14 @@ export interface TariffOptionApiResponse {
   label: string;
   amount: number;
   currency: string;
-  discount_percent: number | null;
+  description: string | null;
 }
 
 export interface ServiceOfferingApiResponse {
   name: string | null;
   description: string | null;
-  audience: string | null;
   modalities: string[];
-  tariffs_local: TariffOptionApiResponse[];
-  tariffs_foreign: TariffOptionApiResponse[];
+  tariffs: TariffOptionApiResponse[];
 }
 
 export interface PaymentMethodApiResponse {

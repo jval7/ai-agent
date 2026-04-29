@@ -7,7 +7,7 @@ Design decisions:
 - Sections are omitted entirely when the corresponding fields are empty.
 - style_rules are always included regardless of form completion state.
 - schedule blocks are formatted as human-readable Spanish text.
-- Foreign tariffs block is emitted only when tariffs_foreign is non-empty.
+- Each service emits a single <tariffs> block; multiple currencies coexist.
 """
 
 import src.domain.entities.agent_profile as agent_profile_entity
@@ -104,48 +104,35 @@ def _render_professional_context(
 
 
 def _render_tariff_option(tariff: agent_profile_entity.TariffOption) -> str:
+    """Render a tariff with explicit nested tags for label, amount and notes."""
     amount_formatted = (
         f"{tariff.amount:,.0f}" if tariff.amount == int(tariff.amount) else f"{tariff.amount:,.2f}"
     )
-    text = f"{tariff.label}: {amount_formatted} {tariff.currency}"
-    if tariff.discount_percent is not None:
-        text += f" ({tariff.discount_percent:.0f}% off)"
-    return f"<option>{text}</option>"
+    parts = [
+        f"<label>{tariff.label}</label>",
+        f"<amount>{amount_formatted} {tariff.currency}</amount>",
+    ]
+    if tariff.description:
+        parts.append(f"<description>{tariff.description}</description>")
+    return "<tariff>\n" + "\n".join(parts) + "\n</tariff>"
 
 
 def _render_services(services: list[agent_profile_entity.ServiceOffering]) -> str:
     service_blocks: list[str] = []
     for svc in services:
-        if not svc.name and not svc.description:
+        if not svc.name and not svc.description and not svc.tariffs:
             continue
         lines: list[str] = []
         if svc.name:
             lines.append(f"<name>{svc.name}</name>")
-        if svc.audience:
-            lines.append(f"<audience>{svc.audience}</audience>")
         if svc.modalities:
             modalities_text = " y ".join(m.capitalize() for m in svc.modalities)
             lines.append(f"<modalities>{modalities_text}</modalities>")
         if svc.description:
             lines.append(f"<description>{svc.description}</description>")
-
-        # Pricing
-        pricing_parts: list[str] = []
-        if svc.tariffs_local:
-            local_currency = svc.tariffs_local[0].currency if svc.tariffs_local else ""
-            category_name = f"{svc.name or 'Servicio'} ({local_currency})"
-            options = "\n".join(_render_tariff_option(t) for t in svc.tariffs_local)
-            pricing_parts.append(f'<category name="{category_name}">\n{options}\n</category>')
-        if svc.tariffs_foreign:
-            foreign_currency = svc.tariffs_foreign[0].currency if svc.tariffs_foreign else "USD"
-            category_name = (
-                f"Pacientes extranjeros - solo si está fuera de Colombia ({foreign_currency})"
-            )
-            options = "\n".join(_render_tariff_option(t) for t in svc.tariffs_foreign)
-            pricing_parts.append(f'<category name="{category_name}">\n{options}\n</category>')
-
-        if pricing_parts:
-            lines.append("<pricing>\n" + "\n".join(pricing_parts) + "\n</pricing>")
+        if svc.tariffs:
+            tariffs_xml = "\n".join(_render_tariff_option(t) for t in svc.tariffs)
+            lines.append(f"<tariffs>\n{tariffs_xml}\n</tariffs>")
 
         service_blocks.append("<service>\n" + "\n".join(lines) + "\n</service>")
 
