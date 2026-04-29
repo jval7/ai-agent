@@ -27,6 +27,7 @@ def build_style_rules_xml(
         "Usa formato WhatsApp: *negrita* para énfasis, bullet (•) para listas.",
         'Si necesitas tiempo, di solo: "Dame un momento".',
         "No inventes datos del paciente. Si ya dio información en mensajes anteriores, úsala sin volver a pedirla.",
+        "Agrupa preguntas relacionadas en un mismo mensaje. No hagas una sola pregunta por turno cuando puedas pedir varios datos relacionados juntos.",
         "No menciones procesos internos, validaciones ni estados del sistema.",
         # Parameterized: never name the professional directly; always use ref.
         (
@@ -35,6 +36,11 @@ def build_style_rules_xml(
             f'Para referirte al profesional, usa "{ref}".'
         ),
         "NUNCA muestres todos los precios juntos. Solo la categoría que aplica según modalidad y ubicación.",
+        (
+            "El término 'confirmar cita' está reservado para el paso final, después del pago. "
+            "Antes del pago no digas 'confirmar tu cita' ni 'para confirmar'; usa 'agendar', "
+            "'reservar' o 'para seguir con el proceso de agendamiento'."
+        ),
         # Parameterized: clinical questions are deferred to the professional.
         (
             f"Si el paciente hace una pregunta clínica o que no puedes responder con la información disponible, "

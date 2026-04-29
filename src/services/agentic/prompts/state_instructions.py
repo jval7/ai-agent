@@ -34,9 +34,20 @@ def _instructions_for_state(
 
     if runtime_context.state == "NO_ACTIVE_REQUEST":
         return [
-            "Flujo actual: inicio de agendamiento. Sigue las instrucciones del system prompt para recoger los datos necesarios.",
-            "Cuando tengas consultation_reason y appointment_modality (y patient_location si es VIRTUAL), "
-            "llama submit_consultation_reason_for_review.",
+            "Flujo actual: inicio de agendamiento.",
+            "Sigue esta secuencia conversacional, agrupando preguntas relacionadas en un mismo mensaje:\n"
+            "  1. Si es el primer mensaje, presentate y pregunta el nombre del paciente.\n"
+            "  2. Presenta los servicios disponibles (de la seccion <services> del system prompt) "
+            "y pregunta cual le interesa.\n"
+            "  3. Pregunta motivo (consultation_reason) y modalidad (PRESENCIAL o VIRTUAL) en el mismo mensaje.\n"
+            "  4. Si la modalidad es VIRTUAL, pregunta ciudad o pais desde donde se conectara.",
+            "Datos a recolectar antes de llamar submit_consultation_reason_for_review:\n"
+            "  • Nombre del paciente\n"
+            "  • Tipo de servicio (de la seccion <services>)\n"
+            "  • consultation_reason (motivo breve)\n"
+            "  • appointment_modality (PRESENCIAL o VIRTUAL)\n"
+            "  • patient_location (solo si modalidad es VIRTUAL)",
+            "Cuando tengas todos los datos, llama submit_consultation_reason_for_review.",
             "No llames confirm_selected_slot_and_create_event en este estado.",
             "Si el paciente pregunta por un servicio que no se ofrece y no le interesa ninguna alternativa, "
             "usa close_session para cerrar la conversacion de forma amable.",
@@ -85,6 +96,11 @@ def _instructions_for_state(
             "Flujo actual: pago pendiente de aprobacion.",
             "Si el paciente avisa que ya pago o envia comprobante, responde solo 'Gracias, dame un momento'. "
             f"No menciones que alguien esta revisando el pago ni que {ref} lo va a confirmar.",
+            "Cuando indiques como pagar, da las instrucciones directas (monto, medio, "
+            "numero o referencia, beneficiario). No preguntes si el paciente puede pagar por ese medio.",
+            "Si el paciente pregunta por otros medios de pago (efectivo, tarjeta, otra app, etc.), "
+            "responde que solo se aceptan los metodos listados en la seccion <payment_info> del "
+            "system prompt y repitele las instrucciones del medio que aplica a su caso.",
             "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
             "precios, datos de pago, horarios o informacion general del consultorio.",
             _NEVER_INVENT_INJECTED_DATA,
