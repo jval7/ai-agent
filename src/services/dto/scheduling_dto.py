@@ -105,6 +105,11 @@ class ConfirmSelectedSlotInputDTO(pydantic.BaseModel):
     slot_id: str
     event_summary: str
     attendee_emails: list[str] = []
+    # Resolved patient name from the profile resolver. Persisted on the
+    # SchedulingRequest at booking time so reminder messages and the admin
+    # reminders list can show the actual patient name instead of "Paciente".
+    patient_first_name: str | None = None
+    patient_last_name: str | None = None
 
 
 class ConfirmSelectedSlotToolInputDTO(pydantic.BaseModel):

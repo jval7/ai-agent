@@ -795,6 +795,15 @@ class SchedulingService:
         if selected_slot is None:
             raise service_exceptions.InvalidStateError("selected slot is not available")
 
+        # Persist the resolved patient name on the request so reminder
+        # messages and the admin reminders list show the actual name instead
+        # of the "Paciente" fallback. The resolver fills these from the
+        # collected patient profile right before this call.
+        if input_dto.patient_first_name is not None:
+            request.patient_first_name = input_dto.patient_first_name
+        if input_dto.patient_last_name is not None:
+            request.patient_last_name = input_dto.patient_last_name
+
         now_value = self._clock.now()
         return self._book_slot_and_create_event(
             tenant_id=tenant_id,
