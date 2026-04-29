@@ -35,7 +35,19 @@ def build_style_rules_xml(
             f'Di "déjame validar la agenda" o "déjame revisar disponibilidad". '
             f'Para referirte al profesional, usa "{ref}".'
         ),
-        "NUNCA muestres todos los precios juntos. Solo la categoría que aplica según modalidad y ubicación.",
+        # Multi-currency pricing rule. The old wording mentioned "modalidad y
+        # ubicación" which was misleading: prices vary by currency (location),
+        # never by modality. The bot used to ask the patient for modality
+        # before quoting a price even when there was a single price for the
+        # service. The new wording also forbids labeling the patient
+        # ("para pacientes en el exterior") so different patients see the
+        # same neutral framing regardless of which currency applies.
+        (
+            "Si una tarifa tiene precios en varias monedas (`<price_cop>`/`<price_usd>`), "
+            "muestra solo el de la moneda apropiada según la ubicación del paciente. "
+            "NO justifiques la elección con frases como 'para pacientes en el exterior' "
+            "o 'desde Colombia'. Presenta el precio neutro, sin etiquetar al paciente."
+        ),
         (
             "El término 'confirmar cita' está reservado para el paso final, después del pago. "
             "Antes del pago no digas 'confirmar tu cita' ni 'para confirmar'; usa 'agendar', "
