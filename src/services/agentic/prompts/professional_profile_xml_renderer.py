@@ -155,20 +155,32 @@ def _render_services(services: list[agent_profile_entity.ServiceOffering]) -> st
 
 
 def _render_payment_info(payment_methods: list[agent_profile_entity.PaymentMethod]) -> str:
+    """Render payment methods with explicit nested tags per field.
+
+    Each <method> bundles a <use_when> (when this method applies),
+    <method_name> (e.g. "Nequi"), <account_holder>, and <account_details>
+    (number / instructions). Tags are emitted only when the corresponding
+    field is non-empty so the LLM doesn't see blank slots.
+    """
     if not payment_methods:
         return ""
     methods: list[str] = []
     for pm in payment_methods:
-        parts: list[str] = []
+        inner: list[str] = []
+        use_when = pm.applies_when or pm.currency
+        if use_when:
+            inner.append(f"<use_when>{use_when}</use_when>")
         if pm.method_name:
-            parts.append(pm.method_name)
-        if pm.instructions:
-            parts.append(pm.instructions)
+            inner.append(f"<method_name>{pm.method_name}</method_name>")
         if pm.holder:
-            parts.append(f"a nombre de {pm.holder}")
-        name_attr = pm.applies_when or f"{pm.currency}"
-        text = ": ".join(parts) if parts else pm.method_name
-        methods.append(f'<method name="{name_attr}">{text}</method>')
+            inner.append(f"<account_holder>{pm.holder}</account_holder>")
+        if pm.instructions:
+            inner.append(f"<account_details>{pm.instructions}</account_details>")
+        if not inner:
+            continue
+        methods.append("<method>\n" + "\n".join(inner) + "\n</method>")
+    if not methods:
+        return ""
     return "<payment_info>\n" + "\n".join(methods) + "\n</payment_info>"
 
 

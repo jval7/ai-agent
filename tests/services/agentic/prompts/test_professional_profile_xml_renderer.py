@@ -274,10 +274,15 @@ class TestRendererPaymentMethods:
             updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         )
         result = renderer.render_system_prompt_xml(profile)
-        assert "Nequi" in result
-        assert "Zelle" in result
-        assert 'name="Colombia (COP)"' in result
-        assert 'name="Extranjeros (USD)"' in result
+        # New explicit-tag format: each field gets its own nested tag.
+        assert "<method_name>Nequi</method_name>" in result
+        assert "<method_name>Zelle</method_name>" in result
+        assert "<use_when>Colombia (COP)</use_when>" in result
+        assert "<use_when>Extranjeros (USD)</use_when>" in result
+        assert "<account_holder>Aleja</account_holder>" in result
+        assert "<account_holder>Nelson</account_holder>" in result
+        assert "<account_details>318-000-0000</account_details>" in result
+        assert "<account_details>786-000-0000</account_details>" in result
 
 
 class TestRendererForeignTariffs:
