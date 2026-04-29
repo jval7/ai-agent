@@ -34,7 +34,8 @@ class TestPromptAssemblerOutputParity:
         assert "INSTRUCCIONES RUNTIME (PRIORIDAD ALTA):" in result
         assert "- estado_conversacion: NO_ACTIVE_REQUEST" in result
         assert "- Known patient profile: not found" in result
-        assert "Flujo actual: inicio de agendamiento." in result
+        # New patient flow: explicit "primera vez" branch.
+        assert "paciente NUEVO" in result
         assert "submit_consultation_reason_for_review, set_contact_name" in result
 
     def test_no_active_request_with_patient(self) -> None:
@@ -49,6 +50,11 @@ class TestPromptAssemblerOutputParity:
         assert "- patient_full_name: Maria Garcia" in result
         assert "- patient_email: maria@test.com" in result
         assert "- patient_age: 30" in result
+        # Returning patient flow: NO_ACTIVE_REQUEST instructions branch on
+        # known_patient. The bot should offer follow-up flows (cita de
+        # control, consulta, reprogramar) instead of the new-patient sequence.
+        assert "paciente RECURRENTE" in result
+        assert "Cita de control" in result
 
     def test_awaiting_consultation_details(self) -> None:
         builder = _build_builder()

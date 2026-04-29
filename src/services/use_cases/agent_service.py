@@ -131,6 +131,7 @@ def _service_offering_to_dto(
         name=svc.name,
         description=svc.description,
         modalities=list(svc.modalities),
+        target_patients=list(svc.target_patients),
         tariffs=[_tariff_to_dto(t) for t in svc.tariffs],
     )
 
@@ -142,6 +143,7 @@ def _service_offering_dto_to_entity(
         name=dto.name,
         description=dto.description,
         modalities=list(dto.modalities),
+        target_patients=list(dto.target_patients),
         tariffs=[_tariff_dto_to_entity(t) for t in dto.tariffs],
     )
 

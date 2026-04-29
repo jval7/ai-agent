@@ -21,24 +21,60 @@ class StateInstructionsSection(prompt_section.PromptSection):
         known_patient: patient_entity.Patient | None,
         agent_profile: agent_profile_entity.AgentProfile | None = None,
     ) -> list[str]:
-        del known_patient
-        return _instructions_for_state(runtime_context, agent_profile)
+        return _instructions_for_state(runtime_context, agent_profile, known_patient)
 
 
 def _instructions_for_state(
     runtime_context: agentic_state_models.RuntimePromptContext,
     agent_profile: agent_profile_entity.AgentProfile | None = None,
+    known_patient: patient_entity.Patient | None = None,
 ) -> list[str]:
     identity = agent_profile.identity if agent_profile is not None else None
     ref = professional_reference.professional_reference(identity)
 
     if runtime_context.state == "NO_ACTIVE_REQUEST":
+        is_returning_patient = known_patient is not None
+        if is_returning_patient:
+            # Patient is already in the system. Skip the "what is your name"
+            # step and offer follow-up flows. Filter services by RETURNING.
+            return [
+                "Flujo actual: inicio de conversacion con un paciente RECURRENTE "
+                "(ya tiene historia con el profesional — ver 'Known patient profile' "
+                "en este prompt).",
+                "Saluda al paciente por su nombre (de 'Known patient profile') y pregunta "
+                "para que necesita la conversacion. Tres flujos posibles:\n"
+                "  (a) Cita de control / seguimiento — agendar una nueva cita.\n"
+                "  (b) Una consulta sobre su tratamiento o cuidados — responde con la "
+                "informacion disponible; si no puedes, ofrece pasar a humano.\n"
+                "  (c) Reprogramar o cancelar una cita previa — usa handoff_to_human "
+                "(el bot no gestiona cambios de citas pasadas).",
+                "Si el paciente quiere agendar (caso a):\n"
+                "  - SOLO ofrece servicios marcados con `<target_patients>` que incluya "
+                "'recurrentes' (Pacientes nuevos y recurrentes O Solo pacientes recurrentes). "
+                "Ignora los servicios marcados solo para pacientes nuevos.\n"
+                "  - Pregunta motivo (consultation_reason) y modalidad (si el servicio "
+                "soporta ambas; si soporta una sola, asumela).\n"
+                "  - Si la modalidad es VIRTUAL y no tienes patient_location del paciente "
+                "conocido, preguntala.\n"
+                "  - Cuando tengas los datos, llama submit_consultation_reason_for_review.",
+                "Si el paciente solo tiene una pregunta (caso b), responde con la informacion "
+                "del system prompt (precios, horarios, datos de pago, etc.). NO llames "
+                "submit_consultation_reason_for_review si solo es una consulta.",
+                "Si pide reprogramar/cancelar una cita previa (caso c), usa handoff_to_human "
+                "directamente — no intentes gestionar el cambio.",
+                "No llames confirm_selected_slot_and_create_event en este estado.",
+            ]
+
+        # Patient is brand new (no profile in the repository).
         return [
-            "Flujo actual: inicio de agendamiento.",
+            "Flujo actual: inicio de agendamiento con un paciente NUEVO "
+            "(no esta registrado, primera vez).",
             "Sigue esta secuencia conversacional, agrupando preguntas relacionadas en un mismo mensaje:\n"
             "  1. Si es el primer mensaje, presentate y pregunta el nombre del paciente.\n"
-            "  2. Presenta los servicios disponibles (de la seccion <services> del system prompt) "
-            "y pregunta cual le interesa.\n"
+            "  2. Presenta los servicios disponibles. SOLO ofrece servicios marcados con "
+            "`<target_patients>` que incluya 'nuevos' (Pacientes nuevos y recurrentes O "
+            "Solo pacientes nuevos). Ignora los servicios marcados solo para pacientes "
+            "recurrentes.\n"
             "  3. Pregunta el motivo (consultation_reason). En el mismo mensaje, pregunta la "
             "modalidad SOLO si el servicio elegido en el paso 2 soporta ambas (revisa "
             "`<modalities>` del `<service>` correspondiente). Si el servicio solo soporta una "

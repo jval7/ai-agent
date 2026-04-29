@@ -139,6 +139,23 @@ def _render_tariff_option(tariff: agent_profile_entity.TariffOption) -> str:
     return "<tariff>\n" + "\n".join(parts) + "\n</tariff>"
 
 
+_TARGET_PATIENTS_LABELS: dict[tuple[str, ...], str] = {
+    ("NEW", "RETURNING"): "Pacientes nuevos y recurrentes",
+    ("NEW",): "Solo pacientes nuevos (primera consulta)",
+    ("RETURNING",): "Solo pacientes recurrentes (ya tuvieron una cita previa)",
+}
+
+
+def _format_target_patients(target_patients: list[str]) -> str | None:
+    """Return a human-readable Spanish label for the target_patients list,
+    or None if the list is empty / has no usable values.
+    """
+    if not target_patients:
+        return None
+    key = tuple(sorted(target_patients))
+    return _TARGET_PATIENTS_LABELS.get(key)
+
+
 def _render_services(services: list[agent_profile_entity.ServiceOffering]) -> str:
     service_blocks: list[str] = []
     for svc in services:
@@ -150,6 +167,9 @@ def _render_services(services: list[agent_profile_entity.ServiceOffering]) -> st
         if svc.modalities:
             modalities_text = " y ".join(m.capitalize() for m in svc.modalities)
             lines.append(f"<modalities>{modalities_text}</modalities>")
+        target_label = _format_target_patients(list(svc.target_patients))
+        if target_label is not None:
+            lines.append(f"<target_patients>{target_label}</target_patients>")
         if svc.description:
             lines.append(f"<description>{svc.description}</description>")
         if svc.tariffs:

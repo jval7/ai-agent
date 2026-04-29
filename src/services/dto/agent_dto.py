@@ -39,6 +39,7 @@ class ServiceOfferingDTO(pydantic.BaseModel):
     name: str | None = None
     description: str | None = None
     modalities: list[typing.Literal["PRESENCIAL", "VIRTUAL"]] = []
+    target_patients: list[typing.Literal["NEW", "RETURNING"]] = ["NEW", "RETURNING"]
     tariffs: list[TariffOptionDTO] = []
 
 

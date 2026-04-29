@@ -1288,10 +1288,18 @@ function scheduleBlockToApi(item: agentModel.ScheduleBlock): httpTypes.ScheduleB
 }
 
 function mapServiceOffering(raw: httpTypes.ServiceOfferingApiResponse): agentModel.ServiceOffering {
+  // Default fully-visible when the field is missing (legacy data).
+  const rawTargetPatients =
+    raw.target_patients !== undefined &&
+    raw.target_patients !== null &&
+    raw.target_patients.length > 0
+      ? raw.target_patients
+      : ["NEW", "RETURNING"];
   return {
     name: raw.name,
     description: raw.description,
     modalities: raw.modalities as agentModel.Modality[],
+    targetPatients: rawTargetPatients as agentModel.TargetPatient[],
     tariffs: raw.tariffs.map(mapTariffOption)
   };
 }
@@ -1303,6 +1311,7 @@ function serviceOfferingToApi(
     name: item.name,
     description: item.description,
     modalities: item.modalities,
+    target_patients: item.targetPatients,
     tariffs: item.tariffs.map(tariffOptionToApi)
   };
 }

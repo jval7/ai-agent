@@ -102,6 +102,11 @@ class ServiceOffering(pydantic.BaseModel):
     name: str | None = None
     description: str | None = None
     modalities: list[typing.Literal["PRESENCIAL", "VIRTUAL"]] = []
+    # Which patient cohort this service applies to. Default both so legacy
+    # services without the field stay fully visible. The bot uses this to
+    # decide which services to surface based on whether the patient is
+    # already registered (RETURNING) or completely new (NEW).
+    target_patients: list[typing.Literal["NEW", "RETURNING"]] = ["NEW", "RETURNING"]
     tariffs: list[TariffOption] = []
 
     @pydantic.model_validator(mode="before")
