@@ -169,7 +169,12 @@ def test_update_professional_profile_persists_structured_fields() -> None:
             agent_dto.ServiceOfferingDTO(
                 name="Consulta Adultos",
                 modalities=["PRESENCIAL"],
-                tariffs=[agent_dto.TariffOptionDTO(label="Sesión", amount=130000, currency="COP")],
+                tariffs=[
+                    agent_dto.TariffOptionDTO(
+                        label="Sesión",
+                        prices=[agent_dto.TariffPriceDTO(currency="COP", amount=130000)],
+                    )
+                ],
             )
         ],
         presencial_schedule=[
