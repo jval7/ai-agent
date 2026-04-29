@@ -92,8 +92,24 @@ class TestRendererMinimum:
         assert result.strip().endswith("</base_system_prompt>")
 
     def test_always_includes_style_rules(self) -> None:
+        profile = _empty_profile()
+        result = renderer.render_system_prompt_xml(profile)
+        expected_rules = style_rules_template.build_style_rules_xml(profile.identity)
+        assert expected_rules in result
+
+    def test_style_rules_use_neutral_reference_when_address_term_missing(self) -> None:
+        # Empty profile has no identity → style rules must fall back to the
+        # neutral "la profesional" and never leak hardcoded names.
         result = renderer.render_system_prompt_xml(_empty_profile())
-        assert style_rules_template.STYLE_RULES_XML in result
+        assert "la profesional" in result
+        assert "Aleja" not in result
+        assert "la Doc" not in result
+
+    def test_style_rules_use_address_term_when_provided(self) -> None:
+        # Full profile has professional_address_term="la Doc" → both
+        # parameterized rules render with that exact term.
+        result = renderer.render_system_prompt_xml(_full_profile())
+        assert "la Doc" in result
 
     def test_no_extra_sections_when_all_fields_empty(self) -> None:
         result = renderer.render_system_prompt_xml(_empty_profile())

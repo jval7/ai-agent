@@ -51,5 +51,6 @@ class RuntimePromptBuilder:
     def build_runtime_state_specific_instructions(
         self,
         runtime_context: agentic_state_models.RuntimePromptContext,
+        agent_profile: agent_profile_entity.AgentProfile | None = None,
     ) -> list[str]:
-        return state_instructions._instructions_for_state(runtime_context)
+        return state_instructions._instructions_for_state(runtime_context, agent_profile)

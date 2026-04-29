@@ -1,7 +1,17 @@
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.patient as patient_entity
+import src.services.agentic.prompts.professional_reference as professional_reference
 import src.services.agentic.prompts.prompt_section as prompt_section
 import src.services.agentic.state_models as agentic_state_models
+
+# Runtime enforcement: data injected by the backend must be used verbatim.
+# Lives here (not in style_rules_template) because it references internal
+# runtime variable names that a professional would never see in the UI form.
+_NEVER_INVENT_INJECTED_DATA = (
+    "Si el contexto inyectado tiene `fecha_cita`, `nombre_paciente`, `modalidad_actual` u otro dato "
+    "del paciente o de la cita, usalos EXACTAMENTE como aparecen. "
+    "NUNCA inventes ni parafrasees fechas, horas, nombres ni datos del paciente."
+)
 
 
 class StateInstructionsSection(prompt_section.PromptSection):
@@ -12,13 +22,16 @@ class StateInstructionsSection(prompt_section.PromptSection):
         agent_profile: agent_profile_entity.AgentProfile | None = None,
     ) -> list[str]:
         del known_patient
-        del agent_profile
-        return _instructions_for_state(runtime_context)
+        return _instructions_for_state(runtime_context, agent_profile)
 
 
 def _instructions_for_state(
     runtime_context: agentic_state_models.RuntimePromptContext,
+    agent_profile: agent_profile_entity.AgentProfile | None = None,
 ) -> list[str]:
+    identity = agent_profile.identity if agent_profile is not None else None
+    ref = professional_reference.professional_reference(identity)
+
     if runtime_context.state == "NO_ACTIVE_REQUEST":
         return [
             "Flujo actual: inicio de agendamiento. Sigue las instrucciones del system prompt para recoger los datos necesarios.",
@@ -71,11 +84,10 @@ def _instructions_for_state(
         return [
             "Flujo actual: pago pendiente de aprobacion.",
             "Si el paciente avisa que ya pago o envia comprobante, responde solo 'Gracias, dame un momento'. "
-            "No menciones que alguien esta revisando el pago ni que la Doc lo va a confirmar.",
+            f"No menciones que alguien esta revisando el pago ni que {ref} lo va a confirmar.",
             "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
             "precios, datos de pago, horarios o informacion general del consultorio.",
-            "Si el paciente pregunta por el horario o fecha de su cita, responde usando EXACTAMENTE "
-            "el valor de `fecha_cita` del runtime context. NUNCA inventes ni parafrasees fechas u horas.",
+            _NEVER_INVENT_INJECTED_DATA,
             "No solicites el comprobante de nuevo ni avances el flujo de agendamiento.",
             "Sigue las reglas de medio de pago del system prompt. "
             "Solo usa handoff_to_human si el paciente dice explicitamente que NO puede pagar "
@@ -89,8 +101,7 @@ def _instructions_for_state(
             "Ambas cosas en el mismo turno: texto de respuesta + llamada a la tool.",
             "Puedes responder preguntas generales del paciente: informacion del consultorio, "
             "horarios, direccion, preparacion para la cita u otros datos generales.",
-            "Si el paciente pregunta por la fecha u hora de su cita, responde usando EXACTAMENTE "
-            "el valor de `fecha_cita` del runtime context. NUNCA inventes ni parafrasees fechas u horas.",
+            _NEVER_INVENT_INJECTED_DATA,
             "Si el paciente dice que NO puede asistir o pide reagendar/cancelar su cita, "
             "usa handoff_to_human — el bot no gestiona cambios de citas ya reservadas.",
             "No solicites confirmacion de nuevo si el paciente ya respondio.",
@@ -104,9 +115,9 @@ def _instructions_for_state(
             "(usa `nombre_paciente` del runtime context si esta disponible), la fecha y hora "
             "(USA EXACTAMENTE el valor de `fecha_cita` del runtime context), y la modalidad "
             "(usa `modalidad_actual`).",
-            "REGLA DURA: NUNCA inventes ni parafrasees la fecha ni la hora. Si `fecha_cita` no "
-            "esta en el runtime context, NO menciones fecha ni hora; en su lugar di que el paciente "
-            "puede revisar la invitacion de Google Calendar enviada a su correo.",
+            _NEVER_INVENT_INJECTED_DATA,
+            "Si `fecha_cita` no esta en el runtime context, NO menciones fecha ni hora; "
+            "en su lugar di que el paciente puede revisar la invitacion de Google Calendar enviada a su correo.",
         ]
         if modality == "PRESENCIAL":
             lines += [

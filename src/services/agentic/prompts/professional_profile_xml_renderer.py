@@ -180,7 +180,7 @@ def render_system_prompt_xml(profile: agent_profile_entity.AgentProfile) -> str:
     """
     sections: list[str] = []
     sections.append("<base_system_prompt>")
-    sections.append(style_rules_template.STYLE_RULES_XML)
+    sections.append(style_rules_template.build_style_rules_xml(profile.identity))
 
     # Identity
     if profile.identity is not None:
