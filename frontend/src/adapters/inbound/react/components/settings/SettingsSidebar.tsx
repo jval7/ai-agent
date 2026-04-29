@@ -6,6 +6,8 @@ export interface SidebarItem {
 export interface SidebarGroup {
   id: string;
   label: string;
+  /** Optional Heroicon outline path (24x24 viewBox, stroke-based). */
+  iconPath?: string;
   items: SidebarItem[];
 }
 
@@ -20,9 +22,23 @@ export function SettingsSidebar(props: Props) {
     <nav aria-label="Configuraciones" className="w-full">
       {props.groups.map((group) => (
         <div key={group.id} className="mb-6">
-          <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-            {group.label}
-          </p>
+          <div className="mb-1 flex items-center gap-2 px-3">
+            {group.iconPath !== undefined ? (
+              <svg
+                aria-hidden="true"
+                className="h-3.5 w-3.5 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                viewBox="0 0 24 24"
+              >
+                <path d={group.iconPath} strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : null}
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              {group.label}
+            </p>
+          </div>
           <ul role="list">
             {group.items.map((item) => {
               const isActive = item.id === props.activeItem;
