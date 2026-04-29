@@ -39,13 +39,18 @@ def _instructions_for_state(
             "  1. Si es el primer mensaje, presentate y pregunta el nombre del paciente.\n"
             "  2. Presenta los servicios disponibles (de la seccion <services> del system prompt) "
             "y pregunta cual le interesa.\n"
-            "  3. Pregunta motivo (consultation_reason) y modalidad (PRESENCIAL o VIRTUAL) en el mismo mensaje.\n"
-            "  4. Si la modalidad es VIRTUAL, pregunta ciudad o pais desde donde se conectara.",
+            "  3. Pregunta el motivo (consultation_reason). En el mismo mensaje, pregunta la "
+            "modalidad SOLO si el servicio elegido en el paso 2 soporta ambas (revisa "
+            "`<modalities>` del `<service>` correspondiente). Si el servicio solo soporta una "
+            "modalidad, asume esa automaticamente y no preguntes.\n"
+            "  4. Si la modalidad resultante es VIRTUAL, pregunta ciudad o pais desde donde "
+            "se conectara. Si es PRESENCIAL, omite este paso.",
             "Datos a recolectar antes de llamar submit_consultation_reason_for_review:\n"
             "  • Nombre del paciente\n"
             "  • Tipo de servicio (de la seccion <services>)\n"
             "  • consultation_reason (motivo breve)\n"
-            "  • appointment_modality (PRESENCIAL o VIRTUAL)\n"
+            "  • appointment_modality (PRESENCIAL o VIRTUAL — inferida del servicio si solo "
+            "soporta una; preguntada al paciente si soporta ambas)\n"
             "  • patient_location (solo si modalidad es VIRTUAL)",
             "Cuando tengas todos los datos, llama submit_consultation_reason_for_review.",
             "No llames confirm_selected_slot_and_create_event en este estado.",
