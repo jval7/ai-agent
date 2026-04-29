@@ -23,11 +23,15 @@ class ScheduleBlockDTO(pydantic.BaseModel):
     end_time: str
 
 
+class TariffPriceDTO(pydantic.BaseModel):
+    currency: str
+    amount: float
+
+
 class TariffOptionDTO(pydantic.BaseModel):
     label: str
-    amount: float
-    currency: str
     description: str | None = None
+    prices: list[TariffPriceDTO] = []
 
 
 class ServiceOfferingDTO(pydantic.BaseModel):

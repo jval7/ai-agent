@@ -10,14 +10,24 @@ const TEXTAREA_CLASS =
   "mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60";
 
 function newTariffOption(): agentModel.TariffOption {
-  return { label: "", amount: 0, currency: "COP", description: null };
+  // Default: a tariff with two price slots so the professional can fill COP
+  // and USD side by side without having to add a row first.
+  return {
+    label: "",
+    description: null,
+    prices: [
+      { currency: "COP", amount: 0 },
+      { currency: "USD", amount: 0 }
+    ]
+  };
 }
 
 function formatTariffSummary(t: agentModel.TariffOption): string {
   const label = t.label.trim() === "" ? "Tarifa nueva" : t.label;
-  if (t.amount === 0) return label;
-  const formatted = t.amount.toLocaleString("es-CO");
-  return `${label} · ${formatted} ${t.currency}`;
+  const meaningful = t.prices.filter((p) => p.amount > 0);
+  if (meaningful.length === 0) return label;
+  const parts = meaningful.map((p) => `${p.amount.toLocaleString("es-CO")} ${p.currency}`);
+  return `${label} · ${parts.join(" / ")}`;
 }
 
 interface TariffItemProps {
@@ -28,6 +38,21 @@ interface TariffItemProps {
 
 function TariffItem(props: TariffItemProps) {
   const { value, onChange, disabled } = props;
+
+  const updatePrice = (index: number, next: agentModel.TariffPrice) => {
+    const updated = value.prices.map((p, i) => (i === index ? next : p));
+    onChange({ ...value, prices: updated });
+  };
+
+  const removePrice = (index: number) => {
+    const updated = value.prices.filter((_, i) => i !== index);
+    onChange({ ...value, prices: updated });
+  };
+
+  const addPrice = () => {
+    onChange({ ...value, prices: [...value.prices, { currency: "COP", amount: 0 }] });
+  };
+
   return (
     <collapsibleCardModule.CollapsibleCard
       className="border border-slate-200/70 shadow-none"
@@ -50,16 +75,56 @@ function TariffItem(props: TariffItemProps) {
             value={value.label}
           />
         </formFieldModule.FormField>
-        <formFieldModule.FormField htmlFor="" label="Monto">
-          <currencyInputModule.CurrencyInput
-            amount={value.amount}
-            currency={value.currency}
+        <div>
+          <p className="text-sm font-medium text-slate-700">Precios</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            Un valor por moneda. Agrega los que apliquen para tus pacientes.
+          </p>
+          <div className="mt-2 space-y-2">
+            {value.prices.map((price, index) => (
+              <div className="flex items-end gap-2" key={index}>
+                <div className="flex-1">
+                  <currencyInputModule.CurrencyInput
+                    amount={price.amount}
+                    currency={price.currency}
+                    disabled={disabled}
+                    onChange={(next) => {
+                      updatePrice(index, { currency: next.currency, amount: next.amount });
+                    }}
+                  />
+                </div>
+                <button
+                  aria-label="Eliminar precio"
+                  className="mb-1 rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:cursor-not-allowed"
+                  disabled={disabled}
+                  onClick={() => {
+                    removePrice(index);
+                  }}
+                  type="button"
+                >
+                  <svg
+                    aria-hidden="true"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            className="mt-2 rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-brand-teal hover:text-brand-teal disabled:cursor-not-allowed"
             disabled={disabled}
-            onChange={(next) => {
-              onChange({ ...value, amount: next.amount, currency: next.currency });
-            }}
-          />
-        </formFieldModule.FormField>
+            onClick={addPrice}
+            type="button"
+          >
+            + Agregar precio
+          </button>
+        </div>
         <formFieldModule.FormField
           helperText="Texto libre. Ej. '5% descuento' o 'Pacientes fuera de Colombia'."
           htmlFor=""

@@ -46,11 +46,11 @@ class ScheduleBlock(pydantic.BaseModel):
         return value
 
 
-class TariffOption(pydantic.BaseModel):
-    label: str
-    amount: float
+class TariffPrice(pydantic.BaseModel):
+    """A single price point inside a tariff (currency + amount)."""
+
     currency: str  # 3 chars, e.g. "COP", "USD"
-    description: str | None = None
+    amount: float
 
     @pydantic.field_validator("currency")
     @classmethod
@@ -60,25 +60,40 @@ class TariffOption(pydantic.BaseModel):
             raise ValueError("currency must be a 3-character code")
         return normalized
 
+
+class TariffOption(pydantic.BaseModel):
+    """A tariff line with one or more price points (one per currency)."""
+
+    label: str
+    description: str | None = None
+    prices: list[TariffPrice] = []
+
     @pydantic.model_validator(mode="before")
     @classmethod
     def _migrate_legacy_fields(cls, data: typing.Any) -> typing.Any:
-        """Backwards-compat: pre-existing Firestore docs may have
-        `discount_percent` (number). Convert it to `description` text on read.
-        Once a tenant saves through the new form, the field disappears.
+        """Backwards-compat: previous Firestore docs may have:
+          - `discount_percent` (number): converted to `description` text.
+          - top-level `currency` + `amount`: wrapped into `prices: [{...}]`.
+        Both transforms run only when the new field is absent so an explicit
+        new-shape payload always wins.
         """
         if not isinstance(data, dict):
             return data
-        legacy = data.pop("discount_percent", None)
-        if "description" not in data and legacy is not None:
+        # discount_percent → description
+        legacy_discount = data.pop("discount_percent", None)
+        if "description" not in data and legacy_discount is not None:
             try:
-                pct = float(legacy)
+                pct = float(legacy_discount)
             except (TypeError, ValueError):
                 pct = 0.0
             if pct > 0:
-                # Render integer when whole, else two decimals.
                 pct_text = f"{int(pct)}" if pct == int(pct) else f"{pct:.2f}"
                 data["description"] = f"{pct_text}% descuento"
+        # top-level currency+amount → prices list
+        legacy_currency = data.pop("currency", None)
+        legacy_amount = data.pop("amount", None)
+        if "prices" not in data and legacy_currency is not None and legacy_amount is not None:
+            data["prices"] = [{"currency": legacy_currency, "amount": legacy_amount}]
         return data
 
 

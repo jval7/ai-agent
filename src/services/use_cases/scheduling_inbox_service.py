@@ -12,6 +12,7 @@ import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.prompt_builder as prompt_builder
+import src.services.agentic.prompts.professional_profile_xml_renderer as xml_renderer
 import src.services.constants as service_constants
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.llm_dto as llm_dto
@@ -387,7 +388,7 @@ class SchedulingInboxService:
         if self._agent_profile_repository is not None:
             agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
             if agent_profile is not None:
-                return agent_profile.system_prompt
+                return xml_renderer.effective_system_prompt(agent_profile)
 
         if self._default_system_prompt is not None:
             return self._default_system_prompt

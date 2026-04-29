@@ -1253,18 +1253,16 @@ function mapTenantProfile(payload: httpTypes.TenantProfileResponse): tenantModel
 function mapTariffOption(raw: httpTypes.TariffOptionApiResponse): agentModel.TariffOption {
   return {
     label: raw.label,
-    amount: raw.amount,
-    currency: raw.currency,
-    description: raw.description
+    description: raw.description,
+    prices: raw.prices.map((p) => ({ currency: p.currency, amount: p.amount }))
   };
 }
 
 function tariffOptionToApi(item: agentModel.TariffOption): httpTypes.TariffOptionApiResponse {
   return {
     label: item.label,
-    amount: item.amount,
-    currency: item.currency,
-    description: item.description
+    description: item.description,
+    prices: item.prices.map((p) => ({ currency: p.currency, amount: p.amount }))
   };
 }
 

@@ -17,11 +17,15 @@ export interface ScheduleBlock {
   endTime: string;
 }
 
+export interface TariffPrice {
+  currency: string;
+  amount: number;
+}
+
 export interface TariffOption {
   label: string;
-  amount: number;
-  currency: string;
   description: string | null;
+  prices: TariffPrice[];
 }
 
 export interface ServiceOffering {

@@ -106,18 +106,19 @@ def _professional_context_dto_to_entity(
 def _tariff_to_dto(t: agent_profile_entity.TariffOption) -> agent_dto.TariffOptionDTO:
     return agent_dto.TariffOptionDTO(
         label=t.label,
-        amount=t.amount,
-        currency=t.currency,
         description=t.description,
+        prices=[agent_dto.TariffPriceDTO(currency=p.currency, amount=p.amount) for p in t.prices],
     )
 
 
 def _tariff_dto_to_entity(dto: agent_dto.TariffOptionDTO) -> agent_profile_entity.TariffOption:
     return agent_profile_entity.TariffOption(
         label=dto.label,
-        amount=dto.amount,
-        currency=dto.currency,
         description=dto.description,
+        prices=[
+            agent_profile_entity.TariffPrice(currency=p.currency, amount=p.amount)
+            for p in dto.prices
+        ],
     )
 
 
@@ -224,9 +225,12 @@ class AgentService:
             )
             self._agent_profile_repository.save(agent_profile)
 
+        # Always regenerate from structured fields when they exist so the dev
+        # preview reflects the live renderer output (no stale audience/category
+        # blocks from before the schema migration).
         return agent_dto.SystemPromptResponseDTO(
             tenant_id=tenant_id,
-            system_prompt=agent_profile.system_prompt,
+            system_prompt=xml_renderer.effective_system_prompt(agent_profile),
         )
 
     def update_system_prompt(

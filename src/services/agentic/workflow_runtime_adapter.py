@@ -4,6 +4,7 @@ import src.ports.agent_workflow_port as agent_workflow_port
 import src.services.agentic.guards.base as guard_base
 import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard_mod
 import src.services.agentic.prompt_builder as prompt_builder
+import src.services.agentic.prompts.professional_profile_xml_renderer as xml_renderer
 import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
 import src.services.agentic.state_models as agentic_state_models
 import src.services.agentic.tool_calling_orchestrator as tool_calling_orchestrator_mod
@@ -71,7 +72,7 @@ class WebhookConversationWorkflowRuntimeAdapter(
             raise service_exceptions.ExternalProviderError(
                 "agent system prompt is not configured for this tenant"
             )
-        base_prompt = agent_profile.system_prompt
+        base_prompt = xml_renderer.effective_system_prompt(agent_profile)
         runtime_prompt = self._prompt_builder.build_runtime_system_prompt(
             runtime_context=runtime_context,
             known_patient=self._known_patient,
@@ -94,7 +95,7 @@ class WebhookConversationWorkflowRuntimeAdapter(
             whatsapp_user_id=self._whatsapp_user_id,
         )
         result = self._tool_calling_orchestrator.run(
-            base_system_prompt=agent_profile.system_prompt,
+            base_system_prompt=xml_renderer.effective_system_prompt(agent_profile),
             agent_profile=agent_profile,
             messages=self._llm_messages,
             tool_execution_context=tool_context,

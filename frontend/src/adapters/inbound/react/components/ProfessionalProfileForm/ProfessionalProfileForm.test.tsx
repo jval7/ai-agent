@@ -43,7 +43,13 @@ const FULL_PROFILE: agentModel.ProfessionalProfile = {
       name: "Consulta Individual",
       description: null,
       modalities: ["PRESENCIAL", "VIRTUAL"],
-      tariffs: [{ label: "Sesión", amount: 130000, currency: "COP", description: null }]
+      tariffs: [
+        {
+          label: "Sesión",
+          description: null,
+          prices: [{ currency: "COP", amount: 130000 }]
+        }
+      ]
     }
   ],
   presencialSchedule: [

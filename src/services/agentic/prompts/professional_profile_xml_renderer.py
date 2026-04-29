@@ -103,17 +103,23 @@ def _render_professional_context(
     return "<professional_context>\n" + "\n".join(items) + "\n</professional_context>"
 
 
+def _format_amount(amount: float) -> str:
+    return f"{amount:,.0f}" if amount == int(amount) else f"{amount:,.2f}"
+
+
 def _render_tariff_option(tariff: agent_profile_entity.TariffOption) -> str:
-    """Render a tariff with explicit nested tags for label, amount and notes."""
-    amount_formatted = (
-        f"{tariff.amount:,.0f}" if tariff.amount == int(tariff.amount) else f"{tariff.amount:,.2f}"
-    )
-    parts = [
-        f"<label>{tariff.label}</label>",
-        f"<amount>{amount_formatted} {tariff.currency}</amount>",
-    ]
+    """Render a tariff with one <price_xxx> tag per currency.
+
+    Tag name is derived from the currency code: a tariff with COP+USD prices
+    emits <price_cop> and <price_usd>. This way the LLM doesn't have to
+    decide which "category" applies — it just looks up the currency tag.
+    """
+    parts = [f"<label>{tariff.label}</label>"]
     if tariff.description:
         parts.append(f"<description>{tariff.description}</description>")
+    for price in tariff.prices:
+        tag = f"price_{price.currency.lower()}"
+        parts.append(f"<{tag}>{_format_amount(price.amount)} {price.currency}</{tag}>")
     return "<tariff>\n" + "\n".join(parts) + "\n</tariff>"
 
 
@@ -211,3 +217,33 @@ def render_system_prompt_xml(profile: agent_profile_entity.AgentProfile) -> str:
 
     sections.append("</base_system_prompt>")
     return "\n".join(sections)
+
+
+def _has_structured_data(profile: agent_profile_entity.AgentProfile) -> bool:
+    """Return True when the form has been populated with at least one
+    structured field. Used to decide whether to regenerate the system prompt
+    from the form data instead of falling back to the legacy persisted string.
+    """
+    if profile.identity is not None:
+        return True
+    if profile.professional_context is not None:
+        return True
+    if profile.services:
+        return True
+    if profile.presencial_schedule or profile.virtual_schedule:
+        return True
+    return bool(profile.payment_methods)
+
+
+def effective_system_prompt(profile: agent_profile_entity.AgentProfile) -> str:
+    """Return the system prompt the runtime should actually use.
+
+    When the structured form has been populated, the prompt is rendered fresh
+    from those fields on every call. The persisted `system_prompt` string is
+    used only as a legacy fallback for tenants who haven't migrated to the
+    form yet. This avoids stale data (old <audience>, old <category> blocks)
+    leaking into the LLM after a renderer change.
+    """
+    if _has_structured_data(profile):
+        return render_system_prompt_xml(profile)
+    return profile.system_prompt

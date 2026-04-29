@@ -405,11 +405,15 @@ export interface ScheduleBlockApiResponse {
   end_time: string;
 }
 
+export interface TariffPriceApiResponse {
+  currency: string;
+  amount: number;
+}
+
 export interface TariffOptionApiResponse {
   label: string;
-  amount: number;
-  currency: string;
   description: string | null;
+  prices: TariffPriceApiResponse[];
 }
 
 export interface ServiceOfferingApiResponse {

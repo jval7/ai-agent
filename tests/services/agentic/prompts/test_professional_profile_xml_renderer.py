@@ -35,19 +35,19 @@ def _full_profile() -> agent_profile_entity.AgentProfile:
                 modalities=["PRESENCIAL", "VIRTUAL"],
                 tariffs=[
                     agent_profile_entity.TariffOption(
-                        label="Sesión individual", amount=130000, currency="COP"
+                        label="Sesión individual",
+                        prices=[
+                            agent_profile_entity.TariffPrice(currency="COP", amount=130000),
+                            agent_profile_entity.TariffPrice(currency="USD", amount=90),
+                        ],
                     ),
                     agent_profile_entity.TariffOption(
                         label="Paquete 3 sesiones",
-                        amount=370500,
-                        currency="COP",
                         description="5% descuento",
-                    ),
-                    agent_profile_entity.TariffOption(
-                        label="Sesión individual extranjeros",
-                        amount=90,
-                        currency="USD",
-                        description="Pacientes fuera de Colombia",
+                        prices=[
+                            agent_profile_entity.TariffPrice(currency="COP", amount=370500),
+                            agent_profile_entity.TariffPrice(currency="USD", amount=257),
+                        ],
                     ),
                 ],
             ),
@@ -286,10 +286,9 @@ class TestRendererPaymentMethods:
 
 
 class TestRendererUnifiedTariffs:
-    def test_tariffs_in_multiple_currencies_are_emitted_together(self) -> None:
-        # The new schema has a single `tariffs` list per service. Multiple
-        # currencies coexist; the renderer emits each tariff with its own
-        # <amount> tag including the currency.
+    def test_tariff_emits_one_price_tag_per_currency(self) -> None:
+        # New schema: each tariff carries a `prices` list. Renderer emits one
+        # <price_xxx> tag per currency, derived from the currency code.
         profile = agent_profile_entity.AgentProfile(
             tenant_id="t-1",
             services=[
@@ -297,10 +296,11 @@ class TestRendererUnifiedTariffs:
                     name="Adultos",
                     tariffs=[
                         agent_profile_entity.TariffOption(
-                            label="Sesión local", amount=130000, currency="COP"
-                        ),
-                        agent_profile_entity.TariffOption(
-                            label="Sesión extranjero", amount=90, currency="USD"
+                            label="Sesión",
+                            prices=[
+                                agent_profile_entity.TariffPrice(currency="COP", amount=130000),
+                                agent_profile_entity.TariffPrice(currency="USD", amount=90),
+                            ],
                         ),
                     ],
                 )
@@ -308,10 +308,9 @@ class TestRendererUnifiedTariffs:
             updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         )
         result = renderer.render_system_prompt_xml(profile)
-        assert "<label>Sesión local</label>" in result
-        assert "<amount>130,000 COP</amount>" in result
-        assert "<label>Sesión extranjero</label>" in result
-        assert "<amount>90 USD</amount>" in result
+        assert "<label>Sesión</label>" in result
+        assert "<price_cop>130,000 COP</price_cop>" in result
+        assert "<price_usd>90 USD</price_usd>" in result
 
     def test_tariff_description_is_emitted_when_set(self) -> None:
         profile = agent_profile_entity.AgentProfile(
@@ -322,9 +321,10 @@ class TestRendererUnifiedTariffs:
                     tariffs=[
                         agent_profile_entity.TariffOption(
                             label="Paquete 3",
-                            amount=370500,
-                            currency="COP",
                             description="5% descuento",
+                            prices=[
+                                agent_profile_entity.TariffPrice(currency="COP", amount=370500)
+                            ],
                         )
                     ],
                 )
@@ -344,8 +344,10 @@ class TestRendererUnifiedTariffs:
         }
         svc = agent_profile_entity.ServiceOffering.model_validate(legacy_dict)
         assert len(svc.tariffs) == 2
-        assert svc.tariffs[0].currency == "COP"
-        assert svc.tariffs[1].currency == "USD"
+        # Legacy {currency, amount} is also wrapped into prices: [{...}].
+        assert svc.tariffs[0].prices[0].currency == "COP"
+        assert svc.tariffs[0].prices[0].amount == 100
+        assert svc.tariffs[1].prices[0].currency == "USD"
 
     def test_legacy_discount_percent_is_migrated_to_description(self) -> None:
         legacy_tariff = {
@@ -356,6 +358,9 @@ class TestRendererUnifiedTariffs:
         }
         tariff = agent_profile_entity.TariffOption.model_validate(legacy_tariff)
         assert tariff.description == "5% descuento"
+        # And the legacy {currency, amount} should have been wrapped.
+        assert tariff.prices[0].currency == "COP"
+        assert tariff.prices[0].amount == 100
 
     def test_legacy_audience_is_dropped_silently(self) -> None:
         legacy_dict = {"name": "Adultos", "audience": "should disappear"}
