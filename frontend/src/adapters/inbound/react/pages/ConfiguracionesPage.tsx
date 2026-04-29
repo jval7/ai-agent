@@ -1126,15 +1126,15 @@ export function ConfiguracionesPage() {
               </label>
               <label className="flex cursor-pointer items-start gap-3">
                 <input
-                  checked={paymentTiming === "IN_PERSON"}
+                  checked={paymentTiming === "AFTER_SESSION"}
                   className="mt-0.5 h-4 w-4 cursor-pointer accent-brand-teal"
-                  id="payment-timing-in-person"
+                  id="payment-timing-after-session"
                   name="payment-timing"
                   onChange={() => {
-                    handlePaymentTimingChange("IN_PERSON");
+                    handlePaymentTimingChange("AFTER_SESSION");
                   }}
                   type="radio"
-                  value="IN_PERSON"
+                  value="AFTER_SESSION"
                 />
                 <span className="flex flex-col">
                   <span className="text-sm font-medium text-slate-700">

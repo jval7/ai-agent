@@ -333,20 +333,20 @@ def test_update_agent_settings_payment_timing_default_is_before_session() -> Non
     assert result.payment_timing == "BEFORE_SESSION"
 
 
-def test_update_agent_settings_payment_timing_in_person_roundtrip() -> None:
+def test_update_agent_settings_payment_timing_after_session_roundtrip() -> None:
     service = build_agent_settings_service()
 
     result = service.update_agent_settings(
         "tenant-1",
         agent_dto.UpdateAgentSettingsDTO(
             message_debounce_delay_seconds=0,
-            payment_timing="IN_PERSON",
+            payment_timing="AFTER_SESSION",
         ),
     )
 
-    assert result.payment_timing == "IN_PERSON"
+    assert result.payment_timing == "AFTER_SESSION"
     fetched = service.get_agent_settings("tenant-1")
-    assert fetched.payment_timing == "IN_PERSON"
+    assert fetched.payment_timing == "AFTER_SESSION"
 
 
 def test_get_agent_settings_returns_default_payment_timing_when_no_profile() -> None:

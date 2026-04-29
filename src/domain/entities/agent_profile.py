@@ -170,8 +170,19 @@ class AgentProfile(pydantic.BaseModel):
     presencial_schedule: list[ScheduleBlock] = []
     virtual_schedule: list[ScheduleBlock] = []
     payment_methods: list[PaymentMethod] = []
-    payment_timing: typing.Literal["BEFORE_SESSION", "IN_PERSON"] = "BEFORE_SESSION"
+    payment_timing: typing.Literal["BEFORE_SESSION", "AFTER_SESSION"] = "BEFORE_SESSION"
     updated_at: datetime.datetime
+
+    @pydantic.model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_payment_timing(cls, data: typing.Any) -> typing.Any:
+        """Backwards-compat: pre-existing Firestore docs may have
+        `payment_timing: "IN_PERSON"`. The option was renamed to
+        `AFTER_SESSION` because virtual sessions can also be charged after.
+        """
+        if isinstance(data, dict) and data.get("payment_timing") == "IN_PERSON":
+            data["payment_timing"] = "AFTER_SESSION"
+        return data
 
     @pydantic.field_validator("system_prompt")
     @classmethod

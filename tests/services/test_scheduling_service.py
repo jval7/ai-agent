@@ -132,7 +132,7 @@ def build_service_with_in_person_profile(
     task_scheduler_adapter.InMemoryTaskSchedulerAdapter,
     scheduled_reminder_repository_adapter.InMemoryScheduledReminderRepositoryAdapter,
 ]:
-    """Build a SchedulingService wired with an IN_PERSON agent profile and reminder service."""
+    """Build a SchedulingService wired with an AFTER_SESSION agent profile and reminder service."""
     store = in_memory_store.InMemoryStore()
     conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
         store
@@ -161,7 +161,7 @@ def build_service_with_in_person_profile(
         clock=clock,
     )
 
-    # Seed an IN_PERSON agent profile with reminders enabled.
+    # Seed an AFTER_SESSION agent profile with reminders enabled.
     agent_profile_repo.save(
         agent_profile_entity.AgentProfile(
             tenant_id="tenant-1",
@@ -170,7 +170,7 @@ def build_service_with_in_person_profile(
             appointment_reminder_days_before=2,
             appointment_reminder_attendance_template_name=_ATTENDANCE_TEMPLATE_NAME,
             appointment_reminder_payment_template_name=None,
-            payment_timing="IN_PERSON",
+            payment_timing="AFTER_SESSION",
             updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         )
     )
@@ -1517,26 +1517,24 @@ def test_approve_payment_original_flow_unchanged() -> None:
 
 
 # ---------------------------------------------------------------------------
-# payment_timing = IN_PERSON
+# payment_timing = AFTER_SESSION
 # ---------------------------------------------------------------------------
 
 
-def test_select_slot_books_directly_when_payment_timing_is_in_person() -> None:
-    """Con payment_timing=IN_PERSON, al llamar select_slot_for_confirmation el
-    request debe pasar directo a BOOKED (sin AWAITING_PAYMENT_CONFIRMATION),
-    se crea el evento de calendar, se agenda el reminder con payment_status=PENDING
-    y el template de asistencia es el elegido."""
-    # IDs consumed: req-1 (scheduling request), conference-token-1 (google meet token),
-    # reminder-1 (maybe_schedule_reminder).
+def test_select_slot_stays_awaiting_patient_choice_when_payment_timing_is_after_session() -> None:
+    """Con payment_timing=AFTER_SESSION, al llamar select_slot_for_confirmation el
+    request debe permanecer en AWAITING_PATIENT_CHOICE (no pasa a AWAITING_PAYMENT_CONFIRMATION
+    ni a BOOKED inline). El selected_slot_id queda set para que el runtime resolver
+    derive state=COLLECTING_CONFIRMATION_DATA y el bot recoja email/edad/etc.
+    No se crea evento de calendar en este paso ni se agenda recordatorio todavía."""
     service, repository, provider, _task_sched, reminder_repo = (
-        build_service_with_in_person_profile(["req-1", "conference-token-1", "reminder-1"])
+        build_service_with_in_person_profile(["req-1"])
     )
 
     request = create_awaiting_review_request(service)
     stored = repository.get_request_by_id("tenant-1", request.request_id)
     assert stored is not None
     stored.status = "AWAITING_PATIENT_CHOICE"
-    # Appointment far enough in the future so the reminder delay is positive.
     far_start = datetime.datetime(2026, 2, 1, 10, 0, tzinfo=datetime.UTC)
     far_end = datetime.datetime(2026, 2, 1, 11, 0, tzinfo=datetime.UTC)
     stored.slots = [
@@ -1557,20 +1555,20 @@ def test_select_slot_books_directly_when_payment_timing_is_in_person() -> None:
         slot_id="slot-1",
     )
 
-    # Debe ir directo a BOOKED, no a AWAITING_PAYMENT_CONFIRMATION.
-    assert result.status == "BOOKED"
+    # AFTER_SESSION: permanece en AWAITING_PATIENT_CHOICE con selected_slot_id set.
+    assert result.status == "AWAITING_PATIENT_CHOICE"
+    assert result.selected_slot_id == "slot-1"
     reloaded = repository.get_request_by_id("tenant-1", request.request_id)
     assert reloaded is not None
-    assert reloaded.status == "BOOKED"
-    assert reloaded.calendar_event_id is not None
+    assert reloaded.status == "AWAITING_PATIENT_CHOICE"
+    assert reloaded.selected_slot_id == "slot-1"
 
-    # AWAITING_PAYMENT_CONFIRMATION nunca debe ocurrir.
-    assert result.status != "AWAITING_PAYMENT_CONFIRMATION"
+    # No se crea evento de calendar todavía — eso ocurre en confirm_selected_slot_and_create_event.
+    assert len(provider.created_event_summaries) == 0
 
-    # Evento de calendar creado.
-    assert len(provider.created_event_summaries) == 1
-
-    # Reminder agendado con template de asistencia.
+    # No se agenda recordatorio todavía.
     reminders = reminder_repo.list_by_tenant("tenant-1")
-    assert len(reminders) == 1
-    assert reminders[0].template_name == _ATTENDANCE_TEMPLATE_NAME
+    assert len(reminders) == 0
+
+    # Nunca transiciona a AWAITING_PAYMENT_CONFIRMATION.
+    assert result.status != "AWAITING_PAYMENT_CONFIRMATION"

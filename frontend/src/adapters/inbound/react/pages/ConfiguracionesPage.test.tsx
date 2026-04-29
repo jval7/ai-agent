@@ -609,7 +609,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
   });
 
   vitestModule.it(
-    "renders payment timing radio and fires mutation with IN_PERSON when selected",
+    "renders payment timing radio and fires mutation with AFTER_SESSION when selected",
     async () => {
       const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
@@ -620,7 +620,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
         appointmentReminderPaymentTemplateName: null,
         paymentDetailsText: null,
         officeLocation: null,
-        paymentTiming: "IN_PERSON" as const
+        paymentTiming: "AFTER_SESSION" as const
       }));
       const container = buildContainer({
         agentUseCase: {
@@ -656,7 +656,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
         vitestModule
           .expect(updateAgentSettingsMock)
           .toHaveBeenCalledWith(
-            vitestModule.expect.objectContaining({ paymentTiming: "IN_PERSON" })
+            vitestModule.expect.objectContaining({ paymentTiming: "AFTER_SESSION" })
           );
       });
     }

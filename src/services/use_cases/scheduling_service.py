@@ -902,7 +902,9 @@ class SchedulingService:
             },
         )
 
-    def _get_payment_timing(self, tenant_id: str) -> typing.Literal["BEFORE_SESSION", "IN_PERSON"]:
+    def _get_payment_timing(
+        self, tenant_id: str
+    ) -> typing.Literal["BEFORE_SESSION", "AFTER_SESSION"]:
         """Return the current payment_timing for the tenant.
 
         Falls back to "BEFORE_SESSION" when no agent profile repo is wired
@@ -941,38 +943,31 @@ class SchedulingService:
         payment_timing = self._get_payment_timing(tenant_id)
         now_value = self._clock.now()
 
-        if payment_timing == "IN_PERSON":
-            # IN_PERSON: book directly without awaiting payment confirmation.
-            # Derive event summary and attendee emails the same way as reschedule does.
-            event_summary = self._resolve_booked_event_summary(request, None)
-            attendee_emails: list[str] = []
-            if self._patient_repository is not None:
-                patient = self._patient_repository.get_by_whatsapp_user(
-                    tenant_id, request.whatsapp_user_id
-                )
-                if patient is not None:
-                    attendee_emails = [patient.email]
-            result = self._book_slot_and_create_event(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                request=request,
-                selected_slot=selected_slot,
-                event_summary=event_summary,
-                attendee_emails=attendee_emails,
-                reminder_payment_status="PENDING",
-                now_value=now_value,
-            )
-            if result.status == "SLOT_CONFLICT":
-                # Return as a summary DTO re-reading the updated request.
-                reloaded = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
-                if reloaded is not None:
-                    return self._to_summary_dto(reloaded)
+        for slot in request.slots:
+            if slot.id == selected_slot.id:
+                slot.status = "SELECTED"
+            elif slot.status == "SELECTED":
+                slot.status = "PROPOSED"
+
+        request.selected_slot_id = selected_slot.id
+
+        if payment_timing == "AFTER_SESSION":
+            # AFTER_SESSION: skip the payment step entirely. Keep the request
+            # in AWAITING_PATIENT_CHOICE with selected_slot_id set so the
+            # runtime resolver derives state=COLLECTING_CONFIRMATION_DATA and
+            # the bot collects email/age/etc. Once collected, the bot calls
+            # confirm_selected_slot_and_create_event which books the event
+            # with the patient's email (Calendar invite goes out) and
+            # persists patient_first_name on the request (so reminders show
+            # the real name, not "Paciente").
+            request.updated_at = now_value
+            self._scheduling_repository.save_request(request)
             logger.info(
-                "scheduling.slot_booked_in_person",
+                "scheduling.slot_selected_after_session",
                 extra={
                     "event_data": app_logs.build_log_event(
-                        event_name="scheduling.slot_booked_in_person",
-                        message="slot booked directly (IN_PERSON payment_timing)",
+                        event_name="scheduling.slot_selected_after_session",
+                        message="slot selected; AFTER_SESSION skips payment step",
                         data={
                             "tenant_id": tenant_id,
                             "conversation_id": conversation_id,
@@ -985,13 +980,6 @@ class SchedulingService:
             return self._to_summary_dto(request)
 
         # BEFORE_SESSION: standard flow — await payment confirmation.
-        for slot in request.slots:
-            if slot.id == selected_slot.id:
-                slot.status = "SELECTED"
-            elif slot.status == "SELECTED":
-                slot.status = "PROPOSED"
-
-        request.selected_slot_id = selected_slot.id
         request.set_status("AWAITING_PAYMENT_CONFIRMATION", now_value)
         self._scheduling_repository.save_request(request)
         self._sync_tags_after_status_change(

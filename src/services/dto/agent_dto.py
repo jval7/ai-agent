@@ -81,7 +81,7 @@ class UpdateProfessionalProfileDTO(pydantic.BaseModel):
 # ---------------------------------------------------------------------------
 
 
-PaymentTimingLiteral = typing.Literal["BEFORE_SESSION", "IN_PERSON"]
+PaymentTimingLiteral = typing.Literal["BEFORE_SESSION", "AFTER_SESSION"]
 
 
 class UpdateSystemPromptDTO(pydantic.BaseModel):

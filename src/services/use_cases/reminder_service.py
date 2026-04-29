@@ -84,9 +84,9 @@ class ReminderService(reminder_service_port.ReminderServicePort):
             return
 
         # Select template based on payment_timing and payment_status.
-        # IN_PERSON professionals always use the attendance template because
+        # AFTER_SESSION professionals always use the attendance template because
         # payment happens after the session — no payment reminder is needed.
-        if agent_profile.payment_timing == "IN_PERSON" or payment_status == "PAID":
+        if agent_profile.payment_timing == "AFTER_SESSION" or payment_status == "PAID":
             template_name = agent_profile.appointment_reminder_attendance_template_name
         else:
             template_name = agent_profile.appointment_reminder_payment_template_name
@@ -203,10 +203,10 @@ class ReminderService(reminder_service_port.ReminderServicePort):
 
         # Opción B: reselect template if payment_timing changed after the cloud task
         # was scheduled. This covers the case where a professional switches from
-        # BEFORE_SESSION to IN_PERSON (or vice versa) after a reminder was already
+        # BEFORE_SESSION to AFTER_SESSION (or vice versa) after a reminder was already
         # enqueued — we must send the template that matches the current configuration.
         current_template_kind = official_reminder_templates.by_name(reminder.template_name)
-        if agent_profile.payment_timing == "IN_PERSON" and current_template_kind == "PAYMENT":
+        if agent_profile.payment_timing == "AFTER_SESSION" and current_template_kind == "PAYMENT":
             corrected_name = agent_profile.appointment_reminder_attendance_template_name
             if corrected_name is not None:
                 reminder.template_name = corrected_name

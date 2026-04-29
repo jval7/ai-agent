@@ -80,7 +80,7 @@ export interface OfficeLocation {
   arrivalInstructions: string | null;
 }
 
-export type PaymentTiming = "BEFORE_SESSION" | "IN_PERSON";
+export type PaymentTiming = "BEFORE_SESSION" | "AFTER_SESSION";
 
 export interface AgentSettings {
   tenantId: string;

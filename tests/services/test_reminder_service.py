@@ -1026,12 +1026,12 @@ def test_send_reminder_now_raises_when_reminder_missing() -> None:
 
 
 # ---------------------------------------------------------------------------
-# payment_timing = IN_PERSON
+# payment_timing = AFTER_SESSION
 # ---------------------------------------------------------------------------
 
 
-def test_in_person_profile_uses_attendance_template_with_pending_payment() -> None:
-    """Cuando payment_timing es IN_PERSON, maybe_schedule_reminder siempre elige
+def test_after_session_profile_uses_attendance_template_with_pending_payment() -> None:
+    """Cuando payment_timing es AFTER_SESSION, maybe_schedule_reminder siempre elige
     el template de asistencia — incluso cuando payment_status es PENDING."""
     profile = agent_profile_entity.AgentProfile(
         tenant_id="tenant-1",
@@ -1040,7 +1040,7 @@ def test_in_person_profile_uses_attendance_template_with_pending_payment() -> No
         appointment_reminder_days_before=2,
         appointment_reminder_attendance_template_name=_ATTENDANCE_CANONICAL_NAME,
         appointment_reminder_payment_template_name=_PAYMENT_CANONICAL_NAME,
-        payment_timing="IN_PERSON",
+        payment_timing="AFTER_SESSION",
         updated_at=_NOW,
     )
     service, _, reminder_repo, task_sched, _ = _build_service(["reminder-1"], agent_profile=profile)
@@ -1063,7 +1063,7 @@ def test_in_person_profile_uses_attendance_template_with_pending_payment() -> No
 
 def test_execute_reminder_reselects_template_when_payment_timing_changed() -> None:
     """Opción B: si un recordatorio fue agendado con el template de pago pero el
-    profesional luego cambia su payment_timing a IN_PERSON, execute_reminder debe
+    profesional luego cambia su payment_timing a AFTER_SESSION, execute_reminder debe
     corregir el template a asistencia antes de enviar."""
     # Perfil original: BEFORE_SESSION con ambos templates configurados.
     initial_profile = agent_profile_entity.AgentProfile(
@@ -1099,7 +1099,7 @@ def test_execute_reminder_reselects_template_when_payment_timing_changed() -> No
     assert len(pending) == 1
     assert pending[0].template_name == _PAYMENT_CANONICAL_NAME
 
-    # Simular que el profesional cambia a IN_PERSON después de agendar el cloud task.
+    # Simular que el profesional cambia a AFTER_SESSION después de agendar el cloud task.
     updated_profile = agent_profile_entity.AgentProfile(
         tenant_id="tenant-1",
         system_prompt="prompt",
@@ -1108,7 +1108,7 @@ def test_execute_reminder_reselects_template_when_payment_timing_changed() -> No
         appointment_reminder_attendance_template_name=_ATTENDANCE_CANONICAL_NAME,
         appointment_reminder_payment_template_name=_PAYMENT_CANONICAL_NAME,
         payment_details_text="Nequi 300 111 2222",
-        payment_timing="IN_PERSON",
+        payment_timing="AFTER_SESSION",
         updated_at=_NOW,
     )
     agent_profile_repo.save(updated_profile)
