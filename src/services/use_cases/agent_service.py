@@ -271,6 +271,22 @@ class AgentService:
             office_location=(
                 existing_profile.office_location if existing_profile is not None else None
             ),
+            # Preserve all structured form fields so the legacy XML editor
+            # never wipes the agent profile.
+            identity=existing_profile.identity if existing_profile is not None else None,
+            professional_context=(
+                existing_profile.professional_context if existing_profile is not None else None
+            ),
+            services=list(existing_profile.services) if existing_profile is not None else [],
+            presencial_schedule=(
+                list(existing_profile.presencial_schedule) if existing_profile is not None else []
+            ),
+            virtual_schedule=(
+                list(existing_profile.virtual_schedule) if existing_profile is not None else []
+            ),
+            payment_methods=(
+                list(existing_profile.payment_methods) if existing_profile is not None else []
+            ),
             payment_timing=(
                 existing_profile.payment_timing
                 if existing_profile is not None
@@ -320,6 +336,11 @@ class AgentService:
             if existing_profile is not None
             else self._default_system_prompt
         )
+        # Preserve all structured form fields (identity, services, schedules,
+        # payment_methods, professional_context). Without this, saving from
+        # "Datos del consultorio" or any other settings tab wipes the agent
+        # profile because the AgentProfile constructor falls back to defaults
+        # for fields we don't pass explicitly.
         agent_profile = agent_profile_entity.AgentProfile(
             tenant_id=tenant_id,
             system_prompt=system_prompt,
@@ -330,6 +351,20 @@ class AgentService:
             appointment_reminder_payment_template_name=update_dto.appointment_reminder_payment_template_name,
             payment_details_text=_sanitize_payment_details(update_dto.payment_details_text),
             office_location=_office_location_dto_to_entity(update_dto.office_location),
+            identity=existing_profile.identity if existing_profile is not None else None,
+            professional_context=(
+                existing_profile.professional_context if existing_profile is not None else None
+            ),
+            services=list(existing_profile.services) if existing_profile is not None else [],
+            presencial_schedule=(
+                list(existing_profile.presencial_schedule) if existing_profile is not None else []
+            ),
+            virtual_schedule=(
+                list(existing_profile.virtual_schedule) if existing_profile is not None else []
+            ),
+            payment_methods=(
+                list(existing_profile.payment_methods) if existing_profile is not None else []
+            ),
             payment_timing=update_dto.payment_timing,
             updated_at=now_value,
         )

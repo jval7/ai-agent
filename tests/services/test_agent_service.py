@@ -133,6 +133,59 @@ def test_update_agent_settings_office_location_none_clears_field() -> None:
     assert result.office_location is None
 
 
+def test_update_agent_settings_preserves_professional_profile_fields() -> None:
+    """Regression: saving 'Datos del consultorio' must NOT wipe the structured
+    form fields (identity, services, payment_methods, etc.). Earlier versions
+    rebuilt the AgentProfile without passing those fields, leaving defaults
+    that erased everything the professional had configured.
+    """
+    service = build_agent_service()
+
+    # 1. Seed the professional profile (identity, services, payment_methods).
+    service.update_professional_profile(
+        "tenant-1",
+        agent_dto.UpdateProfessionalProfileDTO(
+            identity=agent_dto.AssistantIdentityDTO(
+                assistant_name="Claudia",
+                professional_title="Psic.",
+                professional_name="Aleja",
+            ),
+            services=[
+                agent_dto.ServiceOfferingDTO(
+                    name="Consulta Adultos",
+                    modalities=["PRESENCIAL"],
+                    tariffs=[
+                        agent_dto.TariffOptionDTO(
+                            label="Sesión",
+                            prices=[agent_dto.TariffPriceDTO(currency="COP", amount=130000)],
+                        )
+                    ],
+                )
+            ],
+            payment_methods=[
+                agent_dto.PaymentMethodDTO(currency="COP", method_name="Nequi", holder="Aleja")
+            ],
+        ),
+    )
+
+    # 2. Save settings that have nothing to do with the form (debounce delay).
+    service.update_agent_settings(
+        "tenant-1",
+        agent_dto.UpdateAgentSettingsDTO(message_debounce_delay_seconds=2),
+    )
+
+    # 3. Structured fields must still be there.
+    profile = service.get_professional_profile("tenant-1")
+    assert profile.identity is not None
+    assert profile.identity.assistant_name == "Claudia"
+    assert profile.identity.professional_title == "Psic."
+    assert profile.identity.professional_name == "Aleja"
+    assert len(profile.services) == 1
+    assert profile.services[0].name == "Consulta Adultos"
+    assert len(profile.payment_methods) == 1
+    assert profile.payment_methods[0].method_name == "Nequi"
+
+
 # ---------------------------------------------------------------------------
 # Professional profile tests
 # ---------------------------------------------------------------------------

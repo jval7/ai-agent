@@ -61,11 +61,17 @@ OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
 
 # ---------------------------------------------------------------------------
 # Hardcoded payload derived from docs/sp.txt for Aleja Escobar.
+# Uses the current schema:
+#   - identity has separate professional_title (prefix) and professional_name
+#   - services have a single `tariffs` list (no local/foreign split)
+#   - each TariffOption has `prices: list[{currency, amount}]` and an optional
+#     free-text `description` (replaces the legacy discount_percent number)
 # ---------------------------------------------------------------------------
 _PAYLOAD: dict[str, object] = {
     "identity": {
         "assistant_name": "Claudia",
-        "professional_title": "Psicóloga Aleja Escobar",
+        "professional_title": "Psic.",
+        "professional_name": "Aleja Escobar",
         "professional_address_term": "la Doc",
         "main_city": "Cali",
         "tone": (
@@ -93,76 +99,56 @@ _PAYLOAD: dict[str, object] = {
     "services": [
         {
             "name": "Consulta Individual Adultos",
-            "description": None,
-            "audience": "Adultos",
+            "description": "Para pacientes adultos en Colombia o desde el exterior.",
             "modalities": ["PRESENCIAL", "VIRTUAL"],
-            "tariffs_local": [
+            "tariffs": [
                 {
                     "label": "Sesión individual",
-                    "amount": 130000,
-                    "currency": "COP",
-                    "discount_percent": None,
+                    "description": None,
+                    "prices": [
+                        {"currency": "COP", "amount": 130000},
+                        {"currency": "USD", "amount": 90},
+                    ],
                 },
                 {
                     "label": "Paquete 3 sesiones",
-                    "amount": 370500,
-                    "currency": "COP",
-                    "discount_percent": 5,
+                    "description": "5% descuento",
+                    "prices": [
+                        {"currency": "COP", "amount": 370500},
+                        {"currency": "USD", "amount": 257},
+                    ],
                 },
                 {
                     "label": "Paquete 4 sesiones",
-                    "amount": 478400,
-                    "currency": "COP",
-                    "discount_percent": 8,
-                },
-            ],
-            "tariffs_foreign": [
-                {
-                    "label": "Sesión individual",
-                    "amount": 90,
-                    "currency": "USD",
-                    "discount_percent": None,
-                },
-                {
-                    "label": "Paquete 3 sesiones",
-                    "amount": 257,
-                    "currency": "USD",
-                    "discount_percent": 5,
-                },
-                {
-                    "label": "Paquete 4 sesiones",
-                    "amount": 332,
-                    "currency": "USD",
-                    "discount_percent": 8,
+                    "description": "8% descuento",
+                    "prices": [
+                        {"currency": "COP", "amount": 478400},
+                        {"currency": "USD", "amount": 332},
+                    ],
                 },
             ],
         },
         {
             "name": "Psicología Infantil",
-            "description": None,
-            "audience": "Niños en edad escolar",
+            "description": "Para niños en edad escolar.",
             "modalities": ["PRESENCIAL", "VIRTUAL"],
-            "tariffs_local": [
+            "tariffs": [
                 {
                     "label": "Sesión individual",
-                    "amount": 150000,
-                    "currency": "COP",
-                    "discount_percent": None,
+                    "description": None,
+                    "prices": [{"currency": "COP", "amount": 150000}],
                 },
                 {
                     "label": "Paquete 3 sesiones",
-                    "amount": 427500,
-                    "currency": "COP",
-                    "discount_percent": 5,
+                    "description": "5% descuento",
+                    "prices": [{"currency": "COP", "amount": 427500}],
                 },
                 {
                     "label": "Paquete 4 sesiones",
-                    "amount": 552000,
-                    "currency": "COP",
-                    "discount_percent": 8,
+                    "description": "8% descuento",
+                    "prices": [{"currency": "COP", "amount": 552000}],
                 },
             ],
-            "tariffs_foreign": [],
         },
     ],
     "presencial_schedule": [
