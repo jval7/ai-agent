@@ -37,6 +37,7 @@ type SectionId =
   | "identidad"
   | "servicios"
   | "medios-pago"
+  | "prompt-preview"
   | "whatsapp"
   | "google-calendar"
   | "recordatorios-config"
@@ -59,7 +60,11 @@ const SIDEBAR_GROUPS: settingsSidebarModule.SidebarGroup[] = [
     items: [
       { id: "identidad", label: "Identidad del asistente" },
       { id: "servicios", label: "Servicios y práctica" },
-      { id: "medios-pago", label: "Medios de pago" }
+      { id: "medios-pago", label: "Medios de pago" },
+      // Dev-only: read-only preview of the generated XML prompt.
+      ...(import.meta.env.DEV
+        ? [{ id: "prompt-preview", label: "Vista previa del prompt (dev)" }]
+        : [])
     ]
   },
   {
@@ -1213,18 +1218,27 @@ export function ConfiguracionesPage() {
               <errorBannerModule.ErrorBanner className="mt-3" message={settingsErrorMessage} />
             ) : null}
           </div>
+        </div>
+      );
+    }
 
-          {/* Vista previa del prompt generado (solo dev) */}
-          {import.meta.env.DEV ? (
-            <div className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
-              <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Vista previa del prompt generado (solo en dev)
-              </h4>
-              <pre className="max-h-96 overflow-auto rounded-lg bg-slate-50 p-4 text-xs text-slate-600 whitespace-pre-wrap">
-                {promptQuery.data?.systemPrompt ?? "(cargando...)"}
-              </pre>
-            </div>
-          ) : null}
+    if (activeSection === "prompt-preview" && import.meta.env.DEV) {
+      return (
+        <div className="max-w-5xl space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold text-brand-ink">
+              Vista previa del prompt generado
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Solo visible en dev. Es el XML producido por el renderer a partir de los campos de
+              Identidad, Servicios y Medios de pago. Read-only.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+            <pre className="max-h-[70vh] overflow-auto rounded-lg bg-slate-50 p-4 text-xs whitespace-pre-wrap text-slate-700">
+              {promptQuery.data?.systemPrompt ?? "(cargando...)"}
+            </pre>
+          </div>
         </div>
       );
     }
