@@ -74,7 +74,7 @@ export function AgentPaymentsDetailSection() {
   return (
     <div className="max-w-3xl space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-brand-ink">Medios de pago</h2>
+        <h2 className="text-xl font-semibold font-display text-brand-ink">Medios de pago</h2>
         <p className="mt-1 text-sm text-slate-500">
           Configura los canales de pago que el asistente puede informar a los pacientes.
         </p>

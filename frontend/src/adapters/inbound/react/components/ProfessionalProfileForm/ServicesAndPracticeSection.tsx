@@ -6,7 +6,7 @@ import * as weekdayRangeSelectorModule from "@adapters/inbound/react/components/
 import * as serviceOfferingItemModule from "@adapters/inbound/react/components/ProfessionalProfileForm/ServiceOfferingItem";
 
 const TEXTAREA_CLASS =
-  "mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60";
+  "mt-1 w-full rounded-xl bg-surface-low border-none px-3 py-2.5 text-sm transition-colors placeholder:text-sidebar-text/50 focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60";
 
 function newScheduleBlock(): agentModel.ScheduleBlock {
   return { weekdayFrom: "MON", weekdayTo: null, startTime: "08:00", endTime: "17:00" };
@@ -47,7 +47,7 @@ export function ServicesAndPracticeSection(props: ServicesAndPracticeSectionProp
     <div className="space-y-8">
       {/* Contexto general */}
       <div className="space-y-4">
-        <h4 className="text-base font-semibold text-brand-ink">Contexto general</h4>
+        <h4 className="text-base font-semibold font-display text-brand-ink">Contexto general</h4>
 
         <formFieldModule.FormField
           helperText="Descripcion del enfoque profesional o modelo de trabajo."
@@ -113,8 +113,8 @@ export function ServicesAndPracticeSection(props: ServicesAndPracticeSectionProp
       </div>
 
       {/* Horarios */}
-      <div className="space-y-4 border-t border-border-subtle pt-6">
-        <h4 className="text-base font-semibold text-brand-ink">Horarios</h4>
+      <div className="space-y-4 pt-6">
+        <h4 className="text-base font-semibold font-display text-brand-ink">Horarios</h4>
 
         <div>
           <p className="mb-2 text-sm font-medium text-slate-700">Presencial</p>
@@ -178,8 +178,8 @@ export function ServicesAndPracticeSection(props: ServicesAndPracticeSectionProp
       </div>
 
       {/* Servicios */}
-      <div className="space-y-4 border-t border-border-subtle pt-6">
-        <h4 className="text-base font-semibold text-brand-ink">Servicios</h4>
+      <div className="space-y-4 pt-6">
+        <h4 className="text-base font-semibold font-display text-brand-ink">Servicios</h4>
         <dynamicListModule.DynamicList
           addLabel="Agregar servicio"
           emptyMessage="No hay servicios configurados."

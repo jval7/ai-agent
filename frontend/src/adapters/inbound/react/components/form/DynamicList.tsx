@@ -30,10 +30,7 @@ export function DynamicList<T>(props: DynamicListProps<T>) {
         <p className="text-sm text-slate-400 italic">{props.emptyMessage}</p>
       ) : null}
       {props.items.map((item, index) => (
-        <div
-          className="relative rounded-xl border border-border-subtle bg-slate-50 p-4"
-          key={index}
-        >
+        <div className="relative rounded-xl bg-surface-low p-4" key={index}>
           <button
             aria-label="Eliminar"
             className="absolute right-3 top-3 rounded text-slate-400 hover:text-red-500 focus:outline-none"

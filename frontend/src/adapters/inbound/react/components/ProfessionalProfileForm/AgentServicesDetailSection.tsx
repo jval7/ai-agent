@@ -90,7 +90,7 @@ export function AgentServicesDetailSection() {
   return (
     <div className="max-w-3xl space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-brand-ink">Servicios y práctica</h2>
+        <h2 className="text-xl font-semibold font-display text-brand-ink">Servicios y práctica</h2>
         <p className="mt-1 text-sm text-slate-500">
           Contexto profesional, horarios y servicios ofrecidos.
         </p>

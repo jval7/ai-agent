@@ -219,12 +219,12 @@ export function AppShell(props: { children: reactModule.ReactNode }) {
 
       <aside
         className={[
-          "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-palette-mist bg-white transition-all duration-200 lg:static lg:translate-x-0",
+          "fixed inset-y-0 left-0 z-50 flex flex-col bg-surface-low transition-all duration-200 lg:static lg:translate-x-0",
           isMobileMenuOpen ? "translate-x-0 w-64" : "-translate-x-full w-64",
           isCollapsed ? "lg:w-16" : "lg:w-64"
         ].join(" ")}
       >
-        <div className="flex h-16 shrink-0 items-center border-b border-palette-mist/50 px-3">
+        <div className="flex h-16 shrink-0 items-center px-3">
           <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-teal text-white">
             <svg
               aria-hidden="true"
@@ -247,8 +247,10 @@ export function AppShell(props: { children: reactModule.ReactNode }) {
               isCollapsed ? "lg:hidden" : ""
             ].join(" ")}
           >
-            <p className="truncate text-sm font-bold text-brand-ink">Agendachat</p>
-            <p className="truncate text-[11px] text-slate-400">Panel operativo</p>
+            <p className="truncate text-sm font-bold font-display text-brand-teal">Agendachat</p>
+            <p className="truncate text-[10px] uppercase tracking-widest text-sidebar-text/70">
+              Panel operativo
+            </p>
           </div>
           <button
             aria-label={isCollapsed ? "Expandir menú" : "Colapsar menú"}
@@ -268,8 +270,8 @@ export function AppShell(props: { children: reactModule.ReactNode }) {
                   "flex items-center rounded-lg px-2 py-2.5 text-sm transition-colors",
                   isCollapsed ? "lg:justify-center lg:px-0" : "gap-3 px-3",
                   isActive
-                    ? "bg-brand-accent-light font-semibold text-brand-teal"
-                    : "font-medium text-sidebar-text hover:bg-sidebar-hover hover:text-slate-700"
+                    ? "bg-surface-white font-semibold text-brand-teal shadow-card-sm"
+                    : "font-normal text-sidebar-text hover:bg-sidebar-hover hover:text-brand-ink"
                 ].join(" ")
               }
               key={link.to}
@@ -285,10 +287,10 @@ export function AppShell(props: { children: reactModule.ReactNode }) {
           ))}
         </nav>
 
-        <div className="border-t border-palette-mist/50 p-2">
+        <div className="p-2">
           <button
             className={[
-              "flex w-full items-center rounded-lg px-2 py-2.5 text-sm font-medium text-sidebar-text transition-colors hover:bg-sidebar-hover hover:text-slate-700",
+              "flex w-full items-center rounded-lg px-2 py-2.5 text-sm font-medium text-sidebar-text transition-colors hover:bg-sidebar-hover hover:text-brand-ink",
               isCollapsed ? "lg:justify-center lg:px-0" : "gap-3 px-3"
             ].join(" ")}
             onClick={() => {
@@ -304,7 +306,7 @@ export function AppShell(props: { children: reactModule.ReactNode }) {
       </aside>
 
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-14 shrink-0 items-center border-b border-slate-200 bg-white px-4 lg:hidden">
+        <header className="flex h-14 shrink-0 items-center bg-brand-surface px-4 lg:hidden">
           <button
             className="rounded-md p-2 text-slate-600 hover:bg-slate-100"
             onClick={() => {

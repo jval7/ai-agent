@@ -3,9 +3,9 @@ import * as collapsibleCardModule from "@adapters/inbound/react/components/form/
 import * as formFieldModule from "@adapters/inbound/react/components/form/FormField";
 
 const INPUT_CLASS =
-  "mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60";
+  "mt-1 block w-full rounded-xl bg-surface-low border-none px-3 py-2.5 text-sm placeholder:text-sidebar-text/50 focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60";
 const TEXTAREA_CLASS =
-  "mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60";
+  "mt-1 w-full rounded-xl bg-surface-low border-none px-3 py-2.5 text-sm transition-colors placeholder:text-sidebar-text/50 focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60";
 
 interface PaymentMethodItemProps {
   value: agentModel.PaymentMethod;
@@ -27,12 +27,11 @@ export function PaymentMethodItem(props: PaymentMethodItemProps) {
 
   return (
     <collapsibleCardModule.CollapsibleCard
-      className="border border-slate-200"
       summary={
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-slate-800">{summaryName}</span>
+          <span className="text-sm font-semibold text-brand-ink">{summaryName}</span>
           {value.currency !== "" ? (
-            <span className="rounded-full bg-brand-teal/10 px-2 py-0.5 text-xs font-medium text-brand-teal">
+            <span className="rounded-full bg-brand-accent-light/60 px-2 py-0.5 text-xs font-semibold text-brand-teal uppercase tracking-wide">
               {value.currency}
             </span>
           ) : null}

@@ -579,7 +579,9 @@ export function ConfiguracionesPage() {
       return (
         <div className="max-w-3xl space-y-6">
           <div>
-            <h2 className="text-xl font-semibold text-brand-ink">Datos del consultorio</h2>
+            <h2 className="text-xl font-semibold font-display text-brand-ink">
+              Datos del consultorio
+            </h2>
             <p className="mt-1 text-sm text-slate-500">
               Esta informacion se incluye automaticamente en los mensajes de confirmacion de citas
               presenciales y en los eventos de Google Calendar.
@@ -595,7 +597,7 @@ export function ConfiguracionesPage() {
                 llegada. Puedes incluir edificio, piso, parqueadero y referencias en el mismo campo.
               </p>
               <textarea
-                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-1 w-full rounded-xl bg-surface-low border-none px-3 py-2.5 text-sm transition-colors placeholder:text-sidebar-text/50 focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={settingsQuery.isLoading}
                 id="office-address"
                 onChange={(e) => {
@@ -615,7 +617,7 @@ export function ConfiguracionesPage() {
                 Indicaciones de llegada
               </label>
               <textarea
-                className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-1 w-full rounded-xl bg-surface-low border-none px-3 py-2.5 text-sm transition-colors placeholder:text-sidebar-text/50 focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={settingsQuery.isLoading}
                 id="office-arrival-instructions"
                 onChange={(e) => {
@@ -672,12 +674,12 @@ export function ConfiguracionesPage() {
       return (
         <div className="max-w-3xl space-y-6">
           <div>
-            <h2 className="text-xl font-semibold text-brand-ink">WhatsApp Business</h2>
+            <h2 className="text-xl font-semibold font-display text-brand-ink">WhatsApp Business</h2>
             <p className="mt-1 text-sm text-slate-500">
               Conecta la linea de negocio para recibir y responder chats.
             </p>
           </div>
-          <div className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card space-y-4">
+          <div className="rounded-2xl bg-surface-white p-6 shadow-card space-y-4">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-slate-700">Estado actual:</span>
               {buildConnectionStatusBadge(whatsappConnectionQuery.data?.status)}
@@ -705,7 +707,7 @@ export function ConfiguracionesPage() {
                 PIN de registro (solo si tienes 2FA)
               </label>
               <input
-                className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal"
+                className="mt-1 block w-full rounded-xl bg-surface-low border-none px-3 py-2.5 text-sm placeholder:text-sidebar-text/50 focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                 id="registration-pin"
                 maxLength={6}
                 onChange={(e) => {
@@ -755,12 +757,12 @@ export function ConfiguracionesPage() {
       return (
         <div className="max-w-3xl space-y-6">
           <div>
-            <h2 className="text-xl font-semibold text-brand-ink">Google Calendar</h2>
+            <h2 className="text-xl font-semibold font-display text-brand-ink">Google Calendar</h2>
             <p className="mt-1 text-sm text-slate-500">
               Conecta el calendario principal del profesional para disponibilidad y agenda.
             </p>
           </div>
-          <div className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card space-y-4">
+          <div className="rounded-2xl bg-surface-white p-6 shadow-card space-y-4">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-slate-700">Estado actual:</span>
               {buildConnectionStatusBadge(googleCalendarConnectionQuery.data?.status)}
@@ -799,8 +801,8 @@ export function ConfiguracionesPage() {
           </div>
 
           {/* Onboarding status */}
-          <div className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card space-y-3">
-            <h3 className="text-base font-semibold text-brand-ink">Estado general</h3>
+          <div className="rounded-2xl bg-surface-white p-6 shadow-card space-y-3">
+            <h3 className="text-base font-semibold font-display text-brand-ink">Estado general</h3>
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-slate-700">Estado:</span>
               {statusBadgeElement}
@@ -853,12 +855,14 @@ export function ConfiguracionesPage() {
       return (
         <div className="max-w-3xl space-y-6">
           <div>
-            <h2 className="text-xl font-semibold text-brand-ink">Recordatorios automáticos</h2>
+            <h2 className="text-xl font-semibold font-display text-brand-ink">
+              Recordatorios automáticos
+            </h2>
             <p className="mt-1 text-sm text-slate-500">
               Enviamos un mensaje de WhatsApp al paciente antes de su cita.
             </p>
           </div>
-          <div className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+          <div className="rounded-2xl bg-surface-white p-6 shadow-card">
             {reminderSetupState === "loading" ? (
               <p className="text-xs text-slate-400">Cargando…</p>
             ) : null}
@@ -923,7 +927,7 @@ export function ConfiguracionesPage() {
                     ¿Cuántos días antes enviamos el recordatorio?
                   </label>
                   <input
-                    className="mt-1 w-24 rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
+                    className="mt-1 w-24 rounded-xl bg-surface-low border-none px-3 py-2.5 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
                     id="reminder-days"
                     max={7}
                     min={1}
@@ -937,7 +941,7 @@ export function ConfiguracionesPage() {
                   </p>
                 </div>
 
-                <div className="rounded-xl border border-border-subtle bg-slate-50 p-4">
+                <div className="rounded-xl bg-surface-low p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     Así lo recibe el paciente que ya pagó
                   </p>
@@ -949,7 +953,7 @@ export function ConfiguracionesPage() {
                 </div>
 
                 {paymentStatus?.metaStatus === "APPROVED" ? (
-                  <div className="rounded-xl border border-border-subtle bg-slate-50 p-4">
+                  <div className="rounded-xl bg-surface-low p-4">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       Así lo recibe el paciente que aún no pagó
                     </p>
@@ -963,7 +967,7 @@ export function ConfiguracionesPage() {
                   </div>
                 ) : null}
 
-                <div className="rounded-xl border border-border-subtle bg-slate-50 p-4">
+                <div className="rounded-xl bg-surface-low p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     Datos de pago
                   </p>
@@ -1078,7 +1082,9 @@ export function ConfiguracionesPage() {
       return (
         <div className="max-w-4xl space-y-6">
           <div>
-            <h2 className="text-xl font-semibold text-brand-ink">Plantillas de mensajes</h2>
+            <h2 className="text-xl font-semibold font-display text-brand-ink">
+              Plantillas de mensajes
+            </h2>
             <p className="mt-1 text-sm text-slate-500">
               Mensajes oficiales de WhatsApp aprobados por Meta.
             </p>
@@ -1093,13 +1099,13 @@ export function ConfiguracionesPage() {
       return (
         <div className="max-w-3xl space-y-6">
           <div>
-            <h2 className="text-xl font-semibold text-brand-ink">Momento del cobro</h2>
+            <h2 className="text-xl font-semibold font-display text-brand-ink">Momento del cobro</h2>
             <p className="mt-1 text-sm text-slate-500">
               Define si el bot exige pago antes de confirmar la cita o si el cobro se hace en
               persona al terminar la sesión.
             </p>
           </div>
-          <div className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+          <div className="rounded-2xl bg-surface-white p-6 shadow-card">
             <fieldset className="space-y-3">
               <legend className="sr-only">Momento del cobro</legend>
               <label className="flex cursor-pointer items-start gap-3">
@@ -1160,13 +1166,15 @@ export function ConfiguracionesPage() {
       return (
         <div className="max-w-3xl space-y-6">
           <div>
-            <h2 className="text-xl font-semibold text-brand-ink">Delay de respuesta</h2>
+            <h2 className="text-xl font-semibold font-display text-brand-ink">
+              Delay de respuesta
+            </h2>
             <p className="mt-1 text-sm text-slate-500">
               Tiempo de espera después de procesar un mensaje antes de responder. Permite capturar
               mensajes adicionales enviados en ráfaga. 0 = sin espera.
             </p>
           </div>
-          <div className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+          <div className="rounded-2xl bg-surface-white p-6 shadow-card">
             <label className="block text-sm font-medium text-slate-700" htmlFor="debounce-delay">
               Segundos
             </label>
@@ -1195,7 +1203,7 @@ export function ConfiguracionesPage() {
       return (
         <div className="max-w-5xl space-y-6">
           <div>
-            <h2 className="text-xl font-semibold text-brand-ink">
+            <h2 className="text-xl font-semibold font-display text-brand-ink">
               Vista previa del prompt generado
             </h2>
             <p className="mt-1 text-sm text-slate-500">
@@ -1203,7 +1211,7 @@ export function ConfiguracionesPage() {
               Identidad, Servicios y Medios de pago. Read-only.
             </p>
           </div>
-          <div className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+          <div className="rounded-2xl bg-surface-white p-6 shadow-card">
             <pre className="max-h-[70vh] overflow-auto rounded-lg bg-slate-50 p-4 text-xs whitespace-pre-wrap text-slate-700">
               {promptQuery.data?.systemPrompt ?? "(cargando...)"}
             </pre>

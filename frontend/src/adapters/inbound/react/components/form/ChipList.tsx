@@ -47,10 +47,10 @@ export function ChipList(props: ChipListProps) {
 
   return (
     <div className="mt-1">
-      <div className="flex min-h-[2.5rem] flex-wrap gap-1.5 rounded-lg border border-slate-300 px-3 py-2 focus-within:border-brand-teal focus-within:ring-1 focus-within:ring-brand-teal">
+      <div className="flex min-h-[2.5rem] flex-wrap gap-1.5 rounded-xl bg-surface-low px-3 py-2 focus-within:ring-2 focus-within:ring-brand-teal/20">
         {props.items.map((item, index) => (
           <span
-            className="inline-flex items-center gap-1 rounded-full bg-brand-teal/10 px-2.5 py-0.5 text-xs font-medium text-brand-teal"
+            className="inline-flex items-center gap-1 rounded-full bg-brand-accent-light/60 px-2.5 py-0.5 text-xs font-semibold text-brand-teal"
             key={index}
           >
             {item}

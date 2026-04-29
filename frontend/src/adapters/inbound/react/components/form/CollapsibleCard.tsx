@@ -44,7 +44,8 @@ export function CollapsibleCard(props: CollapsibleCardProps) {
     }
   };
 
-  const baseClass = "rounded-2xl bg-white shadow-card transition-shadow hover:shadow-md";
+  const baseClass =
+    "rounded-2xl bg-surface-white shadow-card transition-shadow hover:shadow-card-hover";
   const wrapperClass = className === undefined ? baseClass : `${baseClass} ${className}`;
 
   return (
@@ -63,7 +64,9 @@ export function CollapsibleCard(props: CollapsibleCardProps) {
           <div className="flex shrink-0 items-center gap-1">{trailing}</div>
         ) : null}
       </div>
-      {isOpen ? <div className="border-t border-slate-100 px-4 py-4">{children}</div> : null}
+      {isOpen ? (
+        <div className="bg-brand-surface/60 px-4 py-4 rounded-b-2xl">{children}</div>
+      ) : null}
     </div>
   );
 }

@@ -59,7 +59,7 @@ export function CurrencyInput(props: CurrencyInputProps) {
   return (
     <div className="flex items-center gap-2">
       <select
-        className="rounded-lg border border-slate-300 px-2 py-2 text-sm focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
+        className="rounded-xl bg-surface-low border-none px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={props.disabled}
         onChange={handleCurrencyChange}
         value={props.currency}
@@ -71,7 +71,7 @@ export function CurrencyInput(props: CurrencyInputProps) {
         ))}
       </select>
       <input
-        className="block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
+        className="block w-full rounded-xl bg-surface-low border-none px-3 py-2.5 text-sm placeholder:text-sidebar-text/50 focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60"
         disabled={props.disabled}
         inputMode="numeric"
         onBlur={handleAmountBlur}
