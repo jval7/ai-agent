@@ -2,7 +2,9 @@ import * as reactModule from "react";
 import * as reactQueryModule from "@tanstack/react-query";
 import * as reactRouterDomModule from "react-router-dom";
 
-import type { PaymentTiming } from "@domain/models/agent";
+import type * as agentModel from "@domain/models/agent";
+
+type PaymentTiming = agentModel.PaymentTiming;
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
 import * as billingDisclosureModalModule from "@adapters/inbound/react/components/BillingDisclosureModal";
@@ -124,6 +126,33 @@ function resolveSectionFromParams(params: URLSearchParams): SectionId {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+/**
+ * Mirror of `payment_methods_formatter.format_payment_methods_for_template`
+ * (backend). Renders the structured payment methods as a single inline string
+ * suitable for the WhatsApp reminder template.
+ */
+function formatPaymentMethodsInline(methods: agentModel.PaymentMethod[]): string {
+  if (methods.length === 0) return "";
+  const rendered = methods
+    .map((m) => {
+      const parts: string[] = [];
+      if (m.methodName !== "" && m.instructions !== null && m.instructions !== "") {
+        parts.push(`${m.methodName}: ${m.instructions}`);
+      } else if (m.methodName !== "") {
+        parts.push(m.methodName);
+      } else if (m.instructions !== null && m.instructions !== "") {
+        parts.push(m.instructions);
+      }
+      if (parts.length === 0) return "";
+      if (m.holder !== null && m.holder !== "") {
+        parts.push(`a nombre de ${m.holder}`);
+      }
+      return parts.join(" · ");
+    })
+    .filter((s) => s !== "");
+  return rendered.join(" · ");
+}
+
 function buildConnectionStatusBadge(status: string | undefined): JSX.Element {
   if (status === undefined) {
     return <statusBadgeModule.StatusBadge label="cargando" tone="neutral" />;
@@ -265,9 +294,23 @@ export function ConfiguracionesPage() {
     queryFn: () => appContainer.agentUseCase.getAgentSettings()
   });
 
+  // Same key as ProfessionalProfileForm so the cache is shared. Used here to
+  // derive the "Datos de pago" preview from the structured payment_methods.
+  const professionalProfileQuery = reactQueryModule.useQuery({
+    queryKey: ["professional-profile"] as const,
+    queryFn: () => appContainer.agentUseCase.getProfessionalProfile()
+  });
+
   const [debounceDelay, setDebounceDelay] = reactModule.useState(0);
   const [reminderDaysBefore, setReminderDaysBefore] = reactModule.useState(1);
+  // Legacy free-text payment details. No longer edited from the UI; we keep
+  // the state in sync with the persisted value so the save mutations pass it
+  // through unchanged. The reminder section now displays a derived preview
+  // from `paymentMethods` instead.
   const [paymentDetailsText, setPaymentDetailsText] = reactModule.useState("");
+  const derivedPaymentDetails = formatPaymentMethodsInline(
+    professionalProfileQuery.data?.paymentMethods ?? []
+  );
   const [officeAddress, setOfficeAddress] = reactModule.useState("");
   const [officeArrivalInstructions, setOfficeArrivalInstructions] = reactModule.useState("");
   const [paymentTiming, setPaymentTiming] = reactModule.useState<PaymentTiming>("BEFORE_SESSION");
@@ -912,39 +955,40 @@ export function ConfiguracionesPage() {
                     </p>
                     <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
                       {`Hola Juan García feliz día, recuerda que para la confirmación de tu sesión el lunes 8 de noviembre de 2026 a las 10 am debes realizar el pago por los siguientes canales: ${
-                        paymentDetailsText.trim() === ""
-                          ? "(configura tus datos de pago abajo)"
-                          : paymentDetailsText
+                        derivedPaymentDetails === ""
+                          ? "(configura los métodos en Agente → Medios de pago)"
+                          : derivedPaymentDetails
                       }. Envía tu comprobante al chat antes de tu sesión.`}
                     </p>
                   </div>
                 ) : null}
 
-                <div>
-                  <label
-                    className="block text-sm font-medium text-slate-700"
-                    htmlFor="payment-details"
-                  >
+                <div className="rounded-xl border border-border-subtle bg-slate-50 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                     Datos de pago
-                  </label>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Se incluyen en el recordatorio cuando la cita aún no fue pagada. Ej.: Nequi,
-                    Bancolombia, un link.
                   </p>
-                  <textarea
-                    className="mt-1 w-full rounded-lg border border-border-subtle px-3 py-2 text-sm transition-colors focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20"
-                    id="payment-details"
-                    onBlur={() => {
-                      settingsMutation.mutate();
-                    }}
-                    onChange={(e) => {
-                      setPaymentDetailsText(e.target.value);
-                    }}
-                    placeholder="Nequi: 300 123 4567&#10;Bancolombia ahorros 1234-5678-9012"
-                    rows={3}
-                    value={paymentDetailsText}
-                  />
-                  <p className="mt-1 text-xs text-slate-500">Se guarda cuando sales del campo.</p>
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    Se toman automáticamente de{" "}
+                    <button
+                      className="text-brand-teal underline-offset-2 hover:underline"
+                      onClick={() => {
+                        setActiveSection("medios-pago");
+                      }}
+                      type="button"
+                    >
+                      Agente → Medios de pago
+                    </button>
+                    . Edítalos ahí para que se actualicen aquí.
+                  </p>
+                  <p className="mt-2 text-sm text-slate-700">
+                    {derivedPaymentDetails === "" ? (
+                      <span className="italic text-slate-400">
+                        Aún no hay métodos de pago configurados.
+                      </span>
+                    ) : (
+                      derivedPaymentDetails
+                    )}
+                  </p>
                 </div>
 
                 {paymentStatus?.metaStatus === "REJECTED" ||
