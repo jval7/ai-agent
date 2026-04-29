@@ -230,6 +230,7 @@ class AppContainer:
                 id_generator=self.id_generator_adapter,
                 clock=self.clock_adapter,
                 tenant_repository=self.tenant_repository,
+                agent_profile_repository=self.agent_profile_repository,
             )
         )
         self.task_scheduler: task_scheduler_port.TaskSchedulerPort

@@ -175,90 +175,10 @@ vitestModule.describe("ConfiguracionesPage", () => {
     });
   });
 
-  vitestModule.it(
-    "renders Información General tab by default with professional name input",
-    async () => {
-      const container = buildContainer();
-
-      renderConfiguracionesPage(container);
-
-      const input =
-        await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
-      vitestModule.expect(input).toBeInTheDocument();
-      await testingLibraryReactModule.waitFor(() => {
-        vitestModule.expect((input as HTMLInputElement).value).toBe("Dra. Ana Garcia");
-      });
-    }
-  );
-
-  vitestModule.it("shows empty professional name input when professionalName is null", async () => {
-    const container = buildContainer({
-      tenantUseCase: {
-        getProfile: vitestModule.vi.fn(async () => ({
-          tenantId: "tenant-1",
-          name: "Ana Garcia",
-          professionalName: null
-        })),
-        updateProfile: vitestModule.vi.fn(async () => ({
-          tenantId: "tenant-1",
-          name: "Ana Garcia",
-          professionalName: null
-        }))
-      }
-    });
-
-    renderConfiguracionesPage(container);
-
-    const input = await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
-    vitestModule.expect((input as HTMLInputElement).value).toBe("");
-  });
-
-  vitestModule.it("submits updated professional name and shows success banner", async () => {
-    const updateProfileMock = vitestModule.vi.fn(async () => ({
-      tenantId: "tenant-1",
-      name: "Ana Garcia",
-      professionalName: "Dra. Ana M. Garcia"
-    }));
-    const container = buildContainer({
-      tenantUseCase: {
-        getProfile: vitestModule.vi.fn(async () => ({
-          tenantId: "tenant-1",
-          name: "Ana Garcia",
-          professionalName: "Dra. Ana Garcia"
-        })),
-        updateProfile: updateProfileMock
-      }
-    });
-
-    renderConfiguracionesPage(container);
-
-    const input = await testingLibraryReactModule.screen.findByLabelText("Nombre del profesional");
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule.expect((input as HTMLInputElement).value).toBe("Dra. Ana Garcia");
-    });
-    testingLibraryReactModule.fireEvent.change(input, {
-      target: { value: "Dra. Ana M. Garcia" }
-    });
-
-    // Profile "Guardar" is the first of the two save buttons (profile and consultorio)
-    const saveButtons = testingLibraryReactModule.screen.getAllByRole("button", {
-      name: "Guardar"
-    });
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    testingLibraryReactModule.fireEvent.click(saveButtons[0]!);
-
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule.expect(updateProfileMock).toHaveBeenCalledWith({
-        professionalName: "Dra. Ana M. Garcia"
-      });
-    });
-
-    await testingLibraryReactModule.waitFor(() => {
-      vitestModule
-        .expect(testingLibraryReactModule.screen.getByText("Perfil actualizado."))
-        .toBeInTheDocument();
-    });
-  });
+  // Tests for the standalone "Perfil del profesional" section were removed:
+  // that section no longer exists in the UI. The professional name now lives
+  // exclusively under "Identidad del asistente" (in the agent profile form),
+  // and Calendar event titles read from there too.
 
   vitestModule.it("shows oauth callback error banner from query params", async () => {
     const container = buildContainer();

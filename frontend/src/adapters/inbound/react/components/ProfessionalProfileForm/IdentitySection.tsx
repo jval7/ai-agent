@@ -41,56 +41,49 @@ export function IdentitySection(props: IdentitySectionProps) {
       </formFieldModule.FormField>
 
       {/*
-        Two side-by-side fields: title prefix + professional name. They get
-        combined into a single label that the bot uses when introducing the
-        professional formally (e.g. "Doc. Ana Rodriguez"). Below them, a
-        preview shows how the combination reads.
+        Single semantic block: title prefix + full name on the same row.
+        One label and one helper for the whole combination, plus a live
+        preview below. This name is also used as the Calendar event title.
       */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[140px_1fr]">
-        <formFieldModule.FormField
-          helperText='Prefijo o referencia. Ej.: "Doc.", "Psic.", "Dra.", "Lic."'
-          htmlFor="professional-title"
-          label="Título o referencia"
-        >
+      <div>
+        <p className="text-sm font-medium text-slate-700">Título y nombre del profesional</p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Cómo se presenta formalmente el profesional. También aparece en los títulos de los eventos
+          de Google Calendar.
+        </p>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
           <input
-            className={INPUT_CLASS}
+            aria-label="Título o referencia"
+            className={`${INPUT_CLASS} sm:w-32`}
             disabled={disabled}
             id="professional-title"
             onChange={handleField("professionalTitle")}
-            placeholder="Ej. Doc."
+            placeholder="Doc."
             type="text"
             value={value.professionalTitle ?? ""}
           />
-        </formFieldModule.FormField>
-
-        <formFieldModule.FormField
-          helperText="Nombre completo del profesional."
-          htmlFor="professional-name"
-          label="Nombre del profesional"
-        >
           <input
-            className={INPUT_CLASS}
+            aria-label="Nombre del profesional"
+            className={`${INPUT_CLASS} sm:flex-1`}
             disabled={disabled}
             id="professional-name"
             onChange={handleField("professionalName")}
-            placeholder="Ej. Ana Rodríguez"
+            placeholder="Ana Rodríguez"
             type="text"
             value={value.professionalName ?? ""}
           />
-        </formFieldModule.FormField>
-      </div>
-
-      {value.professionalTitle !== null || value.professionalName !== null ? (
-        <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          <span className="font-medium text-slate-500">Vista previa:</span>{" "}
-          <span className="font-semibold text-slate-800">
-            {[value.professionalTitle, value.professionalName]
-              .filter((v) => v !== null && v !== "")
-              .join(" ")}
-          </span>
-          <span className="ml-2 text-slate-400">— así te presentará el asistente formalmente.</span>
         </div>
-      ) : null}
+        {value.professionalTitle !== null || value.professionalName !== null ? (
+          <p className="mt-1.5 text-xs text-slate-500">
+            Vista previa:{" "}
+            <span className="font-semibold text-slate-800">
+              {[value.professionalTitle, value.professionalName]
+                .filter((v) => v !== null && v !== "")
+                .join(" ")}
+            </span>
+          </p>
+        ) : null}
+      </div>
 
       <formFieldModule.FormField
         helperText='Forma corta para hablar de ti en tercera persona durante la conversación. Ej.: "la Doc te confirma cuando termine".'

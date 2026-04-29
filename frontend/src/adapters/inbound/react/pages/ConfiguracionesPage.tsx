@@ -26,13 +26,11 @@ const onboardingStatusQueryKey = ["onboarding-status"] as const;
 const promptQueryKey = ["system-prompt"] as const;
 const settingsQueryKey = ["agent-settings"] as const;
 const officialTemplateStatusQueryKey = ["official-template-status"] as const;
-const tenantProfileQueryKey = ["tenant-profile"] as const;
 
 // ---------------------------------------------------------------------------
 // Section routing
 // ---------------------------------------------------------------------------
 type SectionId =
-  | "perfil"
   | "consultorio"
   | "identidad"
   | "servicios"
@@ -62,10 +60,7 @@ const SIDEBAR_GROUPS: settingsSidebarModule.SidebarGroup[] = [
     id: "general",
     label: "General",
     iconPath: ICON_USER,
-    items: [
-      { id: "perfil", label: "Perfil del profesional" },
-      { id: "consultorio", label: "Datos del consultorio" }
-    ]
+    items: [{ id: "consultorio", label: "Datos del consultorio" }]
   },
   {
     id: "agente",
@@ -112,7 +107,7 @@ const SIDEBAR_GROUPS: settingsSidebarModule.SidebarGroup[] = [
 
 const ALL_SECTION_IDS = new Set<string>(SIDEBAR_GROUPS.flatMap((g) => g.items.map((i) => i.id)));
 
-const DEFAULT_SECTION: SectionId = "perfil";
+const DEFAULT_SECTION: SectionId = "identidad";
 
 /** Resolves legacy ?tab= values and new ?section= values to a SectionId. */
 function resolveSectionFromParams(params: URLSearchParams): SectionId {
@@ -120,7 +115,7 @@ function resolveSectionFromParams(params: URLSearchParams): SectionId {
   if (section !== null && ALL_SECTION_IDS.has(section)) return section as SectionId;
   // Backward-compat: legacy tab param
   const tab = params.get("tab");
-  if (tab === "general" || tab === "agente") return "perfil";
+  if (tab === "general" || tab === "agente") return "identidad";
   if (tab === "conexiones") return "whatsapp";
   if (tab === "recordatorios" || tab === "ajustes") return "recordatorios-config";
   return DEFAULT_SECTION;
@@ -491,41 +486,10 @@ export function ConfiguracionesPage() {
   // -------------------------------------------------------------------
   // Tenant profile
   // -------------------------------------------------------------------
-  const profileQuery = reactQueryModule.useQuery({
-    queryKey: tenantProfileQueryKey,
-    queryFn: () => appContainer.tenantUseCase.getProfile()
-  });
-
-  const [profileDraft, setProfileDraft] = reactModule.useState({ professionalName: "" });
-  const [profileSuccessMessage, setProfileSuccessMessage] = reactModule.useState<string | null>(
-    null
-  );
-
-  reactModule.useEffect(() => {
-    if (profileQuery.data !== undefined) {
-      setProfileDraft({ professionalName: profileQuery.data.professionalName ?? "" });
-    }
-  }, [profileQuery.data]);
-
-  const profileMutation = reactQueryModule.useMutation({
-    mutationFn: () =>
-      appContainer.tenantUseCase.updateProfile({
-        professionalName: profileDraft.professionalName.trim() || null
-      }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: tenantProfileQueryKey });
-      setProfileSuccessMessage("Perfil actualizado.");
-    }
-  });
-
-  const profileErrorMessage = uiErrorModule.resolveUiErrorMessage([
-    profileMutation.error,
-    profileQuery.error
-  ]);
-
-  const savedProfessionalName = profileQuery.data?.professionalName ?? null;
-  const profileDraftTrimmed = profileDraft.professionalName.trim() || null;
-  const isProfileDirty = profileDraftTrimmed !== savedProfessionalName;
+  // Tenant.professional_name is no longer edited from this UI: the calendar
+  // event title now reads from AgentProfile.identity (title + name combined).
+  // The legacy field stays in the backend as a fallback for tenants that
+  // haven't migrated to the form yet.
 
   // -------------------------------------------------------------------
   // Debounced inputs
@@ -568,62 +532,6 @@ export function ConfiguracionesPage() {
   // -------------------------------------------------------------------
   function renderDetail(): JSX.Element {
     // ----- GENERAL -----
-    if (activeSection === "perfil") {
-      return (
-        <div className="max-w-3xl space-y-6">
-          <div>
-            <h2 className="text-xl font-semibold text-brand-ink">Perfil del profesional</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Este nombre aparece en los títulos de los eventos de Google Calendar cuando agendas
-              una cita.
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700" htmlFor="professional-name">
-              Nombre del profesional
-            </label>
-            <input
-              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-1 focus:ring-brand-teal disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={profileQuery.isLoading}
-              id="professional-name"
-              maxLength={80}
-              onChange={(e) => {
-                setProfileDraft((prev) => ({ ...prev, professionalName: e.target.value }));
-                setProfileSuccessMessage(null);
-              }}
-              placeholder="Ej. Dra. Ana Garcia"
-              type="text"
-              value={profileDraft.professionalName}
-            />
-            <p className="mt-1.5 text-xs text-slate-500">
-              Formato del titulo en Calendar: {"{tu nombre}"}/{"{nombre del paciente}"}. Si dejas
-              este campo vacio se usara "Profesional" por defecto.
-            </p>
-          </div>
-          {profileSuccessMessage !== null ? (
-            <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-              {profileSuccessMessage}
-            </div>
-          ) : null}
-          {profileErrorMessage !== null ? (
-            <errorBannerModule.ErrorBanner className="mt-3" message={profileErrorMessage} />
-          ) : null}
-          <div className="flex justify-end">
-            <button
-              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={profileMutation.isPending || profileQuery.isLoading || !isProfileDirty}
-              onClick={() => {
-                profileMutation.mutate();
-              }}
-              type="button"
-            >
-              {profileMutation.isPending ? "Guardando..." : "Guardar"}
-            </button>
-          </div>
-        </div>
-      );
-    }
-
     if (activeSection === "consultorio") {
       return (
         <div className="max-w-3xl space-y-6">
