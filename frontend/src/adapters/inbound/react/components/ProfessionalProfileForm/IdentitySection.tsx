@@ -25,7 +25,7 @@ export function IdentitySection(props: IdentitySectionProps) {
   return (
     <div className="space-y-4">
       <formFieldModule.FormField
-        helperText='Nombre con el que el asistente se presenta. Ej.: "Claudia"'
+        helperText='Nombre con el que el asistente se presenta. Ej.: "Sofia"'
         htmlFor="assistant-name"
         label="Nombre del asistente"
       >
@@ -34,7 +34,7 @@ export function IdentitySection(props: IdentitySectionProps) {
           disabled={disabled}
           id="assistant-name"
           onChange={handleField("assistantName")}
-          placeholder="Ej. Claudia"
+          placeholder="Ej. Sofia"
           type="text"
           value={value.assistantName ?? ""}
         />
@@ -82,7 +82,7 @@ export function IdentitySection(props: IdentitySectionProps) {
           disabled={disabled}
           id="main-city"
           onChange={handleField("mainCity")}
-          placeholder="Ej. Cali"
+          placeholder="Ej. Medellín"
           type="text"
           value={value.mainCity ?? ""}
         />

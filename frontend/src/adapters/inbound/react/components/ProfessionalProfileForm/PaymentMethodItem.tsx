@@ -85,7 +85,7 @@ export function PaymentMethodItem(props: PaymentMethodItemProps) {
             disabled={disabled}
             id={`pm-holder-${value.methodName}`}
             onChange={handleField("holder")}
-            placeholder="Ej. Alejandra Escobar"
+            placeholder="Ej. María López"
             type="text"
             value={value.holder ?? ""}
           />
@@ -101,7 +101,7 @@ export function PaymentMethodItem(props: PaymentMethodItemProps) {
             disabled={disabled}
             id={`pm-instructions-${value.methodName}`}
             onChange={handleField("instructions")}
-            placeholder="Ej. 318 732 6409"
+            placeholder="Ej. 300 000 0000"
             rows={2}
             value={value.instructions ?? ""}
           />

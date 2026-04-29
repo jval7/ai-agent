@@ -189,12 +189,12 @@ vitestModule.describe("ProfessionalProfileForm", () => {
 
     // Wait for the form to fully load (input is present and not disabled)
     await testingLibraryReactModule.waitFor(() => {
-      const input = testingLibraryReactModule.screen.getByPlaceholderText("Ej. Claudia");
+      const input = testingLibraryReactModule.screen.getByPlaceholderText("Ej. Sofia");
       vitestModule.expect(input).not.toBeDisabled();
     });
 
     // Fire the change
-    const assistantNameInput = testingLibraryReactModule.screen.getByPlaceholderText("Ej. Claudia");
+    const assistantNameInput = testingLibraryReactModule.screen.getByPlaceholderText("Ej. Sofia");
     await testingLibraryReactModule.act(async () => {
       testingLibraryReactModule.fireEvent.change(assistantNameInput, {
         target: { value: "Nuevo nombre" }
@@ -218,12 +218,12 @@ vitestModule.describe("ProfessionalProfileForm", () => {
 
     // Wait for the form to fully load
     await testingLibraryReactModule.waitFor(() => {
-      const input = testingLibraryReactModule.screen.getByPlaceholderText("Ej. Claudia");
+      const input = testingLibraryReactModule.screen.getByPlaceholderText("Ej. Sofia");
       vitestModule.expect(input).not.toBeDisabled();
     });
 
     // Make form dirty
-    const assistantNameInput = testingLibraryReactModule.screen.getByPlaceholderText("Ej. Claudia");
+    const assistantNameInput = testingLibraryReactModule.screen.getByPlaceholderText("Ej. Sofia");
     await testingLibraryReactModule.act(async () => {
       testingLibraryReactModule.fireEvent.change(assistantNameInput, {
         target: { value: "Nuevo asistente" }
