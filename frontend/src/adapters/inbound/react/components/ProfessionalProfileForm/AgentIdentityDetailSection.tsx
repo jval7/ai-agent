@@ -12,6 +12,7 @@ const professionalProfileQueryKey = ["professional-profile"] as const;
 const EMPTY_IDENTITY: agentModel.AssistantIdentity = {
   assistantName: null,
   professionalTitle: null,
+  professionalName: null,
   professionalAddressTerm: null,
   mainCity: null,
   tone: null,

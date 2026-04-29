@@ -10,6 +10,7 @@ import pydantic
 class AssistantIdentityDTO(pydantic.BaseModel):
     assistant_name: str | None = None
     professional_title: str | None = None
+    professional_name: str | None = None
     professional_address_term: str | None = None
     main_city: str | None = None
     tone: str | None = None

@@ -55,6 +55,7 @@ def _identity_to_dto(
     return agent_dto.AssistantIdentityDTO(
         assistant_name=identity.assistant_name,
         professional_title=identity.professional_title,
+        professional_name=identity.professional_name,
         professional_address_term=identity.professional_address_term,
         main_city=identity.main_city,
         tone=identity.tone,
@@ -70,6 +71,7 @@ def _identity_dto_to_entity(
     return agent_profile_entity.AssistantIdentity(
         assistant_name=dto.assistant_name,
         professional_title=dto.professional_title,
+        professional_name=dto.professional_name,
         professional_address_term=dto.professional_address_term,
         main_city=dto.main_city,
         tone=dto.tone,

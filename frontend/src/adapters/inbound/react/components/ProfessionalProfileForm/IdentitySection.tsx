@@ -40,26 +40,62 @@ export function IdentitySection(props: IdentitySectionProps) {
         />
       </formFieldModule.FormField>
 
-      <formFieldModule.FormField
-        helperText='Titulo profesional. Ej.: "Psicóloga", "Nutricionista"'
-        htmlFor="professional-title"
-        label="Titulo profesional"
-      >
-        <input
-          className={INPUT_CLASS}
-          disabled={disabled}
-          id="professional-title"
-          onChange={handleField("professionalTitle")}
-          placeholder="Ej. Psicóloga"
-          type="text"
-          value={value.professionalTitle ?? ""}
-        />
-      </formFieldModule.FormField>
+      {/*
+        Two side-by-side fields: title prefix + professional name. They get
+        combined into a single label that the bot uses when introducing the
+        professional formally (e.g. "Doc. Ana Rodriguez"). Below them, a
+        preview shows how the combination reads.
+      */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[140px_1fr]">
+        <formFieldModule.FormField
+          helperText='Prefijo o referencia. Ej.: "Doc.", "Psic.", "Dra.", "Lic."'
+          htmlFor="professional-title"
+          label="Título o referencia"
+        >
+          <input
+            className={INPUT_CLASS}
+            disabled={disabled}
+            id="professional-title"
+            onChange={handleField("professionalTitle")}
+            placeholder="Ej. Doc."
+            type="text"
+            value={value.professionalTitle ?? ""}
+          />
+        </formFieldModule.FormField>
+
+        <formFieldModule.FormField
+          helperText="Nombre completo del profesional."
+          htmlFor="professional-name"
+          label="Nombre del profesional"
+        >
+          <input
+            className={INPUT_CLASS}
+            disabled={disabled}
+            id="professional-name"
+            onChange={handleField("professionalName")}
+            placeholder="Ej. Ana Rodríguez"
+            type="text"
+            value={value.professionalName ?? ""}
+          />
+        </formFieldModule.FormField>
+      </div>
+
+      {value.professionalTitle !== null || value.professionalName !== null ? (
+        <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <span className="font-medium text-slate-500">Vista previa:</span>{" "}
+          <span className="font-semibold text-slate-800">
+            {[value.professionalTitle, value.professionalName]
+              .filter((v) => v !== null && v !== "")
+              .join(" ")}
+          </span>
+          <span className="ml-2 text-slate-400">— así te presentará el asistente formalmente.</span>
+        </div>
+      ) : null}
 
       <formFieldModule.FormField
-        helperText='Como el asistente llama al profesional. Ej.: "la Doc", "el Lic."'
+        helperText='Forma corta para hablar de ti en tercera persona durante la conversación. Ej.: "la Doc te confirma cuando termine".'
         htmlFor="professional-address-term"
-        label="Como se le llama al profesional"
+        label="Como se le llama al profesional (forma corta)"
       >
         <input
           className={INPUT_CLASS}

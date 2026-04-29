@@ -392,6 +392,7 @@ export interface UpdateTenantProfileRequest {
 export interface AssistantIdentityApiResponse {
   assistant_name: string | null;
   professional_title: string | null;
+  professional_name: string | null;
   professional_address_term: string | null;
   main_city: string | null;
   tone: string | null;

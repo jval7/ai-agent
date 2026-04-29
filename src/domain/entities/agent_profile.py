@@ -25,8 +25,9 @@ _WEEKDAY_LITERAL = typing.Literal["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN
 
 class AssistantIdentity(pydantic.BaseModel):
     assistant_name: str | None = None
-    professional_title: str | None = None
-    professional_address_term: str | None = None
+    professional_title: str | None = None  # "Doc.", "Psic.", "Dra." — prefix
+    professional_name: str | None = None  # "Ana Rodriguez" — full name
+    professional_address_term: str | None = None  # "la Doc" — third-person ref
     main_city: str | None = None
     tone: str | None = None
     languages: list[str] = []

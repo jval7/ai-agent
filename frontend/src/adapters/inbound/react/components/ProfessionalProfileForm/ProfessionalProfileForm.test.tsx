@@ -26,7 +26,8 @@ const FULL_PROFILE: agentModel.ProfessionalProfile = {
   tenantId: "test-tenant",
   identity: {
     assistantName: "Claudia",
-    professionalTitle: "Psicóloga",
+    professionalTitle: "Psic.",
+    professionalName: "Aleja Test",
     professionalAddressTerm: "la Doc",
     mainCity: "Cali",
     tone: "Profesional y cálida.",

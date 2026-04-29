@@ -49,14 +49,30 @@ def _format_schedule_block(block: agent_profile_entity.ScheduleBlock) -> str:
     return f"{from_label} de {start} a {end}"
 
 
+def _professional_label(identity: agent_profile_entity.AssistantIdentity) -> str:
+    """Combine professional_title + professional_name into a single label.
+
+    Title alone:                "Doc."        → "Doc."
+    Name alone:                 "Ana Rodriguez" → "Ana Rodriguez"
+    Title + name (typical):     "Doc." + "Ana Rodriguez" → "Doc. Ana Rodriguez"
+    Both empty:                 "" (caller should skip rendering)
+    """
+    title = identity.professional_title.strip() if identity.professional_title else ""
+    name = identity.professional_name.strip() if identity.professional_name else ""
+    if title and name:
+        return f"{title} {name}"
+    return title or name
+
+
 def _render_identity(identity: agent_profile_entity.AssistantIdentity) -> str:
     parts: list[str] = []
-    if identity.assistant_name or identity.professional_title or identity.main_city:
+    pro_label = _professional_label(identity)
+    if identity.assistant_name or pro_label or identity.main_city:
         role_parts: list[str] = []
         if identity.assistant_name:
             role_parts.append(identity.assistant_name)
-        if identity.professional_title:
-            role_parts.append(f"la asistente virtual de WhatsApp de {identity.professional_title}")
+        if pro_label:
+            role_parts.append(f"la asistente virtual de WhatsApp de {pro_label}")
         if identity.main_city:
             role_parts.append(f"({identity.main_city})")
         parts.append(f"<assistant_role>{' '.join(role_parts)}</assistant_role>")

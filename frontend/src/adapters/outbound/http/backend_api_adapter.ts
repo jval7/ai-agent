@@ -1337,6 +1337,7 @@ function mapProfessionalProfile(
         ? {
             assistantName: raw.identity.assistant_name,
             professionalTitle: raw.identity.professional_title,
+            professionalName: raw.identity.professional_name,
             professionalAddressTerm: raw.identity.professional_address_term,
             mainCity: raw.identity.main_city,
             tone: raw.identity.tone,
@@ -1368,6 +1369,7 @@ function profileInputToApi(
         ? {
             assistant_name: input.identity.assistantName,
             professional_title: input.identity.professionalTitle,
+            professional_name: input.identity.professionalName,
             professional_address_term: input.identity.professionalAddressTerm,
             main_city: input.identity.mainCity,
             tone: input.identity.tone,

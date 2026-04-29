@@ -4,6 +4,7 @@ export type Modality = "PRESENCIAL" | "VIRTUAL";
 export interface AssistantIdentity {
   assistantName: string | null;
   professionalTitle: string | null;
+  professionalName: string | null;
   professionalAddressTerm: string | null;
   mainCity: string | null;
   tone: string | null;
