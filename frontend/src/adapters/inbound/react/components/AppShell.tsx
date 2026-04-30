@@ -186,13 +186,14 @@ function ChevronRightIcon() {
   );
 }
 
+// Orden por frecuencia de uso día a día. Configuraciones al final (setup-once).
 const navLinks = [
-  { to: "/configuraciones", label: "Configuraciones", Icon: SettingsIcon },
   { to: "/agenda", label: "Agenda", Icon: CalendarIcon },
-  { to: "/finanzas", label: "Finanzas", Icon: WalletIcon },
   { to: "/inbox", label: "Conversaciones", Icon: InboxIcon },
   { to: "/clientes", label: "Clientes", Icon: UsersIcon },
-  { to: "/recordatorios", label: "Recordatorios", Icon: BellIcon }
+  { to: "/finanzas", label: "Finanzas", Icon: WalletIcon },
+  { to: "/recordatorios", label: "Recordatorios", Icon: BellIcon },
+  { to: "/configuraciones", label: "Configuraciones", Icon: SettingsIcon }
 ];
 
 export function AppShell(props: { children: reactModule.ReactNode }) {
