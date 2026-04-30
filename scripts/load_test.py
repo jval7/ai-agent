@@ -17,13 +17,15 @@ Requiere:
     - .secrets/make_api_base.env con: API_BASE
 
 Uso:
-    uv run python scripts/load_test.py                              # default (prod)
+    uv run python scripts/load_test.py                              # default (psicologa, prod)
+    uv run python scripts/load_test.py --profile ortodoncista       # simula pacientes de Sandra Posso
     ENV=dev uv run python scripts/load_test.py                      # carga make_credentials_dev.env y make_api_base_dev.env
     API_BASE=https://tu-backend.run.app uv run python scripts/load_test.py  # override inline
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import datetime
 import logging
@@ -107,9 +109,13 @@ IMPORTANTE — como escribir:
 """
 
 # ---------------------------------------------------------------------------
-# 7 Pacientes composicionales
+# Pacientes por tipo de profesional
 # ---------------------------------------------------------------------------
-PATIENTS: list[dict[str, str]] = [
+# Selección con --profile {psicologa|ortodoncista}. Cada lista es independiente
+# y se ajusta a las características y servicios del profesional simulado.
+# ---------------------------------------------------------------------------
+
+PSICOLOGA_PATIENTS: list[dict[str, str]] = [
     # --- 2 Nacionales presencial (Cali) ---
     {
         "whatsapp_user_id": "573001110001",
@@ -182,6 +188,61 @@ PATIENTS: list[dict[str, str]] = [
         ),
     },
 ]
+
+# Pacientes para Sandra Posso (ortodoncista). Solo cubren el flujo de paciente
+# NUEVO (valoración inicial) — el flujo RETURNING (cita de control / consulta /
+# reprogramar) requiere un Patient pre-existente en Firestore, lo cual no se
+# puede simular desde este script sin cargar el record manualmente.
+ORTODONCIA_PATIENTS: list[dict[str, str]] = [
+    {
+        "whatsapp_user_id": "573002220001",
+        "display_name": "Daniel Cardenas",
+        "persona": (
+            "Tienes 32 años, vives en Cali. Eres ingeniero. Te molestan los dientes "
+            "torcidos del frente y has pensado en ortodoncia invisible (Invisalign). "
+            "Quieres una valoración inicial para que la doctora revise. "
+            "Comportamiento: cooperativo. Antes de comprometerte, preguntas cuánto "
+            "vale la valoración y si la doctora trabaja con invisible. Si te confirman "
+            "el precio de la valoración, das tus datos sin problema."
+        ),
+    },
+    {
+        "whatsapp_user_id": "573002220002",
+        "display_name": "Laura Rodriguez",
+        "persona": (
+            "Tienes 38 años, vives en Cali. Tu hijo Felipe de 14 años tiene mordida "
+            "cruzada y el odontólogo general lo refirió a ortodoncia. Quieres pedir "
+            "valoración para él. Comportamiento: preguntas si la doctora atiende "
+            "adolescentes y si la valoración puede ser virtual o tiene que ser "
+            "presencial. Cuando te respondan, agendas presencial."
+        ),
+    },
+    {
+        "whatsapp_user_id": "573002220003",
+        "display_name": "Camilo Velez",
+        "persona": (
+            "Tienes 28 años, normalmente vives en Madrid pero estás de visita en Cali "
+            "por dos semanas. Quieres aprovechar para una valoración inicial mientras "
+            "estás acá. Comportamiento: cuando te den horarios, di que el primero no "
+            "te sirve porque estás ocupado ese día. Acepta el segundo. Al final "
+            "pregunta cómo pagas."
+        ),
+    },
+]
+
+# Selección con CLI flag (default: psicologa, retro-compat).
+_arg_parser = argparse.ArgumentParser(description="Load test del bot WhatsApp")
+_arg_parser.add_argument(
+    "--profile",
+    choices=["psicologa", "ortodoncista"],
+    default="psicologa",
+    help="Tipo de profesional a simular (define el set de pacientes).",
+)
+_args, _ = _arg_parser.parse_known_args()
+PROFILE_TYPE = _args.profile
+PATIENTS: list[dict[str, str]] = (
+    ORTODONCIA_PATIENTS if PROFILE_TYPE == "ortodoncista" else PSICOLOGA_PATIENTS
+)
 
 # ---------------------------------------------------------------------------
 # Logging
