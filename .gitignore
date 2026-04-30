@@ -23,7 +23,13 @@ frontend/coverage/
 !infra/terraform/**/envs/*.tfvars
 **/tfplan
 **/*.tfplan
-.claude/
+# Ignora todo el contenido de .claude/ (settings personales, agents, plans, etc).
+.claude/*
+# Skills a nivel proyecto: comiteables, compartidos con el equipo. Negacion
+# en dos pasos para no incluir skills personales (ej. stitch/).
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/persona-from-combo/
 .vite/
 frontend/.claude/
 .mcp.json
