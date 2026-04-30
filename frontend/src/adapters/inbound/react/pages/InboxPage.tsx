@@ -648,7 +648,7 @@ export function InboxPage() {
             </header>
 
             {/* Messages */}
-            <div className="flex-1 space-y-3 overflow-auto py-3">
+            <div className="flex-1 space-y-4 overflow-auto px-2 py-4">
               {messagesQuery.isLoading ? (
                 <p className="text-sm text-slate-500">Cargando historial...</p>
               ) : null}
@@ -658,16 +658,18 @@ export function InboxPage() {
                 return (
                   <div
                     className={[
-                      "max-w-[85%] rounded-xl px-3 py-2 text-sm",
+                      "max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm",
                       isInbound
                         ? "mr-auto bg-slate-100 text-slate-800"
                         : "ml-auto bg-brand-teal text-white"
                     ].join(" ")}
                     key={message.messageId}
                   >
-                    <p className="mb-1 text-xs font-semibold opacity-80">{message.role}</p>
-                    <p>{message.content}</p>
-                    <p className="mt-1 text-[11px] opacity-80">
+                    <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide opacity-70">
+                      {message.role}
+                    </p>
+                    <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                    <p className="mt-2 text-[11px] opacity-70">
                       {dateUtilsModule.formatDateTime(message.createdAt)}
                     </p>
                   </div>
@@ -1134,7 +1136,7 @@ export function InboxPage() {
               <p className="text-xs text-slate-500">Selecciona una conversación.</p>
             )}
           </header>
-          <div className="max-h-[calc(100vh-10rem)] space-y-3 overflow-auto p-4">
+          <div className="max-h-[calc(100vh-10rem)] space-y-4 overflow-auto px-5 py-4">
             {messagesQuery.isLoading && selectedConversationId !== null ? (
               <p className="text-sm text-slate-500">Cargando historial...</p>
             ) : null}
@@ -1144,16 +1146,18 @@ export function InboxPage() {
               return (
                 <div
                   className={[
-                    "max-w-[90%] rounded-xl px-3 py-2 text-sm",
+                    "max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm",
                     isInbound
                       ? "mr-auto bg-slate-100 text-slate-800"
                       : "ml-auto bg-brand-teal text-white"
                   ].join(" ")}
                   key={message.messageId}
                 >
-                  <p className="mb-1 text-xs font-semibold opacity-80">{message.role}</p>
-                  <p>{message.content}</p>
-                  <p className="mt-1 text-[11px] opacity-80">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide opacity-70">
+                    {message.role}
+                  </p>
+                  <p className="whitespace-pre-wrap break-words">{message.content}</p>
+                  <p className="mt-2 text-[11px] opacity-70">
                     {dateUtilsModule.formatDateTime(message.createdAt)}
                   </p>
                 </div>
