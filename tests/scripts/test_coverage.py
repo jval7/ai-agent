@@ -249,17 +249,21 @@ class TestLoadShape:
             coverage.load_shape(invalid)
 
 
-class TestEmptyPoolPostFase0:
-    """Documenta el estado actual: con pool vacío, los 4 shapes deben
-    reportar gaps. Cuando Fase 3 pueble el pool, este test queda obsoleto y
-    se reemplaza por `test_existing_shapes_are_fully_covered`.
+class TestExistingShapesCovered:
+    """Garantiza que el pool de `personas_module.ALL_PERSONAS` cubre los
+    `required_combos` de cada shape comiteado en `tests/fixtures/profiles/`.
+
+    Si agregás un combo nuevo a un shape sin generar la persona que lo cubre
+    (via skill `/persona-from-combo`), este test falla con el combo huerfano
+    explicito en el mensaje. Es la red de seguridad anti-drift entre shapes
+    y pool — la responsabilidad del skill es mantenerla siempre verde.
     """
 
-    def test_all_existing_shapes_have_uncovered_combos_against_empty_pool(self) -> None:
+    def test_all_existing_shapes_are_fully_covered_by_pool(self) -> None:
         shapes = coverage.load_shapes_from_dir(_FIXTURES_DIR)
         for shape in shapes:
             uncovered = coverage.detect_uncovered_combos(shape, personas_module.ALL_PERSONAS)
-            assert uncovered, (
-                f"shape {shape.metadata.name} reports no gaps against empty pool — "
-                "esperabamos que TODOS los combos quedaran descubiertos"
+            assert not uncovered, (
+                f"shape {shape.metadata.name!r} tiene combos huerfanos: {uncovered}. "
+                f"Genera personas que los cubran con `/persona-from-combo {shape.metadata.name}`."
             )

@@ -59,7 +59,44 @@ class Persona:
 # cubra los `required_combos` declarados. Mantener vacío hasta Fase 3.
 # ---------------------------------------------------------------------------
 
-PSICOLOGA_PERSONAS: list[Persona] = []
+PSICOLOGA_PERSONAS: list[Persona] = [
+    Persona(
+        id="diego_local_asks_price",
+        display_name="Diego Hernandez",
+        whatsapp_user_id="573001110001",
+        persona_text=(
+            "Tienes 38 anios, vives en Cali. Llevas meses con mucho estres "
+            "laboral y queres empezar terapia para manejarlo. Preferis ir "
+            "presencial al consultorio. "
+            "Comportamiento: Lo primero que preguntas es cuanto vale."
+        ),
+        capabilities=["local_patient", "new_patient", "asks_about_price"],
+    ),
+    Persona(
+        id="bruno_foreign_asks_price",
+        display_name="Bruno Schneider",
+        whatsapp_user_id="573001110002",
+        persona_text=(
+            "Tienes 42 anios, vives en Berlin, Alemania. Llevas tiempo "
+            "considerando empezar terapia y queres saber si te conviene "
+            "virtual desde Europa. "
+            "Comportamiento: Lo primero que preguntas es cuanto vale."
+        ),
+        capabilities=["foreign_patient", "new_patient", "asks_about_price"],
+    ),
+    Persona(
+        id="patricia_returning",
+        display_name="Patricia Mendez",
+        whatsapp_user_id="573001110003",
+        persona_text=(
+            "Tienes 50 anios, vives en Cali. Sos paciente desde hace meses — "
+            "ya tuviste tu valoracion inicial y queres agendar una cita de "
+            "control para seguir el tratamiento. "
+            "Comportamiento: Tomas el primer horario que te ofrezcan sin pedir cambios."
+        ),
+        capabilities=["local_patient", "returning_patient", "accepts_first_slot"],
+    ),
+]
 
 ORTODONCIA_PERSONAS: list[Persona] = []
 
