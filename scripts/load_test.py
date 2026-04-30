@@ -85,7 +85,7 @@ MAX_TURNS = 20  # maximo de mensajes por paciente (evita loops infinitos)
 # System prompt para el LLM que simula pacientes
 # ---------------------------------------------------------------------------
 _PATIENT_SYSTEM_INSTRUCTION = """\
-Eres {display_name}. Escribes por WhatsApp a un consultorio de psicologia.
+Eres {display_name}. Escribes por WhatsApp a un {practice_type}.
 
 Hoy es {today_human}. Cualquier fecha posterior a hoy es FUTURA. No asumas
 que estamos en otro año o mes — usa esta fecha como referencia absoluta.
@@ -95,7 +95,8 @@ que estamos en otro año o mes — usa esta fecha como referencia absoluta.
 IMPORTANTE — como escribir:
 - Eres una persona REAL, no un bot. Escribe como alguien normal por WhatsApp.
 - Mensajes CORTOS. Maximo 1-2 oraciones. La gente real no escribe parrafos por WhatsApp.
-- NO uses terminologia clinica ni del consultorio. No digas "consulta individual adultos" ni "terapia infantil". Di "una cita", "ver a la doctora", "una sesion para mi hijo".
+- NO uses terminologia clinica ni del consultorio. Di cosas naturales como "una cita", "ver a la doctora", "una valoracion", "una sesion para mi hijo" — no nombres tecnicos del servicio.
+- TU motivo de consulta DEBE ser coherente con el {practice_type}. NO inventes problemas que no aplican a esta especialidad (ej. si es ortodoncia, no hables de ansiedad ni terapia psicologica; si es psicologia, no hables de brackets ni dientes).
 - NO des toda tu informacion de una (a menos que tu comportamiento lo indique). La gente real responde lo que le preguntan.
 - Primer mensaje: saluda y di lo MINIMO. Ejemplos reales: "Hola buenas tardes, quiero pedir una cita", "Hola, cuanto vale la consulta?", "Buenas, quiero agendar una sesion".
 - Cuando te pidan datos (nombre, edad, telefono), responde con datos coherentes con tu perfil.
@@ -285,11 +286,17 @@ async def _generate_patient_message(
     client = _get_gemini_client()
 
     today_human = _format_today_human()
+    practice_type = (
+        "consultorio de ortodoncia"
+        if PROFILE_TYPE == "ortodoncista"
+        else "consultorio de psicologia"
+    )
     system_instruction = _PATIENT_SYSTEM_INSTRUCTION.format(
         display_name=display_name,
         persona=persona,
         patient_email=PATIENT_EMAIL,
         today_human=today_human,
+        practice_type=practice_type,
     )
 
     # Mapear historial al formato Gemini:

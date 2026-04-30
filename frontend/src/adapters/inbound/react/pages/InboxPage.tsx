@@ -851,7 +851,7 @@ export function InboxPage() {
                         return;
                       }
                       const isConfirmed = window.confirm(
-                        "¿Seguro que quieres cerrar la sesión de esta conversación?"
+                        "¿Marcar esta conversación como terminada?"
                       );
                       if (!isConfirmed) {
                         return;
@@ -861,7 +861,7 @@ export function InboxPage() {
                     }}
                     type="button"
                   >
-                    {closeSessionMutation.isPending ? "Cerrando..." : "Cerrar sesión"}
+                    {closeSessionMutation.isPending ? "Marcando..." : "Marcar como terminada"}
                   </button>
                 </div>
               ) : null}
@@ -1389,7 +1389,7 @@ export function InboxPage() {
 
               <div className="rounded-lg border border-border-subtle p-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Sesión
+                  Conversación
                 </p>
                 <button
                   className="mt-3 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-60"
@@ -1398,9 +1398,7 @@ export function InboxPage() {
                     if (selectedConversationId === null) {
                       return;
                     }
-                    const isConfirmed = window.confirm(
-                      "¿Seguro que quieres cerrar la sesión de esta conversación?"
-                    );
+                    const isConfirmed = window.confirm("¿Marcar esta conversación como terminada?");
                     if (!isConfirmed) {
                       return;
                     }
@@ -1408,7 +1406,7 @@ export function InboxPage() {
                   }}
                   type="button"
                 >
-                  {closeSessionMutation.isPending ? "Cerrando..." : "Cerrar sesión"}
+                  {closeSessionMutation.isPending ? "Marcando..." : "Marcar como terminada"}
                 </button>
               </div>
             </>
