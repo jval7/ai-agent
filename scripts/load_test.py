@@ -31,13 +31,22 @@ import datetime
 import logging
 import os
 import pathlib
+import sys
 import time
 import typing
 import uuid
 import zoneinfo
 
-import httpx
-from google import genai
+# Project root en sys.path para poder importar `scripts.personas` cuando este
+# archivo se ejecuta directamente (`uv run python scripts/load_test.py`).
+_PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+import httpx  # noqa: E402
+from google import genai  # noqa: E402
+
+import scripts.personas as personas_module  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Cargar archivos de .secrets/ segun ENV. Default: make_credentials.env y
@@ -112,126 +121,15 @@ IMPORTANTE — como escribir:
 # ---------------------------------------------------------------------------
 # Pacientes por tipo de profesional
 # ---------------------------------------------------------------------------
-# Selección con --profile {psicologa|ortodoncista}. Cada lista es independiente
-# y se ajusta a las características y servicios del profesional simulado.
+# Las personas viven en `scripts/personas.py` (anotadas con capabilities). El
+# pool inicial está VACÍO por diseño — el skill `/persona-from-combo` (Fase 2
+# del plan eval) lo va poblando a medida que los shapes lo demanden.
+#
+# Mientras el pool esté vacío, `--profile` aborta con mensaje claro. El runner
+# mantiene la flag para retro-compat: cuando haya personas, vuelve a funcionar
+# sin cambios.
 # ---------------------------------------------------------------------------
 
-PSICOLOGA_PATIENTS: list[dict[str, str]] = [
-    # --- 2 Nacionales presencial (Cali) ---
-    {
-        "whatsapp_user_id": "573001110001",
-        "display_name": "Carlos Ramirez",
-        "persona": (
-            "Tienes 45 años, vives en Cali. Quieres ir presencial al consultorio. "
-            "Tu mamá falleció hace un mes y no sabes cómo manejarlo. "
-            "Comportamiento: coopera sin complicaciones, responde lo que te pregunten."
-        ),
-    },
-    {
-        "whatsapp_user_id": "573001110002",
-        "display_name": "Andres Torres",
-        "persona": (
-            "Tienes 40 años, vives en Cali. Tu hijo Santiago de 8 años tiene mucha ansiedad "
-            "y no quiere ir al colegio. Quieres llevarlo presencial. "
-            "Comportamiento: lo primero que preguntas es cuánto cuesta. No das más datos "
-            "hasta que te digan el precio. Insiste si no te lo dicen."
-        ),
-    },
-    # --- 2 Nacionales virtual ---
-    {
-        "whatsapp_user_id": "573001110003",
-        "display_name": "Ana Martinez",
-        "persona": (
-            "Tienes 28 años, vives en Barranquilla. Prefieres virtual porque no estás en Cali. "
-            "Estás en una relación que te hace daño pero no puedes dejarla. "
-            "Comportamiento: cuando te den horarios, di que el primero no te sirve. "
-            "Si te ofrecen otro, acepta."
-        ),
-    },
-    {
-        "whatsapp_user_id": "573001110004",
-        "display_name": "Sofia Vargas",
-        "persona": (
-            "Tienes 36 años, vives en Medellín. Tu hija Valentina de 10 años tiene cambios "
-            "de ánimo fuertes desde que te separaste. Quieres que la vea virtual. "
-            "Comportamiento: antes de agendar, pregunta qué enfoque usa la doctora "
-            "y si tiene experiencia con niños."
-        ),
-    },
-    # --- 3 Extranjeros virtual ---
-    {
-        "whatsapp_user_id": "573001110005",
-        "display_name": "Laura Gomez",
-        "persona": (
-            "Tienes 35 años, vives en Madrid, España. Te separaste hace poco y la estás "
-            "pasando muy mal. Necesitas hablar con alguien, virtual obviamente. "
-            "Comportamiento: cuando te digan que pagues por Nequi, pregunta si se puede "
-            "pagar con tarjeta o transferencia porque no conoces Nequi."
-        ),
-    },
-    {
-        "whatsapp_user_id": "573001110006",
-        "display_name": "Felipe Morales",
-        "persona": (
-            "Tienes 30 años, vives en Lima, Perú. Llevas semanas con ataques de ansiedad. "
-            "Comportamiento: en tu primer mensaje da todo de una — tu nombre, que quieres "
-            "una cita virtual, que estás en Lima, y tu motivo. Eres directo."
-        ),
-    },
-    {
-        "whatsapp_user_id": "573001110007",
-        "display_name": "Isabella Chen",
-        "persona": (
-            "Tienes 33 años, vives en Ciudad de México. Tu pareja y tú tienen muchos problemas "
-            "y quieren terapia de pareja (esto NO lo trata la doctora). "
-            "Comportamiento: coopera normalmente. Si te dicen que no tratan tu caso, "
-            "pregunta si pueden recomendar a alguien."
-        ),
-    },
-]
-
-# Pacientes para Sandra Posso (ortodoncista). Solo cubren el flujo de paciente
-# NUEVO (valoración inicial) — el flujo RETURNING (cita de control / consulta /
-# reprogramar) requiere un Patient pre-existente en Firestore, lo cual no se
-# puede simular desde este script sin cargar el record manualmente.
-ORTODONCIA_PATIENTS: list[dict[str, str]] = [
-    {
-        "whatsapp_user_id": "573002220001",
-        "display_name": "Daniel Cardenas",
-        "persona": (
-            "Tienes 32 años, vives en Cali. Eres ingeniero. Te molestan los dientes "
-            "torcidos del frente y has pensado en ortodoncia invisible (Invisalign). "
-            "Quieres una valoración inicial para que la doctora revise. "
-            "Comportamiento: cooperativo. Antes de comprometerte, preguntas cuánto "
-            "vale la valoración y si la doctora trabaja con invisible. Si te confirman "
-            "el precio de la valoración, das tus datos sin problema."
-        ),
-    },
-    {
-        "whatsapp_user_id": "573002220002",
-        "display_name": "Laura Rodriguez",
-        "persona": (
-            "Tienes 38 años, vives en Cali. Tu hijo Felipe de 14 años tiene mordida "
-            "cruzada y el odontólogo general lo refirió a ortodoncia. Quieres pedir "
-            "valoración para él. Comportamiento: preguntas si la doctora atiende "
-            "adolescentes y si la valoración puede ser virtual o tiene que ser "
-            "presencial. Cuando te respondan, agendas presencial."
-        ),
-    },
-    {
-        "whatsapp_user_id": "573002220003",
-        "display_name": "Camilo Velez",
-        "persona": (
-            "Tienes 28 años, normalmente vives en Madrid pero estás de visita en Cali "
-            "por dos semanas. Quieres aprovechar para una valoración inicial mientras "
-            "estás acá. Comportamiento: cuando te den horarios, di que el primero no "
-            "te sirve porque estás ocupado ese día. Acepta el segundo. Al final "
-            "pregunta cómo pagas."
-        ),
-    },
-]
-
-# Selección con CLI flag (default: psicologa, retro-compat).
 _arg_parser = argparse.ArgumentParser(description="Load test del bot WhatsApp")
 _arg_parser.add_argument(
     "--profile",
@@ -240,10 +138,24 @@ _arg_parser.add_argument(
     help="Tipo de profesional a simular (define el set de pacientes).",
 )
 _args, _ = _arg_parser.parse_known_args()
-PROFILE_TYPE = _args.profile
-PATIENTS: list[dict[str, str]] = (
-    ORTODONCIA_PATIENTS if PROFILE_TYPE == "ortodoncista" else PSICOLOGA_PATIENTS
-)
+PROFILE_TYPE: str = _args.profile
+
+
+def _persona_to_dict(persona: personas_module.Persona) -> dict[str, str]:
+    """Bridge: convierte una Persona dataclass al dict que espera el resto
+    del runner. Mantiene la API interna estable hasta que migremos
+    completamente a Persona en el refactor de Fase 4.
+    """
+    return {
+        "whatsapp_user_id": persona.whatsapp_user_id,
+        "display_name": persona.display_name,
+        "persona": persona.persona_text,
+    }
+
+
+PATIENTS: list[dict[str, str]] = [
+    _persona_to_dict(p) for p in personas_module.get_personas_by_profile(PROFILE_TYPE)
+]
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -929,6 +841,14 @@ async def main() -> None:
     if not PATIENT_EMAIL:
         raise RuntimeError(
             "PATIENT_EMAIL not set. Add it to .secrets/make_credentials.env or export it."
+        )
+    if not PATIENTS:
+        raise RuntimeError(
+            f"No hay personas registradas para el perfil {PROFILE_TYPE!r}. "
+            "El pool de scripts/personas.py está vacío hasta que el skill "
+            "`/persona-from-combo` lo pueble (Fase 3 del plan eval). "
+            "Ejecutá el skill iterativamente sobre los shapes en "
+            "tests/fixtures/profiles/ y reintentá."
         )
     all_patients = PATIENTS[:NUM_PATIENTS]
     batch_size = NUM_PATIENTS
