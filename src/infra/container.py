@@ -56,6 +56,7 @@ import src.services.use_cases.auth_service as auth_service
 import src.services.use_cases.blacklist_service as blacklist_service
 import src.services.use_cases.conversation_control_service as conversation_control_service
 import src.services.use_cases.conversation_query_service as conversation_query_service
+import src.services.use_cases.eval_tenant_service as eval_tenant_service
 import src.services.use_cases.event_description_builder as event_description_builder
 import src.services.use_cases.event_stream_service as event_stream_service
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
@@ -447,5 +448,15 @@ class AppContainer:
             scheduling_repository=self.scheduling_repository,
             manual_appointment_repository=self.manual_appointment_repository,
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
+            clock=self.clock_adapter,
+        )
+        self.eval_tenant_service = eval_tenant_service.EvalTenantService(
+            tenant_repository=self.tenant_repository,
+            user_repository=self.user_repository,
+            agent_profile_repository=self.agent_profile_repository,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
+            password_hasher=self.password_hasher_adapter,
+            auth_service=self.auth_service,
+            id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
         )

@@ -45,6 +45,7 @@ class Settings(pydantic.BaseModel):
     auto_close_delay_seconds: int
     rate_limit_enabled: bool
     whatsapp_outbound_noop: bool
+    eval_admin_secret: str | None = None
 
     @classmethod
     def from_secret_json(cls, raw_app_config_json: str, adc_project_id: str) -> "Settings":
@@ -161,6 +162,9 @@ class Settings(pydantic.BaseModel):
                 "false",
             ).lower()
             == "true",
+            eval_admin_secret=cls._normalize_optional_text(
+                app_config_overrides.get("EVAL_ADMIN_SECRET", "")
+            ),
         )
 
     @staticmethod
