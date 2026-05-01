@@ -1,4 +1,5 @@
 import datetime
+import json
 
 import google.api_core.exceptions as google_api_exceptions
 import google.cloud.firestore as google_cloud_firestore
@@ -34,13 +35,61 @@ def _normalize_datetime_fields(data: dict[str, object]) -> dict[str, object]:
     return result
 
 
+def _unflatten_nested_arrays(data: dict[str, object], keys: list[str]) -> dict[str, object]:
+    """Inverso de `_flatten_nested_arrays` (en scripts/load_test.py): reconstruye
+    `list[list[X]]` desde la representacion plana `list[str]` JSON-encoded
+    que se guardo en Firestore (que no permite arrays anidados).
+
+    Tolera registros viejos guardados antes del flatten — si los items ya
+    son listas (no strings), los devuelve tal cual.
+    """
+    result = dict(data)
+    for key in keys:
+        value = result.get(key)
+        if isinstance(value, list):
+            unflattened: list[object] = []
+            for item in value:
+                if isinstance(item, str):
+                    try:
+                        unflattened.append(json.loads(item))
+                    except json.JSONDecodeError:
+                        unflattened.append(item)
+                else:
+                    unflattened.append(item)
+            result[key] = unflattened
+    return result
+
+
+def _decode_run_doc(raw_data: dict[str, object]) -> dict[str, object]:
+    normalized = _normalize_datetime_fields(raw_data)
+    return _unflatten_nested_arrays(normalized, ["uncovered_combos"])
+
+
+def _decode_conversation_doc(raw_data: dict[str, object]) -> dict[str, object]:
+    normalized = _normalize_datetime_fields(raw_data)
+    return _unflatten_nested_arrays(normalized, ["combos_satisfied"])
+
+
+def _flatten_for_firestore(data: dict[str, object], keys: list[str]) -> dict[str, object]:
+    """Mismo aplanado que `scripts/load_test._flatten_nested_arrays`. Lo
+    duplicamos aca para que el adapter sea consistente cuando se invoque
+    desde el backend (ej. tests o uso programatico futuro).
+    """
+    out = dict(data)
+    for key in keys:
+        value = out.get(key)
+        if isinstance(value, list):
+            out[key] = [json.dumps(item) if isinstance(item, list) else item for item in value]
+    return out
+
+
 class FirestoreEvalRunRepositoryAdapter(eval_run_repository_port.EvalRunRepositoryPort):
     def __init__(self, client: google_cloud_firestore.Client) -> None:
         self._client = client
 
     def save_run(self, eval_run: eval_run_entity.EvalRun) -> None:
         doc_ref = self._client.document(firestore_paths.eval_run_document(eval_run.run_id))
-        data = eval_run.model_dump(mode="json")
+        data = _flatten_for_firestore(eval_run.model_dump(mode="json"), ["uncovered_combos"])
         try:
             doc_ref.set(data)
         except google_api_exceptions.GoogleAPICallError as error:
@@ -60,7 +109,7 @@ class FirestoreEvalRunRepositoryAdapter(eval_run_repository_port.EvalRunReposito
         doc_ref = self._client.document(
             firestore_paths.eval_run_conversation_document(run_id, conversation.persona_id)
         )
-        data = conversation.model_dump(mode="json")
+        data = _flatten_for_firestore(conversation.model_dump(mode="json"), ["combos_satisfied"])
         try:
             doc_ref.set(data)
         except google_api_exceptions.GoogleAPICallError as error:
@@ -94,9 +143,9 @@ class FirestoreEvalRunRepositoryAdapter(eval_run_repository_port.EvalRunReposito
             raw_data = snapshot.to_dict()
             if raw_data is None:
                 continue
-            normalized = _normalize_datetime_fields(raw_data)
+            decoded = _decode_run_doc(raw_data)
             try:
-                run = eval_run_entity.EvalRun.model_validate(normalized)
+                run = eval_run_entity.EvalRun.model_validate(decoded)
             except pydantic.ValidationError:
                 continue
             runs.append(run)
@@ -119,8 +168,8 @@ class FirestoreEvalRunRepositoryAdapter(eval_run_repository_port.EvalRunReposito
         raw_data = snapshot.to_dict()
         if raw_data is None:
             return None
-        normalized = _normalize_datetime_fields(raw_data)
-        return eval_run_entity.EvalRun.model_validate(normalized)
+        decoded = _decode_run_doc(raw_data)
+        return eval_run_entity.EvalRun.model_validate(decoded)
 
     def get_conversations(self, run_id: str) -> list[eval_run_entity.EvalRunConversationSnapshot]:
         collection_path = firestore_paths.eval_run_conversations_collection(run_id)
@@ -142,9 +191,9 @@ class FirestoreEvalRunRepositoryAdapter(eval_run_repository_port.EvalRunReposito
             raw_data = snapshot.to_dict()
             if raw_data is None:
                 continue
-            normalized = _normalize_datetime_fields(raw_data)
+            decoded = _decode_conversation_doc(raw_data)
             try:
-                conv = eval_run_entity.EvalRunConversationSnapshot.model_validate(normalized)
+                conv = eval_run_entity.EvalRunConversationSnapshot.model_validate(decoded)
             except pydantic.ValidationError:
                 continue
             conversations.append(conv)

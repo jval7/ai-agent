@@ -52,6 +52,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import datetime
+import json
 import logging
 import os
 import pathlib
@@ -1140,15 +1141,35 @@ def _persist_eval_run(
     )
 
     run_doc_path = firestore_paths.eval_run_document(doc_run_id)
-    firestore_client.document(run_doc_path).set(eval_run.model_dump(mode="json"), merge=True)
+    firestore_client.document(run_doc_path).set(
+        _flatten_nested_arrays(eval_run.model_dump(mode="json"), ["uncovered_combos"]),
+        merge=True,
+    )
     logger.info("Eval run persistido: %s", run_doc_path)
 
     for snapshot in conversation_results:
         conv_doc_path = firestore_paths.eval_run_conversation_document(
             doc_run_id, snapshot.persona_id
         )
-        firestore_client.document(conv_doc_path).set(snapshot.model_dump(mode="json"), merge=True)
+        firestore_client.document(conv_doc_path).set(
+            _flatten_nested_arrays(snapshot.model_dump(mode="json"), ["combos_satisfied"]),
+            merge=True,
+        )
         logger.info("Conversation snapshot persistido: %s", conv_doc_path)
+
+
+def _flatten_nested_arrays(data: dict[str, typing.Any], keys: list[str]) -> dict[str, typing.Any]:
+    """Firestore no permite arrays anidados (list[list[X]]). Aplana cada
+    sublista a un string JSON-encoded para que persista como list[str].
+    El adapter Firestore (lectura) hace la operacion inversa antes de
+    devolver la entity.
+    """
+    out = dict(data)
+    for key in keys:
+        value = out.get(key)
+        if isinstance(value, list):
+            out[key] = [json.dumps(item) if isinstance(item, list) else item for item in value]
+    return out
 
 
 def _persist_skipped_run(
