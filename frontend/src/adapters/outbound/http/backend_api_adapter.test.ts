@@ -488,6 +488,177 @@ vitestModule.describe("BackendApiAdapter", () => {
     await adapter.removePatient("wa-1");
   });
 
+  vitestModule.it("listEvalShapes maps snake_case to camelCase", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/shapes", () => {
+        return mswModule.HttpResponse.json({
+          items: [
+            {
+              name: "shape_minimal",
+              description: "Shape mínima para testear onboarding básico",
+              required_combos: [["new_patient"]],
+              rendered_system_prompt: "Eres un asistente de agenda..."
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const shapes = await adapter.listEvalShapes();
+
+    vitestModule.expect(shapes).toHaveLength(1);
+    vitestModule.expect(shapes[0]?.name).toBe("shape_minimal");
+    vitestModule.expect(shapes[0]?.requiredCombos).toEqual([["new_patient"]]);
+    vitestModule.expect(shapes[0]?.renderedSystemPrompt).toBe("Eres un asistente de agenda...");
+  });
+
+  vitestModule.it("listEvalPersonas maps snake_case to camelCase", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/personas", () => {
+        return mswModule.HttpResponse.json({
+          items: [
+            {
+              id: "carlos_local_basic",
+              display_name: "Carlos Pérez",
+              capabilities: ["new_patient", "asks_about_price"],
+              profile_group: "psicologa"
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const personas = await adapter.listEvalPersonas();
+
+    vitestModule.expect(personas).toHaveLength(1);
+    vitestModule.expect(personas[0]?.id).toBe("carlos_local_basic");
+    vitestModule.expect(personas[0]?.displayName).toBe("Carlos Pérez");
+    vitestModule.expect(personas[0]?.capabilities).toEqual(["new_patient", "asks_about_price"]);
+    vitestModule.expect(personas[0]?.profileGroup).toBe("psicologa");
+  });
+
+  vitestModule.it("listEvalPromptVersions maps items correctly", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/prompt-versions", () => {
+        return mswModule.HttpResponse.json({
+          items: [{ id: "current", label: "Versión actual", active: true }]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const versions = await adapter.listEvalPromptVersions();
+
+    vitestModule.expect(versions).toHaveLength(1);
+    vitestModule.expect(versions[0]?.id).toBe("current");
+    vitestModule.expect(versions[0]?.active).toBe(true);
+  });
+
+  vitestModule.it("listEvalRuns maps snake_case to camelCase with limit param", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/runs", ({ request }) => {
+        const url = new URL(request.url);
+        vitestModule.expect(url.searchParams.get("limit")).toBe("10");
+        return mswModule.HttpResponse.json({
+          items: [
+            {
+              run_doc_id: "doc-abc",
+              run_id: "abc123",
+              shape_name: "shape_minimal",
+              started_at: "2026-04-30T10:00:00Z",
+              finished_at: "2026-04-30T10:05:00Z",
+              total_personas: 1,
+              ok: 1,
+              fail: 0,
+              skipped: 0
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const runs = await adapter.listEvalRuns(10);
+
+    vitestModule.expect(runs).toHaveLength(1);
+    vitestModule.expect(runs[0]?.runDocId).toBe("doc-abc");
+    vitestModule.expect(runs[0]?.runId).toBe("abc123");
+    vitestModule.expect(runs[0]?.shapeName).toBe("shape_minimal");
+    vitestModule.expect(runs[0]?.totalPersonas).toBe(1);
+    vitestModule.expect(runs[0]?.ok).toBe(1);
+    vitestModule.expect(runs[0]?.fail).toBe(0);
+  });
+
+  vitestModule.it("getEvalRun maps detail with conversations and transcript", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/runs/doc-abc", () => {
+        return mswModule.HttpResponse.json({
+          run_doc_id: "doc-abc",
+          run_id: "abc123",
+          shape_name: "shape_minimal",
+          prompt_version_id: null,
+          started_at: "2026-04-30T10:00:00Z",
+          finished_at: "2026-04-30T10:05:00Z",
+          total_personas: 1,
+          ok: 1,
+          fail: 0,
+          skipped: 0,
+          conversations: [
+            {
+              persona_id: "carlos_local_basic",
+              combos_satisfied: [["new_patient"]],
+              status: "ok",
+              elapsed_seconds: 12.4,
+              conversation_id: "conv-xyz",
+              scheduling_request_id: "sr-xyz",
+              final_status: "SESSION_CLOSED",
+              error: null,
+              transcript: [
+                {
+                  direction: "INBOUND",
+                  content: "Hola, quiero una cita",
+                  timestamp: "2026-04-30T10:01:00Z"
+                },
+                {
+                  direction: "OUTBOUND",
+                  content: "Claro, con gusto",
+                  timestamp: "2026-04-30T10:01:05Z"
+                }
+              ]
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const detail = await adapter.getEvalRun("doc-abc");
+
+    vitestModule.expect(detail.runDocId).toBe("doc-abc");
+    vitestModule.expect(detail.promptVersionId).toBeNull();
+    vitestModule.expect(detail.conversations).toHaveLength(1);
+    const conv = detail.conversations[0];
+    vitestModule.expect(conv?.personaId).toBe("carlos_local_basic");
+    vitestModule.expect(conv?.combosSatisfied).toEqual([["new_patient"]]);
+    vitestModule.expect(conv?.status).toBe("ok");
+    vitestModule.expect(conv?.elapsedSeconds).toBe(12.4);
+    vitestModule.expect(conv?.transcript).toHaveLength(2);
+    vitestModule.expect(conv?.transcript[0]?.direction).toBe("INBOUND");
+    vitestModule.expect(conv?.transcript[1]?.direction).toBe("OUTBOUND");
+  });
+
   vitestModule.it("maps phone_prefix round-trip for create and get patient", async () => {
     serverModule.server.use(
       mswModule.http.post("http://api.test/v1/patients", async ({ request }) => {

@@ -2,6 +2,7 @@ import type * as agentModel from "@domain/models/agent";
 import type * as authModel from "@domain/models/auth";
 import type * as blacklistModel from "@domain/models/blacklist";
 import type * as conversationModel from "@domain/models/conversation";
+import type * as evaluationModel from "@domain/models/evaluation";
 import type * as googleCalendarModel from "@domain/models/google_calendar";
 import type * as manualAppointmentModel from "@domain/models/manual_appointment";
 import type * as onboardingModel from "@domain/models/onboarding";
@@ -988,6 +989,140 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       method: "POST",
       authRequired: true
     });
+  }
+
+  async listEvalShapes(): Promise<evaluationModel.EvalShape[]> {
+    const raw = await this.request<{
+      items: {
+        name: string;
+        description: string;
+        required_combos: string[][];
+        rendered_system_prompt: string;
+      }[];
+    }>("/v1/eval/shapes", { method: "GET", authRequired: false });
+    return raw.items.map((item) => ({
+      name: item.name,
+      description: item.description,
+      requiredCombos: item.required_combos,
+      renderedSystemPrompt: item.rendered_system_prompt
+    }));
+  }
+
+  async listEvalPersonas(): Promise<evaluationModel.EvalPersona[]> {
+    const raw = await this.request<{
+      items: {
+        id: string;
+        display_name: string;
+        capabilities: string[];
+        profile_group: "psicologa" | "ortodoncista";
+      }[];
+    }>("/v1/eval/personas", { method: "GET", authRequired: false });
+    return raw.items.map((item) => ({
+      id: item.id,
+      displayName: item.display_name,
+      capabilities: item.capabilities,
+      profileGroup: item.profile_group
+    }));
+  }
+
+  async listEvalPromptVersions(): Promise<evaluationModel.EvalPromptVersion[]> {
+    const raw = await this.request<{
+      items: {
+        id: string;
+        label: string;
+        active: boolean;
+      }[];
+    }>("/v1/eval/prompt-versions", { method: "GET", authRequired: false });
+    return raw.items.map((item) => ({
+      id: item.id,
+      label: item.label,
+      active: item.active
+    }));
+  }
+
+  async listEvalRuns(limit?: number): Promise<evaluationModel.EvalRunListItem[]> {
+    const qs = limit !== undefined ? `?limit=${limit}` : "";
+    const raw = await this.request<{
+      items: {
+        run_doc_id: string;
+        run_id: string;
+        shape_name: string;
+        started_at: string;
+        finished_at: string | null;
+        total_personas: number;
+        ok: number;
+        fail: number;
+        skipped: number;
+      }[];
+    }>(`/v1/eval/runs${qs}`, { method: "GET", authRequired: false });
+    return raw.items.map((item) => ({
+      runDocId: item.run_doc_id,
+      runId: item.run_id,
+      shapeName: item.shape_name,
+      startedAt: item.started_at,
+      finishedAt: item.finished_at,
+      totalPersonas: item.total_personas,
+      ok: item.ok,
+      fail: item.fail,
+      skipped: item.skipped
+    }));
+  }
+
+  async getEvalRun(runDocId: string): Promise<evaluationModel.EvalRunDetail> {
+    const raw = await this.request<{
+      run_doc_id: string;
+      run_id: string;
+      shape_name: string;
+      prompt_version_id: string | null;
+      started_at: string;
+      finished_at: string | null;
+      total_personas: number;
+      ok: number;
+      fail: number;
+      skipped: number;
+      conversations: {
+        persona_id: string;
+        combos_satisfied: string[][];
+        status: "ok" | "fail" | "skipped";
+        elapsed_seconds: number | null;
+        conversation_id: string | null;
+        scheduling_request_id: string | null;
+        final_status: string | null;
+        error: string | null;
+        transcript: {
+          direction: "INBOUND" | "OUTBOUND";
+          content: string;
+          timestamp: string;
+        }[];
+      }[];
+    }>(`/v1/eval/runs/${runDocId}`, { method: "GET", authRequired: false });
+    return {
+      runDocId: raw.run_doc_id,
+      runId: raw.run_id,
+      shapeName: raw.shape_name,
+      promptVersionId: raw.prompt_version_id,
+      startedAt: raw.started_at,
+      finishedAt: raw.finished_at,
+      totalPersonas: raw.total_personas,
+      ok: raw.ok,
+      fail: raw.fail,
+      skipped: raw.skipped,
+      conversations: raw.conversations.map((conv) => ({
+        personaId: conv.persona_id,
+        combosSatisfied: conv.combos_satisfied,
+        status: conv.status,
+        elapsedSeconds: conv.elapsed_seconds,
+        conversationId: conv.conversation_id,
+        schedulingRequestId: conv.scheduling_request_id,
+        finalStatus: conv.final_status,
+        error: conv.error,
+        transcript: conv.transcript.map((msg) => ({
+          direction: msg.direction,
+          content: msg.content,
+          timestamp: msg.timestamp
+        }))
+      }))
+    };
   }
 
   private async request<T>(path: string, options: RequestOptions): Promise<T> {

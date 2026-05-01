@@ -2,6 +2,7 @@ import * as agentUseCaseModule from "@application/use_cases/agent_use_case";
 import * as authUseCaseModule from "@application/use_cases/auth_use_case";
 import * as blacklistUseCaseModule from "@application/use_cases/blacklist_use_case";
 import * as conversationUseCaseModule from "@application/use_cases/conversation_use_case";
+import * as evaluationUseCaseModule from "@application/use_cases/evaluation_use_case";
 import * as manualAppointmentUseCaseModule from "@application/use_cases/manual_appointment_use_case";
 import * as onboardingUseCaseModule from "@application/use_cases/onboarding_use_case";
 import * as patientUseCaseModule from "@application/use_cases/patient_use_case";
@@ -21,6 +22,7 @@ export interface AppContainer {
   onboardingUseCase: onboardingUseCaseModule.OnboardingUseCase;
   whatsappOnboardingUseCase: whatsappOnboardingUseCaseModule.WhatsappOnboardingUseCase;
   conversationUseCase: conversationUseCaseModule.ConversationUseCase;
+  evaluationUseCase: evaluationUseCaseModule.EvaluationUseCase;
   patientUseCase: patientUseCaseModule.PatientUseCase;
   manualAppointmentUseCase: manualAppointmentUseCaseModule.ManualAppointmentUseCase;
   schedulingUseCase: schedulingUseCaseModule.SchedulingUseCase;
@@ -46,6 +48,7 @@ export function createAppContainer(): AppContainer {
       backendApi
     ),
     conversationUseCase: new conversationUseCaseModule.ConversationUseCase(backendApi),
+    evaluationUseCase: new evaluationUseCaseModule.EvaluationUseCase(backendApi),
     patientUseCase: new patientUseCaseModule.PatientUseCase(backendApi),
     manualAppointmentUseCase: new manualAppointmentUseCaseModule.ManualAppointmentUseCase(
       backendApi

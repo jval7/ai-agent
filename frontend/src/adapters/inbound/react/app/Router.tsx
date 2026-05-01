@@ -3,6 +3,8 @@ import * as reactRouterDomModule from "react-router-dom";
 import * as agendaPageModule from "@adapters/inbound/react/pages/AgendaPage";
 import * as clientsPageModule from "@adapters/inbound/react/pages/ClientsPage";
 import * as configuracionesPageModule from "@adapters/inbound/react/pages/ConfiguracionesPage";
+import * as evaluacionPageModule from "@adapters/inbound/react/pages/EvaluacionPage";
+import * as runDetailPageModule from "@adapters/inbound/react/pages/evaluacion/RunDetailPage";
 import * as finanzasPageModule from "@adapters/inbound/react/pages/FinanzasPage";
 import * as inboxPageModule from "@adapters/inbound/react/pages/InboxPage";
 import * as landingPageModule from "@adapters/inbound/react/pages/LandingPage";
@@ -105,6 +107,26 @@ export function AppRouter() {
             </protectedRouteModule.ProtectedRoute>
           }
           path="/recordatorios"
+        />
+        <reactRouterDomModule.Route
+          element={
+            <protectedRouteModule.ProtectedRoute>
+              <onboardingReadyRouteModule.OnboardingReadyRoute>
+                <evaluacionPageModule.EvaluacionPage />
+              </onboardingReadyRouteModule.OnboardingReadyRoute>
+            </protectedRouteModule.ProtectedRoute>
+          }
+          path="/evaluacion"
+        />
+        <reactRouterDomModule.Route
+          element={
+            <protectedRouteModule.ProtectedRoute>
+              <onboardingReadyRouteModule.OnboardingReadyRoute>
+                <runDetailPageModule.RunDetailPage />
+              </onboardingReadyRouteModule.OnboardingReadyRoute>
+            </protectedRouteModule.ProtectedRoute>
+          }
+          path="/evaluacion/runs/:runDocId"
         />
 
         <reactRouterDomModule.Route

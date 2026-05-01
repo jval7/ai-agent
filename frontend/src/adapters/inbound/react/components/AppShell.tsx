@@ -186,6 +186,25 @@ function ChevronRightIcon() {
   );
 }
 
+function BeakerIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-5 w-5 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M9.75 3.104v5.714a2.25 2.25 0 0 1-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082m.75-.082a24.301 24.301 0 0 1 4.5 0m0 0v5.714c0 .597.237 1.17.659 1.591L19.8 15M14.25 3.104c.251.023.501.05.75.082M19.8 15a2.25 2.25 0 0 1 .45 2.311l-1.08 3.15A2.25 2.25 0 0 1 17.034 22H6.966a2.25 2.25 0 0 1-2.136-1.539l-1.08-3.15A2.25 2.25 0 0 1 4.2 15h15.6Z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 // Orden por frecuencia de uso día a día. Configuraciones al final (setup-once).
 const navLinks = [
   { to: "/agenda", label: "Agenda", Icon: CalendarIcon },
@@ -193,7 +212,8 @@ const navLinks = [
   { to: "/clientes", label: "Clientes", Icon: UsersIcon },
   { to: "/finanzas", label: "Finanzas", Icon: WalletIcon },
   { to: "/recordatorios", label: "Recordatorios", Icon: BellIcon },
-  { to: "/configuraciones", label: "Configuraciones", Icon: SettingsIcon }
+  { to: "/configuraciones", label: "Configuraciones", Icon: SettingsIcon },
+  ...(import.meta.env.DEV ? [{ to: "/evaluacion", label: "Evaluación", Icon: BeakerIcon }] : [])
 ];
 
 export function AppShell(props: { children: reactModule.ReactNode }) {
