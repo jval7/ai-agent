@@ -34,7 +34,10 @@ class GoogleCalendarOnboardingService:
         self._clock = clock
         self._agent_profile_repository = agent_profile_repository
         self._tenant_repository = tenant_repository
-        self._oauth_scopes = ["https://www.googleapis.com/auth/calendar"]
+        self._oauth_scopes = [
+            "https://www.googleapis.com/auth/calendar.events",
+            "https://www.googleapis.com/auth/calendar.readonly",
+        ]
 
     def create_oauth_session(
         self, tenant_id: str, professional_user_id: str

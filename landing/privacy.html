@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Politica de Privacidad | Agentes de soporte AI</title>
-  <meta name="description" content="Politica de privacidad del servicio de mensajeria de Agentes de soporte AI.">
+  <title>Politica de Privacidad | Agendachat</title>
+  <meta name="description" content="Politica de privacidad de Agendachat, asistente de WhatsApp para agendamiento con Google Calendar.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=Sora:wght@400;500;700&display=swap" rel="stylesheet">
@@ -14,8 +14,8 @@
   <main class="page">
     <header class="topbar">
       <div class="brand">
-        <span class="brand-mark">AS</span>
-        <p class="brand-name">Agentes de soporte AI</p>
+        <span class="brand-mark">AC</span>
+        <p class="brand-name">Agendachat</p>
       </div>
       <nav class="nav" aria-label="Navegacion legal">
         <a href="./index.html">Inicio</a>
@@ -27,8 +27,8 @@
     <section class="hero">
       <span class="pill">Legal</span>
       <h1>Politica de Privacidad</h1>
-      <p>Esta politica explica como tratamos datos personales cuando una persona interactua con nuestro servicio en WhatsApp.</p>
-      <p><strong>Vigencia:</strong> 2026-02-14</p>
+      <p>Esta politica explica como Agendachat trata datos personales y datos de Google del usuario cuando una persona interactua con nuestro servicio en WhatsApp y conecta su Google Calendar.</p>
+      <p><strong>Vigencia:</strong> 2026-04-28</p>
     </section>
 
     <section class="section">
@@ -41,16 +41,65 @@
       <h2>Datos que podemos recolectar</h2>
       <ul class="legal-list">
         <li>Nombre visible y numero telefonico en WhatsApp.</li>
-        <li>Contenido de mensajes enviados durante soporte.</li>
+        <li>Contenido de mensajes enviados durante la conversacion de agendamiento.</li>
         <li>Metadatos de interaccion para operacion del servicio.</li>
       </ul>
+    </section>
+
+    <section class="section" id="google-user-data">
+      <h2>Datos de Google que accede Agendachat</h2>
+      <p>Cuando un profesional conecta su Google Calendar con Agendachat, la app accede a datos del usuario de Google. Esta seccion describe en detalle como Agendachat usa, almacena y protege esos datos, en cumplimiento de la <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener" target="_blank">Google API Services User Data Policy</a> incluyendo los requisitos de Limited Use.</p>
+
+      <h3>Permisos OAuth solicitados</h3>
+      <ul class="legal-list">
+        <li><strong>https://www.googleapis.com/auth/calendar.events</strong>: crear, leer, modificar y eliminar eventos en los calendarios del profesional. Lo usamos para crear citas cuando un cliente confirma un horario, modificarlas cuando reagenda y eliminarlas cuando cancela.</li>
+        <li><strong>https://www.googleapis.com/auth/calendar.readonly</strong>: leer la metadata del calendario primario (identificador y zona horaria) y consultar intervalos ocupados (<code>freeBusy</code>) para proponer horarios disponibles. No leemos contenido de eventos de otros calendarios.</li>
+      </ul>
+
+      <h3>Que datos accedemos y para que</h3>
+      <ul class="legal-list">
+        <li><strong>Metadata del calendario primario</strong> (id, zona horaria): para saber en cual calendario crear los eventos y en que zona horaria expresar las fechas.</li>
+        <li><strong>Intervalos ocupados (busy intervals via freeBusy)</strong>: para proponer al cliente solo horarios libres del profesional. No accedemos a titulos, descripciones ni asistentes de los eventos existentes.</li>
+        <li><strong>Eventos creados por la app</strong>: la app crea, modifica y elimina eventos en respuesta a confirmaciones, reagendamientos y cancelaciones del cliente. Sobre estos eventos guardamos solo el identificador (<code>event_id</code>) en nuestra base para poder reagendar o cancelar luego.</li>
+      </ul>
+
+      <h3>Como almacenamos y protegemos los datos de Google</h3>
+      <ul class="legal-list">
+        <li>Los <strong>tokens OAuth</strong> (access token y refresh token) se almacenan en Google Cloud Firestore, region <code>us-central1</code>, con cifrado at-rest provisto por Google Cloud.</li>
+        <li>El acceso a la base esta restringido por IAM de Google Cloud al servicio de Agendachat; ningun humano tiene acceso operacional rutinario a los tokens.</li>
+        <li><strong>No replicamos eventos de Google Calendar a nuestra base</strong>: leemos la disponibilidad y escribimos eventos en runtime via la API de Google. Solo guardamos el <code>event_id</code> de eventos creados por Agendachat para poder modificarlos o cancelarlos despues.</li>
+        <li>Los tokens se conservan mientras la conexion este activa. Cuando el usuario revoca la conexion (ver mas abajo), el refresh token deja de ser valido y se elimina de nuestra base.</li>
+      </ul>
+
+      <h3>Compartir datos con terceros</h3>
+      <p>Agendachat usa <strong>Google Vertex AI (Gemini)</strong> para entender los mensajes del cliente en lenguaje natural y proponer horarios. Al modelo se le pueden enviar fragmentos del mensaje del cliente y, cuando es necesario, una lista resumida de slots libres derivada de <code>freeBusy</code> (rangos hora-inicio / hora-fin, sin titulos ni asistentes de eventos). Vertex AI procesa esos datos bajo el <a href="https://cloud.google.com/terms/data-processing-addendum" rel="noopener" target="_blank">Data Processing Addendum de Google Cloud</a>; Google no entrena modelos generativos con prompts de Vertex AI segun los terminos de Vertex.</p>
+      <p><strong>No compartimos datos de Google Calendar con otros terceros</strong>, no los vendemos, no los usamos para publicidad y no los transferimos fuera de los proveedores listados.</p>
+
+      <h3>Limited Use compliance</h3>
+      <p>El uso que Agendachat hace de la informacion recibida desde las APIs de Google cumple con los requisitos de Limited Use de la Google API Services User Data Policy:</p>
+      <ul class="legal-list">
+        <li>Los datos de Google solo se usan para proveer y mejorar las funciones de agendamiento visibles al usuario.</li>
+        <li>No se transfieren a terceros excepto cuando es estrictamente necesario para proveer el servicio (Vertex AI), por requerimiento legal, o como parte de una operacion de fusion/adquisicion con consentimiento explicito del usuario.</li>
+        <li>No se usan para servir publicidad.</li>
+        <li>No se permite a humanos leer los datos salvo con consentimiento explicito del usuario, para fines de seguridad (investigar abuso), para cumplir la ley, o cuando los datos esten anonimizados/agregados para operaciones internas.</li>
+      </ul>
+
+      <h3>Como revocar el acceso y eliminar tus datos de Google</h3>
+      <p>Puedes revocar el acceso de Agendachat a tu Google Calendar en cualquier momento:</p>
+      <ul class="legal-list">
+        <li>Desde tu cuenta de Google: <a href="https://myaccount.google.com/permissions" rel="noopener" target="_blank">https://myaccount.google.com/permissions</a> y elimina &quot;Agendachat&quot; de las apps con acceso.</li>
+        <li>Desde el dashboard de Agendachat: opcion &quot;Desconectar Google Calendar&quot; en la configuracion de la cuenta del profesional.</li>
+        <li>Por correo: escribe a <a href="mailto:jhonvalderramaa7@gmail.com">jhonvalderramaa7@gmail.com</a> con el asunto <strong>Eliminacion de datos de Google</strong>; respondemos confirmando la eliminacion en hasta 15 dias habiles.</li>
+      </ul>
+      <p>Al revocar, eliminamos el refresh token de nuestra base. Los eventos que Agendachat haya creado en tu Google Calendar permanecen en tu calendario hasta que tu mismo los borres.</p>
     </section>
 
     <section class="section">
       <h2>Finalidades del tratamiento</h2>
       <ul class="legal-list">
-        <li>Responder consultas y solicitudes de soporte.</li>
-        <li>Dar seguimiento a casos abiertos por clientes.</li>
+        <li>Atender la conversacion de agendamiento del cliente con el profesional.</li>
+        <li>Crear, modificar y cancelar citas en el calendario del profesional.</li>
+        <li>Dar seguimiento a casos abiertos y enviar recordatorios.</li>
         <li>Prevenir abuso y proteger la seguridad del canal.</li>
       </ul>
     </section>
@@ -58,12 +107,12 @@
     <section class="section">
       <h2>Conservacion y seguridad</h2>
       <p>Conservamos la informacion durante el tiempo necesario para operar el servicio y cumplir obligaciones legales aplicables.</p>
-      <p>Aplicamos controles de acceso y medidas tecnicas razonables para proteger los datos.</p>
+      <p>Aplicamos controles de acceso (IAM de Google Cloud), cifrado at-rest provisto por Google Cloud y medidas tecnicas razonables para proteger los datos.</p>
     </section>
 
     <section class="section">
       <h2>Solicitud de eliminacion de datos</h2>
-      <p>Si deseas eliminar tus datos personales asociados a conversaciones de WhatsApp, envia un correo con el asunto <strong>Eliminacion de datos</strong> a <a href="mailto:jhonvalderramaa7@gmail.com">jhonvalderramaa7@gmail.com</a>.</p>
+      <p>Si deseas eliminar tus datos personales asociados a conversaciones de WhatsApp (independientemente de los datos de Google, cubiertos en la seccion anterior), envia un correo con el asunto <strong>Eliminacion de datos</strong> a <a href="mailto:jhonvalderramaa7@gmail.com">jhonvalderramaa7@gmail.com</a>.</p>
       <ul class="legal-list">
         <li>Incluye el numero de WhatsApp relacionado a la solicitud.</li>
         <li>Recibiras confirmacion de recepcion por correo.</li>
