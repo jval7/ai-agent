@@ -6,6 +6,7 @@ import src.adapters.outbound.firestore.blacklist_repository_adapter as blacklist
 import src.adapters.outbound.firestore.client_factory as firestore_client_factory
 import src.adapters.outbound.firestore.conversation_processing_lock_adapter as conversation_processing_lock_adapter
 import src.adapters.outbound.firestore.conversation_repository_adapter as conversation_repository_adapter
+import src.adapters.outbound.firestore.eval_run_repository_adapter as eval_run_repository_adapter
 import src.adapters.outbound.firestore.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.firestore.manual_appointment_repository_adapter as manual_appointment_repository_adapter
 import src.adapters.outbound.firestore.memory_admin_adapter as memory_admin_adapter
@@ -149,6 +150,9 @@ class AppContainer:
             )
         )
         self.tag_repository = tag_repository_adapter.FirestoreTagRepositoryAdapter(
+            self.firestore_client
+        )
+        self.eval_run_repository = eval_run_repository_adapter.FirestoreEvalRunRepositoryAdapter(
             self.firestore_client
         )
 
