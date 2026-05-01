@@ -1094,6 +1094,19 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
           content: string;
           timestamp: string;
         }[];
+        judge_verdict: {
+          declared_capabilities: string[];
+          verifications: {
+            capability: string;
+            verified: boolean;
+            evidence: string | null;
+            reasoning: string | null;
+          }[];
+          overall: "all_verified" | "partial" | "none";
+          judge_model: string;
+          judged_at: string;
+          error: string | null;
+        } | null;
       }[];
     }>(`/v1/eval/runs/${runDocId}`, { method: "GET", authRequired: false });
     return {
@@ -1120,7 +1133,23 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
           direction: msg.direction,
           content: msg.content,
           timestamp: msg.timestamp
-        }))
+        })),
+        judgeVerdict:
+          conv.judge_verdict !== null && conv.judge_verdict !== undefined
+            ? {
+                declaredCapabilities: conv.judge_verdict.declared_capabilities,
+                verifications: conv.judge_verdict.verifications.map((v) => ({
+                  capability: v.capability,
+                  verified: v.verified,
+                  evidence: v.evidence,
+                  reasoning: v.reasoning
+                })),
+                overall: conv.judge_verdict.overall,
+                judgeModel: conv.judge_verdict.judge_model,
+                judgedAt: conv.judge_verdict.judged_at,
+                error: conv.judge_verdict.error
+              }
+            : null
       }))
     };
   }

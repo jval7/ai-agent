@@ -634,7 +634,8 @@ vitestModule.describe("BackendApiAdapter", () => {
                   content: "Claro, con gusto",
                   timestamp: "2026-04-30T10:01:05Z"
                 }
-              ]
+              ],
+              judge_verdict: null
             }
           ]
         });
@@ -657,6 +658,172 @@ vitestModule.describe("BackendApiAdapter", () => {
     vitestModule.expect(conv?.transcript).toHaveLength(2);
     vitestModule.expect(conv?.transcript[0]?.direction).toBe("INBOUND");
     vitestModule.expect(conv?.transcript[1]?.direction).toBe("OUTBOUND");
+  });
+
+  vitestModule.it("getEvalRun maps judge_verdict with verifications to camelCase", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/runs/doc-judge", () => {
+        return mswModule.HttpResponse.json({
+          run_doc_id: "doc-judge",
+          run_id: "judge123",
+          shape_name: "shape_full",
+          prompt_version_id: null,
+          started_at: "2026-05-01T10:00:00Z",
+          finished_at: "2026-05-01T10:10:00Z",
+          total_personas: 1,
+          ok: 1,
+          fail: 0,
+          skipped: 0,
+          conversations: [
+            {
+              persona_id: "carlos_local_basic",
+              combos_satisfied: [["asks_about_price", "new_patient"]],
+              status: "ok",
+              elapsed_seconds: 15.2,
+              conversation_id: "conv-judge",
+              scheduling_request_id: null,
+              final_status: "SESSION_CLOSED",
+              error: null,
+              transcript: [],
+              judge_verdict: {
+                declared_capabilities: ["asks_about_price", "new_patient"],
+                verifications: [
+                  {
+                    capability: "asks_about_price",
+                    verified: true,
+                    evidence: "Hola Dra. Cuánto vale la consulta?",
+                    reasoning: "El paciente pregunta el precio en el primer mensaje."
+                  },
+                  {
+                    capability: "new_patient",
+                    verified: true,
+                    evidence: null,
+                    reasoning: "No menciona haber sido paciente antes."
+                  }
+                ],
+                overall: "all_verified",
+                judge_model: "gemini-2.5-flash",
+                judged_at: "2026-05-01T17:49:46Z",
+                error: null
+              }
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const detail = await adapter.getEvalRun("doc-judge");
+    const conv = detail.conversations[0];
+    const verdict = conv?.judgeVerdict;
+
+    vitestModule.expect(verdict).not.toBeNull();
+    vitestModule.expect(verdict?.overall).toBe("all_verified");
+    vitestModule.expect(verdict?.judgeModel).toBe("gemini-2.5-flash");
+    vitestModule.expect(verdict?.judgedAt).toBe("2026-05-01T17:49:46Z");
+    vitestModule.expect(verdict?.declaredCapabilities).toEqual(["asks_about_price", "new_patient"]);
+    vitestModule.expect(verdict?.verifications).toHaveLength(2);
+    vitestModule.expect(verdict?.verifications[0]?.capability).toBe("asks_about_price");
+    vitestModule.expect(verdict?.verifications[0]?.verified).toBe(true);
+    vitestModule
+      .expect(verdict?.verifications[0]?.evidence)
+      .toBe("Hola Dra. Cuánto vale la consulta?");
+    vitestModule.expect(verdict?.verifications[1]?.evidence).toBeNull();
+    vitestModule.expect(verdict?.error).toBeNull();
+  });
+
+  vitestModule.it("getEvalRun maps judge_verdict: null to judgeVerdict: null", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/runs/doc-no-judge", () => {
+        return mswModule.HttpResponse.json({
+          run_doc_id: "doc-no-judge",
+          run_id: "nojudge",
+          shape_name: "shape_minimal",
+          prompt_version_id: null,
+          started_at: "2026-05-01T10:00:00Z",
+          finished_at: null,
+          total_personas: 1,
+          ok: 0,
+          fail: 1,
+          skipped: 0,
+          conversations: [
+            {
+              persona_id: "persona-a",
+              combos_satisfied: [],
+              status: "fail",
+              elapsed_seconds: null,
+              conversation_id: null,
+              scheduling_request_id: null,
+              final_status: null,
+              error: "timeout",
+              transcript: [],
+              judge_verdict: null
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const detail = await adapter.getEvalRun("doc-no-judge");
+    const conv = detail.conversations[0];
+
+    vitestModule.expect(conv?.judgeVerdict).toBeNull();
+  });
+
+  vitestModule.it("getEvalRun maps judge_verdict with error and empty verifications", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/runs/doc-judge-err", () => {
+        return mswModule.HttpResponse.json({
+          run_doc_id: "doc-judge-err",
+          run_id: "judgerr",
+          shape_name: "shape_full",
+          prompt_version_id: null,
+          started_at: "2026-05-01T10:00:00Z",
+          finished_at: "2026-05-01T10:05:00Z",
+          total_personas: 1,
+          ok: 0,
+          fail: 1,
+          skipped: 0,
+          conversations: [
+            {
+              persona_id: "persona-b",
+              combos_satisfied: [],
+              status: "fail",
+              elapsed_seconds: 5.0,
+              conversation_id: "conv-err",
+              scheduling_request_id: null,
+              final_status: null,
+              error: null,
+              transcript: [],
+              judge_verdict: {
+                declared_capabilities: ["asks_about_price"],
+                verifications: [],
+                overall: "none",
+                judge_model: "gemini-2.5-flash",
+                judged_at: "2026-05-01T10:04:00Z",
+                error: "parse_error: schema mismatch"
+              }
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const detail = await adapter.getEvalRun("doc-judge-err");
+    const verdict = detail.conversations[0]?.judgeVerdict;
+
+    vitestModule.expect(verdict).not.toBeNull();
+    vitestModule.expect(verdict?.overall).toBe("none");
+    vitestModule.expect(verdict?.verifications).toHaveLength(0);
+    vitestModule.expect(verdict?.error).toBe("parse_error: schema mismatch");
   });
 
   vitestModule.it("maps phone_prefix round-trip for create and get patient", async () => {

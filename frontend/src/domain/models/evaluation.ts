@@ -36,6 +36,22 @@ export interface EvalRunConversationMessage {
   timestamp: string;
 }
 
+export interface EvalCapabilityVerification {
+  capability: string;
+  verified: boolean;
+  evidence: string | null;
+  reasoning: string | null;
+}
+
+export interface EvalJudgeVerdict {
+  declaredCapabilities: string[];
+  verifications: EvalCapabilityVerification[];
+  overall: "all_verified" | "partial" | "none";
+  judgeModel: string;
+  judgedAt: string;
+  error: string | null;
+}
+
 export interface EvalRunConversationSnapshot {
   personaId: string;
   combosSatisfied: string[][];
@@ -46,6 +62,7 @@ export interface EvalRunConversationSnapshot {
   finalStatus: string | null;
   error: string | null;
   transcript: EvalRunConversationMessage[];
+  judgeVerdict: EvalJudgeVerdict | null;
 }
 
 export interface EvalRunDetail {
