@@ -12,5 +12,8 @@ __pycache__
 .make-flow
 frontend/
 landing/
-tests/
+tests/*
+# tests/fixtures es lectura runtime para el dashboard de eval (shapes JSON).
+!tests/fixtures
+!tests/fixtures/**
 node_modules/
