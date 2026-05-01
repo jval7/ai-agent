@@ -300,6 +300,7 @@ class AppContainer:
             whatsapp_connection_repository=self.whatsapp_connection_repository,
             event_description_builder=self.event_description_builder,
             agent_profile_repository=self.agent_profile_repository,
+            tenant_repository=self.tenant_repository,
         )
         self.scheduling_inbox_service = scheduling_inbox_service.SchedulingInboxService(
             scheduling_repository=self.scheduling_repository,
