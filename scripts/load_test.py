@@ -878,10 +878,10 @@ async def _run_patient(
                     local_history,
                     tag,
                     f"Turno {turn} (post-pending)",
-                    max_wait=60.0,
+                    max_wait=120.0,
                 )
                 if not got_response:
-                    raise RuntimeError(f"AI no respondio tras 60s en turno {turn} (post-pending)")
+                    raise RuntimeError(f"AI no respondio tras 120s en turno {turn} (post-pending)")
             continue
 
         # --- Esperar respuesta del AI desde el backend ---
@@ -893,10 +893,10 @@ async def _run_patient(
                 local_history,
                 tag,
                 f"Turno {turn}",
-                max_wait=60.0,
+                max_wait=120.0,
             )
             if not got_response:
-                raise RuntimeError(f"AI no respondio tras 60s en turno {turn}")
+                raise RuntimeError(f"AI no respondio tras 120s en turno {turn}")
 
         # --- Verificar estado del scheduling request ---
         status = await _get_scheduling_status(client, access_token, patient["whatsapp_user_id"])

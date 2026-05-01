@@ -89,8 +89,10 @@ _RESPONSE_SCHEMA = {
                 "properties": {
                     "capability": {"type": "string"},
                     "verified": {"type": "boolean"},
-                    "evidence": {"type": ["string", "null"]},
-                    "reasoning": {"type": ["string", "null"]},
+                    # Vertex AI no acepta `type: ["string", "null"]` (JSON Schema
+                    # 2020-12). Usar `nullable: true` + `type: "string"`.
+                    "evidence": {"type": "string", "nullable": True},
+                    "reasoning": {"type": "string", "nullable": True},
                 },
                 "required": ["capability", "verified"],
             },
