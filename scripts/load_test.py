@@ -1,5 +1,5 @@
 """
-Load test script: simula 10 pacientes concurrentes enviando mensajes
+Load test script: simula pacientes concurrentes enviando mensajes
 al backend via webhook (sin WhatsApp real).
 
 Cada paciente es simulado por una LLM (Gemini) que genera respuestas
@@ -8,19 +8,43 @@ cuando retorna 200, el AI ya proceso y respondio. El script lee la
 respuesta del AI y la alimenta al LLM-paciente para generar la
 siguiente respuesta.
 
-Requiere:
-    - WHATSAPP_OUTBOUND_NOOP=true en el backend (modo sandbox)
-    - ADC configurado (gcloud auth application-default login)
-    - .secrets/make_credentials.env con: OWNER_EMAIL, OWNER_PASSWORD, PATIENT_EMAIL
-      (PATIENT_EMAIL es el correo que los pacientes simulados van a dar al bot — usalo
-      para recibir las invitaciones de Google Calendar y validar el contenido).
-    - .secrets/make_api_base.env con: API_BASE
+Modos de uso:
+---------------------------------------------------------------------------
 
-Uso:
-    uv run python scripts/load_test.py                              # default (psicologa, prod)
-    uv run python scripts/load_test.py --profile ortodoncista       # simula pacientes de Sandra Posso
-    ENV=dev uv run python scripts/load_test.py                      # carga make_credentials_dev.env y make_api_base_dev.env
-    API_BASE=https://tu-backend.run.app uv run python scripts/load_test.py  # override inline
+MODO LEGACY (--profile):
+    Requiere:
+        .secrets/make_credentials.env   → OWNER_EMAIL, OWNER_PASSWORD, PATIENT_EMAIL
+        .secrets/make_api_base.env      → API_BASE
+
+    Uso:
+        uv run python scripts/load_test.py                         # default (psicologa, prod)
+        uv run python scripts/load_test.py --profile ortodoncista  # pacientes de ortodoncia
+        ENV=dev uv run python scripts/load_test.py                 # carga make_credentials_dev.env
+
+MODO EVAL (--eval-mode):
+    Requiere:
+        .secrets/make_credentials_eval.env  → EVAL_API_BASE, EVAL_ADMIN_SECRET, PATIENT_EMAIL
+
+    Donde:
+        EVAL_API_BASE=https://dev-backend.run.app   # URL del backend dev
+        EVAL_ADMIN_SECRET=<shared secret>            # match con backend EVAL_ADMIN_SECRET
+        PATIENT_EMAIL=test@example.com               # email que el paciente simulado da al bot
+
+    Uso:
+        uv run python scripts/load_test.py --eval-mode
+        uv run python scripts/load_test.py --eval-mode --shape shape_minimal
+        uv run python scripts/load_test.py --eval-mode --no-cleanup
+
+    El modo eval:
+        - Carga shapes desde tests/fixtures/profiles/*.json.
+        - Por cada shape, crea un tenant efimero via POST /v1/dev/eval-tenants.
+        - Aplica el agent_profile del shape al tenant efimero.
+        - Pre-seed Patients para personas con cap returning_patient.
+        - Corre conversaciones reutilizando _run_patient.
+        - Persiste reporte en Firestore (eval_runs/{run_id}_{shape_name}).
+        - Borra el tenant efimero al terminar (salvo --no-cleanup).
+        - Imprime un summary al final.
+        - Exit code != 0 si alguna shape fue skipeada por gap de coverage.
 """
 
 from __future__ import annotations
@@ -43,15 +67,58 @@ _PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+import google.cloud.firestore as google_cloud_firestore  # noqa: E402
 import httpx  # noqa: E402
 from google import genai  # noqa: E402
 
+import scripts.coverage as coverage  # noqa: E402
 import scripts.personas as personas_module  # noqa: E402
+import src.adapters.outbound.firestore.paths as firestore_paths  # noqa: E402
+import src.domain.entities.agent_profile as agent_profile_entity  # noqa: E402
+import src.domain.entities.eval_run as eval_run_entity  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Cargar archivos de .secrets/ segun ENV. Default: make_credentials.env y
-# make_api_base.env (apuntan a prod). Con ENV=dev: make_credentials_dev.env y
-# make_api_base_dev.env.
+# CLI parsing (antes de cargar .env para que --eval-mode sea conocido)
+# ---------------------------------------------------------------------------
+_arg_parser = argparse.ArgumentParser(description="Load test del bot WhatsApp")
+_arg_parser.add_argument(
+    "--profile",
+    choices=["psicologa", "ortodoncista"],
+    default=None,
+    help="Tipo de profesional a simular (solo modo legacy, incompatible con --eval-mode).",
+)
+_arg_parser.add_argument(
+    "--eval-mode",
+    action="store_true",
+    help="Corre evaluacion sistematica con shapes y personas anotadas.",
+)
+_arg_parser.add_argument(
+    "--shape",
+    default=None,
+    help="Filtrar a un shape especifico (solo valido con --eval-mode).",
+)
+_arg_parser.add_argument(
+    "--no-cleanup",
+    action="store_true",
+    help="No borrar tenants efimeros al finalizar (para inspeccion manual).",
+)
+_args, _ = _arg_parser.parse_known_args()
+
+# Validaciones de exclusividad mutua
+if _args.eval_mode and _args.profile is not None:
+    sys.exit("Error: --eval-mode y --profile son incompatibles. Usa uno u otro.")
+if _args.shape is not None and not _args.eval_mode:
+    sys.exit("Error: --shape solo es valido junto a --eval-mode.")
+
+EVAL_MODE: bool = _args.eval_mode
+SHAPE_FILTER: str | None = _args.shape
+_NO_CLEANUP: bool = _args.no_cleanup
+
+# Default legacy profile cuando no se pasa --profile en modo legacy
+PROFILE_TYPE: str = _args.profile if _args.profile is not None else "psicologa"
+
+# ---------------------------------------------------------------------------
+# Cargar archivos de .secrets/ segun modo
 # ---------------------------------------------------------------------------
 _SECRETS_DIR = pathlib.Path(__file__).resolve().parent.parent / ".secrets"
 
@@ -69,9 +136,13 @@ def _load_env_file(path: pathlib.Path) -> None:
             os.environ[key] = value
 
 
-_ENV_SUFFIX = f"_{os.environ['ENV']}" if os.environ.get("ENV") else ""
-_load_env_file(_SECRETS_DIR / f"make_credentials{_ENV_SUFFIX}.env")
-_load_env_file(_SECRETS_DIR / f"make_api_base{_ENV_SUFFIX}.env")
+if EVAL_MODE:
+    # En eval-mode se usa exclusivamente make_credentials_eval.env
+    _load_env_file(_SECRETS_DIR / "make_credentials_eval.env")
+else:
+    _ENV_SUFFIX = f"_{os.environ['ENV']}" if os.environ.get("ENV") else ""
+    _load_env_file(_SECRETS_DIR / f"make_credentials{_ENV_SUFFIX}.env")
+    _load_env_file(_SECRETS_DIR / f"make_api_base{_ENV_SUFFIX}.env")
 
 # ---------------------------------------------------------------------------
 # Configuracion
@@ -84,11 +155,13 @@ PATIENT_EMAIL = os.environ.get("PATIENT_EMAIL", "")
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_LOCATION = "us-central1"
 
-NUM_PATIENTS = 3  # cuantos pacientes simular por batch
-RUN_ID = uuid.uuid4().hex[:6]  # ID unico por corrida para evitar reutilizar conversaciones
+NUM_PATIENTS = 3  # cuantos pacientes simular por batch (modo legacy)
+RUN_ID = uuid.uuid4().hex[:8]  # ID unico por corrida (8 chars para eval; era 6 antes)
 POLL_INTERVAL = 10  # segundos entre cada poll de scheduling requests
 STAGGER_DELAY = 5  # segundos entre lanzamiento de cada paciente
 MAX_TURNS = 20  # maximo de mensajes por paciente (evita loops infinitos)
+
+_SHAPES_DIR = _PROJECT_ROOT / "tests" / "fixtures" / "profiles"
 
 # ---------------------------------------------------------------------------
 # System prompt para el LLM que simula pacientes
@@ -119,7 +192,7 @@ IMPORTANTE — como escribir:
 """
 
 # ---------------------------------------------------------------------------
-# Pacientes por tipo de profesional
+# Pacientes por tipo de profesional (modo legacy)
 # ---------------------------------------------------------------------------
 # Las personas viven en `scripts/personas.py` (anotadas con capabilities). El
 # pool inicial está VACÍO por diseño — el skill `/persona-from-combo` (Fase 2
@@ -129,16 +202,6 @@ IMPORTANTE — como escribir:
 # mantiene la flag para retro-compat: cuando haya personas, vuelve a funcionar
 # sin cambios.
 # ---------------------------------------------------------------------------
-
-_arg_parser = argparse.ArgumentParser(description="Load test del bot WhatsApp")
-_arg_parser.add_argument(
-    "--profile",
-    choices=["psicologa", "ortodoncista"],
-    default="psicologa",
-    help="Tipo de profesional a simular (define el set de pacientes).",
-)
-_args, _ = _arg_parser.parse_known_args()
-PROFILE_TYPE: str = _args.profile
 
 
 def _persona_to_dict(persona: personas_module.Persona) -> dict[str, str]:
@@ -153,9 +216,11 @@ def _persona_to_dict(persona: personas_module.Persona) -> dict[str, str]:
     }
 
 
-PATIENTS: list[dict[str, str]] = [
-    _persona_to_dict(p) for p in personas_module.get_personas_by_profile(PROFILE_TYPE)
-]
+PATIENTS: list[dict[str, str]] = (
+    []
+    if EVAL_MODE
+    else [_persona_to_dict(p) for p in personas_module.get_personas_by_profile(PROFILE_TYPE)]
+)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -190,6 +255,7 @@ async def _generate_patient_message(
     display_name: str,
     persona: str,
     conversation_history: list[dict[str, str]],
+    practice_type: str = "consultorio de psicologia",
 ) -> str:
     """Genera el siguiente mensaje del paciente usando Gemini.
 
@@ -198,11 +264,6 @@ async def _generate_patient_message(
     client = _get_gemini_client()
 
     today_human = _format_today_human()
-    practice_type = (
-        "consultorio de ortodoncia"
-        if PROFILE_TYPE == "ortodoncista"
-        else "consultorio de psicologia"
-    )
     system_instruction = _PATIENT_SYSTEM_INSTRUCTION.format(
         display_name=display_name,
         persona=persona,
@@ -430,7 +491,7 @@ async def _get_messages(
 
 
 # ---------------------------------------------------------------------------
-# Setup: login + phone_number_id
+# Setup: login + phone_number_id (modo legacy)
 # ---------------------------------------------------------------------------
 async def _setup(client: httpx.AsyncClient) -> tuple[str, str]:
     """Login y obtener phone_number_id. Retorna (access_token, phone_number_id)."""
@@ -722,6 +783,7 @@ async def _run_patient(
     phone_number_id: str,
     patient: dict[str, str],
     index: int,
+    practice_type: str = "consultorio de psicologia",
 ) -> float:
     # Generar whatsapp_user_id unico por corrida para crear conversacion limpia
     patient = {**patient, "whatsapp_user_id": f"{patient['whatsapp_user_id']}{RUN_ID}"}
@@ -742,6 +804,7 @@ async def _run_patient(
             display_name=patient["display_name"],
             persona=patient["persona"],
             conversation_history=local_history,
+            practice_type=practice_type,
         )
         if not patient_message:
             logger.warning(
@@ -835,7 +898,513 @@ async def _run_patient(
 
 
 # ---------------------------------------------------------------------------
-# Main
+# EVAL MODE — helpers
+# ---------------------------------------------------------------------------
+
+
+async def _apply_shape_agent_profile(
+    client: httpx.AsyncClient,
+    access_token: str,
+    agent_profile: object,
+) -> None:
+    """Aplica el agent_profile del shape al tenant efimero via
+    PUT /v1/agent/professional-profile.
+
+    El shape JSON ya esta en formato compatible con UpdateProfessionalProfileDTO:
+    los campos identity, services, presencial_schedule, virtual_schedule,
+    payment_methods son exactamente los que acepta el endpoint.
+    """
+    # agent_profile viene deserializado como AgentProfile desde el shape JSON.
+    # Lo convertimos a dict (mode="json" para que sea JSON-serializable) y
+    # enviamos directamente. Los campos extra (tenant_id, updated_at) son
+    # ignorados por el endpoint dado que UpdateProfessionalProfileDTO no los declara.
+    profile = typing.cast(agent_profile_entity.AgentProfile, agent_profile)
+    body = profile.model_dump(mode="json")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = await client.put("/v1/agent/professional-profile", headers=headers, json=body)
+    try:
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "_apply_shape_agent_profile HTTP %s: %s",
+            exc.response.status_code,
+            exc.response.text[:400],
+        )
+        raise
+
+
+async def _pre_seed_patient(
+    client: httpx.AsyncClient,
+    access_token: str,
+    persona: personas_module.Persona,
+    run_id: str,
+) -> None:
+    """Crea o actualiza el Patient para una persona con cap returning_patient.
+
+    El whatsapp_user_id se sufija con el run_id para coincidir con el que
+    _run_patient usa al crear la conversacion. Si el patient ya existe (409),
+    se ignora (idempotente).
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    parts = persona.display_name.split()
+    first_name = parts[0]
+    last_name = parts[-1] if len(parts) > 1 else "Test"
+    payload: dict[str, object] = {
+        "whatsapp_user_id": persona.whatsapp_user_id + run_id,
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": PATIENT_EMAIL,
+        "age": 35,
+        "location": "Cali",
+        "phone": "+57 300 000 0000",
+    }
+    resp = await client.post("/v1/patients", headers=headers, json=payload)
+    if resp.status_code == 409:
+        logger.info("_pre_seed_patient: patient ya existe para %s, continuando", persona.id)
+        return
+    try:
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "_pre_seed_patient HTTP %s para %s: %s",
+            exc.response.status_code,
+            persona.id,
+            exc.response.text[:200],
+        )
+        raise
+
+
+async def _capture_conversation_snapshot(
+    client: httpx.AsyncClient,
+    access_token: str,
+    persona: personas_module.Persona,
+    shape: coverage.Shape,
+    run_id: str,
+    elapsed: float,
+    status: typing.Literal["ok", "fail", "skipped"],
+    error: str | None = None,
+) -> eval_run_entity.EvalRunConversationSnapshot:
+    """Captura el estado final de la conversacion del persona y lo empaqueta
+    como EvalRunConversationSnapshot.
+
+    Para status='fail' con error pre-conocido, no hace llamadas HTTP y retorna
+    inmediatamente con los campos vacios.
+    """
+    # Combos que esta persona satisface para este shape.
+    # Cast a list[list[str]] porque EvalRunConversationSnapshot.combos_satisfied
+    # es list[list[str]] (vocabulario abierto en la entity); aca recibimos
+    # list[list[Capability]] (Literal cerrado).
+    combos_satisfied: list[list[str]] = [
+        [str(cap) for cap in combo]
+        for combo in shape.metadata.required_combos
+        if set(combo).issubset(set(persona.capabilities))
+    ]
+
+    whatsapp_user_id_with_run = persona.whatsapp_user_id + run_id
+
+    if status == "fail" and error is not None:
+        return eval_run_entity.EvalRunConversationSnapshot(
+            persona_id=persona.id,
+            combos_satisfied=combos_satisfied,
+            status="fail",
+            elapsed_seconds=elapsed,
+            error=error,
+        )
+
+    # --- Buscar conversation_id ---
+    conversation_id: str | None = None
+    try:
+        conversation_id = await _get_conversation_id(
+            client, access_token, whatsapp_user_id_with_run
+        )
+    except httpx.HTTPStatusError as exc:
+        logger.warning("_capture_conversation_snapshot: no pudo obtener conv_id: %s", exc)
+
+    # --- Obtener mensajes del transcript ---
+    transcript: list[eval_run_entity.EvalRunConversationMessage] = []
+    if conversation_id is not None:
+        try:
+            raw_messages = await _get_messages(client, access_token, conversation_id)
+            for msg in raw_messages:
+                direction: typing.Literal["INBOUND", "OUTBOUND"] = (
+                    "INBOUND" if msg["role"] == "patient" else "OUTBOUND"
+                )
+                transcript.append(
+                    eval_run_entity.EvalRunConversationMessage(
+                        direction=direction,
+                        content=msg["content"],
+                        timestamp=datetime.datetime.now(tz=datetime.UTC),
+                    )
+                )
+        except httpx.HTTPStatusError as exc:
+            logger.warning("_capture_conversation_snapshot: no pudo obtener mensajes: %s", exc)
+
+    # --- Buscar scheduling request ---
+    scheduling_request_id: str | None = None
+    final_status: str | None = None
+    effective_status: typing.Literal["ok", "fail", "skipped"] = status
+    try:
+        sr = await _get_scheduling_request(client, access_token, whatsapp_user_id_with_run)
+        if sr is not None:
+            scheduling_request_id = typing.cast(str | None, sr.get("request_id"))
+            final_status = typing.cast(str | None, sr.get("status"))
+            # Si el scheduling request existe pero termino en un estado de fallo, marcar fail
+            if final_status in {"CANCELLED", "CONSULTATION_REJECTED", "HUMAN_HANDOFF"}:
+                effective_status = "fail"
+            elif final_status == "SESSION_CLOSED":
+                effective_status = "ok"
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "_capture_conversation_snapshot: no pudo obtener scheduling request: %s", exc
+        )
+
+    return eval_run_entity.EvalRunConversationSnapshot(
+        persona_id=persona.id,
+        combos_satisfied=combos_satisfied,
+        status=effective_status,
+        elapsed_seconds=elapsed,
+        conversation_id=conversation_id,
+        scheduling_request_id=scheduling_request_id,
+        final_status=final_status,
+        transcript=transcript,
+        error=error,
+    )
+
+
+def _persist_eval_run(
+    run_id: str,
+    shape: coverage.Shape,
+    conversation_results: list[eval_run_entity.EvalRunConversationSnapshot],
+    started_at: datetime.datetime,
+    finished_at: datetime.datetime,
+    eval_tenant_id: str,
+    skipped: bool = False,
+    uncovered_combos: list[list[str]] | None = None,
+) -> None:
+    """Persiste el reporte del run en Firestore directamente con el SDK.
+
+    Decision de document path: usamos `{run_id}_{shape_name}` en lugar de
+    solo `run_id`. Razon: un run cubre N shapes — con solo run_id el documento
+    se sobreescribiria con merge=True y solo quedaria el ultimo shape.
+    Con el sufijo `_{shape_name}`, cada shape tiene su propio doc, el dashboard
+    puede listar todos los shapes de un run filtrando por prefijo `run_id_`, y
+    el historial es completo y auditable por shape.
+    """
+    doc_run_id = f"{run_id}_{shape.metadata.name}"
+    firestore_client = google_cloud_firestore.Client()
+
+    eval_run = eval_run_entity.EvalRun(
+        run_id=run_id,
+        shape_name=shape.metadata.name,
+        started_at=started_at,
+        finished_at=finished_at,
+        total_personas=len(conversation_results),
+        ok=sum(1 for s in conversation_results if s.status == "ok"),
+        fail=sum(1 for s in conversation_results if s.status == "fail"),
+        skipped=skipped,
+        uncovered_combos=uncovered_combos or [],
+        eval_tenant_id=eval_tenant_id,
+    )
+
+    run_doc_path = firestore_paths.eval_run_document(doc_run_id)
+    firestore_client.document(run_doc_path).set(eval_run.model_dump(mode="json"), merge=True)
+    logger.info("Eval run persistido: %s", run_doc_path)
+
+    for snapshot in conversation_results:
+        conv_doc_path = firestore_paths.eval_run_conversation_document(
+            doc_run_id, snapshot.persona_id
+        )
+        firestore_client.document(conv_doc_path).set(snapshot.model_dump(mode="json"), merge=True)
+        logger.info("Conversation snapshot persistido: %s", conv_doc_path)
+
+
+def _persist_skipped_run(
+    run_id: str,
+    shape: coverage.Shape,
+    exc: coverage.CoverageGapError,
+) -> None:
+    """Persiste un eval run marcado como skipped cuando hay un gap de coverage."""
+    now = datetime.datetime.now(tz=datetime.UTC)
+    uncovered: list[list[str]] = [
+        list(combo)
+        for combo in coverage.detect_uncovered_combos(shape, personas_module.ALL_PERSONAS)
+    ]
+    _persist_eval_run(
+        run_id=run_id,
+        shape=shape,
+        conversation_results=[],
+        started_at=now,
+        finished_at=now,
+        eval_tenant_id="",
+        skipped=True,
+        uncovered_combos=uncovered,
+    )
+    logger.warning("Shape %r skipeada por gap de coverage: %s", shape.metadata.name, exc)
+
+
+# ---------------------------------------------------------------------------
+# EVAL MODE — lifecycle por shape
+# ---------------------------------------------------------------------------
+
+
+class _ShapeSummary(typing.TypedDict):
+    """Resumen por shape que usa main_eval() para el reporte final de consola."""
+
+    shape_name: str
+    skipped: bool
+    uncovered_combos: list[list[str]]
+    conversation_results: list[eval_run_entity.EvalRunConversationSnapshot]
+
+
+async def _run_eval_shape(
+    client: httpx.AsyncClient,
+    shape: coverage.Shape,
+    run_id: str,
+    admin_secret: str,
+    eval_api_base: str,
+) -> _ShapeSummary:
+    """Lifecycle completo de evaluacion para un shape:
+    coverage check → tenant efimero → aplicar profile → pre-seed → conversaciones
+    → capturar snapshots → persistir → cleanup.
+
+    Retorna un _ShapeSummary para el reporte final de consola.
+    """
+    shape_name = shape.metadata.name
+
+    # 1. Validar coverage
+    try:
+        coverage.assert_combos_covered(shape, personas_module.ALL_PERSONAS)
+    except coverage.CoverageGapError as exc:
+        _persist_skipped_run(run_id, shape, exc)
+        uncovered: list[list[str]] = [
+            [str(cap) for cap in combo]
+            for combo in coverage.detect_uncovered_combos(shape, personas_module.ALL_PERSONAS)
+        ]
+        return _ShapeSummary(
+            shape_name=shape_name,
+            skipped=True,
+            uncovered_combos=uncovered,
+            conversation_results=[],
+        )
+
+    # 2. Crear tenant efimero
+    create_resp = await client.post(
+        "/v1/dev/eval-tenants",
+        headers={"X-Eval-Admin-Secret": admin_secret},
+        json={"run_id": run_id, "shape_name": shape_name},
+    )
+    try:
+        create_resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            "No se pudo crear eval tenant para shape %r: HTTP %s — %s",
+            shape_name,
+            exc.response.status_code,
+            exc.response.text[:400],
+        )
+        raise
+
+    eval_tenant: dict[str, str] = create_resp.json()
+    tenant_token: str = eval_tenant["access_token"]
+    phone_number_id: str = eval_tenant["phone_number_id"]
+    tenant_id: str = eval_tenant["tenant_id"]
+
+    started_at = datetime.datetime.now(tz=datetime.UTC)
+    conversation_results: list[eval_run_entity.EvalRunConversationSnapshot] = []
+
+    try:
+        # 3. Aplicar agent_profile del shape al tenant efimero
+        await _apply_shape_agent_profile(client, tenant_token, shape.agent_profile)
+
+        # 4. Seleccionar personas para este shape
+        personas = coverage.select_personas_for_shape(shape, personas_module.ALL_PERSONAS)
+        logger.info(
+            "Shape %r: %d personas seleccionadas: %s",
+            shape_name,
+            len(personas),
+            [p.id for p in personas],
+        )
+
+        # 5. Pre-seed Patients para personas con returning_patient
+        for persona in personas:
+            if "returning_patient" in persona.capabilities:
+                await _pre_seed_patient(client, tenant_token, persona, run_id)
+
+        # 6. Correr conversaciones secuencialmente (cada shape es su propio tenant;
+        #    no hay valor en paralelizarlas dentro de un mismo tenant efimero dado
+        #    que el bot tiene estado compartido por conversacion).
+        for i, persona in enumerate(personas):
+            patient_dict = _persona_to_dict(persona)
+            elapsed = 0.0
+            snap_error: str | None = None
+            snap_status: typing.Literal["ok", "fail", "skipped"] = "ok"
+            shape_identity = shape.agent_profile.identity
+            shape_practice_type = (
+                shape_identity.professional_title
+                if shape_identity is not None and shape_identity.professional_title
+                else "consultorio"
+            )
+            try:
+                elapsed = await _run_patient(
+                    client,
+                    tenant_token,
+                    phone_number_id,
+                    patient_dict,
+                    i,
+                    practice_type=shape_practice_type,
+                )
+            except (RuntimeError, httpx.HTTPStatusError) as exc:
+                snap_error = f"{type(exc).__name__}: {exc}"
+                snap_status = "fail"
+                logger.error(
+                    "[Shape %r / %s] conversacion fallo: %s", shape_name, persona.id, snap_error
+                )
+
+            # 7. Capturar transcript + estado final
+            snapshot = await _capture_conversation_snapshot(
+                client,
+                tenant_token,
+                persona,
+                shape,
+                run_id,
+                elapsed=elapsed,
+                status=snap_status,
+                error=snap_error,
+            )
+            conversation_results.append(snapshot)
+
+    finally:
+        finished_at = datetime.datetime.now(tz=datetime.UTC)
+
+        # 8. Persistir reporte a Firestore
+        _persist_eval_run(
+            run_id=run_id,
+            shape=shape,
+            conversation_results=conversation_results,
+            started_at=started_at,
+            finished_at=finished_at,
+            eval_tenant_id=tenant_id,
+        )
+
+        # 9. Cleanup tenant efimero (salvo --no-cleanup)
+        if not _NO_CLEANUP:
+            try:
+                del_resp = await client.delete(
+                    f"/v1/dev/eval-tenants/{tenant_id}",
+                    headers={"X-Eval-Admin-Secret": admin_secret},
+                )
+                del_resp.raise_for_status()
+                logger.info("Tenant efimero %s eliminado", tenant_id)
+            except httpx.HTTPStatusError as exc:
+                logger.warning(
+                    "No se pudo eliminar tenant efimero %s: HTTP %s — %s",
+                    tenant_id,
+                    exc.response.status_code,
+                    exc.response.text[:200],
+                )
+        else:
+            logger.info("--no-cleanup: tenant efimero %s conservado", tenant_id)
+
+    return _ShapeSummary(
+        shape_name=shape_name,
+        skipped=False,
+        uncovered_combos=[],
+        conversation_results=conversation_results,
+    )
+
+
+# ---------------------------------------------------------------------------
+# EVAL MODE — main
+# ---------------------------------------------------------------------------
+async def main_eval() -> int:
+    """Punto de entrada del modo eval. Retorna exit code (0=ok, 1=skips)."""
+    eval_api_base = os.environ.get("EVAL_API_BASE", "")
+    eval_admin_secret = os.environ.get("EVAL_ADMIN_SECRET", "")
+    if not eval_api_base:
+        raise SystemExit(
+            "EVAL_API_BASE no esta configurado. Agregalo a .secrets/make_credentials_eval.env."
+        )
+    if not eval_admin_secret:
+        raise SystemExit(
+            "EVAL_ADMIN_SECRET no esta configurado. Agregalo a .secrets/make_credentials_eval.env."
+        )
+    if not PATIENT_EMAIL:
+        raise SystemExit(
+            "PATIENT_EMAIL no esta configurado. Agregalo a .secrets/make_credentials_eval.env."
+        )
+
+    # Cargar shapes
+    shapes = coverage.load_shapes_from_dir(_SHAPES_DIR)
+    if SHAPE_FILTER is not None:
+        shapes = [s for s in shapes if s.metadata.name == SHAPE_FILTER]
+        if not shapes:
+            raise SystemExit(f"Shape {SHAPE_FILTER!r} no encontrado en {_SHAPES_DIR}")
+
+    logger.info(
+        "Eval mode: run_id=%s, %d shape(s) a evaluar%s",
+        RUN_ID,
+        len(shapes),
+        f" (filtrado a {SHAPE_FILTER!r})" if SHAPE_FILTER else "",
+    )
+
+    total_start = time.monotonic()
+    had_skips = False
+    shape_summaries: list[_ShapeSummary] = []
+
+    async with httpx.AsyncClient(base_url=eval_api_base, timeout=120.0) as client:
+        for shape in shapes:
+            summary = await _run_eval_shape(
+                client,
+                shape,
+                RUN_ID,
+                eval_admin_secret,
+                eval_api_base,
+            )
+            shape_summaries.append(summary)
+            if summary["skipped"]:
+                had_skips = True
+
+    total_elapsed = time.monotonic() - total_start
+    total_min = int(total_elapsed // 60)
+    total_sec = int(total_elapsed % 60)
+
+    # Reporte de consola
+    print()
+    print(f"=== EVAL REPORT (run_id={RUN_ID}) ===")
+    print()
+    for summary in shape_summaries:
+        sname = summary["shape_name"]
+        if summary["skipped"]:
+            missing_str = summary["uncovered_combos"]
+            print(f"{sname:<30}  SKIPPED   combos faltantes: {missing_str}")
+            print("  → SKIPPED   ninguna persona cubre los combos requeridos")
+        else:
+            results = summary["conversation_results"]
+            ok_count = sum(1 for r in results if r.status == "ok")
+            fail_count = sum(1 for r in results if r.status == "fail")
+            shape_status = "OK" if fail_count == 0 else "FAIL"
+            print(f"{sname:<30}  {shape_status:<6}  ok={ok_count} fail={fail_count}")
+            for result in results:
+                fs = result.final_status or "N/A"
+                status_label = "OK" if result.status == "ok" else "FAIL"
+                print(
+                    f"  → {result.persona_id:<28}  {status_label:<4}  "
+                    f"{fs}  ({result.elapsed_seconds:.1f}s)"
+                )
+        print()
+
+    print(
+        f"Pool: {len(personas_module.ALL_PERSONAS)} personas | Tiempo total: {total_min}m {total_sec}s"
+    )
+    if had_skips:
+        print()
+        print("ADVERTENCIA: hubo shapes skipeadas por gaps de coverage. Exit code = 1.")
+
+    return 1 if had_skips else 0
+
+
+# ---------------------------------------------------------------------------
+# Main legacy
 # ---------------------------------------------------------------------------
 async def main() -> None:
     if not PATIENT_EMAIL:
@@ -918,4 +1487,8 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    if EVAL_MODE:
+        exit_code = asyncio.run(main_eval())
+        sys.exit(exit_code)
+    else:
+        asyncio.run(main())
