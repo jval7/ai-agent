@@ -16,6 +16,14 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 COPY src ./src
+# scripts/ provee `personas` y `coverage` consumidos por
+# `src/services/use_cases/eval_query_service.py`. tests/fixtures/profiles/
+# provee los AgentProfile JSON de los shapes que el dashboard expone.
+# Ambas son lecturas read-only en runtime — la frontera scripts/tests → src
+# es deliberada y solo aplica al subsistema de eval (gated por
+# EVAL_ENDPOINTS_ENABLED).
+COPY scripts ./scripts
+COPY tests/fixtures ./tests/fixtures
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONPATH=/app
