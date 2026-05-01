@@ -700,6 +700,9 @@ async def _act_as_owner(
     logger.warning("[%s] Owner-bot: estado %s no manejado", tag, status)
 
 
+_OWNER_ACTION_TIMEOUT_SECONDS = 180.0
+
+
 async def _wait_for_owner_action(
     client: httpx.AsyncClient,
     access_token: str,
@@ -707,12 +710,20 @@ async def _wait_for_owner_action(
     tag: str,
     current_status: str,
 ) -> str:
-    """Actua como el profesional segun el estado, luego polea hasta que cambie."""
+    """Actua como el profesional segun el estado, luego polea hasta que cambie.
+
+    Si el owner-bot falla (HTTP error) o el status no cambia tras
+    `_OWNER_ACTION_TIMEOUT_SECONDS`, raisea RuntimeError. Esto evita loops
+    infinitos cuando el backend rechaza la accion (ej. tenants eval donde
+    Calendar no esta conectado y el endpoint que llamamos no skipea).
+    """
     request = await _get_scheduling_request(client, access_token, whatsapp_user_id)
+    owner_action_failed = False
     if request is not None and request.get("status") == current_status:
         try:
             await _act_as_owner(client, access_token, request, tag)
         except httpx.HTTPStatusError as exc:
+            owner_action_failed = True
             logger.warning(
                 "[%s] Owner-bot fallo (%s): %s",
                 tag,
@@ -720,8 +731,14 @@ async def _wait_for_owner_action(
                 exc.response.text[:200],
             )
 
+    if owner_action_failed:
+        raise RuntimeError(
+            f"[{tag}] Owner-bot rechazado por backend (status={current_status}); "
+            "abortando conversacion para no quedar en loop infinito."
+        )
+
     elapsed = 0.0
-    while True:
+    while elapsed < _OWNER_ACTION_TIMEOUT_SECONDS:
         status = await _get_scheduling_status(client, access_token, whatsapp_user_id)
         if status is not None and status != current_status:
             logger.info("[%s] Status cambio a %s tras %.0fs", tag, status, elapsed)
@@ -731,6 +748,11 @@ async def _wait_for_owner_action(
         elapsed += POLL_INTERVAL
         if int(elapsed) % 30 == 0:
             logger.info("[%s] Esperando que el bot procese la accion... (%.0fs)", tag, elapsed)
+
+    raise RuntimeError(
+        f"[{tag}] Timeout esperando cambio de status desde {current_status} tras "
+        f"{_OWNER_ACTION_TIMEOUT_SECONDS:.0f}s"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1091,7 +1113,18 @@ def _persist_eval_run(
     el historial es completo y auditable por shape.
     """
     doc_run_id = f"{run_id}_{shape.metadata.name}"
-    firestore_client = google_cloud_firestore.Client()
+    # Forzar el project del Firestore client cuando este seteado en env
+    # (.secrets/make_credentials_eval.env). Sin esto, el ADC personal
+    # apunta por default al quota_project_id de prod aunque el script este
+    # corriendo contra el backend dev.
+    firestore_project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get(
+        "EVAL_FIRESTORE_PROJECT"
+    )
+    firestore_client = (
+        google_cloud_firestore.Client(project=firestore_project)
+        if firestore_project
+        else google_cloud_firestore.Client()
+    )
 
     eval_run = eval_run_entity.EvalRun(
         run_id=run_id,
