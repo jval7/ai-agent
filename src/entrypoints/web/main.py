@@ -9,6 +9,7 @@ import src.entrypoints.web.routers.auth_router as auth_router
 import src.entrypoints.web.routers.blacklist_router as blacklist_router
 import src.entrypoints.web.routers.conversation_router as conversation_router
 import src.entrypoints.web.routers.dev_router as dev_router
+import src.entrypoints.web.routers.eval_router as eval_router
 import src.entrypoints.web.routers.events_router as events_router
 import src.entrypoints.web.routers.google_calendar_router as google_calendar_router
 import src.entrypoints.web.routers.health_router as health_router
@@ -72,6 +73,8 @@ def create_app() -> fastapi.FastAPI:
     app.include_router(oauth_router.router)
     if app.state.container.settings.enable_dev_endpoints:
         app.include_router(dev_router.router)
+    if app.state.container.settings.eval_endpoints_enabled:
+        app.include_router(eval_router.router)
 
     http_exception_handlers.register_exception_handlers(app)
     return app

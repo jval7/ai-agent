@@ -1,3 +1,4 @@
+import pathlib
 import time
 
 import src.adapters.outbound.cloud_tasks.cloud_tasks_adapter as cloud_tasks_adapter
@@ -56,6 +57,7 @@ import src.services.use_cases.auth_service as auth_service
 import src.services.use_cases.blacklist_service as blacklist_service
 import src.services.use_cases.conversation_control_service as conversation_control_service
 import src.services.use_cases.conversation_query_service as conversation_query_service
+import src.services.use_cases.eval_query_service as eval_query_service
 import src.services.use_cases.eval_tenant_service as eval_tenant_service
 import src.services.use_cases.event_description_builder as event_description_builder
 import src.services.use_cases.event_stream_service as event_stream_service
@@ -449,6 +451,10 @@ class AppContainer:
             manual_appointment_repository=self.manual_appointment_repository,
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
             clock=self.clock_adapter,
+        )
+        self.eval_query_service = eval_query_service.EvalQueryService(
+            eval_run_repository=self.eval_run_repository,
+            shapes_directory=pathlib.Path("tests/fixtures/profiles"),
         )
         self.eval_tenant_service = eval_tenant_service.EvalTenantService(
             tenant_repository=self.tenant_repository,
