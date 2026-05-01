@@ -208,3 +208,104 @@ def test_get_run_conversations_have_transcript_field() -> None:
     detail = svc.get_run("run-y")
     assert detail is not None
     assert detail.conversations[0].transcript == []
+
+
+# ---------------------------------------------------------------------------
+# judge_verdict mapping
+# ---------------------------------------------------------------------------
+
+
+def _make_conversation_with_verdict(
+    persona_id: str,
+) -> eval_run_entity.EvalRunConversationSnapshot:
+    verdict = eval_run_entity.JudgeVerdict(
+        declared_capabilities=["asks_about_price"],
+        verifications=[
+            eval_run_entity.CapabilityVerification(
+                capability="asks_about_price",
+                verified=True,
+                evidence="cuanto vale?",
+                reasoning="El paciente pregunto el precio.",
+            )
+        ],
+        overall="all_verified",
+        judge_model="gemini-2.5-flash",
+        judged_at=_NOW,
+    )
+    return eval_run_entity.EvalRunConversationSnapshot(
+        persona_id=persona_id,
+        combos_satisfied=[["asks_about_price"]],
+        status="ok",
+        elapsed_seconds=5.0,
+        judge_verdict=verdict,
+    )
+
+
+def test_get_run_maps_judge_verdict_to_dto() -> None:
+    """El mapeo entity -> DTO incluye judge_verdict con sus campos."""
+    svc, repo = _make_service()
+    run = _make_run(run_id="run-judge")
+    repo.save_run(run)
+    conv = _make_conversation_with_verdict("diego_local_asks_price")
+    repo.save_conversation("run-judge", conv)
+
+    detail = svc.get_run("run-judge")
+
+    assert detail is not None
+    assert len(detail.conversations) == 1
+    dto_conv = detail.conversations[0]
+    assert dto_conv.judge_verdict is not None
+    assert dto_conv.judge_verdict.overall == "all_verified"
+    assert dto_conv.judge_verdict.judge_model == "gemini-2.5-flash"
+    assert len(dto_conv.judge_verdict.verifications) == 1
+    assert dto_conv.judge_verdict.verifications[0].capability == "asks_about_price"
+    assert dto_conv.judge_verdict.verifications[0].verified is True
+    assert dto_conv.judge_verdict.verifications[0].evidence == "cuanto vale?"
+    assert dto_conv.judge_verdict.declared_capabilities == ["asks_about_price"]
+
+
+def test_get_run_maps_none_judge_verdict_when_absent() -> None:
+    """Si la conversacion no tiene judge_verdict, el DTO tiene None."""
+    svc, repo = _make_service()
+    run = _make_run(run_id="run-no-judge")
+    repo.save_run(run)
+    conv = _make_conversation("persona-sin-verdict")
+    repo.save_conversation("run-no-judge", conv)
+
+    detail = svc.get_run("run-no-judge")
+
+    assert detail is not None
+    assert detail.conversations[0].judge_verdict is None
+
+
+def test_get_run_maps_verdict_with_error_field() -> None:
+    """El campo error del JudgeVerdict se mapea correctamente al DTO."""
+    svc, repo = _make_service()
+    run = _make_run(run_id="run-verdict-error")
+    repo.save_run(run)
+
+    verdict = eval_run_entity.JudgeVerdict(
+        declared_capabilities=["asks_about_price"],
+        verifications=[],
+        overall="none",
+        judge_model="gemini-2.5-flash",
+        judged_at=_NOW,
+        error="timeout: deadline exceeded",
+    )
+    conv = eval_run_entity.EvalRunConversationSnapshot(
+        persona_id="p-error",
+        combos_satisfied=[["asks_about_price"]],
+        status="ok",
+        elapsed_seconds=1.0,
+        judge_verdict=verdict,
+    )
+    repo.save_conversation("run-verdict-error", conv)
+
+    detail = svc.get_run("run-verdict-error")
+
+    assert detail is not None
+    dto_conv = detail.conversations[0]
+    assert dto_conv.judge_verdict is not None
+    assert dto_conv.judge_verdict.overall == "none"
+    assert dto_conv.judge_verdict.error == "timeout: deadline exceeded"
+    assert dto_conv.judge_verdict.verifications == []

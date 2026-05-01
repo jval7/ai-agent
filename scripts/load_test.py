@@ -73,6 +73,7 @@ import httpx  # noqa: E402
 from google import genai  # noqa: E402
 
 import scripts.coverage as coverage  # noqa: E402
+import scripts.llm_judge as llm_judge  # noqa: E402
 import scripts.personas as personas_module  # noqa: E402
 import src.adapters.outbound.firestore.paths as firestore_paths  # noqa: E402
 import src.domain.entities.agent_profile as agent_profile_entity  # noqa: E402
@@ -1081,7 +1082,7 @@ async def _capture_conversation_snapshot(
             "_capture_conversation_snapshot: no pudo obtener scheduling request: %s", exc
         )
 
-    return eval_run_entity.EvalRunConversationSnapshot(
+    snapshot = eval_run_entity.EvalRunConversationSnapshot(
         persona_id=persona.id,
         combos_satisfied=combos_satisfied,
         status=effective_status,
@@ -1092,6 +1093,18 @@ async def _capture_conversation_snapshot(
         transcript=transcript,
         error=error,
     )
+
+    # Llamar al juez si la conversacion tiene transcript y combos satisfechos.
+    if snapshot.transcript and snapshot.combos_satisfied:
+        declared_caps = list({cap for combo in snapshot.combos_satisfied for cap in combo})
+        snapshot.judge_verdict = llm_judge.judge_conversation(
+            persona_id=persona.id,
+            declared_capabilities=declared_caps,
+            transcript=snapshot.transcript,
+            gemini_client=_get_gemini_client(),
+        )
+
+    return snapshot
 
 
 def _persist_eval_run(

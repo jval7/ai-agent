@@ -4,6 +4,22 @@ import typing
 import pydantic
 
 
+class CapabilityVerificationDTO(pydantic.BaseModel):
+    capability: str
+    verified: bool
+    evidence: str | None = None
+    reasoning: str | None = None
+
+
+class JudgeVerdictDTO(pydantic.BaseModel):
+    declared_capabilities: list[str]
+    verifications: list[CapabilityVerificationDTO]
+    overall: typing.Literal["all_verified", "partial", "none"]
+    judge_model: str
+    judged_at: datetime.datetime
+    error: str | None = None
+
+
 class ShapeDTO(pydantic.BaseModel):
     name: str
     description: str
@@ -54,6 +70,7 @@ class EvalRunConversationSnapshotDTO(pydantic.BaseModel):
     final_status: str | None = None
     transcript: list[EvalRunConversationMessageDTO] = []
     error: str | None = None
+    judge_verdict: JudgeVerdictDTO | None = None
 
 
 class EvalRunDetailDTO(pydantic.BaseModel):

@@ -10,6 +10,22 @@ class EvalRunConversationMessage(pydantic.BaseModel):
     timestamp: datetime.datetime
 
 
+class CapabilityVerification(pydantic.BaseModel):
+    capability: str
+    verified: bool
+    evidence: str | None = None
+    reasoning: str | None = None
+
+
+class JudgeVerdict(pydantic.BaseModel):
+    declared_capabilities: list[str]
+    verifications: list[CapabilityVerification]
+    overall: typing.Literal["all_verified", "partial", "none"]
+    judge_model: str
+    judged_at: datetime.datetime
+    error: str | None = None
+
+
 class EvalRunConversationSnapshot(pydantic.BaseModel):
     persona_id: str
     combos_satisfied: list[list[str]]
@@ -20,6 +36,7 @@ class EvalRunConversationSnapshot(pydantic.BaseModel):
     final_status: str | None = None
     transcript: list[EvalRunConversationMessage] = []
     error: str | None = None
+    judge_verdict: JudgeVerdict | None = None
 
 
 class EvalRun(pydantic.BaseModel):

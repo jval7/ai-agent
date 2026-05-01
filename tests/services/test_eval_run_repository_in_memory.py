@@ -181,3 +181,97 @@ def test_conversations_are_isolated_per_run() -> None:
 
     assert len(convs_run2) == 1
     assert convs_run2[0].persona_id == "persona-b"
+
+
+# ---------------------------------------------------------------------------
+# judge_verdict round-trip
+# ---------------------------------------------------------------------------
+
+
+def _make_conversation_with_verdict(
+    persona_id: str,
+) -> eval_run_entity.EvalRunConversationSnapshot:
+    verdict = eval_run_entity.JudgeVerdict(
+        declared_capabilities=["asks_about_price"],
+        verifications=[
+            eval_run_entity.CapabilityVerification(
+                capability="asks_about_price",
+                verified=True,
+                evidence="cuanto vale?",
+                reasoning="Pregunto el precio.",
+            )
+        ],
+        overall="all_verified",
+        judge_model="gemini-2.5-flash",
+        judged_at=_NOW,
+    )
+    return eval_run_entity.EvalRunConversationSnapshot(
+        persona_id=persona_id,
+        combos_satisfied=[["asks_about_price"]],
+        status="ok",
+        elapsed_seconds=3.0,
+        judge_verdict=verdict,
+    )
+
+
+def test_save_conversation_with_judge_verdict_round_trip() -> None:
+    """Un snapshot con judge_verdict se persiste y recupera sin perder datos."""
+    repo = _make_repo()
+    repo.save_run(_make_run("run-verdict"))
+
+    conv = _make_conversation_with_verdict("persona-with-verdict")
+    repo.save_conversation("run-verdict", conv)
+
+    conversations = repo.get_conversations("run-verdict")
+
+    assert len(conversations) == 1
+    retrieved = conversations[0]
+    assert retrieved.judge_verdict is not None
+    assert retrieved.judge_verdict.overall == "all_verified"
+    assert retrieved.judge_verdict.judge_model == "gemini-2.5-flash"
+    assert len(retrieved.judge_verdict.verifications) == 1
+    assert retrieved.judge_verdict.verifications[0].capability == "asks_about_price"
+    assert retrieved.judge_verdict.verifications[0].verified is True
+    assert retrieved.judge_verdict.verifications[0].evidence == "cuanto vale?"
+
+
+def test_save_conversation_without_judge_verdict_has_none() -> None:
+    """Un snapshot sin judge_verdict (snapshot viejo) tiene None — compatibilidad."""
+    repo = _make_repo()
+    repo.save_run(_make_run("run-no-verdict"))
+
+    conv = _make_conversation("persona-old-snapshot")
+    repo.save_conversation("run-no-verdict", conv)
+
+    conversations = repo.get_conversations("run-no-verdict")
+
+    assert conversations[0].judge_verdict is None
+
+
+def test_save_conversation_verdict_with_error_round_trip() -> None:
+    """Un verdict con error (juez fallido) se persiste correctamente."""
+    repo = _make_repo()
+    repo.save_run(_make_run("run-failed-verdict"))
+
+    verdict = eval_run_entity.JudgeVerdict(
+        declared_capabilities=["foreign_patient"],
+        verifications=[],
+        overall="none",
+        judge_model="gemini-2.5-flash",
+        judged_at=_NOW,
+        error="timeout: deadline exceeded",
+    )
+    conv = eval_run_entity.EvalRunConversationSnapshot(
+        persona_id="persona-failed-verdict",
+        combos_satisfied=[["foreign_patient"]],
+        status="ok",
+        elapsed_seconds=2.0,
+        judge_verdict=verdict,
+    )
+    repo.save_conversation("run-failed-verdict", conv)
+
+    conversations = repo.get_conversations("run-failed-verdict")
+
+    assert conversations[0].judge_verdict is not None
+    assert conversations[0].judge_verdict.error == "timeout: deadline exceeded"
+    assert conversations[0].judge_verdict.overall == "none"

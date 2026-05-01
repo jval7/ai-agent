@@ -109,6 +109,28 @@ def _run_to_list_item(run: eval_run_entity.EvalRun) -> eval_dto.EvalRunListItemD
     )
 
 
+def _judge_verdict_to_dto(
+    verdict: eval_run_entity.JudgeVerdict,
+) -> eval_dto.JudgeVerdictDTO:
+    verifications = [
+        eval_dto.CapabilityVerificationDTO(
+            capability=v.capability,
+            verified=v.verified,
+            evidence=v.evidence,
+            reasoning=v.reasoning,
+        )
+        for v in verdict.verifications
+    ]
+    return eval_dto.JudgeVerdictDTO(
+        declared_capabilities=verdict.declared_capabilities,
+        verifications=verifications,
+        overall=verdict.overall,
+        judge_model=verdict.judge_model,
+        judged_at=verdict.judged_at,
+        error=verdict.error,
+    )
+
+
 def _conversation_to_dto(
     conv: eval_run_entity.EvalRunConversationSnapshot,
 ) -> eval_dto.EvalRunConversationSnapshotDTO:
@@ -120,6 +142,9 @@ def _conversation_to_dto(
         )
         for msg in conv.transcript
     ]
+    judge_verdict_dto: eval_dto.JudgeVerdictDTO | None = None
+    if conv.judge_verdict is not None:
+        judge_verdict_dto = _judge_verdict_to_dto(conv.judge_verdict)
     return eval_dto.EvalRunConversationSnapshotDTO(
         persona_id=conv.persona_id,
         combos_satisfied=conv.combos_satisfied,
@@ -130,6 +155,7 @@ def _conversation_to_dto(
         final_status=conv.final_status,
         transcript=transcript,
         error=conv.error,
+        judge_verdict=judge_verdict_dto,
     )
 
 
