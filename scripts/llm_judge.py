@@ -32,18 +32,64 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _GLOSSARY: dict[str, str] = {
-    "asks_about_price": "el paciente pregunta cuanto vale la consulta o servicio",
-    "asks_about_payment_method": "el paciente pregunta como o por que medio se paga",
-    "asks_about_modality": "el paciente pregunta si la cita es virtual o presencial",
-    "rejects_first_slot": "el paciente rechaza el primer horario propuesto",
-    "accepts_first_slot": "el paciente acepta el primer horario sin pedir cambios",
-    "gives_minimal_info": "el paciente solo responde lo que le preguntan, no ofrece extras",
-    "gives_all_info_upfront": "en su primer mensaje el paciente da nombre + motivo + modalidad",
-    "local_patient": "el paciente menciona o confirma residir en el pais del consultorio (Colombia)",
-    "foreign_patient": "el paciente menciona residir fuera del pais",
-    "new_patient": "primera consulta — el paciente no menciona haber sido paciente antes",
-    "returning_patient": "el paciente menciona explicitamente haber sido paciente antes",
+    # Comportamentales del paciente — requieren evidencia INBOUND directa.
+    "asks_about_price": (
+        "el paciente pregunta cuanto vale la consulta o servicio en algun mensaje INBOUND"
+    ),
+    "asks_about_payment_method": (
+        "el paciente pregunta como o por que medio se paga en algun mensaje INBOUND"
+    ),
+    "asks_about_modality": (
+        "el paciente pregunta si la cita puede ser virtual o presencial en algun mensaje INBOUND"
+    ),
+    "rejects_first_slot": (
+        "el paciente rechaza explicitamente el primer horario propuesto y pide otro"
+    ),
+    "accepts_first_slot": (
+        "el paciente acepta el primer horario que el bot le ofrece sin pedir cambios"
+    ),
+    "gives_minimal_info": (
+        "el paciente solo responde lo que el bot le pregunta, sin ofrecer informacion "
+        "adicional no solicitada"
+    ),
+    "gives_all_info_upfront": (
+        "en su primer mensaje INBOUND el paciente entrega multiples datos sin que el "
+        "bot los pida (ej. nombre + motivo + modalidad juntos)"
+    ),
+    # Inferenciales por comportamiento del flujo — pueden verificarse por como
+    # bot/paciente se comportan, sin necesidad de declaracion explicita del paciente.
+    "local_patient": (
+        "la conversacion procede como con un paciente local del pais del consultorio "
+        "(Colombia): el bot cotiza precio en COP, ofrece modalidad presencial, da "
+        "metodo de pago local (Nequi/transferencia), o el paciente menciona ciudad "
+        "colombiana o residencia en el pais. Inferencia comportamental aceptable."
+    ),
+    "foreign_patient": (
+        "la conversacion procede como con un paciente extranjero: el bot cotiza precio "
+        "en USD u otra moneda extranjera, sugiere modalidad virtual, da metodo de pago "
+        "internacional (Zelle/Wise), o el paciente menciona explicitamente vivir fuera "
+        "del pais. Inferencia comportamental aceptable."
+    ),
+    "new_patient": (
+        "la conversacion se centra en un paciente nuevo: el bot le pide nombre/edad/"
+        "motivo porque no los tiene, no hay referencias a sesiones previas o tratamiento "
+        "en curso, el bot trata el caso como primera consulta. Si el bot saluda por "
+        "nombre desde el primer mensaje sin que el paciente lo de, NO es new_patient. "
+        "Inferencia comportamental aceptable."
+    ),
+    "returning_patient": (
+        "la conversacion se centra en un paciente conocido por el sistema: el bot saluda "
+        "por nombre desde el primer mensaje sin pedir datos basicos, hay referencias a "
+        "tratamiento previo, sesiones anteriores, cita de control, o el paciente "
+        "menciona seguir tratamiento. Inferencia comportamental aceptable."
+    ),
 }
+
+# Caps que pueden verificarse por inferencia comportamental (criterio b).
+# Las demas requieren evidencia INBOUND directa (criterio a).
+_INFERENTIAL_CAPS = frozenset(
+    {"local_patient", "foreign_patient", "new_patient", "returning_patient"}
+)
 
 _SYSTEM_INSTRUCTION = """\
 Eres un evaluador de conversaciones simuladas entre un paciente y un asistente de agenda.
@@ -52,25 +98,56 @@ Tu tarea es verificar si las capabilities declaradas por el paciente se ejercier
 efectivamente en el transcript de la conversacion.
 
 Glosario de capabilities:
-- asks_about_price: el paciente pregunta cuanto vale la consulta o servicio
-- asks_about_payment_method: el paciente pregunta como o por que medio se paga
-- asks_about_modality: el paciente pregunta si la cita es virtual o presencial
-- rejects_first_slot: el paciente rechaza el primer horario propuesto
-- accepts_first_slot: el paciente acepta el primer horario sin pedir cambios
-- gives_minimal_info: el paciente solo responde lo que le preguntan, no ofrece extras
-- gives_all_info_upfront: en su primer mensaje el paciente da nombre + motivo + modalidad
-- local_patient: el paciente menciona o confirma residir en el pais del consultorio (Colombia)
-- foreign_patient: el paciente menciona residir fuera del pais
-- new_patient: primera consulta — el paciente no menciona haber sido paciente antes
-- returning_patient: el paciente menciona explicitamente haber sido paciente antes
+
+Comportamentales del paciente (requieren evidencia INBOUND directa):
+- asks_about_price: el paciente pregunta cuanto vale en algun mensaje INBOUND
+- asks_about_payment_method: pregunta como/por que medio se paga
+- asks_about_modality: pregunta si la cita es virtual o presencial
+- rejects_first_slot: rechaza explicitamente el primer horario propuesto
+- accepts_first_slot: acepta el primer horario sin pedir cambios
+- gives_minimal_info: solo responde lo que le preguntan, sin extras no solicitados
+- gives_all_info_upfront: en el primer mensaje da nombre + motivo + modalidad
+
+Inferenciales por flujo (pueden verificarse por como bot/paciente se comportan):
+- local_patient: el flujo procede en COP, presencial, Nequi, o ciudad colombiana
+- foreign_patient: el flujo procede en USD/EUR, virtual, Zelle/Wise, o paciente vive fuera
+- new_patient: el bot pide nombre/edad/motivo (no los conoce); no hay sesiones previas
+- returning_patient: el bot saluda por nombre sin pedirlo; referencias a tratamiento previo
 
 Reglas:
-1. Solo evalua las capabilities que te indiquen en "declared_capabilities".
-2. Para cada capability, determina si hay evidencia clara en algun mensaje INBOUND del transcript.
-3. verified=true solo si hay evidencia explicita. En caso de duda, false.
-4. evidence: cita textual breve del mensaje INBOUND donde se observa (null si verified=false).
-5. reasoning: 1-2 lineas justificando la decision.
-6. overall: "all_verified" si todas verificadas, "partial" si algunas, "none" si ninguna.
+
+1. Solo evalua las capabilities en "declared_capabilities". Ignora cualquier otra.
+
+2. Para cada capability, verified=true si CUALQUIERA de estos dos criterios se cumple:
+
+   (a) Evidencia EXPLICITA: hay un mensaje INBOUND donde el paciente declara o
+       ejerce la capability directamente (ej. "Cuanto vale la consulta?" para
+       asks_about_price).
+
+   (b) Evidencia COMPORTAMENTAL (solo para caps inferenciales — local_patient,
+       foreign_patient, new_patient, returning_patient): el flujo de la conversacion
+       es consistente con la capability, observando como el bot trata al paciente,
+       que datos pide o no, en que moneda cotiza, que metodo de pago ofrece, o como
+       el paciente actua. Ejemplos:
+       - new_patient verified si el bot pide nombre/edad porque no los tiene.
+       - returning_patient verified si el bot saluda por nombre desde el primer mensaje.
+       - local_patient verified si el bot cotizo en COP y ofrecio Nequi.
+       - foreign_patient verified si el bot cotizo en USD y ofrecio Zelle.
+
+3. evidence:
+   - Si aplico criterio (a): quote textual breve del mensaje INBOUND.
+   - Si aplico criterio (b): descripcion textual del flujo observado, citando
+     turno y direccion (ej. "el bot pide nombre y edad en turno 2 (OUTBOUND),
+     indicando que no conocia al paciente").
+   - null si verified=false.
+
+4. reasoning: 1-2 lineas indicando que criterio aplico y por que.
+
+5. overall: "all_verified" si todas verificadas, "partial" si algunas, "none" si ninguna.
+
+Importante: para caps NO inferenciales (asks_about_price, gives_minimal_info, etc.),
+solo aplica criterio (a). Si no hay evidencia INBOUND directa, verified=false aunque
+el flujo sea consistente.
 
 Responde SOLO con JSON valido segun el schema indicado. Sin texto adicional.
 """
