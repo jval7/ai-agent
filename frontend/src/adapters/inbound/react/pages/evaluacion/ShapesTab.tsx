@@ -3,6 +3,7 @@ import * as reactModule from "react";
 import * as reactQueryModule from "@tanstack/react-query";
 
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
+import * as xmlTagViewerModule from "@adapters/inbound/react/components/XmlTagViewer";
 import type * as evaluationModel from "@domain/models/evaluation";
 
 const shapesQueryKey = ["eval-shapes"] as const;
@@ -46,9 +47,7 @@ function ShapeRow(props: { shape: evaluationModel.EvalShape }) {
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
             System prompt renderizado
           </p>
-          <pre className="overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs text-slate-100">
-            {props.shape.renderedSystemPrompt}
-          </pre>
+          <xmlTagViewerModule.XmlTagViewer value={props.shape.renderedSystemPrompt} />
         </div>
       ) : null}
     </div>
