@@ -8,7 +8,10 @@ import pydantic
 import src.adapters.outbound.firestore.errors as firestore_errors
 import src.adapters.outbound.firestore.paths as firestore_paths
 import src.domain.entities.eval_run as eval_run_entity
+import src.infra.logs as app_logs
 import src.ports.eval_run_repository_port as eval_run_repository_port
+
+logger = app_logs.get_logger(__name__)
 
 
 def _ensure_utc(dt: datetime.datetime) -> datetime.datetime:
@@ -53,7 +56,11 @@ def _unflatten_nested_arrays(data: dict[str, object], keys: list[str]) -> dict[s
                     try:
                         unflattened.append(json.loads(item))
                     except json.JSONDecodeError:
-                        unflattened.append(item)
+                        logger.warning(
+                            "eval_run_repository: skipping malformed JSON item in field %s: %r",
+                            key,
+                            item,
+                        )
                 else:
                     unflattened.append(item)
             result[key] = unflattened
@@ -88,7 +95,8 @@ class FirestoreEvalRunRepositoryAdapter(eval_run_repository_port.EvalRunReposito
         self._client = client
 
     def save_run(self, eval_run: eval_run_entity.EvalRun) -> None:
-        doc_ref = self._client.document(firestore_paths.eval_run_document(eval_run.run_id))
+        run_doc_id = f"{eval_run.run_id}_{eval_run.shape_name}"
+        doc_ref = self._client.document(firestore_paths.eval_run_document(run_doc_id))
         data = _flatten_for_firestore(eval_run.model_dump(mode="json"), ["uncovered_combos"])
         try:
             doc_ref.set(data)

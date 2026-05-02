@@ -1,3 +1,5 @@
+import hmac
+
 import fastapi
 
 import src.entrypoints.web.dependencies as http_dependencies
@@ -18,7 +20,7 @@ def _require_eval_admin_secret(
     if not configured_secret:
         raise service_exceptions.AuthenticationError("eval admin secret is not configured")
     provided_secret = request.headers.get("X-Eval-Admin-Secret")
-    if not provided_secret or provided_secret != configured_secret:
+    if not provided_secret or not hmac.compare_digest(provided_secret, configured_secret):
         raise service_exceptions.AuthenticationError(
             "invalid or missing X-Eval-Admin-Secret header"
         )

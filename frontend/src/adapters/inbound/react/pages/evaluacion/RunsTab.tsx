@@ -19,7 +19,7 @@ function formatDateShort(iso: string): string {
   });
 }
 
-function RunStatusBadge(props: { ok: number; fail: number; skipped: number }) {
+function RunStatusBadge(props: { ok: number; fail: number; skipped: boolean }) {
   if (props.fail > 0) {
     return (
       <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
@@ -27,10 +27,10 @@ function RunStatusBadge(props: { ok: number; fail: number; skipped: number }) {
       </span>
     );
   }
-  if (props.skipped > 0) {
+  if (props.skipped) {
     return (
       <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-        {props.skipped} omitido{props.skipped !== 1 ? "s" : ""}
+        omitido
       </span>
     );
   }

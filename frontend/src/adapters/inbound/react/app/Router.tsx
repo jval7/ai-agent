@@ -111,9 +111,7 @@ export function AppRouter() {
         <reactRouterDomModule.Route
           element={
             <protectedRouteModule.ProtectedRoute>
-              <onboardingReadyRouteModule.OnboardingReadyRoute>
-                <evaluacionPageModule.EvaluacionPage />
-              </onboardingReadyRouteModule.OnboardingReadyRoute>
+              <evaluacionPageModule.EvaluacionPage />
             </protectedRouteModule.ProtectedRoute>
           }
           path="/evaluacion"
@@ -121,9 +119,7 @@ export function AppRouter() {
         <reactRouterDomModule.Route
           element={
             <protectedRouteModule.ProtectedRoute>
-              <onboardingReadyRouteModule.OnboardingReadyRoute>
-                <runDetailPageModule.RunDetailPage />
-              </onboardingReadyRouteModule.OnboardingReadyRoute>
+              <runDetailPageModule.RunDetailPage />
             </protectedRouteModule.ProtectedRoute>
           }
           path="/evaluacion/runs/:runDocId"

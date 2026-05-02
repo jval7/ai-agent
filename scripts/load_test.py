@@ -967,11 +967,13 @@ async def _pre_seed_patient(
 
     El whatsapp_user_id se sufija con el run_id para coincidir con el que
     _run_patient usa al crear la conversacion. Si el patient ya existe (409),
-    se ignora (idempotente).
+    se ignora (idempotente). Otros 4xx (ej. 422 schema mismatch) se loguean
+    pero no abortan el shape — la conversacion igual se ejecuta, simplemente
+    no entra en el branch RETURNING.
     """
     headers = {"Authorization": f"Bearer {access_token}"}
-    parts = persona.display_name.split()
-    first_name = parts[0]
+    parts = [p for p in persona.display_name.split() if p]
+    first_name = parts[0] if parts else "Test"
     last_name = parts[-1] if len(parts) > 1 else "Test"
     payload: dict[str, object] = {
         "whatsapp_user_id": persona.whatsapp_user_id + run_id,
@@ -986,11 +988,23 @@ async def _pre_seed_patient(
     if resp.status_code == 409:
         logger.info("_pre_seed_patient: patient ya existe para %s, continuando", persona.id)
         return
+    if 400 <= resp.status_code < 500:
+        # Cualquier 4xx (422 validation, 401, 403, etc.) lo logueamos y seguimos.
+        # La persona returning va a fallar el branch RETURNING en runtime,
+        # pero el shape no se interrumpe entero por esto.
+        logger.warning(
+            "_pre_seed_patient HTTP %s para %s: %s — sigo sin pre-seed",
+            resp.status_code,
+            persona.id,
+            resp.text[:200],
+        )
+        return
     try:
         resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
-        logger.warning(
-            "_pre_seed_patient HTTP %s para %s: %s",
+        # 5xx = error del backend, no del input. Si esto pasa hay algo grave.
+        logger.error(
+            "_pre_seed_patient HTTP %s (server error) para %s: %s",
             exc.response.status_code,
             persona.id,
             exc.response.text[:200],
@@ -1011,8 +1025,10 @@ async def _capture_conversation_snapshot(
     """Captura el estado final de la conversacion del persona y lo empaqueta
     como EvalRunConversationSnapshot.
 
-    Para status='fail' con error pre-conocido, no hace llamadas HTTP y retorna
-    inmediatamente con los campos vacios.
+    Aun cuando status='fail', intentamos capturar transcript + scheduling state
+    porque eso da evidencia para debug (que mensajes vio el bot antes de fallar).
+    Si los GETs HTTP fallan (ej. tenant ya borrado, conversation_id no existe),
+    los wraps de try/except dejan los campos vacios sin propagar excepcion.
     """
     # Combos que esta persona satisface para este shape.
     # Cast a list[list[str]] porque EvalRunConversationSnapshot.combos_satisfied
@@ -1025,15 +1041,6 @@ async def _capture_conversation_snapshot(
     ]
 
     whatsapp_user_id_with_run = persona.whatsapp_user_id + run_id
-
-    if status == "fail" and error is not None:
-        return eval_run_entity.EvalRunConversationSnapshot(
-            persona_id=persona.id,
-            combos_satisfied=combos_satisfied,
-            status="fail",
-            elapsed_seconds=elapsed,
-            error=error,
-        )
 
     # --- Buscar conversation_id ---
     conversation_id: str | None = None
@@ -1095,9 +1102,12 @@ async def _capture_conversation_snapshot(
     )
 
     # Llamar al juez si la conversacion tiene transcript y combos satisfechos.
+    # judge_conversation es sync (Gemini SDK no expone async); usamos
+    # asyncio.to_thread para no bloquear el event loop ~5s por persona.
     if snapshot.transcript and snapshot.combos_satisfied:
         declared_caps = list({cap for combo in snapshot.combos_satisfied for cap in combo})
-        snapshot.judge_verdict = llm_judge.judge_conversation(
+        snapshot.judge_verdict = await asyncio.to_thread(
+            llm_judge.judge_conversation,
             persona_id=persona.id,
             declared_capabilities=declared_caps,
             transcript=snapshot.transcript,
@@ -1254,7 +1264,9 @@ async def _run_eval_shape(
             conversation_results=[],
         )
 
-    # 2. Crear tenant efimero
+    # 2. Crear tenant efimero — si falla, no abortamos todo el run; persistimos
+    #    skipped y seguimos con el siguiente shape.
+    started_at = datetime.datetime.now(tz=datetime.UTC)
     create_resp = await client.post(
         "/v1/dev/eval-tenants",
         headers={"X-Eval-Admin-Secret": admin_secret},
@@ -1269,37 +1281,64 @@ async def _run_eval_shape(
             exc.response.status_code,
             exc.response.text[:400],
         )
-        raise
+        try:
+            _persist_skipped_run(
+                run_id,
+                shape,
+                coverage.CoverageGapError(
+                    f"create_eval_tenant failed: HTTP {exc.response.status_code}"
+                ),
+            )
+        except Exception:
+            logger.exception("Persistir skipped run fallo")
+        return _ShapeSummary(
+            shape_name=shape_name,
+            skipped=True,
+            uncovered_combos=[],
+            conversation_results=[],
+        )
 
     eval_tenant: dict[str, str] = create_resp.json()
     tenant_token: str = eval_tenant["access_token"]
     phone_number_id: str = eval_tenant["phone_number_id"]
     tenant_id: str = eval_tenant["tenant_id"]
 
-    started_at = datetime.datetime.now(tz=datetime.UTC)
     conversation_results: list[eval_run_entity.EvalRunConversationSnapshot] = []
+    apply_profile_failed = False
 
     try:
-        # 3. Aplicar agent_profile del shape al tenant efimero
-        await _apply_shape_agent_profile(client, tenant_token, shape.agent_profile)
+        # 3. Aplicar agent_profile del shape al tenant efimero. Si falla, no
+        #    queremos un reporte que pretenda ok=0,fail=0,skipped=False (engañoso).
+        try:
+            await _apply_shape_agent_profile(client, tenant_token, shape.agent_profile)
+        except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+            apply_profile_failed = True
+            logger.error(
+                "[Shape %r] _apply_shape_agent_profile fallo: %s — saltando conversaciones",
+                shape_name,
+                exc,
+            )
 
-        # 4. Seleccionar personas para este shape
-        personas = coverage.select_personas_for_shape(shape, personas_module.ALL_PERSONAS)
-        logger.info(
-            "Shape %r: %d personas seleccionadas: %s",
-            shape_name,
-            len(personas),
-            [p.id for p in personas],
-        )
+        # 4-6. Solo correr conversaciones si el profile se aplico OK.
+        if not apply_profile_failed:
+            personas = coverage.select_personas_for_shape(shape, personas_module.ALL_PERSONAS)
+            logger.info(
+                "Shape %r: %d personas seleccionadas: %s",
+                shape_name,
+                len(personas),
+                [p.id for p in personas],
+            )
 
-        # 5. Pre-seed Patients para personas con returning_patient
-        for persona in personas:
-            if "returning_patient" in persona.capabilities:
-                await _pre_seed_patient(client, tenant_token, persona, run_id)
+            # Pre-seed Patients para personas con returning_patient
+            for persona in personas:
+                if "returning_patient" in persona.capabilities:
+                    await _pre_seed_patient(client, tenant_token, persona, run_id)
+        else:
+            personas = []
 
-        # 6. Correr conversaciones secuencialmente (cada shape es su propio tenant;
-        #    no hay valor en paralelizarlas dentro de un mismo tenant efimero dado
-        #    que el bot tiene estado compartido por conversacion).
+        # Correr conversaciones secuencialmente (cada shape es su propio tenant;
+        # no hay valor en paralelizarlas dentro de un mismo tenant efimero dado
+        # que el bot tiene estado compartido por conversacion).
         for i, persona in enumerate(personas):
             patient_dict = _persona_to_dict(persona)
             elapsed = 0.0
@@ -1343,15 +1382,23 @@ async def _run_eval_shape(
     finally:
         finished_at = datetime.datetime.now(tz=datetime.UTC)
 
-        # 8. Persistir reporte a Firestore
-        _persist_eval_run(
-            run_id=run_id,
-            shape=shape,
-            conversation_results=conversation_results,
-            started_at=started_at,
-            finished_at=finished_at,
-            eval_tenant_id=tenant_id,
-        )
+        # 8. Persistir reporte a Firestore. Si falla (network, perms, schema),
+        #    seguimos al cleanup del tenant — no queremos tenants huerfanos
+        #    porque Firestore tuvo un hipo.
+        try:
+            _persist_eval_run(
+                run_id=run_id,
+                shape=shape,
+                conversation_results=conversation_results,
+                started_at=started_at,
+                finished_at=finished_at,
+                eval_tenant_id=tenant_id,
+            )
+        except Exception:
+            logger.exception(
+                "[Shape %r] _persist_eval_run fallo — sigo al cleanup del tenant",
+                shape_name,
+            )
 
         # 9. Cleanup tenant efimero (salvo --no-cleanup)
         if not _NO_CLEANUP:
@@ -1374,7 +1421,7 @@ async def _run_eval_shape(
 
     return _ShapeSummary(
         shape_name=shape_name,
-        skipped=False,
+        skipped=apply_profile_failed,
         uncovered_combos=[],
         conversation_results=conversation_results,
     )

@@ -453,9 +453,11 @@ class AppContainer:
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
             clock=self.clock_adapter,
         )
+        # container.py vive en src/infra/container.py → 3 niveles arriba = project root
+        _project_root = pathlib.Path(__file__).resolve().parent.parent.parent
         self.eval_query_service = eval_query_service.EvalQueryService(
             eval_run_repository=self.eval_run_repository,
-            shapes_directory=pathlib.Path("tests/fixtures/profiles"),
+            shapes_directory=_project_root / "tests" / "fixtures" / "profiles",
         )
         self.eval_tenant_service = eval_tenant_service.EvalTenantService(
             tenant_repository=self.tenant_repository,

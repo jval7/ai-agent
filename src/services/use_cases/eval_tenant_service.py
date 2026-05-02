@@ -1,5 +1,6 @@
 import uuid
 
+import src.adapters.outbound.firestore.errors as firestore_errors
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.user as user_entity
@@ -134,7 +135,10 @@ class EvalTenantService:
         # patients, agent_profile, whatsapp_connection, etc.).
         try:
             self._tenant_repository.delete_with_data(tenant_id)
-        except service_exceptions.ServiceError as error:
+        except (
+            service_exceptions.ServiceError,
+            firestore_errors.FirestoreRepositoryError,
+        ) as error:
             logger.warning(
                 "eval_tenant.delete.failed",
                 extra={

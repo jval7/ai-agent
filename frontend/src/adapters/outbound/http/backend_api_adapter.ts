@@ -1052,7 +1052,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         total_personas: number;
         ok: number;
         fail: number;
-        skipped: number;
+        skipped: boolean;
       }[];
     }>(`/v1/eval/runs${qs}`, { method: "GET", authRequired: false });
     return raw.items.map((item) => ({
@@ -1079,7 +1079,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       total_personas: number;
       ok: number;
       fail: number;
-      skipped: number;
+      skipped: boolean;
       conversations: {
         persona_id: string;
         combos_satisfied: string[][];

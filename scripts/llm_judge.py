@@ -227,6 +227,10 @@ def judge_conversation(
                 f"expected list for 'verifications', got {type(raw_verifications_raw).__name__}"
             )
         raw_verifications: list[dict[str, object]] = raw_verifications_raw
+        # Filtrar items mal formados Y caps que no estaban declaradas.
+        # Lo segundo evita que el juez halucine caps inexistentes (ej.
+        # "asks_about_dragons") y queden persistidas como evidencia falsa.
+        declared_set = set(declared_capabilities)
         verifications = [
             eval_run_entity.CapabilityVerification(
                 capability=str(v["capability"]),
@@ -235,7 +239,7 @@ def judge_conversation(
                 reasoning=str(v["reasoning"]) if v.get("reasoning") is not None else None,
             )
             for v in raw_verifications
-            if "capability" in v and "verified" in v
+            if "capability" in v and "verified" in v and str(v["capability"]) in declared_set
         ]
         raw_overall = parsed.get("overall", "none")
         overall: typing.Literal["all_verified", "partial", "none"]

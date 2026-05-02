@@ -27,7 +27,7 @@ export interface EvalRunListItem {
   totalPersonas: number;
   ok: number;
   fail: number;
-  skipped: number;
+  skipped: boolean;
 }
 
 export interface EvalRunConversationMessage {
@@ -75,6 +75,6 @@ export interface EvalRunDetail {
   totalPersonas: number;
   ok: number;
   fail: number;
-  skipped: number;
+  skipped: boolean;
   conversations: EvalRunConversationSnapshot[];
 }

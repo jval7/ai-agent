@@ -65,7 +65,10 @@ function JudgeVerdictSection(props: { verdict: evaluationModel.EvalJudgeVerdict 
 
   const verifiedCount = verdict.verifications.filter((v) => v.verified).length;
   const total = verdict.verifications.length;
-  const badge = OVERALL_BADGE[verdict.overall];
+  const badge = OVERALL_BADGE[verdict.overall] ?? {
+    label: verdict.overall,
+    className: "bg-slate-100 text-slate-600"
+  };
 
   function toggleCap(cap: string): void {
     setExpandedCaps((prev) => {
@@ -351,7 +354,9 @@ export function RunDetailPage() {
                   <p className="text-xs text-slate-500">Fail</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-2xl font-bold text-amber-600">{runQuery.data.skipped}</p>
+                  <p className="text-2xl font-bold text-amber-600">
+                    {runQuery.data.skipped ? "Sí" : "No"}
+                  </p>
                   <p className="text-xs text-slate-500">Skip</p>
                 </div>
               </div>
@@ -366,8 +371,8 @@ export function RunDetailPage() {
                 <p className="text-sm text-slate-500">No hay conversaciones en esta corrida.</p>
               ) : (
                 <div className="space-y-3">
-                  {runQuery.data.conversations.map((conv) => (
-                    <ConversationCard conv={conv} key={conv.personaId} />
+                  {runQuery.data.conversations.map((conv, idx) => (
+                    <ConversationCard conv={conv} key={`${conv.personaId}-${idx}`} />
                   ))}
                 </div>
               )}

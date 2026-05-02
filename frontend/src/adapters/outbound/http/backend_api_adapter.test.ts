@@ -578,7 +578,7 @@ vitestModule.describe("BackendApiAdapter", () => {
               total_personas: 1,
               ok: 1,
               fail: 0,
-              skipped: 0
+              skipped: false
             }
           ]
         });
@@ -612,7 +612,7 @@ vitestModule.describe("BackendApiAdapter", () => {
           total_personas: 1,
           ok: 1,
           fail: 0,
-          skipped: 0,
+          skipped: false,
           conversations: [
             {
               persona_id: "carlos_local_basic",
@@ -673,7 +673,7 @@ vitestModule.describe("BackendApiAdapter", () => {
           total_personas: 1,
           ok: 1,
           fail: 0,
-          skipped: 0,
+          skipped: false,
           conversations: [
             {
               persona_id: "carlos_local_basic",
@@ -747,7 +747,7 @@ vitestModule.describe("BackendApiAdapter", () => {
           total_personas: 1,
           ok: 0,
           fail: 1,
-          skipped: 0,
+          skipped: false,
           conversations: [
             {
               persona_id: "persona-a",
@@ -788,7 +788,7 @@ vitestModule.describe("BackendApiAdapter", () => {
           total_personas: 1,
           ok: 0,
           fail: 1,
-          skipped: 0,
+          skipped: false,
           conversations: [
             {
               persona_id: "persona-b",
