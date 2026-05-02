@@ -32,6 +32,10 @@ frontend/coverage/
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/persona-from-combo/
+# Agents a nivel proyecto: subagentes definidos en markdown que el equipo
+# puede usar (Backend Engineer, Eval Analyzer, etc.).
+!.claude/agents/
+!.claude/agents/**
 .vite/
 frontend/.claude/
 .mcp.json
