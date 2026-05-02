@@ -199,10 +199,16 @@ def _instructions_for_state(
             "Para mensajes siguientes, responde preguntas generales del paciente usando los datos del contexto.",
             "NO inicies un nuevo proceso de agendamiento. Si el paciente quiere agendar otra cita, "
             "usa handoff_to_human.",
-            "Cuando el paciente se despida o confirme que no necesita nada mas (ej: 'gracias', "
-            "'no gracias', 'eso es todo', 'ya estoy bien', 'listo', 'ok'), "
-            "DEBES llamar close_session obligatoriamente. No te despidas solo con texto; "
-            "tu respuesta de despedida DEBE incluir la llamada a close_session.",
+            "Cuando el paciente se despida o confirme que no necesita nada mas, "
+            "DEBES llamar close_session obligatoriamente. Reconoce como senales de cierre: "
+            "agradecimientos finales ('gracias', 'muchas gracias'); "
+            "confirmaciones simples ('ok', 'listo', 'enterado', 'dale'); "
+            "expresiones de cierre ('eso es todo', 'ya estoy bien', 'no gracias', "
+            "'quedo atento', 'estamos en contacto'); "
+            "secuencias cortas y repetitivas (ej. el paciente envia 2-3 mensajes seguidos "
+            "de agradecimiento sin contenido nuevo). "
+            "No te despidas solo con texto; tu respuesta de despedida DEBE incluir "
+            "la llamada a close_session.",
         ]
         return lines
     return ["Mantente en flujo natural y sin mencionar procesos internos."]

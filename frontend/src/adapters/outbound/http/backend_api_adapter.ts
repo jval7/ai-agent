@@ -1015,7 +1015,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         id: string;
         display_name: string;
         capabilities: string[];
-        profile_group: "psicologa" | "ortodoncista";
+        profile_group: string;
       }[];
     }>("/v1/eval/personas", { method: "GET", authRequired: false });
     return raw.items.map((item) => ({

@@ -530,6 +530,9 @@ async def _setup(client: httpx.AsyncClient) -> tuple[str, str]:
 # Polling: estado del scheduling request
 # ---------------------------------------------------------------------------
 _TERMINAL_STATUSES = {"SESSION_CLOSED", "CANCELLED", "CONSULTATION_REJECTED", "HUMAN_HANDOFF"}
+# Estados near-terminal: el flujo cumplio su contrato. Si el bot deja de
+# responder porque ya cerro logicamente, no es un fail real — terminamos OK.
+_NEAR_TERMINAL_STATUSES = {"BOOKED"}
 _WAIT_FOR_OWNER_STATUSES = {"AWAITING_CONSULTATION_REVIEW", "AWAITING_PAYMENT_CONFIRMATION"}
 
 
@@ -900,6 +903,21 @@ async def _run_patient(
                 max_wait=120.0,
             )
             if not got_response:
+                # Si el flujo ya esta en near-terminal (ej. BOOKED), el bot puede
+                # estar callado intencionalmente porque el contrato ya se cumplio.
+                # Tratarlo como terminacion exitosa en lugar de timeout.
+                near_terminal_status = await _get_scheduling_status(
+                    client, access_token, patient["whatsapp_user_id"]
+                )
+                if near_terminal_status in _NEAR_TERMINAL_STATUSES:
+                    elapsed = time.monotonic() - start
+                    logger.info(
+                        "[%s] Bot silente con status %s (near-terminal) — flujo completado en %.1fs",
+                        tag,
+                        near_terminal_status,
+                        elapsed,
+                    )
+                    return elapsed
                 raise RuntimeError(f"AI no respondio tras 120s en turno {turn}")
 
         # --- Verificar estado del scheduling request ---

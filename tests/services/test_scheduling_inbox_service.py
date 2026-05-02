@@ -301,6 +301,103 @@ def test_submit_professional_slots_accepts_any_preset_duration(duration_minutes:
     assert response.status == "AWAITING_PATIENT_CHOICE"
 
 
+# ---------------------------------------------------------------------------
+# Fix B2: payment fallback message reads AgentProfile.payment_methods
+# ---------------------------------------------------------------------------
+
+
+def _build_inbox_service_with_payment_methods(
+    payment_methods: list[agent_profile_entity.PaymentMethod],
+) -> scheduling_inbox_service.SchedulingInboxService:
+    """Build an inbox service whose AgentProfile has the given payment_methods."""
+    store = in_memory_store.InMemoryStore()
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    agent_profile_repo.save(
+        agent_profile_entity.AgentProfile(
+            tenant_id="tenant-1",
+            system_prompt="Eres un asistente.",
+            payment_methods=payment_methods,
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
+    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
+        store
+    )
+    whatsapp_connection_repository = (
+        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
+    )
+    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
+        store
+    )
+    clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
+    id_generator = fake_adapters.SequenceIdGenerator(["msg-b2-1"])
+    google_provider = fake_adapters.FakeGoogleCalendarProvider()
+    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
+        google_calendar_connection_repository=calendar_connection_repository,
+        google_calendar_provider=google_provider,
+        id_generator=id_generator,
+        clock=clock,
+    )
+    task_sched = inmemory_task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
+    builder = event_description_builder_mod.EventDescriptionBuilder(
+        agent_profile_repository=agent_profile_repo,
+    )
+    core_svc = scheduling_service.SchedulingService(
+        scheduling_repository=scheduling_repository,
+        conversation_repository=conversation_repository,
+        google_calendar_onboarding_service=google_service,
+        id_generator=id_generator,
+        clock=clock,
+        task_scheduler=task_sched,
+        event_description_builder=builder,
+    )
+    return scheduling_inbox_service.SchedulingInboxService(
+        scheduling_repository=scheduling_repository,
+        scheduling_service=core_svc,
+        google_calendar_onboarding_service=google_service,
+        conversation_repository=conversation_repository,
+        whatsapp_connection_repository=whatsapp_connection_repository,
+        whatsapp_provider=fake_adapters.FakeWhatsappProvider(),
+        id_generator=id_generator,
+        clock=clock,
+        agent_profile_repository=agent_profile_repo,
+    )
+
+
+def test_payment_pending_fallback_does_not_contain_nequi_when_zelle_configured() -> None:
+    """Fix B2: fallback message must not contain 'Nequi' when only Zelle is configured."""
+    svc = _build_inbox_service_with_payment_methods(
+        [
+            agent_profile_entity.PaymentMethod(
+                currency="USD",
+                method_name="Zelle",
+                holder="Test Professional",
+                instructions="test@example.com",
+                applies_when="International patients",
+            )
+        ]
+    )
+    message = svc._build_payment_pending_fallback("tenant-1")
+
+    assert "Nequi" not in message
+    assert "318 732 6409" not in message
+    assert "Zelle" in message
+
+
+def test_payment_pending_fallback_is_generic_when_no_payment_methods() -> None:
+    """Fix B2: fallback must be generic (no account numbers) when payment_methods is empty."""
+    svc = _build_inbox_service_with_payment_methods([])
+    message = svc._build_payment_pending_fallback("tenant-1")
+
+    assert "318 732 6409" not in message
+    assert "Nequi" not in message
+    # Must not contain any phone-number-like sequence
+    assert "318" not in message
+
+
 @pytest.mark.parametrize("duration_minutes", [10, 25, 50, 75, 100, 150])  # type: ignore[misc, unused-ignore]
 def test_submit_professional_slots_rejects_non_preset_duration(duration_minutes: int) -> None:
     service, _, _, _ = build_services()

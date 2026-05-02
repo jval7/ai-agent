@@ -4,10 +4,15 @@ import * as appContainerContextModule from "@adapters/inbound/react/app/AppConta
 
 const personasQueryKey = ["eval-personas"] as const;
 
-const profileGroupLabel: Record<"psicologa" | "ortodoncista", string> = {
-  psicologa: "Psicología",
-  ortodoncista: "Ortodoncia"
-};
+// `profile_group` es string libre (Fix B4). Conocemos los grupos historicos
+// y los rotulamos lindo; cualquier grupo nuevo se muestra tal como viene.
+
+function formatProfileGroup(group: string): string {
+  // Lookup explícito por if-else para evitar warnings de object-injection del linter.
+  if (group === "psicologa") return "Psicología";
+  if (group === "ortodoncista") return "Ortodoncia";
+  return group;
+}
 
 export function PersonasTab() {
   const appContainer = appContainerContextModule.useAppContainer();
@@ -77,7 +82,7 @@ export function PersonasTab() {
               <td className="px-4 py-3 font-mono text-xs text-slate-600">{persona.id}</td>
               <td className="px-4 py-3 text-slate-800">{persona.displayName}</td>
               <td className="px-4 py-3 text-xs text-slate-600">
-                {profileGroupLabel[persona.profileGroup]}
+                {formatProfileGroup(persona.profileGroup)}
               </td>
               <td className="px-4 py-3">
                 <div className="flex flex-wrap gap-1">

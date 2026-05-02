@@ -1765,3 +1765,129 @@ def test_books_slot_normally_when_tenant_is_not_eval() -> None:
     assert booked is not None
     assert booked.status == "BOOKED"
     assert booked.calendar_event_id is not None
+
+
+# ---------------------------------------------------------------------------
+# Fix B1: _resolve_location reads main_city from AgentProfile (not hardcoded)
+# ---------------------------------------------------------------------------
+
+
+def _build_service_with_main_city(
+    main_city: str,
+) -> tuple[
+    scheduling_service.SchedulingService,
+    scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
+]:
+    """Minimal service wired with an AgentProfile that has a specific main_city."""
+    store = in_memory_store.InMemoryStore()
+    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
+        store
+    )
+    scheduling_repo = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
+        store
+    )
+    agent_profile_repo.save(
+        agent_profile_entity.AgentProfile(
+            tenant_id="tenant-1",
+            system_prompt="prompt",
+            identity=agent_profile_entity.AssistantIdentity(main_city=main_city),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    calendar_connection_repository.save(
+        google_calendar_connection_entity.GoogleCalendarConnection(
+            tenant_id="tenant-1",
+            professional_user_id="user-1",
+            status="CONNECTED",
+            calendar_id="primary",
+            timezone="America/Bogota",
+            access_token="access-1",
+            refresh_token="refresh-1",
+            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
+            oauth_state=None,
+            scope="calendar",
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            connected_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    conversation_repository.save_conversation(
+        conversation_entity.Conversation(
+            id="conv-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            started_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            last_message_preview=None,
+            message_ids=[],
+            control_mode="AI",
+        )
+    )
+    clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
+    id_generator = fake_adapters.SequenceIdGenerator(["req-1"])
+    provider = fake_adapters.FakeGoogleCalendarProvider()
+    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
+        google_calendar_connection_repository=calendar_connection_repository,
+        google_calendar_provider=provider,
+        id_generator=id_generator,
+        clock=clock,
+    )
+    builder = event_description_builder_mod.EventDescriptionBuilder(
+        agent_profile_repository=agent_profile_repo
+    )
+    task_sched = task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
+    svc = scheduling_service.SchedulingService(
+        scheduling_repository=scheduling_repo,
+        conversation_repository=conversation_repository,
+        google_calendar_onboarding_service=google_service,
+        id_generator=id_generator,
+        clock=clock,
+        task_scheduler=task_sched,
+        event_description_builder=builder,
+        agent_profile_repository=agent_profile_repo,
+    )
+    return svc, scheduling_repo
+
+
+def test_resolve_location_presencial_returns_main_city_from_agent_profile() -> None:
+    """Fix B1: PRESENCIAL location must come from AgentProfile.identity.main_city."""
+    svc, repo = _build_service_with_main_city("Medellín")
+
+    result = svc.submit_consultation_reason_for_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
+            consultation_reason="Primera cita",
+            appointment_modality="PRESENCIAL",
+            patient_location=None,
+        ),
+    )
+
+    stored = repo.get_request_by_id("tenant-1", result.request_id)
+    assert stored is not None
+    assert stored.patient_location == "Medellín"
+
+
+def test_resolve_location_presencial_generic_fallback_when_no_profile() -> None:
+    """Fix B1: When AgentProfile has no main_city, fallback is generic 'Presencial'."""
+    svc, repo = _build_service_with_main_city("")
+
+    result = svc.submit_consultation_reason_for_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
+            consultation_reason="Primera cita",
+            appointment_modality="PRESENCIAL",
+            patient_location=None,
+        ),
+    )
+
+    stored = repo.get_request_by_id("tenant-1", result.request_id)
+    assert stored is not None
+    # Empty main_city → generic fallback, not a hardcoded city name
+    assert stored.patient_location == "Presencial"

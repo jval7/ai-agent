@@ -29,6 +29,7 @@ class AssistantIdentity(pydantic.BaseModel):
     professional_name: str | None = None  # "Ana Rodriguez" — full name
     professional_address_term: str | None = None  # "la Doc" — third-person ref
     main_city: str | None = None
+    timezone: str | None = None  # IANA timezone, e.g. "America/Bogota"
     tone: str | None = None
     languages: list[str] = []
 

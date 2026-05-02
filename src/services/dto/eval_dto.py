@@ -42,7 +42,10 @@ class PersonaDTO(pydantic.BaseModel):
     id: str
     display_name: str
     capabilities: list[str]
-    profile_group: typing.Literal["psicologa", "ortodoncista"]
+    # Agrupador libre del eval framework. Inicialmente "psicologa" |
+    # "ortodoncista" pero abierto a string para extender el pool sin tocar
+    # la entity. Convencionalmente lowercase, snake_case (Fix B4).
+    profile_group: str
 
 
 class PromptVersionDTO(pydantic.BaseModel):

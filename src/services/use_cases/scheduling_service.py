@@ -550,6 +550,7 @@ class SchedulingService:
                 appointment_modality=input_dto.appointment_modality,
                 patient_location=input_dto.patient_location,
                 fallback_patient_location=request.patient_location,
+                tenant_id=tenant_id,
             )
         request.professional_note = None
         request.rejection_summary = None
@@ -1863,9 +1864,20 @@ class SchedulingService:
         appointment_modality: str,
         patient_location: str | None,
         fallback_patient_location: str | None,
+        tenant_id: str | None = None,
     ) -> str:
         if appointment_modality == "PRESENCIAL":
-            return "Cali"
+            # Read main_city from AgentProfile; fall back to generic label when
+            # not configured so no hardcoded city leaks into production messages.
+            if tenant_id is not None and self._agent_profile_repository is not None:
+                profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+                if (
+                    profile is not None
+                    and profile.identity is not None
+                    and profile.identity.main_city
+                ):
+                    return profile.identity.main_city
+            return "Presencial"
 
         normalized_location = self._normalize_patient_text(patient_location)
         if normalized_location is None:

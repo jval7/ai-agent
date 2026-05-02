@@ -9,7 +9,7 @@ export interface EvalPersona {
   id: string;
   displayName: string;
   capabilities: string[];
-  profileGroup: "psicologa" | "ortodoncista";
+  profileGroup: string;
 }
 
 export interface EvalPromptVersion {

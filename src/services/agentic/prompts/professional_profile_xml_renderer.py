@@ -106,6 +106,11 @@ def _render_professional_context(
         langs = ", ".join(identity.languages)
         items.append(f"<item>Idiomas: {langs}.</item>")
 
+    # Timezone from identity — surfaces the IANA zone to the LLM so it can
+    # present appointment times in the correct local zone.
+    if identity is not None and identity.timezone:
+        items.append(f"<item>Zona horaria: {identity.timezone}</item>")
+
     # Schedules
     if presencial_schedule:
         schedule_text = ", ".join(_format_schedule_block(b) for b in presencial_schedule)

@@ -498,6 +498,35 @@ class SchedulingInboxService:
                 f"slot duration must be one of {valid} minutes"
             )
 
+    def _build_payment_pending_fallback(self, tenant_id: str) -> str:
+        """Build a payment-pending fallback message from AgentProfile.payment_methods.
+
+        When payment methods are configured, renders them as a WhatsApp-friendly
+        list so no specific account number is hardcoded in the system.
+        Falls back to a generic instruction when the profile is unavailable or
+        has no payment methods configured.
+        """
+        if self._agent_profile_repository is not None:
+            profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+            if profile is not None and profile.payment_methods:
+                method_lines: list[str] = []
+                for pm in profile.payment_methods:
+                    parts: list[str] = [pm.method_name]
+                    if pm.holder:
+                        parts.append(pm.holder)
+                    if pm.instructions:
+                        parts.append(pm.instructions)
+                    method_lines.append("• " + ": ".join(parts))
+                methods_text = "\n".join(method_lines)
+                return (
+                    "Te recordamos que para continuar con tu cita, debes completar el pago:\n"
+                    f"{methods_text}"
+                )
+        return (
+            "Te recordamos que para continuar con tu cita, debes completar el pago "
+            "según las indicaciones del consultorio."
+        )
+
     def _build_payment_review_message(
         self,
         tenant_id: str,
@@ -522,10 +551,7 @@ class SchedulingInboxService:
                 "• Correo electrónico\n"
                 "• Teléfono"
             )
-        return (
-            "Te recordamos que para continuar con tu cita, debes realizar "
-            "la transferencia al Nequi: 318 732 6409."
-        )
+        return self._build_payment_pending_fallback(tenant_id)
 
     def _generate_payment_review_message_with_llm(
         self,
@@ -573,9 +599,11 @@ class SchedulingInboxService:
                 "• Nombre completo\n• Edad\n• Correo electrónico\n• Teléfono"
             )
         else:
+            payment_hint = self._build_payment_pending_fallback(tenant_id)
             lines.append(
-                "Objetivo del mensaje: recordar amablemente al paciente que debe realizar "
-                "la transferencia al Nequi: 318 732 6409 para continuar con su cita."
+                "Objetivo del mensaje: recordar amablemente al paciente que debe completar "
+                f"el pago para continuar con su cita. Instrucciones de pago configuradas:\n"
+                f"{payment_hint}"
             )
 
         message_prompt = "\n".join(lines)

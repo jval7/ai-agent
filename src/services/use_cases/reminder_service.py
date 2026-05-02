@@ -27,10 +27,12 @@ import src.services.use_cases.conversation_provisioning as conversation_provisio
 
 logger = app_logs.get_logger(__name__)
 
-# Business rule: reminders are sent at noon local time in Bogota, and never on
-# Sundays. When the naive shifted datetime falls on a Sunday, we move it back
-# one day so the message lands on Saturday instead.
-_REMINDER_TIMEZONE = zoneinfo.ZoneInfo("America/Bogota")
+# Business rule: reminders are sent at noon local time and never on Sundays.
+# When the naive shifted datetime falls on a Sunday, we move it back one day
+# so the message lands on Saturday instead.
+# The timezone is read from AgentProfile.identity.timezone; this constant is
+# the fallback for tenants that have not configured a timezone yet.
+_FALLBACK_REMINDER_TIMEZONE_NAME = "America/Bogota"
 _REMINDER_HOUR_LOCAL = 12
 _SUNDAY_WEEKDAY = 6
 
@@ -104,7 +106,10 @@ class ReminderService(reminder_service_port.ReminderServicePort):
 
         template_language = "es"
         now_value = self._clock.now()
-        reminder_datetime = _compute_reminder_datetime(appointment_start_at, days_before)
+        tenant_timezone_name = _resolve_tenant_timezone(agent_profile)
+        reminder_datetime = _compute_reminder_datetime(
+            appointment_start_at, days_before, tenant_timezone_name
+        )
         delay_seconds = int((reminder_datetime - now_value).total_seconds())
 
         if delay_seconds <= 0:
@@ -746,21 +751,39 @@ def _build_attendance_modality_text(
     return "presencial"
 
 
+def _resolve_tenant_timezone(
+    agent_profile: agent_profile_entity.AgentProfile | None,
+) -> str:
+    """Return the tenant's IANA timezone name, falling back to America/Bogota."""
+    if agent_profile is None:
+        return _FALLBACK_REMINDER_TIMEZONE_NAME
+    if agent_profile.identity is None:
+        return _FALLBACK_REMINDER_TIMEZONE_NAME
+    return agent_profile.identity.timezone or _FALLBACK_REMINDER_TIMEZONE_NAME
+
+
 def _compute_reminder_datetime(
     appointment_start_at: datetime.datetime,
     days_before: int,
+    timezone_name: str = _FALLBACK_REMINDER_TIMEZONE_NAME,
 ) -> datetime.datetime:
     """Compute the moment to send the reminder.
 
     Rules:
     - Send ``days_before`` days before the appointment.
-    - Force the local (America/Bogota) time to 12:00 so reminders never go out
-      at odd hours regardless of when the appointment itself is.
+    - Force the local time to 12:00 so reminders never go out at odd hours
+      regardless of when the appointment itself is.
     - Never land on a Sunday: if the computed date is Sunday, move it one day
       earlier so it lands on Saturday instead.
+    - The timezone is determined by the tenant's AgentProfile.identity.timezone;
+      falls back to America/Bogota when not configured.
     """
+    try:
+        reminder_tz = zoneinfo.ZoneInfo(timezone_name)
+    except zoneinfo.ZoneInfoNotFoundError:
+        reminder_tz = zoneinfo.ZoneInfo(_FALLBACK_REMINDER_TIMEZONE_NAME)
     shifted = appointment_start_at - datetime.timedelta(days=days_before)
-    local = shifted.astimezone(_REMINDER_TIMEZONE)
+    local = shifted.astimezone(reminder_tz)
     # Build a fresh datetime instead of using ``.replace`` so we never propagate
     # ``DatetimeWithNanoseconds`` instances coming from Firestore. ``replace`` on
     # that subclass keeps the type but drops the ``_nanosecond`` slot, which then
@@ -773,7 +796,7 @@ def _compute_reminder_datetime(
         0,
         0,
         0,
-        tzinfo=_REMINDER_TIMEZONE,
+        tzinfo=reminder_tz,
     )
     if local_datetime.weekday() == _SUNDAY_WEEKDAY:
         local_datetime = local_datetime - datetime.timedelta(days=1)
