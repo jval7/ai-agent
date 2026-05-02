@@ -91,6 +91,21 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
         implications="el bot debería evitar re-pedir información ya provista (regla 'no inventes datos')",
         category="behavior",
     ),
+    # Bot behavior — capabilities verificadas observando los OUTBOUND del bot.
+    eval_dto.EvalCapabilityDocDTO(
+        id="quotes_currency_per_location",
+        description=(
+            "ante tarifas multi-moneda, el bot pide la ubicación del paciente antes de "
+            "cotizar (si no la sabe) y luego cotiza UNA sola moneda. NUNCA muestra varios "
+            "precios juntos en el mismo mensaje."
+        ),
+        implications=(
+            "EL BOT debe respetar la regla de cotización por ubicación. Falla si expone "
+            "todos los precios sin saber dónde reside el paciente — esto revela "
+            "información de pricing diferenciado al cliente."
+        ),
+        category="bot_behavior",
+    ),
 ]
 
 

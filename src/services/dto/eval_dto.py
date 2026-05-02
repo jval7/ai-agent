@@ -8,7 +8,10 @@ class EvalCapabilityDocDTO(pydantic.BaseModel):
     id: str
     description: str
     implications: str
-    category: typing.Literal["location", "cohort", "behavior"]
+    # location/cohort: identidad del paciente.
+    # behavior: lo que el paciente hace en la conversacion.
+    # bot_behavior: lo que el bot debe hacer correctamente (verificado por OUTBOUND).
+    category: typing.Literal["location", "cohort", "behavior", "bot_behavior"]
 
 
 class EvalCapabilitiesListResponseDTO(pydantic.BaseModel):

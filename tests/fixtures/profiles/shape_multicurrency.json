@@ -3,8 +3,8 @@
     "name": "shape_multicurrency",
     "description": "Servicios con tarifas en COP y USD. Verifica que el bot cotiza en la moneda correcta segun ubicacion del paciente (regla #11) y enruta al metodo de pago apropiado. Cada combo cubre una rama del condicional moneda x ubicacion.",
     "required_combos": [
-      ["local_patient", "asks_about_price"],
-      ["foreign_patient", "asks_about_price"]
+      ["local_patient", "asks_about_price", "quotes_currency_per_location"],
+      ["foreign_patient", "asks_about_price", "quotes_currency_per_location"]
     ]
   },
   "agent_profile": {

@@ -23,7 +23,7 @@ Capability = typing.Literal[
     # Cohort
     "new_patient",  # primer contacto; no existe Patient previo
     "returning_patient",  # ya tiene Patient registrado; requiere pre-seed
-    # Comportamiento conversacional
+    # Comportamiento conversacional del paciente
     "asks_about_price",  # explícitamente pregunta cuánto vale antes de agendar
     "asks_about_payment_method",  # pregunta por método de pago / moneda
     "asks_about_modality",  # pregunta presencial vs virtual
@@ -31,6 +31,8 @@ Capability = typing.Literal[
     "accepts_first_slot",  # toma el primer horario sin pedir cambios
     "gives_minimal_info",  # solo responde lo que le preguntan; no ofrece extras
     "gives_all_info_upfront",  # entrega nombre, edad, motivo, etc. en el primer mensaje
+    # Comportamiento esperado del bot (verificado por inferencia sobre OUTBOUND)
+    "quotes_currency_per_location",  # bot solo cotiza en una moneda según ubicación; pide ubicación si la tarifa tiene varias monedas y no la sabe
 ]
 
 
@@ -70,7 +72,15 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             "presencial al consultorio. "
             "Comportamiento: Lo primero que preguntas es cuanto vale."
         ),
-        capabilities=["local_patient", "new_patient", "asks_about_price"],
+        capabilities=[
+            "local_patient",
+            "new_patient",
+            "asks_about_price",
+            # Comportamiento esperado del bot al cotizar tarifas multi-moneda.
+            # Se verifica observando los OUTBOUND, no es algo que la persona
+            # ejerza directamente (es assertion del shape multicurrency).
+            "quotes_currency_per_location",
+        ],
     ),
     Persona(
         id="bruno_foreign_asks_price",
@@ -82,7 +92,12 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             "virtual desde Europa. "
             "Comportamiento: Lo primero que preguntas es cuanto vale."
         ),
-        capabilities=["foreign_patient", "new_patient", "asks_about_price"],
+        capabilities=[
+            "foreign_patient",
+            "new_patient",
+            "asks_about_price",
+            "quotes_currency_per_location",  # ver Diego — assertion del bot
+        ],
     ),
     Persona(
         id="patricia_returning",

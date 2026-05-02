@@ -13,6 +13,18 @@ _NEVER_INVENT_INJECTED_DATA = (
     "NUNCA inventes ni parafrasees fechas, horas, nombres ni datos del paciente."
 )
 
+# Rule shared across states that may quote prices. Agnostico al estilo del
+# profesional: dice QUE hacer, no COMO redactar. La forma exacta de la
+# pregunta la define el `<tone>` del profesional. Tampoco le explica al
+# paciente por que se le pide la ubicacion.
+_QUOTE_CURRENCY_PER_LOCATION = (
+    "Si una `<tariff>` tiene multiples `<price>` con `<currency>` distintas "
+    "(p.ej. COP y USD) y aun no sabes la ubicacion del paciente, NO cotices "
+    "ningun precio todavia: antes preguntale donde reside. Cuando sepas la "
+    "ubicacion, cotiza unicamente la moneda apropiada. NUNCA muestres precios "
+    "de varias monedas juntos en el mismo mensaje."
+)
+
 
 class StateInstructionsSection(prompt_section.PromptSection):
     def render(
@@ -60,6 +72,7 @@ def _instructions_for_state(
                 "Si el paciente solo tiene una pregunta (caso b), responde con la informacion "
                 "del system prompt (precios, horarios, datos de pago, etc.). NO llames "
                 "submit_consultation_reason_for_review si solo es una consulta.",
+                _QUOTE_CURRENCY_PER_LOCATION,
                 "Si pide reprogramar/cancelar una cita previa (caso c), usa handoff_to_human "
                 "directamente — no intentes gestionar el cambio.",
                 "No llames confirm_selected_slot_and_create_event en este estado.",
@@ -88,6 +101,7 @@ def _instructions_for_state(
             "  • appointment_modality (PRESENCIAL o VIRTUAL — inferida del servicio si solo "
             "soporta una; preguntada al paciente si soporta ambas)\n"
             "  • patient_location (solo si modalidad es VIRTUAL)",
+            _QUOTE_CURRENCY_PER_LOCATION,
             "Cuando tengas todos los datos, llama submit_consultation_reason_for_review.",
             "No llames confirm_selected_slot_and_create_event en este estado.",
             "Si el paciente pregunta por un servicio que no se ofrece y no le interesa ninguna alternativa, "

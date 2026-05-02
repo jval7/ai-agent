@@ -212,11 +212,11 @@ class TestLoadShape:
         shape = coverage.load_shape(_FIXTURES_DIR / "shape_minimal.json")
         assert shape.metadata.required_combos == [["new_patient"]]
 
-    def test_shape_multicurrency_has_two_combos_with_price(self) -> None:
+    def test_shape_multicurrency_has_two_combos_with_price_and_quote_rule(self) -> None:
         shape = coverage.load_shape(_FIXTURES_DIR / "shape_multicurrency.json")
         assert shape.metadata.required_combos == [
-            ["local_patient", "asks_about_price"],
-            ["foreign_patient", "asks_about_price"],
+            ["local_patient", "asks_about_price", "quotes_currency_per_location"],
+            ["foreign_patient", "asks_about_price", "quotes_currency_per_location"],
         ]
         currencies = {
             price.currency

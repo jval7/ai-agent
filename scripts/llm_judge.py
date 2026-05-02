@@ -83,12 +83,26 @@ _GLOSSARY: dict[str, str] = {
         "tratamiento previo, sesiones anteriores, cita de control, o el paciente "
         "menciona seguir tratamiento. Inferencia comportamental aceptable."
     ),
+    # Comportamiento del BOT (no del paciente). Se verifica observando los OUTBOUND.
+    "quotes_currency_per_location": (
+        "el bot maneja correctamente las tarifas multi-moneda: cuando una tarifa tiene "
+        "varios precios en monedas distintas (ej. COP y USD), el bot pide la ubicacion "
+        "del paciente antes de cotizar (si no la sabe), y luego cotiza UNICAMENTE la "
+        "moneda apropiada. NUNCA debe mostrar dos monedas juntas en el mismo mensaje. "
+        "Inferencia comportamental por OUTBOUND aceptable."
+    ),
 }
 
 # Caps que pueden verificarse por inferencia comportamental (criterio b).
 # Las demas requieren evidencia INBOUND directa (criterio a).
 _INFERENTIAL_CAPS = frozenset(
-    {"local_patient", "foreign_patient", "new_patient", "returning_patient"}
+    {
+        "local_patient",
+        "foreign_patient",
+        "new_patient",
+        "returning_patient",
+        "quotes_currency_per_location",  # se verifica por OUTBOUND del bot
+    }
 )
 
 _SYSTEM_INSTRUCTION = """\
@@ -114,6 +128,12 @@ Inferenciales por flujo (pueden verificarse por como bot/paciente se comportan):
 - new_patient: el bot pide nombre/edad/motivo (no los conoce); no hay sesiones previas
 - returning_patient: el bot saluda por nombre sin pedirlo; referencias a tratamiento previo
 
+Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
+- quotes_currency_per_location: ante tarifas multi-moneda, el bot pide ubicacion
+  antes de cotizar (si no la sabe) y luego cotiza UNA sola moneda. NUNCA muestra
+  COP y USD juntos en el mismo mensaje. verified=false si el bot expone ambos
+  precios sin saber donde reside el paciente.
+
 Reglas:
 
 1. Solo evalua las capabilities en "declared_capabilities". Ignora cualquier otra.
@@ -125,14 +145,17 @@ Reglas:
        asks_about_price).
 
    (b) Evidencia COMPORTAMENTAL (solo para caps inferenciales — local_patient,
-       foreign_patient, new_patient, returning_patient): el flujo de la conversacion
-       es consistente con la capability, observando como el bot trata al paciente,
-       que datos pide o no, en que moneda cotiza, que metodo de pago ofrece, o como
-       el paciente actua. Ejemplos:
+       foreign_patient, new_patient, returning_patient, quotes_currency_per_location):
+       el flujo de la conversacion es consistente con la capability, observando como
+       el bot trata al paciente, que datos pide o no, en que moneda cotiza, que metodo
+       de pago ofrece, o como el paciente actua. Ejemplos:
        - new_patient verified si el bot pide nombre/edad porque no los tiene.
        - returning_patient verified si el bot saluda por nombre desde el primer mensaje.
        - local_patient verified si el bot cotizo en COP y ofrecio Nequi.
        - foreign_patient verified si el bot cotizo en USD y ofrecio Zelle.
+       - quotes_currency_per_location verified si el bot pidio ubicacion antes de
+         cotizar (cuando hay multi-moneda) y luego cotizo UNA sola. verified=false
+         si mostro varios precios juntos sin saber ubicacion.
 
 3. evidence:
    - Si aplico criterio (a): quote textual breve del mensaje INBOUND.
