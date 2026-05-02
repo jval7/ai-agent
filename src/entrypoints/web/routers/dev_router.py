@@ -77,7 +77,15 @@ def delete_eval_tenant(
 )
 def delete_eval_run(
     run_id: str,
-    _: None = fastapi.Depends(_require_eval_admin_secret),
+    _: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> eval_run_cleanup_dto.EvalRunDeleteStatsDTO:
+    """Borra una corrida (todos sus shape docs + tenants efimeros). Solo
+    requiere JWT de cualquier tenant logueado (no el EVAL_ADMIN_SECRET) —
+    el dashboard se accede desde la app autenticada y borrar un run es una
+    operacion legitima para cualquier dev en el ambiente.
+
+    Los endpoints `/eval-tenants` siguen requiriendo secret porque crean
+    tenants efimeros (operacion de runner, no de dashboard).
+    """
     return container.eval_run_cleanup_service.delete_eval_run_cascade(run_id)

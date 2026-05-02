@@ -1069,17 +1069,13 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     }));
   }
 
-  async deleteEvalRun(
-    runId: string,
-    adminSecret: string
-  ): Promise<evaluationModel.EvalDeleteResult> {
+  async deleteEvalRun(runId: string): Promise<evaluationModel.EvalDeleteResult> {
+    // Usa JWT del tenant logueado (cualquier role del ambiente dev). El
+    // EVAL_ADMIN_SECRET solo aplica a /v1/dev/eval-tenants (writes invasivos
+    // de tenants), no al borrado de un run.
     const raw = await this.request<{ eval_runs_deleted: number; tenants_deleted: number }>(
       `/v1/dev/eval-runs/${runId}`,
-      {
-        method: "DELETE",
-        authRequired: false,
-        customHeaders: { "X-Eval-Admin-Secret": adminSecret }
-      }
+      { method: "DELETE", authRequired: true }
     );
     return {
       evalRunsDeleted: raw.eval_runs_deleted,

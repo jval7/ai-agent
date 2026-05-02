@@ -351,13 +351,10 @@ export function RunsTab() {
     const confirmText = `¿Borrar la corrida ${runId}? Esto borra TODO: tenants efímeros que aún existan, conversaciones, scheduling requests, patients, y los reportes de Firestore. No se puede deshacer.`;
     if (!window.confirm(confirmText)) return;
 
-    const adminSecret = window.prompt("Pegá el EVAL_ADMIN_SECRET para confirmar:");
-    if (adminSecret === null || adminSecret.trim() === "") return;
-
     setDeletingRunId(runId);
     setBanner(null);
     try {
-      const result = await appContainer.evaluationUseCase.deleteRun(runId, adminSecret.trim());
+      const result = await appContainer.evaluationUseCase.deleteRun(runId);
       await queryClient.invalidateQueries({ queryKey: runsQueryKey });
       setBanner({
         type: "success",

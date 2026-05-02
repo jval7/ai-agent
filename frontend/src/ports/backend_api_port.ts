@@ -153,6 +153,6 @@ export interface BackendApiPort {
   listEvalPromptVersions(): Promise<evaluationModel.EvalPromptVersion[]>;
   listEvalRuns(limit?: number): Promise<evaluationModel.EvalRunListItem[]>;
   getEvalRun(runDocId: string): Promise<evaluationModel.EvalRunDetail>;
-  deleteEvalRun(runId: string, adminSecret: string): Promise<evaluationModel.EvalDeleteResult>;
+  deleteEvalRun(runId: string): Promise<evaluationModel.EvalDeleteResult>;
   listEvalCapabilities(): Promise<evaluationModel.EvalCapabilityDoc[]>;
 }

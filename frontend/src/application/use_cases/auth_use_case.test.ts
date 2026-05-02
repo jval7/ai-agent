@@ -371,10 +371,7 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
-  async deleteEvalRun(
-    _runId: string,
-    _adminSecret: string
-  ): Promise<evaluationModel.EvalDeleteResult> {
+  async deleteEvalRun(_runId: string): Promise<evaluationModel.EvalDeleteResult> {
     throw new Error("not used");
   }
 

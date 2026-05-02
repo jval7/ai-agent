@@ -885,13 +885,15 @@ vitestModule.describe("BackendApiAdapter", () => {
     vitestModule.expect(legacy.phone).toBe("573009998888");
   });
 
-  vitestModule.it("deleteEvalRun sends X-Eval-Admin-Secret header and maps response", async () => {
+  vitestModule.it("deleteEvalRun sends JWT and maps response (no admin secret)", async () => {
     serverModule.server.use(
       mswModule.http.delete("http://api.test/v1/dev/eval-runs/run-to-delete", ({ request }) => {
-        const secret = request.headers.get("x-eval-admin-secret");
-        vitestModule.expect(secret).toBe("my-secret-token");
+        // El borrado de runs ya no requiere EVAL_ADMIN_SECRET — usa JWT
+        // del tenant logueado. Solo /v1/dev/eval-tenants requiere el secret.
+        const adminSecret = request.headers.get("x-eval-admin-secret");
+        vitestModule.expect(adminSecret).toBeNull();
         const authHeader = request.headers.get("authorization");
-        vitestModule.expect(authHeader).toBeNull();
+        vitestModule.expect(authHeader).toBe("Bearer test-access-token");
         return mswModule.HttpResponse.json({
           eval_runs_deleted: 3,
           tenants_deleted: 2
@@ -899,10 +901,10 @@ vitestModule.describe("BackendApiAdapter", () => {
       })
     );
 
-    const tokenSession = new InMemoryTokenSession(null, null);
+    const tokenSession = new InMemoryTokenSession("test-access-token", null);
     const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
 
-    const result = await adapter.deleteEvalRun("run-to-delete", "my-secret-token");
+    const result = await adapter.deleteEvalRun("run-to-delete");
 
     vitestModule.expect(result.evalRunsDeleted).toBe(3);
     vitestModule.expect(result.tenantsDeleted).toBe(2);
