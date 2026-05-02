@@ -65,17 +65,24 @@ def _professional_label(identity: agent_profile_entity.AssistantIdentity) -> str
 
 
 def _render_identity(identity: agent_profile_entity.AssistantIdentity) -> str:
+    """Render <identity> with each field as its own semantic tag.
+
+    Previous shape concatenated everything into a single <assistant_role>
+    string ("Claudia la asistente virtual de WhatsApp de Dra. X (Cali)") which
+    was agrammatical and led the LLM to drop the assistant_name and fall back
+    to a generic "soy tu asistente virtual de la Dra. X" greeting. Splitting
+    each field into its own tag lets the LLM compose the presentation
+    naturally per the style rule (e.g. "soy Claudia, asistente virtual de la
+    Dra. X").
+    """
     parts: list[str] = []
+    if identity.assistant_name:
+        parts.append(f"<assistant_name>{identity.assistant_name}</assistant_name>")
     pro_label = _professional_label(identity)
-    if identity.assistant_name or pro_label or identity.main_city:
-        role_parts: list[str] = []
-        if identity.assistant_name:
-            role_parts.append(identity.assistant_name)
-        if pro_label:
-            role_parts.append(f"la asistente virtual de WhatsApp de {pro_label}")
-        if identity.main_city:
-            role_parts.append(f"({identity.main_city})")
-        parts.append(f"<assistant_role>{' '.join(role_parts)}</assistant_role>")
+    if pro_label:
+        parts.append(f"<professional>{pro_label}</professional>")
+    if identity.main_city:
+        parts.append(f"<main_city>{identity.main_city}</main_city>")
     if identity.tone:
         parts.append(f"<tone>{identity.tone}</tone>")
     if not parts:

@@ -33,6 +33,7 @@ Capability = typing.Literal[
     "gives_all_info_upfront",  # entrega nombre, edad, motivo, etc. en el primer mensaje
     # Comportamiento esperado del bot (verificado por inferencia sobre OUTBOUND)
     "quotes_currency_per_location",  # bot solo cotiza en una moneda según ubicación; pide ubicación si la tarifa tiene varias monedas y no la sabe
+    "hides_internal_handoff",  # bot NO le dice al paciente que envía/pasa/gestiona/comenta/comparte algo con el profesional
 ]
 
 
@@ -80,6 +81,9 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             # Se verifica observando los OUTBOUND, no es algo que la persona
             # ejerza directamente (es assertion del shape multicurrency).
             "quotes_currency_per_location",
+            # Cap transversal: el bot no debe exponer al paciente que envía/
+            # pasa/gestiona algo con el profesional. Se verifica por OUTBOUND.
+            "hides_internal_handoff",
         ],
     ),
     Persona(
@@ -97,6 +101,7 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             "new_patient",
             "asks_about_price",
             "quotes_currency_per_location",  # ver Diego — assertion del bot
+            "hides_internal_handoff",  # transversal — assertion del bot
         ],
     ),
     Persona(
@@ -109,7 +114,12 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             "control para seguir el tratamiento. "
             "Comportamiento: Tomas el primer horario que te ofrezcan sin pedir cambios."
         ),
-        capabilities=["local_patient", "returning_patient", "accepts_first_slot"],
+        capabilities=[
+            "local_patient",
+            "returning_patient",
+            "accepts_first_slot",
+            "hides_internal_handoff",  # transversal — assertion del bot
+        ],
     ),
 ]
 

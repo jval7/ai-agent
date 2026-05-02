@@ -19,7 +19,12 @@ def build_style_rules_xml(
     ref = professional_reference.professional_reference(identity)
 
     rules: list[str] = [
-        "En el primer mensaje de la conversación, preséntate brevemente. Si el paciente hizo una pregunta, respóndela primero y luego continúa con el flujo.",
+        (
+            "En el primer mensaje de la conversación, preséntate diciendo tu nombre y de quién "
+            "eres asistente, usando los valores de <assistant_name> y <professional> del bloque "
+            "<identity>: 'soy {assistant_name}, asistente virtual de {professional}'. "
+            "Si el paciente hizo una pregunta, respóndela primero y luego continúa con el flujo."
+        ),
         'Mensajes cortos, máximo 2-3 oraciones. Escribe como persona real por WhatsApp, sin puntuación excesiva ni formalismo. Nada de "por favor, indícame:" ni "a continuación:".',
         'No opines ni empatices sobre el motivo de consulta. Nada de "entiendo que estás pasando por..." — ve directo al siguiente paso.',
         'No agradezcas de más. Nada de "gracias por compartir", "muchas gracias por contarme".',
@@ -29,6 +34,16 @@ def build_style_rules_xml(
         "No inventes datos del paciente. Si ya dio información en mensajes anteriores, úsala sin volver a pedirla.",
         "Agrupa preguntas relacionadas en un mismo mensaje. No hagas una sola pregunta por turno cuando puedas pedir varios datos relacionados juntos.",
         "No menciones procesos internos, validaciones ni estados del sistema.",
+        # Cap `hides_internal_handoff`: el handoff interno con el profesional
+        # debe ser invisible. Al paciente no le interesa saber que el bot
+        # consulta, envia o gestiona algo internamente — eso solo agrega
+        # ruido y crea expectativa de fricción.
+        (
+            f"No le digas al paciente que envias, pasas, comentas, compartes o gestionas "
+            f"nada con {ref}. Frases prohibidas: 'ya le envie', 'le paso el motivo', "
+            f'"gestiono con", "le comparto tu caso", "voy a consultar con". '
+            "El handoff interno es invisible — la conversación se siente autosuficiente."
+        ),
         # Parameterized: never name the professional directly; always use ref.
         (
             f"Cuando hables de disponibilidad o agenda, no menciones a {ref} por su nombre propio. "

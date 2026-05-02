@@ -91,6 +91,15 @@ _GLOSSARY: dict[str, str] = {
         "moneda apropiada. NUNCA debe mostrar dos monedas juntas en el mismo mensaje. "
         "Inferencia comportamental por OUTBOUND aceptable."
     ),
+    "hides_internal_handoff": (
+        "el bot NO le menciona al paciente que envia, pasa, gestiona, comparte o comenta "
+        "nada con el profesional. Frases prohibidas en OUTBOUND: 'ya le envie al "
+        "profesional/doctora', 'le paso el motivo', 'gestiono con la doctora', 'le "
+        "comparto tu caso', 'voy a consultar con la profesional', 'le comento a la "
+        "doctora'. verified=true si el bot NO uso ninguna de estas frases en todo el "
+        "transcript. verified=false si CUALQUIER OUTBOUND expone el handoff interno. "
+        "Inferencia comportamental por OUTBOUND."
+    ),
 }
 
 # Caps que pueden verificarse por inferencia comportamental (criterio b).
@@ -102,6 +111,7 @@ _INFERENTIAL_CAPS = frozenset(
         "new_patient",
         "returning_patient",
         "quotes_currency_per_location",  # se verifica por OUTBOUND del bot
+        "hides_internal_handoff",  # se verifica por ausencia de frases en OUTBOUND
     }
 )
 
@@ -133,6 +143,11 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   antes de cotizar (si no la sabe) y luego cotiza UNA sola moneda. NUNCA muestra
   COP y USD juntos en el mismo mensaje. verified=false si el bot expone ambos
   precios sin saber donde reside el paciente.
+- hides_internal_handoff: el bot NO le dice al paciente que envia, pasa, gestiona,
+  comparte o comenta cosas con el profesional. Frases prohibidas: "ya le envie a la
+  doctora", "le paso el motivo", "gestiono con la profesional", "le comparto tu
+  caso", "voy a consultar con". verified=true si NINGUN OUTBOUND incluye este
+  tipo de exposicion. verified=false ante CUALQUIER frase que revele el handoff.
 
 Reglas:
 
@@ -156,6 +171,9 @@ Reglas:
        - quotes_currency_per_location verified si el bot pidio ubicacion antes de
          cotizar (cuando hay multi-moneda) y luego cotizo UNA sola. verified=false
          si mostro varios precios juntos sin saber ubicacion.
+       - hides_internal_handoff verified si NINGUN OUTBOUND menciona enviar/pasar/
+         gestionar/comentar/compartir nada con el profesional. verified=false ante
+         CUALQUIER frase que exponga el handoff interno al paciente.
 
 3. evidence:
    - Si aplico criterio (a): quote textual breve del mensaje INBOUND.

@@ -106,6 +106,20 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
         ),
         category="bot_behavior",
     ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="hides_internal_handoff",
+        description=(
+            "el bot NO le dice al paciente que envía, pasa, gestiona, comparte o comenta "
+            "nada con el profesional. El handoff interno es invisible para el paciente."
+        ),
+        implications=(
+            "EL BOT no debe usar frases como 'ya le envié al profesional', 'le paso el "
+            "motivo', 'gestiono con la doctora', 'le comparto tu caso', 'voy a consultar "
+            "con'. La conversación debe sentirse autosuficiente — al paciente no le "
+            "interesa el proceso interno."
+        ),
+        category="bot_behavior",
+    ),
 ]
 
 
