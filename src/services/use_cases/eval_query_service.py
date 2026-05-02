@@ -17,6 +17,82 @@ import src.ports.eval_run_repository_port as eval_run_repository_port
 import src.services.agentic.prompts.professional_profile_xml_renderer as xml_renderer
 import src.services.dto.eval_dto as eval_dto
 
+_CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
+    # Location
+    eval_dto.EvalCapabilityDocDTO(
+        id="local_patient",
+        description="el paciente reside o agenda dentro del país del consultorio (Colombia)",
+        implications="el bot debería cotizar en COP y aceptar modalidad presencial",
+        category="location",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="foreign_patient",
+        description="el paciente reside fuera del país",
+        implications="el bot debería cotizar en USD y limitar a modalidad virtual",
+        category="location",
+    ),
+    # Cohort
+    eval_dto.EvalCapabilityDocDTO(
+        id="new_patient",
+        description="primera consulta — el paciente no menciona haber sido paciente antes",
+        implications="el bot ofrece valoración inicial, pide datos de registro",
+        category="cohort",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="returning_patient",
+        description="el paciente menciona explícitamente haber sido paciente antes",
+        implications=(
+            "EL RUNNER pre-seed un Patient en Firestore antes de la conversación "
+            "(POST /v1/patients con whatsapp_user_id sufijado por run_id). "
+            "El bot debería saludar por nombre y ofrecer cita de control en lugar de valoración inicial."
+        ),
+        category="cohort",
+    ),
+    # Behavior
+    eval_dto.EvalCapabilityDocDTO(
+        id="asks_about_price",
+        description="el paciente pregunta cuánto vale la consulta o servicio",
+        implications="exigirá que el bot cotice antes de pedir datos personales",
+        category="behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="asks_about_payment_method",
+        description="el paciente pregunta cómo o por qué medio se paga",
+        implications="el bot debería listar Nequi (COP) o Zelle (USD) según ubicación del paciente",
+        category="behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="asks_about_modality",
+        description="el paciente pregunta si la cita es virtual o presencial",
+        implications="el bot debería confirmar las modalidades disponibles para el servicio elegido",
+        category="behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="rejects_first_slot",
+        description="el paciente rechaza el primer horario propuesto y pide otro",
+        implications="el bot debería re-proponer slots sin perder el contexto de la solicitud",
+        category="behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="accepts_first_slot",
+        description="el paciente acepta el primer horario sin pedir cambios",
+        implications="el bot avanza directo a la confirmación",
+        category="behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="gives_minimal_info",
+        description="el paciente solo responde lo que le preguntan, no ofrece extras",
+        implications="el bot debe pedir cada dato explícitamente",
+        category="behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="gives_all_info_upfront",
+        description="en el primer mensaje el paciente da nombre + motivo + modalidad",
+        implications="el bot debería evitar re-pedir información ya provista (regla 'no inventes datos')",
+        category="behavior",
+    ),
+]
+
 
 class EvalQueryService:
     def __init__(
@@ -70,6 +146,9 @@ class EvalQueryService:
     def list_prompt_versions(self) -> list[eval_dto.PromptVersionDTO]:
         # Placeholder hasta que aterrice el plan PromptVersion en Firestore.
         return [eval_dto.PromptVersionDTO(id="current", label="Versión actual", active=True)]
+
+    def list_capabilities(self) -> list[eval_dto.EvalCapabilityDocDTO]:
+        return list(_CAPABILITIES_DOC)
 
     def list_runs(self, limit: int = 50) -> list[eval_dto.EvalRunListItemDTO]:
         runs = self._eval_run_repository.list_runs(limit=limit)

@@ -58,6 +58,7 @@ import src.services.use_cases.blacklist_service as blacklist_service
 import src.services.use_cases.conversation_control_service as conversation_control_service
 import src.services.use_cases.conversation_query_service as conversation_query_service
 import src.services.use_cases.eval_query_service as eval_query_service
+import src.services.use_cases.eval_run_cleanup_service as eval_run_cleanup_service
 import src.services.use_cases.eval_tenant_service as eval_tenant_service
 import src.services.use_cases.event_description_builder as event_description_builder
 import src.services.use_cases.event_stream_service as event_stream_service
@@ -468,4 +469,9 @@ class AppContainer:
             auth_service=self.auth_service,
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
+        )
+        self.eval_run_cleanup_service = eval_run_cleanup_service.EvalRunCleanupService(
+            eval_run_repository=self.eval_run_repository,
+            tenant_repository=self.tenant_repository,
+            eval_tenant_service=self.eval_tenant_service,
         )

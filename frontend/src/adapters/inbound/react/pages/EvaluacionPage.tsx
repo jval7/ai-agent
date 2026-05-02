@@ -1,15 +1,17 @@
 import * as reactModule from "react";
 
 import * as appShellModule from "@adapters/inbound/react/components/AppShell";
+import * as capabilitiesTabModule from "@adapters/inbound/react/pages/evaluacion/CapabilitiesTab";
 import * as personasTabModule from "@adapters/inbound/react/pages/evaluacion/PersonasTab";
 import * as runsTabModule from "@adapters/inbound/react/pages/evaluacion/RunsTab";
 import * as shapesTabModule from "@adapters/inbound/react/pages/evaluacion/ShapesTab";
 
-type Tab = "shapes" | "personas" | "runs";
+type Tab = "shapes" | "personas" | "capabilities" | "runs";
 
 const tabs: { id: Tab; label: string }[] = [
   { id: "shapes", label: "Shapes" },
   { id: "personas", label: "Personas" },
+  { id: "capabilities", label: "Capabilities" },
   { id: "runs", label: "Corridas" }
 ];
 
@@ -96,6 +98,7 @@ export function EvaluacionPage() {
         <div className="flex-1">
           {activeTab === "shapes" ? <shapesTabModule.ShapesTab /> : null}
           {activeTab === "personas" ? <personasTabModule.PersonasTab /> : null}
+          {activeTab === "capabilities" ? <capabilitiesTabModule.CapabilitiesTab /> : null}
           {activeTab === "runs" ? <runsTabModule.RunsTab /> : null}
         </div>
       </div>

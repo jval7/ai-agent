@@ -179,6 +179,54 @@ class FirestoreEvalRunRepositoryAdapter(eval_run_repository_port.EvalRunReposito
         decoded = _decode_run_doc(raw_data)
         return eval_run_entity.EvalRun.model_validate(decoded)
 
+    def list_runs_by_run_id(self, run_id: str) -> list[eval_run_entity.EvalRun]:
+        collection_ref = self._client.collection(firestore_paths.EVAL_RUNS_COLLECTION)
+        query = collection_ref.where(
+            filter=google_cloud_firestore.FieldFilter("run_id", "==", run_id)
+        )
+        try:
+            snapshots = list(query.stream())
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to list eval runs by run_id from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to list eval runs by run_id from firestore"
+            ) from error
+
+        runs: list[eval_run_entity.EvalRun] = []
+        for snapshot in snapshots:
+            raw_data = snapshot.to_dict()
+            if raw_data is None:
+                continue
+            decoded = _decode_run_doc(raw_data)
+            try:
+                run = eval_run_entity.EvalRun.model_validate(decoded)
+            except pydantic.ValidationError:
+                continue
+            runs.append(run)
+        return runs
+
+    def delete_run(self, run_doc_id: str) -> None:
+        doc_ref = self._client.document(firestore_paths.eval_run_document(run_doc_id))
+        conversations_collection = self._client.collection(
+            firestore_paths.eval_run_conversations_collection(run_doc_id)
+        )
+        try:
+            conv_snapshots = list(conversations_collection.stream())
+            for conv_snapshot in conv_snapshots:
+                conv_snapshot.reference.delete()
+            doc_ref.delete()
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete eval run from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to delete eval run from firestore"
+            ) from error
+
     def get_conversations(self, run_id: str) -> list[eval_run_entity.EvalRunConversationSnapshot]:
         collection_path = firestore_paths.eval_run_conversations_collection(run_id)
         collection_ref = self._client.collection(collection_path)

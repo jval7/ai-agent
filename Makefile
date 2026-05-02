@@ -756,3 +756,31 @@ simulate-whatsapp-message:
 
 calendar-cleanup:
 	uv run python scripts/cleanup_calendar_events.py $(CLEANUP_ARGS)
+
+# -----------------------------------------------------------------------------
+# Eval framework (load_test --eval-mode contra dev)
+# -----------------------------------------------------------------------------
+# Requiere:
+#   .secrets/make_credentials_eval.env  con EVAL_API_BASE, EVAL_ADMIN_SECRET,
+#                                         PATIENT_EMAIL, GOOGLE_CLOUD_PROJECT
+#   ADC personal en /Users/jhonvalderrama/Documents/repos/.secrets/gcp-adc-gmail.json
+#
+# Uso:
+#   make eval                                              # corre los 4 shapes
+#   make eval SHAPES="shape_minimal"                       # solo uno
+#   make eval SHAPES="shape_minimal shape_multicurrency"   # multi-shape custom
+#   make eval-no-cleanup                                   # conserva tenants efimeros
+#   make eval-list                                         # lista shapes disponibles
+EVAL_ADC := /Users/jhonvalderrama/Documents/repos/.secrets/gcp-adc-gmail.json
+EVAL_SHAPE_FLAGS := $(foreach s,$(SHAPES),--shape $(s))
+
+eval:
+	GOOGLE_APPLICATION_CREDENTIALS=$(EVAL_ADC) \
+	uv run python scripts/load_test.py --eval-mode $(EVAL_SHAPE_FLAGS)
+
+eval-no-cleanup:
+	GOOGLE_APPLICATION_CREDENTIALS=$(EVAL_ADC) \
+	uv run python scripts/load_test.py --eval-mode --no-cleanup $(EVAL_SHAPE_FLAGS)
+
+eval-list:
+	@ls -1 tests/fixtures/profiles/*.json | xargs -n1 basename | sed 's/\.json$$//'

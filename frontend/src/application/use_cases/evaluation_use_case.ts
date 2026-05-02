@@ -27,4 +27,12 @@ export class EvaluationUseCase {
   async getRun(runDocId: string): Promise<evaluationModel.EvalRunDetail> {
     return this.api.getEvalRun(runDocId);
   }
+
+  async deleteRun(runId: string, adminSecret: string): Promise<evaluationModel.EvalDeleteResult> {
+    return this.api.deleteEvalRun(runId, adminSecret);
+  }
+
+  async listCapabilities(): Promise<evaluationModel.EvalCapabilityDoc[]> {
+    return this.api.listEvalCapabilities();
+  }
 }

@@ -27,3 +27,13 @@ class EvalRunRepositoryPort(abc.ABC):
     @abc.abstractmethod
     def get_conversations(self, run_id: str) -> list[eval_run_entity.EvalRunConversationSnapshot]:
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def list_runs_by_run_id(self, run_id: str) -> list[eval_run_entity.EvalRun]:
+        """Return all EvalRun docs whose run_id field equals run_id (one per shape)."""
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def delete_run(self, run_doc_id: str) -> None:
+        """Delete the run document and its conversations sub-collection."""
+        raise NotImplementedError

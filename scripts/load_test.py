@@ -96,8 +96,12 @@ _arg_parser.add_argument(
 )
 _arg_parser.add_argument(
     "--shape",
+    action="append",
     default=None,
-    help="Filtrar a un shape especifico (solo valido con --eval-mode).",
+    help=(
+        "Filtrar a uno o mas shapes especificos (solo con --eval-mode). "
+        "Repetir el flag para varios: --shape A --shape B."
+    ),
 )
 _arg_parser.add_argument(
     "--no-cleanup",
@@ -113,7 +117,7 @@ if _args.shape is not None and not _args.eval_mode:
     sys.exit("Error: --shape solo es valido junto a --eval-mode.")
 
 EVAL_MODE: bool = _args.eval_mode
-SHAPE_FILTER: str | None = _args.shape
+SHAPE_FILTERS: list[str] = list(_args.shape) if _args.shape else []
 _NO_CLEANUP: bool = _args.no_cleanup
 
 # Default legacy profile cuando no se pasa --profile en modo legacy
@@ -1449,16 +1453,22 @@ async def main_eval() -> int:
 
     # Cargar shapes
     shapes = coverage.load_shapes_from_dir(_SHAPES_DIR)
-    if SHAPE_FILTER is not None:
-        shapes = [s for s in shapes if s.metadata.name == SHAPE_FILTER]
-        if not shapes:
-            raise SystemExit(f"Shape {SHAPE_FILTER!r} no encontrado en {_SHAPES_DIR}")
+    if SHAPE_FILTERS:
+        wanted = set(SHAPE_FILTERS)
+        available = {s.metadata.name for s in shapes}
+        missing = wanted - available
+        if missing:
+            raise SystemExit(
+                f"Shape(s) no encontrado(s) en {_SHAPES_DIR}: {sorted(missing)}. "
+                f"Disponibles: {sorted(available)}"
+            )
+        shapes = [s for s in shapes if s.metadata.name in wanted]
 
     logger.info(
         "Eval mode: run_id=%s, %d shape(s) a evaluar%s",
         RUN_ID,
         len(shapes),
-        f" (filtrado a {SHAPE_FILTER!r})" if SHAPE_FILTER else "",
+        f" (filtrado a {SHAPE_FILTERS!r})" if SHAPE_FILTERS else "",
     )
 
     total_start = time.monotonic()

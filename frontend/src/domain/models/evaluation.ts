@@ -78,3 +78,17 @@ export interface EvalRunDetail {
   skipped: boolean;
   conversations: EvalRunConversationSnapshot[];
 }
+
+export interface EvalDeleteResult {
+  evalRunsDeleted: number;
+  tenantsDeleted: number;
+}
+
+export type EvalCapabilityCategory = "location" | "cohort" | "behavior";
+
+export interface EvalCapabilityDoc {
+  id: string;
+  description: string;
+  implications: string;
+  category: EvalCapabilityCategory;
+}

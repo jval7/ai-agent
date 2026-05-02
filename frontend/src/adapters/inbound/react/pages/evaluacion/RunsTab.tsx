@@ -6,6 +6,35 @@ import * as reactRouterDomModule from "react-router-dom";
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
 import type * as evaluationModel from "@domain/models/evaluation";
 
+// ---------------------------------------------------------------------------
+// Delete banner
+// ---------------------------------------------------------------------------
+
+interface DeleteBanner {
+  type: "success" | "error";
+  message: string;
+}
+
+function DeleteResultBanner(props: { banner: DeleteBanner; onClose: () => void }) {
+  const { banner, onClose } = props;
+  const isSuccess = banner.type === "success";
+  return (
+    <div
+      className={[
+        "mb-3 flex items-center justify-between rounded-lg border px-4 py-2.5 text-sm",
+        isSuccess
+          ? "border-green-200 bg-green-50 text-green-800"
+          : "border-red-200 bg-red-50 text-red-800"
+      ].join(" ")}
+    >
+      <span>{banner.message}</span>
+      <button className="ml-4 text-xs font-semibold underline" onClick={onClose} type="button">
+        Cerrar
+      </button>
+    </div>
+  );
+}
+
 const runsQueryKey = ["eval-runs"] as const;
 const promptVersionsQueryKey = ["eval-prompt-versions"] as const;
 
@@ -154,8 +183,12 @@ function ShapeStatusBadge(props: { run: evaluationModel.EvalRunListItem }) {
 // Grouped row component
 // ---------------------------------------------------------------------------
 
-function RunGroupRow(props: { group: RunGroup }) {
-  const { group } = props;
+function RunGroupRow(props: {
+  group: RunGroup;
+  onDelete: (runId: string) => Promise<void>;
+  isDeleting: boolean;
+}) {
+  const { group, onDelete, isDeleting } = props;
   const [expanded, setExpanded] = reactModule.useState(false);
 
   const groupRowBg =
@@ -204,7 +237,24 @@ function RunGroupRow(props: { group: RunGroup }) {
             totalOk={group.totalOk}
           />
         </td>
-        <td className="px-4 py-3" />
+        <td
+          className="px-4 py-3"
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          <button
+            className="rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isDeleting}
+            onClick={(e) => {
+              e.stopPropagation();
+              void onDelete(group.runId);
+            }}
+            type="button"
+          >
+            {isDeleting ? "Borrando..." : "Borrar"}
+          </button>
+        </td>
       </tr>
 
       {/* Child shape rows */}
@@ -292,7 +342,34 @@ function ChevronDownIcon() {
 
 export function RunsTab() {
   const appContainer = appContainerContextModule.useAppContainer();
+  const queryClient = reactQueryModule.useQueryClient();
   const [shapeFilter, setShapeFilter] = reactModule.useState<string>("__all__");
+  const [deletingRunId, setDeletingRunId] = reactModule.useState<string | null>(null);
+  const [banner, setBanner] = reactModule.useState<DeleteBanner | null>(null);
+
+  async function handleDeleteRun(runId: string): Promise<void> {
+    const confirmText = `¿Borrar la corrida ${runId}? Esto borra TODO: tenants efímeros que aún existan, conversaciones, scheduling requests, patients, y los reportes de Firestore. No se puede deshacer.`;
+    if (!window.confirm(confirmText)) return;
+
+    const adminSecret = window.prompt("Pegá el EVAL_ADMIN_SECRET para confirmar:");
+    if (adminSecret === null || adminSecret.trim() === "") return;
+
+    setDeletingRunId(runId);
+    setBanner(null);
+    try {
+      const result = await appContainer.evaluationUseCase.deleteRun(runId, adminSecret.trim());
+      await queryClient.invalidateQueries({ queryKey: runsQueryKey });
+      setBanner({
+        type: "success",
+        message: `Corrida borrada — ${result.evalRunsDeleted} report(s) / ${result.tenantsDeleted} tenant(s) eliminados`
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Error desconocido al borrar la corrida";
+      setBanner({ type: "error", message });
+    } finally {
+      setDeletingRunId(null);
+    }
+  }
 
   const runsQuery = reactQueryModule.useQuery({
     queryKey: runsQueryKey,
@@ -345,6 +422,15 @@ export function RunsTab() {
 
   return (
     <div className="space-y-4">
+      {banner !== null ? (
+        <DeleteResultBanner
+          banner={banner}
+          onClose={() => {
+            setBanner(null);
+          }}
+        />
+      ) : null}
+
       {/* Filters bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2">
@@ -421,7 +507,14 @@ export function RunsTab() {
             <tbody className="divide-y divide-slate-100">
               {isFiltered
                 ? filteredRuns.map((run) => <FlatRunRow key={run.runDocId} run={run} />)
-                : groups.map((group) => <RunGroupRow group={group} key={group.runId} />)}
+                : groups.map((group) => (
+                    <RunGroupRow
+                      group={group}
+                      isDeleting={deletingRunId === group.runId}
+                      key={group.runId}
+                      onDelete={handleDeleteRun}
+                    />
+                  ))}
             </tbody>
           </table>
         </div>

@@ -16,6 +16,13 @@ import src.entrypoints.web.exceptions.http_exception_handlers as http_exception_
 import src.entrypoints.web.routers.eval_router as eval_router
 import src.services.dto.eval_dto as eval_dto
 
+_CAPABILITY_DOC = eval_dto.EvalCapabilityDocDTO(
+    id="asks_about_price",
+    description="el paciente pregunta cuánto vale la consulta o servicio",
+    implications="exigirá que el bot cotice antes de pedir datos personales",
+    category="behavior",
+)
+
 _NOW = datetime.datetime(2026, 4, 30, 12, 0, 0, tzinfo=datetime.UTC)
 
 _SHAPE_DTO = eval_dto.ShapeDTO(
@@ -82,6 +89,7 @@ def _make_client(
     list_prompt_versions_return: list[eval_dto.PromptVersionDTO] | None = None,
     list_runs_return: list[eval_dto.EvalRunListItemDTO] | None = None,
     get_run_return: eval_dto.EvalRunDetailDTO | None = _RUN_DETAIL,
+    list_capabilities_return: list[eval_dto.EvalCapabilityDocDTO] | None = None,
 ) -> fastapi.testclient.TestClient:
     app = fastapi.FastAPI()
     http_exception_handlers.register_exception_handlers(app)
@@ -103,6 +111,9 @@ def _make_client(
         list_runs_return if list_runs_return is not None else [_RUN_LIST_ITEM]
     )
     mock_service.get_run.return_value = get_run_return
+    mock_service.list_capabilities.return_value = (
+        list_capabilities_return if list_capabilities_return is not None else [_CAPABILITY_DOC]
+    )
 
     mock_container = unittest.mock.MagicMock()
     mock_container.eval_query_service = mock_service
@@ -216,6 +227,44 @@ def test_get_run_returns_404_when_missing() -> None:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# GET /v1/eval/capabilities
+# ---------------------------------------------------------------------------
+
+
+def test_list_capabilities_returns_200() -> None:
+    client = _make_client()
+    response = client.get("/v1/eval/capabilities")
+    assert response.status_code == 200
+    body = response.json()
+    assert "items" in body
+    assert len(body["items"]) == 1
+    assert body["items"][0]["id"] == "asks_about_price"
+    assert body["items"][0]["category"] == "behavior"
+
+
+def test_list_capabilities_returns_empty_items() -> None:
+    client = _make_client(list_capabilities_return=[])
+    response = client.get("/v1/eval/capabilities")
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+
+
+def test_list_capabilities_item_has_all_fields() -> None:
+    client = _make_client()
+    response = client.get("/v1/eval/capabilities")
+    item = response.json()["items"][0]
+    assert "id" in item
+    assert "description" in item
+    assert "implications" in item
+    assert "category" in item
+
+
+# ---------------------------------------------------------------------------
+# Env gate: sin router → 404
+# ---------------------------------------------------------------------------
+
+
 def test_endpoints_are_excluded_when_eval_disabled() -> None:
     """Con eval_endpoints_enabled=False el router no se monta y todos los
     endpoints devuelven 404 — mismo patrón que test_dev_router_eval_tenants."""
@@ -229,3 +278,4 @@ def test_endpoints_are_excluded_when_eval_disabled() -> None:
     assert client.get("/v1/eval/prompt-versions").status_code == 404
     assert client.get("/v1/eval/runs").status_code == 404
     assert client.get("/v1/eval/runs/any-id").status_code == 404
+    assert client.get("/v1/eval/capabilities").status_code == 404

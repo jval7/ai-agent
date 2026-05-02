@@ -370,6 +370,17 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
   async getEvalRun(_runDocId: string): Promise<evaluationModel.EvalRunDetail> {
     throw new Error("not used");
   }
+
+  async deleteEvalRun(
+    _runId: string,
+    _adminSecret: string
+  ): Promise<evaluationModel.EvalDeleteResult> {
+    throw new Error("not used");
+  }
+
+  async listEvalCapabilities(): Promise<evaluationModel.EvalCapabilityDoc[]> {
+    throw new Error("not used");
+  }
 }
 
 vitestModule.describe("AuthUseCase", () => {

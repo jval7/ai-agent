@@ -6,7 +6,9 @@ fixtures reales (tests/fixtures/profiles/) para evitar dependencias externas.
 
 import datetime
 import pathlib
+import typing
 
+import scripts.personas as personas_module
 import src.adapters.outbound.inmemory.eval_run_repository_adapter as inmemory_eval_repo
 import src.domain.entities.eval_run as eval_run_entity
 import src.services.use_cases.eval_query_service as eval_query_service
@@ -178,11 +180,12 @@ def test_get_run_returns_detail_with_conversations() -> None:
     run = _make_run(run_id="run-x", shape_name="shape_minimal")
     repo.save_run(run)
 
-    # El adapter in-memory usa run_id como doc_id — consistente con Opción C.
+    # El run_doc_id = "{run_id}_{shape_name}" es la clave tanto en Firestore
+    # como en el adapter in-memory. Las conversaciones también se indexan por doc_id.
     conv = _make_conversation("diego_local_asks_price", status="ok")
-    repo.save_conversation("run-x", conv)
+    repo.save_conversation("run-x_shape_minimal", conv)
 
-    detail = svc.get_run("run-x")
+    detail = svc.get_run("run-x_shape_minimal")
 
     assert detail is not None
     assert detail.run_doc_id == "run-x_shape_minimal"
@@ -194,7 +197,7 @@ def test_get_run_returns_detail_with_conversations() -> None:
 
 def test_get_run_returns_none_for_missing_run_id() -> None:
     svc, _ = _make_service()
-    result = svc.get_run("nonexistent-run-id")
+    result = svc.get_run("nonexistent-run-id_shape_minimal")
     assert result is None
 
 
@@ -203,9 +206,9 @@ def test_get_run_conversations_have_transcript_field() -> None:
     run = _make_run(run_id="run-y")
     repo.save_run(run)
     conv = _make_conversation("persona-1")
-    repo.save_conversation("run-y", conv)
+    repo.save_conversation("run-y_shape_minimal", conv)
 
-    detail = svc.get_run("run-y")
+    detail = svc.get_run("run-y_shape_minimal")
     assert detail is not None
     assert detail.conversations[0].transcript == []
 
@@ -247,9 +250,9 @@ def test_get_run_maps_judge_verdict_to_dto() -> None:
     run = _make_run(run_id="run-judge")
     repo.save_run(run)
     conv = _make_conversation_with_verdict("diego_local_asks_price")
-    repo.save_conversation("run-judge", conv)
+    repo.save_conversation("run-judge_shape_minimal", conv)
 
-    detail = svc.get_run("run-judge")
+    detail = svc.get_run("run-judge_shape_minimal")
 
     assert detail is not None
     assert len(detail.conversations) == 1
@@ -270,9 +273,9 @@ def test_get_run_maps_none_judge_verdict_when_absent() -> None:
     run = _make_run(run_id="run-no-judge")
     repo.save_run(run)
     conv = _make_conversation("persona-sin-verdict")
-    repo.save_conversation("run-no-judge", conv)
+    repo.save_conversation("run-no-judge_shape_minimal", conv)
 
-    detail = svc.get_run("run-no-judge")
+    detail = svc.get_run("run-no-judge_shape_minimal")
 
     assert detail is not None
     assert detail.conversations[0].judge_verdict is None
@@ -299,9 +302,9 @@ def test_get_run_maps_verdict_with_error_field() -> None:
         elapsed_seconds=1.0,
         judge_verdict=verdict,
     )
-    repo.save_conversation("run-verdict-error", conv)
+    repo.save_conversation("run-verdict-error_shape_minimal", conv)
 
-    detail = svc.get_run("run-verdict-error")
+    detail = svc.get_run("run-verdict-error_shape_minimal")
 
     assert detail is not None
     dto_conv = detail.conversations[0]
@@ -309,3 +312,51 @@ def test_get_run_maps_verdict_with_error_field() -> None:
     assert dto_conv.judge_verdict.overall == "none"
     assert dto_conv.judge_verdict.error == "timeout: deadline exceeded"
     assert dto_conv.judge_verdict.verifications == []
+
+
+# ---------------------------------------------------------------------------
+# list_capabilities
+# ---------------------------------------------------------------------------
+
+_CAPABILITY_LITERALS: list[str] = list(typing.get_args(personas_module.Capability))
+
+
+def test_list_capabilities_returns_11_items() -> None:
+    """El glossary tiene exactamente 11 capabilities."""
+    svc, _ = _make_service()
+    caps = svc.list_capabilities()
+    assert len(caps) == 11
+
+
+def test_list_capabilities_covers_all_literal_values() -> None:
+    """Cada valor del Literal Capability tiene su doc en el glossary."""
+    svc, _ = _make_service()
+    caps = svc.list_capabilities()
+    cap_ids = {c.id for c in caps}
+    for literal_value in _CAPABILITY_LITERALS:
+        assert literal_value in cap_ids, (
+            f"Capability literal {literal_value!r} no tiene doc en _CAPABILITIES_DOC"
+        )
+
+
+def test_list_capabilities_all_have_required_fields() -> None:
+    """Cada doc tiene id, description, implications y category no vacíos."""
+    svc, _ = _make_service()
+    caps = svc.list_capabilities()
+    for cap in caps:
+        assert cap.id
+        assert cap.description
+        assert cap.implications
+        assert cap.category in {"location", "cohort", "behavior"}
+
+
+def test_list_capabilities_categories_distribution() -> None:
+    """2 location, 2 cohort, 7 behavior."""
+    svc, _ = _make_service()
+    caps = svc.list_capabilities()
+    by_category: dict[str, int] = {}
+    for cap in caps:
+        by_category[cap.category] = by_category.get(cap.category, 0) + 1
+    assert by_category.get("location") == 2
+    assert by_category.get("cohort") == 2
+    assert by_category.get("behavior") == 7

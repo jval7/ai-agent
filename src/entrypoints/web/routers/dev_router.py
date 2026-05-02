@@ -6,6 +6,7 @@ import src.entrypoints.web.dependencies as http_dependencies
 import src.infra.container as app_container
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.dev_dto as dev_dto
+import src.services.dto.eval_run_cleanup_dto as eval_run_cleanup_dto
 import src.services.dto.eval_tenant_dto as eval_tenant_dto
 import src.services.exceptions as service_exceptions
 
@@ -68,3 +69,15 @@ def delete_eval_tenant(
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> None:
     container.eval_tenant_service.delete_eval_tenant(tenant_id)
+
+
+@router.delete(
+    "/eval-runs/{run_id}",
+    response_model=eval_run_cleanup_dto.EvalRunDeleteStatsDTO,
+)
+def delete_eval_run(
+    run_id: str,
+    _: None = fastapi.Depends(_require_eval_admin_secret),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> eval_run_cleanup_dto.EvalRunDeleteStatsDTO:
+    return container.eval_run_cleanup_service.delete_eval_run_cascade(run_id)

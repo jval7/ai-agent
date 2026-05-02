@@ -4,6 +4,17 @@ import typing
 import pydantic
 
 
+class EvalCapabilityDocDTO(pydantic.BaseModel):
+    id: str
+    description: str
+    implications: str
+    category: typing.Literal["location", "cohort", "behavior"]
+
+
+class EvalCapabilitiesListResponseDTO(pydantic.BaseModel):
+    items: list[EvalCapabilityDocDTO]
+
+
 class CapabilityVerificationDTO(pydantic.BaseModel):
     capability: str
     verified: bool

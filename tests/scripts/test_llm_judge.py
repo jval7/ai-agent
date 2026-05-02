@@ -130,9 +130,16 @@ def test_judge_conversation_partial_verdict() -> None:
 
 def test_judge_conversation_handles_gemini_timeout() -> None:
     """Si Gemini lanza DeadlineExceeded, retorna verdict con error, sin raisear."""
+    import typing
+
     from google.api_core import exceptions as google_api_exceptions
 
-    client = _make_gemini_client(google_api_exceptions.DeadlineExceeded("timeout"))
+    # google-api-core carece de stubs; el constructor es "untyped" para mypy.
+    # Castear el callable a Any y luego instanciar evita el warning sin
+    # depender de `# type: ignore` (que es inestable entre mypy incremental
+    # vs full-project: el incremental lo marca como unused).
+    deadline_factory: typing.Any = google_api_exceptions.DeadlineExceeded
+    client = _make_gemini_client(deadline_factory("timeout"))
 
     verdict = llm_judge.judge_conversation(
         persona_id="p_timeout",

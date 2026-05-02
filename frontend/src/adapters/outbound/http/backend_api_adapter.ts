@@ -25,6 +25,7 @@ interface RequestOptions {
   body?: string;
   retryOnUnauthorized?: boolean;
   requestId?: string;
+  customHeaders?: Record<string, string>;
 }
 
 export class BackendApiAdapter implements backendApiPort.BackendApiPort {
@@ -1068,6 +1069,41 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     }));
   }
 
+  async deleteEvalRun(
+    runId: string,
+    adminSecret: string
+  ): Promise<evaluationModel.EvalDeleteResult> {
+    const raw = await this.request<{ eval_runs_deleted: number; tenants_deleted: number }>(
+      `/v1/dev/eval-runs/${runId}`,
+      {
+        method: "DELETE",
+        authRequired: false,
+        customHeaders: { "X-Eval-Admin-Secret": adminSecret }
+      }
+    );
+    return {
+      evalRunsDeleted: raw.eval_runs_deleted,
+      tenantsDeleted: raw.tenants_deleted
+    };
+  }
+
+  async listEvalCapabilities(): Promise<evaluationModel.EvalCapabilityDoc[]> {
+    const raw = await this.request<{
+      items: {
+        id: string;
+        description: string;
+        implications: string;
+        category: evaluationModel.EvalCapabilityCategory;
+      }[];
+    }>("/v1/eval/capabilities", { method: "GET", authRequired: false });
+    return raw.items.map((item) => ({
+      id: item.id,
+      description: item.description,
+      implications: item.implications,
+      category: item.category
+    }));
+  }
+
   async getEvalRun(runDocId: string): Promise<evaluationModel.EvalRunDetail> {
     const raw = await this.request<{
       run_doc_id: string;
@@ -1166,6 +1202,12 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       const accessToken = this.tokenSession.getAccessToken();
       if (accessToken) {
         headers.set("Authorization", `Bearer ${accessToken}`);
+      }
+    }
+
+    if (options.customHeaders !== undefined) {
+      for (const [key, value] of Object.entries(options.customHeaders)) {
+        headers.set(key, value);
       }
     }
 

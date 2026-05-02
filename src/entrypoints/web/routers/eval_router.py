@@ -50,3 +50,11 @@ def get_run(
     if detail is None:
         raise service_exceptions.EntityNotFoundError(f"eval run not found: {run_doc_id!r}")
     return detail
+
+
+@router.get("/capabilities", response_model=eval_dto.EvalCapabilitiesListResponseDTO)
+def list_capabilities(
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> eval_dto.EvalCapabilitiesListResponseDTO:
+    items = container.eval_query_service.list_capabilities()
+    return eval_dto.EvalCapabilitiesListResponseDTO(items=items)

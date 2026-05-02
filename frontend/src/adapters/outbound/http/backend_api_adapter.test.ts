@@ -884,4 +884,62 @@ vitestModule.describe("BackendApiAdapter", () => {
     vitestModule.expect(legacy.phonePrefix).toBeNull();
     vitestModule.expect(legacy.phone).toBe("573009998888");
   });
+
+  vitestModule.it("deleteEvalRun sends X-Eval-Admin-Secret header and maps response", async () => {
+    serverModule.server.use(
+      mswModule.http.delete("http://api.test/v1/dev/eval-runs/run-to-delete", ({ request }) => {
+        const secret = request.headers.get("x-eval-admin-secret");
+        vitestModule.expect(secret).toBe("my-secret-token");
+        const authHeader = request.headers.get("authorization");
+        vitestModule.expect(authHeader).toBeNull();
+        return mswModule.HttpResponse.json({
+          eval_runs_deleted: 3,
+          tenants_deleted: 2
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const result = await adapter.deleteEvalRun("run-to-delete", "my-secret-token");
+
+    vitestModule.expect(result.evalRunsDeleted).toBe(3);
+    vitestModule.expect(result.tenantsDeleted).toBe(2);
+  });
+
+  vitestModule.it("listEvalCapabilities maps snake_case to camelCase and category", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/capabilities", () => {
+        return mswModule.HttpResponse.json({
+          items: [
+            {
+              id: "returning_patient",
+              description: "El paciente ya ha tenido citas anteriores.",
+              implications: "EL RUNNER pre-seed una cita pasada antes de iniciar la conversacion.",
+              category: "cohort"
+            },
+            {
+              id: "local_patient",
+              description: "El paciente esta en la misma ciudad que el profesional.",
+              implications: "No requiere configuracion adicional.",
+              category: "location"
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const caps = await adapter.listEvalCapabilities();
+
+    vitestModule.expect(caps).toHaveLength(2);
+    vitestModule.expect(caps[0]?.id).toBe("returning_patient");
+    vitestModule.expect(caps[0]?.category).toBe("cohort");
+    vitestModule.expect(caps[0]?.implications).toContain("EL RUNNER");
+    vitestModule.expect(caps[1]?.id).toBe("local_patient");
+    vitestModule.expect(caps[1]?.category).toBe("location");
+  });
 });

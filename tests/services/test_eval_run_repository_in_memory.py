@@ -47,7 +47,8 @@ def test_save_run_and_get_run_round_trip() -> None:
     run = _make_run("run-1")
 
     repo.save_run(run)
-    retrieved = repo.get_run("run-1")
+    # get_run recibe el run_doc_id = "{run_id}_{shape_name}"
+    retrieved = repo.get_run("run-1_test_shape")
 
     assert retrieved is not None
     assert retrieved.run_id == "run-1"
@@ -64,14 +65,14 @@ def test_save_run_upserts_existing_run() -> None:
     updated_run = _make_run("run-1", ok=5)
     repo.save_run(updated_run)
 
-    retrieved = repo.get_run("run-1")
+    retrieved = repo.get_run("run-1_test_shape")
     assert retrieved is not None
     assert retrieved.ok == 5
 
 
 def test_get_run_returns_none_for_missing_run() -> None:
     repo = _make_repo()
-    result = repo.get_run("nonexistent-run")
+    result = repo.get_run("nonexistent-run_test_shape")
     assert result is None
 
 
