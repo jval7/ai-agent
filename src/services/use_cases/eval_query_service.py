@@ -107,6 +107,21 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
         category="bot_behavior",
     ),
     eval_dto.EvalCapabilityDocDTO(
+        id="uses_pre_payment_vocabulary",
+        description=(
+            "el bot NO usa 'confirmar tu cita' / 'para confirmar' antes del pago. Antes "
+            "del pago debe usar 'agendar', 'reservar', 'para continuar con el proceso de "
+            "agendamiento'. El término 'confirmar' está reservado para después del pago."
+        ),
+        implications=(
+            "EL BOT debe respetar el vocabulario por fase. Falla si dice 'Para confirmar "
+            "tu cita, paga X' (mezcla confirmación con cobro). La forma correcta es 'Para "
+            "continuar con el proceso de agendamiento, paga X'. No aplica cuando "
+            "payment_timing=AFTER_SESSION (no hay pago previo a la cita)."
+        ),
+        category="bot_behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
         id="hides_internal_handoff",
         description=(
             "el bot NO le dice al paciente que envía, pasa, gestiona, comparte o comenta "

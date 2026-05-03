@@ -97,6 +97,21 @@ _GLOSSARY: dict[str, str] = {
         "de saber la ubicacion, o cotizo una moneda inconsistente con la ubicacion "
         "inferible. Inferencia comportamental por OUTBOUND aceptable."
     ),
+    "uses_pre_payment_vocabulary": (
+        "el bot usa vocabulario apropiado en la fase ANTES del pago. El termino "
+        "'confirmar la cita' (y variaciones: 'para confirmar tu cita', 'confirmar "
+        "tu reserva') esta reservado para DESPUES del pago. ANTES del pago, el bot "
+        "debe usar 'agendar', 'reservar', 'para continuar con el proceso de "
+        "agendamiento' o frases similares. La frase 'Para confirmar tu cita, paga X' "
+        "es INCORRECTA porque mezcla la confirmacion con el cobro. La forma correcta "
+        "es 'Para continuar con el proceso de agendamiento, paga X' o 'Para reservar "
+        "tu cita, paga X'. verified=true si el bot NO uso 'confirmar' (ni variaciones) "
+        "antes de tener el comprobante de pago. verified=false si encontraste alguna "
+        "frase pre-pago que use 'confirmar la cita / tu cita / la reserva' — debes "
+        "citar la frase EXACTA del OUTBOUND y el turno. Si el shape tiene "
+        "payment_timing=AFTER_SESSION, esta cap NO aplica (el bot puede confirmar "
+        "directo); en ese caso verified=true sin necesidad de evidencia."
+    ),
     "hides_internal_handoff": (
         "el bot NO le menciona al paciente que envia, pasa, gestiona, comparte, comenta "
         "o tramita nada con el profesional. La conversacion debe sentirse autosuficiente. "
@@ -131,6 +146,7 @@ _INFERENTIAL_CAPS = frozenset(
         "returning_patient",
         "quotes_currency_per_location",  # se verifica por OUTBOUND del bot
         "hides_internal_handoff",  # se verifica por ausencia de frases en OUTBOUND
+        "uses_pre_payment_vocabulary",  # se verifica por ausencia de "confirmar" pre-pago
     }
 )
 
@@ -166,6 +182,12 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   NUNCA debe mostrar varias monedas juntas en el mismo mensaje sin saber ubicacion.
   verified=false SOLO si el bot expuso ambas monedas juntas sin saber ubicacion,
   o cotizo una moneda inconsistente con la ubicacion inferible.
+- uses_pre_payment_vocabulary: el bot NO usa "confirmar tu cita" / "para confirmar"
+  antes del pago. Antes del pago debe usar "agendar", "reservar", "para continuar
+  con el proceso de agendamiento". El termino "confirmar" se reserva para despues
+  de recibir el comprobante. verified=false si encontraste frase pre-pago que diga
+  "confirmar la cita/tu cita/tu reserva" — citar la frase EXACTA del OUTBOUND.
+  No aplica si payment_timing=AFTER_SESSION (verified=true automatico).
 - hides_internal_handoff: el bot NO le dice al paciente que envia, pasa, gestiona,
   comparte, comenta o tramita cosas con el profesional, ni expone procesos internos
   opacos. Frases prohibidas: "ya le envie a la doctora", "le paso el motivo",
@@ -201,6 +223,10 @@ Reglas:
          consistente con la ubicacion (preguntada O inferida del contexto, ej.
          "presencial" => local => COP). verified=false SOLO si mostro varias
          monedas juntas sin saber ubicacion, o cotizo moneda inconsistente.
+       - uses_pre_payment_vocabulary verified si NINGUN OUTBOUND pre-pago usa
+         "confirmar la cita / tu cita / tu reserva". verified=false ante alguna
+         de esas frases en mensajes anteriores al comprobante de pago — citar
+         la frase exacta y el turno.
        - hides_internal_handoff verified si NINGUN OUTBOUND menciona enviar/pasar/
          gestionar/comentar/compartir/tramitar nada con el profesional ni expone
          procesos internos como "se esta revisando" o "te contactaremos pronto".

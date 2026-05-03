@@ -72,6 +72,10 @@
         "applies_when": "Extranjeros (USD)"
       }
     ],
-    "payment_timing": "BEFORE_SESSION"
+    "payment_timing": "BEFORE_SESSION",
+    "office_location": {
+      "address": "Carrera 5 # 3-17, edificio Aqua Oficina 301, Cali",
+      "arrival_instructions": "Al llegar timbra al apto 301 para abrir la puerta."
+    }
   }
 }

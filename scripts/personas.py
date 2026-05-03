@@ -34,6 +34,7 @@ Capability = typing.Literal[
     # Comportamiento esperado del bot (verificado por inferencia sobre OUTBOUND)
     "quotes_currency_per_location",  # bot solo cotiza en una moneda según ubicación; pide ubicación si la tarifa tiene varias monedas y no la sabe
     "hides_internal_handoff",  # bot NO le dice al paciente que envía/pasa/gestiona/comenta/comparte algo con el profesional
+    "uses_pre_payment_vocabulary",  # bot NO usa "confirmar tu cita" antes del pago; usa "agendar" / "reservar" / "para continuar con el proceso de agendamiento"
 ]
 
 
@@ -49,6 +50,7 @@ BOT_BEHAVIOR_CAPS: frozenset[Capability] = frozenset(
     {
         "quotes_currency_per_location",
         "hides_internal_handoff",
+        "uses_pre_payment_vocabulary",
     }
 )
 
@@ -100,6 +102,9 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             # Cap transversal: el bot no debe exponer al paciente que envía/
             # pasa/gestiona algo con el profesional. Se verifica por OUTBOUND.
             "hides_internal_handoff",
+            # Cap transversal: el bot debe usar vocabulario apropiado para
+            # pre-pago — "agendar"/"reservar", NO "confirmar cita".
+            "uses_pre_payment_vocabulary",
         ],
     ),
     Persona(
@@ -118,6 +123,7 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             "asks_about_price",
             "quotes_currency_per_location",  # ver Diego — assertion del bot
             "hides_internal_handoff",  # transversal — assertion del bot
+            "uses_pre_payment_vocabulary",  # transversal — assertion del bot
         ],
     ),
     Persona(
@@ -135,6 +141,7 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             "returning_patient",
             "accepts_first_slot",
             "hides_internal_handoff",  # transversal — assertion del bot
+            "uses_pre_payment_vocabulary",  # transversal — assertion del bot
         ],
     ),
 ]
