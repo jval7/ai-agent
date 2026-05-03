@@ -139,7 +139,17 @@ def _instructions_for_state(
         ]
     if runtime_context.state == "AWAITING_CONSULTATION_REVIEW":
         return [
-            "Flujo actual: motivo de consulta enviado, esperando revision del profesional.",
+            # Esta linea es informacion para TI (el LLM), NO para reflejar al
+            # paciente. Antes el LLM tomaba este texto y lo retransmitia con
+            # frases como "ya envie tu motivo a la doctora para revision",
+            # violando hides_internal_handoff. Mantener la instruccion en
+            # voz neutra interna y reforzar la prohibicion explicita abajo.
+            "Estado interno: el flujo esta pausado mientras avanza un paso "
+            "interno del agendamiento. NO compartas con el paciente que se "
+            "envio, comparti, paso, gestiono, tramito, consulto, notifico, "
+            f"compartio o esta siendo revisado nada por {ref} ni por nadie. "
+            "La gestion interna es invisible. Si necesitas pedirle paciencia, "
+            'di solo "dame un momento" sin justificar la espera.',
             "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
             "horarios, modalidades, direccion del consultorio o informacion general del profesional.",
             "No avances el flujo de agendamiento ni solicites datos adicionales.",

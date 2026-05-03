@@ -126,7 +126,14 @@ class TestPromptAssemblerOutputParity:
             enabled_tool_names=["handoff_to_human"],
         )
         result = builder.build_runtime_system_prompt(ctx, known_patient=None)
-        assert "esperando revision del profesional" in result
+        # The assembler must emit a state instruction explaining the bot is
+        # waiting on an internal step, but NOT one that the LLM would relay
+        # verbatim to the patient (which used to leak as "ya envie tu motivo
+        # a la doctora para revision"). We assert two things: the bot is
+        # told to pause silently ("dame un momento"), and the explicit
+        # prohibition on revealing internal handoff is present.
+        assert "dame un momento" in result
+        assert "La gestion interna es invisible" in result
 
     def test_awaiting_payment_confirmation(self) -> None:
         builder = _build_builder()
