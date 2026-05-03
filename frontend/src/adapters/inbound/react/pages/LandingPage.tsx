@@ -539,7 +539,7 @@ function PricingCard(props: PricingCardProps) {
 
 function Pricing() {
   const starterFeatures: { text: string; included: boolean }[] = [
-    { text: "Hasta 50 conversaciones IA/mes (o 1M tokens, lo que primero ocurra)", included: true },
+    { text: "Hasta 50 conversaciones IA/mes", included: true },
     { text: "1 número WhatsApp Business", included: true },
     { text: "1 Google Calendar conectado", included: true },
     { text: "CRM de pacientes", included: true },
@@ -549,10 +549,7 @@ function Pricing() {
 
   const proFeatures: { text: string; included: boolean }[] = [
     { text: "Todo lo de Starter", included: true },
-    {
-      text: "Hasta 250 conversaciones IA/mes (o 5M tokens, lo que primero ocurra)",
-      included: true
-    },
+    { text: "Hasta 250 conversaciones IA/mes", included: true },
     { text: "Recordatorios automáticos (asistencia + pago)", included: true },
     { text: "Registro de pagos por cita", included: true },
     { text: "Handoff a humano cuando quieras", included: true }
@@ -758,10 +755,10 @@ function RoadmapSection() {
   const items: RoadmapItemProps[] = [
     { icon: "🏷️", title: "Etiquetas inteligentes", status: "building" },
     { icon: "📝", title: "Plantillas de WhatsApp custom", status: "building" },
-    { icon: "⚙️", title: "System prompt editable desde la app", status: "building" },
-    { icon: "🔌", title: "Integraciones (Zapier, Sheets)", status: "soon" },
     { icon: "📊", title: "Reportes y métricas", status: "soon" },
-    { icon: "📩", title: "Multi-canal (Instagram DM)", status: "research" }
+    { icon: "💳", title: "Pagos integrados", status: "soon" },
+    { icon: "📩", title: "Multi-canal (Instagram DM)", status: "research" },
+    { icon: "💬", title: "Sugerencias de mensajes", status: "research" }
   ];
 
   return (

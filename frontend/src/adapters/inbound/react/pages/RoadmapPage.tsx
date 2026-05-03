@@ -70,22 +70,10 @@ export function RoadmapPage() {
       title: "Plantillas de WhatsApp custom",
       description:
         "Creá y editá tus propias plantillas aprobadas por Meta desde la app, sin pasar por soporte."
-    },
-    {
-      icon: "⚙️",
-      title: "System prompt editable desde la app",
-      description:
-        "Personalizá el tono, las instrucciones y los límites de tu IA directamente desde el panel, sin código."
     }
   ];
 
   const soonItems: RoadmapCardProps[] = [
-    {
-      icon: "🔌",
-      title: "Integraciones (Zapier, Sheets)",
-      description:
-        "Conectá Agendachat con tus otras herramientas. Enviá datos de citas a Google Sheets o disparar flujos en Zapier."
-    },
     {
       icon: "📊",
       title: "Reportes y métricas",
@@ -96,12 +84,6 @@ export function RoadmapPage() {
       icon: "💳",
       title: "Pagos integrados",
       description: "Cobrar dentro de la misma conversación de WhatsApp, sin salir del chat."
-    },
-    {
-      icon: "📅",
-      title: "Multi-agenda mejorada",
-      description:
-        "Soporte avanzado para consultorios con varias especialidades y horarios independientes."
     }
   ];
 
@@ -111,12 +93,6 @@ export function RoadmapPage() {
       title: "Multi-canal (Instagram DM)",
       description:
         "Extender el asistente IA a mensajes directos de Instagram para captar pacientes desde más canales."
-    },
-    {
-      icon: "🧠",
-      title: "Análisis de sentimiento",
-      description:
-        "Detectar pacientes insatisfechos o confundidos en tiempo real y alertar al profesional."
     },
     {
       icon: "💬",
@@ -156,7 +132,7 @@ export function RoadmapPage() {
               <p className="text-sm text-slate-500">Activamente en desarrollo — llegan pronto.</p>
             </div>
           </div>
-          <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-3">
+          <div className="grid gap-5 sm:grid-cols-2">
             {buildingItems.map((item) => (
               <BuildingCard key={item.title} {...item} />
             ))}
@@ -176,7 +152,7 @@ export function RoadmapPage() {
               </p>
             </div>
           </div>
-          <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-4">
+          <div className="grid gap-5 sm:grid-cols-2">
             {soonItems.map((item) => (
               <SoonCard key={item.title} {...item} />
             ))}
@@ -196,7 +172,7 @@ export function RoadmapPage() {
               </p>
             </div>
           </div>
-          <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-3">
+          <div className="grid gap-5 sm:grid-cols-2">
             {researchItems.map((item) => (
               <ResearchCard key={item.title} {...item} />
             ))}
