@@ -100,7 +100,11 @@ class TestPromptAssemblerOutputParity:
         )
         result = builder.build_runtime_system_prompt(ctx, known_patient=None)
         assert "- slot_seleccionado_actual: slot-1" in result
-        assert "Campos faltantes para confirmar:" in result
+        # Avoid asserting on the verb "confirmar" because the state instruction
+        # was deliberately rephrased to "Datos finales faltantes" to keep the
+        # word "confirmar" out of the LLM's attention. See the comment in
+        # state_instructions.py for the rationale (uses_pre_payment_vocabulary).
+        assert "Datos finales faltantes:" in result
         assert "email" in result
         assert "age" in result
 
@@ -114,7 +118,9 @@ class TestPromptAssemblerOutputParity:
             enabled_tool_names=["confirm_selected_slot_and_create_event"],
         )
         result = builder.build_runtime_system_prompt(ctx, known_patient=None)
-        assert "no faltan campos de perfil" in result
+        # State instruction phrase was changed from "no faltan campos de perfil"
+        # to "no faltan datos de perfil" to keep "confirmar" out of the prompt.
+        assert "no faltan datos de perfil" in result
         assert "confirm_selected_slot_and_create_event" in result
 
     def test_awaiting_consultation_review(self) -> None:

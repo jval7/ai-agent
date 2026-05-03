@@ -125,16 +125,22 @@ def _instructions_for_state(
             "No llames confirm_selected_slot_and_create_event en este estado.",
         ]
     if runtime_context.state == "COLLECTING_CONFIRMATION_DATA":
+        # NOTA: el nombre del estado contiene "CONFIRMATION" por razones de
+        # persistencia (ver state_models.py), pero EN LAS INSTRUCCIONES VISIBLES
+        # AL LLM evitamos la palabra "confirmar" para no inundar su attention
+        # con un concepto que termina filtrandose al paciente como "confirmar
+        # tu cita / asistencia" pre-pago. Vocabulario interno aqui: "finalizar
+        # el agendamiento", "datos finales".
         if runtime_context.missing_confirmation_fields:
             missing_fields_bullet = "\n• ".join(runtime_context.missing_confirmation_fields)
             return [
-                "Flujo actual: ya hay slot seleccionado, completa perfil para confirmar.",
-                f"Campos faltantes para confirmar:\n• {missing_fields_bullet}",
-                "Pide todos los campos faltantes en un solo mensaje. "
-                "Cuando no falte ningun campo, llama confirm_selected_slot_and_create_event.",
+                "Flujo actual: ya hay slot seleccionado, completa el perfil para finalizar el agendamiento.",
+                f"Datos finales faltantes:\n• {missing_fields_bullet}",
+                "Pide todos los datos faltantes en un solo mensaje. "
+                "Cuando no falte ningun dato, llama confirm_selected_slot_and_create_event.",
             ]
         return [
-            "Flujo actual: ya hay slot seleccionado y no faltan campos de perfil.",
+            "Flujo actual: ya hay slot seleccionado y no faltan datos de perfil.",
             "Llama confirm_selected_slot_and_create_event para completar la reserva.",
         ]
     if runtime_context.state == "AWAITING_CONSULTATION_REVIEW":
@@ -158,9 +164,22 @@ def _instructions_for_state(
         ]
     if runtime_context.state == "AWAITING_PAYMENT_CONFIRMATION":
         return [
+            # NOTA: el nombre del estado contiene "CONFIRMATION" por persistencia
+            # pero las instrucciones visibles al LLM evitan la palabra "confirmar"
+            # — el LLM la filtraba al paciente como "para confirmarte/confirmar
+            # tu cita" violando uses_pre_payment_vocabulary.
             "Flujo actual: pago pendiente de aprobacion.",
             "Si el paciente avisa que ya pago o envia comprobante, responde solo 'Gracias, dame un momento'. "
-            f"No menciones que alguien esta revisando el pago ni que {ref} lo va a confirmar.",
+            f"No menciones que alguien esta revisando el pago ni que {ref} lo va a aprobar.",
+            # Frase POSITIVA literal: el LLM tiende a generar slips como
+            # "para confirmarte la cita" al pedir el pago. Indicamos
+            # explicitamente la formula valida y la prohibicion concreta.
+            "Cuando pidas el pago, usa LITERALMENTE alguna de estas formulas: "
+            '"Para reservar tu cita, paga X" / "Para asegurar tu cupo, paga X" / '
+            '"Para continuar con el agendamiento, paga X". '
+            "PROHIBIDO agregar a continuacion frases como 'para poder confirmarte la cita', "
+            "'para confirmarte el espacio', 'para confirmar tu asistencia' — ni siquiera con "
+            "clitics (-te, -le, -se). En esta fase la cita se RESERVA, no se confirma.",
             "Cuando indiques como pagar, da las instrucciones directas (monto, medio, "
             "numero o referencia, beneficiario). No preguntes si el paciente puede pagar por ese medio.",
             "Si el paciente pregunta por otros medios de pago (efectivo, tarjeta, otra app, etc.), "

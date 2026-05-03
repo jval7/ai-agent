@@ -133,7 +133,15 @@ class ToolDefinitionRegistry:
             llm_dto.FunctionDeclarationDTO(
                 name="confirm_selected_slot_and_create_event",
                 description=(
-                    "Confirma un horario elegido por el paciente y crea el evento en Google Calendar. "
+                    # NOTA: el nombre del tool empieza con `confirm_*` por compatibilidad
+                    # con el orchestrator existente. La descripcion EVITA el verbo
+                    # "confirmar" porque el LLM lo reflejaba al paciente como
+                    # "confirmar tu cita / asistencia" en pre-pago, violando la regla
+                    # uses_pre_payment_vocabulary. Aqui el verbo correcto es agendar /
+                    # crear el evento.
+                    "Agenda definitivamente la cita: crea el evento en Google Calendar "
+                    "para el horario que el paciente eligio y persiste el agendamiento "
+                    "en Firestore. "
                     "Si el perfil del paciente ya existe en contexto, reutilizalo y no repitas preguntas innecesarias. "
                     "Si el perfil no existe, pide TODOS los datos faltantes en UN SOLO mensaje "
                     "(patient_full_name, patient_email, patient_phone, patient_age). "
