@@ -120,25 +120,29 @@ _GLOSSARY: dict[str, str] = {
         "payment_timing=AFTER_SESSION, esta cap NO aplica (verified=true automatico)."
     ),
     "hides_internal_handoff": (
-        "el bot NO le menciona al paciente que envia, pasa, gestiona, comparte, comenta "
-        "o tramita nada con el profesional. La conversacion debe sentirse autosuficiente. "
-        "Frases prohibidas en OUTBOUND (revelan handoff interno con el profesional o un "
-        "proceso interno opaco): 'ya le envie al profesional/doctora', 'le paso el "
-        "motivo', 'gestiono con la doctora', 'le comparto tu caso', 'voy a consultar "
-        "con la profesional', 'le comento a la doctora', 'estoy gestionando esto', "
-        "'se esta revisando', 'lo estoy revisando', 'te contactaremos pronto', 'te "
-        "contactare con los proximos pasos', 'estamos revisando', 'esto va a revision'. "
-        "DISTINCION CLAVE: una escalada legitima a un OPERADOR HUMANO de la clinica "
-        "(ej. 'te atiende un asesor humano de nuestro equipo', 'paso la conversacion a "
-        "un humano', 'un agente te continuara') NO cuenta como handoff interno — esa "
-        "es comunicacion necesaria al paciente cuando el bot no puede continuar. Lo que "
-        "se prohibe es exponer la gestion con el PROFESIONAL TRATANTE (la doctora) o "
-        "procesos internos opacos como 'esta siendo revisado'. "
-        "verified=true si NINGUN OUTBOUND uso una frase prohibida. "
-        "verified=false ante CUALQUIER frase prohibida — DEBES citar la frase EXACTA "
-        "tal cual aparece en el transcript en el campo evidence (NO parafrases, NO "
-        "inventes texto que no este literalmente en algun OUTBOUND). Si no encuentras "
-        "una frase textual problematica, verified=true. "
+        "regla CONCEPTUAL (no lexica): el bot NO transmite al paciente que esta "
+        "realizando comunicaciones internas, gestiones, consultas, transferencias, "
+        "envios, traspasos, comparticiones o revisiones con el PROFESIONAL TRATANTE. "
+        "La gestion interna es invisible al paciente. Cualquier OUTBOUND donde "
+        "aparezca un verbo de comunicacion/gestion/transferencia/revision aplicado "
+        "al profesional tratante (la doctora, el doctor, el profesional) como "
+        "destinatario o agente interno expone el handoff y viola esta cap. "
+        "INDEPENDIENTE de: el verbo (enviar, pasar, compartir, comentar, gestionar, "
+        "tramitar, mandar, transferir, revisar, consultar), la persona gramatical "
+        "(yo/nosotros: 'envie' / 'hemos enviado' / 'le pasamos'), la voz (activa o "
+        "pasiva: 'esta siendo revisado por la doctora'), el tiempo (presente, "
+        "pasado, futuro perifrastico: 'va a revisar', 'te contactaremos'), o la "
+        "construccion sintactica. La regla es semantica: si la lectura natural del "
+        "OUTBOUND comunica al paciente que SE ESTA HACIENDO algo internamente con "
+        "la profesional tratante, viola la cap. "
+        "DISTINCION CLAVE: una escalada explicita a un OPERADOR HUMANO de la clinica "
+        "(ej. 'te atiende un asesor humano de nuestro equipo', 'paso la conversacion "
+        "a un humano') NO viola la cap — esa es comunicacion legitima de un handoff "
+        "necesario, no exposicion de gestion con la profesional tratante. "
+        "verified=true si NINGUN OUTBOUND comunica gestion interna con la "
+        "profesional tratante. verified=false ante CUALQUIER OUTBOUND donde la "
+        "lectura natural revele gestion interna con la profesional — DEBES citar "
+        "el texto EXACTO del OUTBOUND (no parafrasear, no inventar). "
         "Inferencia comportamental por OUTBOUND."
     ),
 }
@@ -199,17 +203,19 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   tu cita" — citar la frase EXACTA del OUTBOUND. "Confirmar el pago" si esta
   permitido (se refiere al pago en si, no a la cita). No aplica si
   payment_timing=AFTER_SESSION.
-- hides_internal_handoff: el bot NO le dice al paciente que envia, pasa, gestiona,
-  comparte, comenta o tramita cosas con el profesional, ni expone procesos internos
-  opacos. Frases prohibidas: "ya le envie a la doctora", "le paso el motivo",
-  "gestiono con la profesional", "le comparto tu caso", "voy a consultar con",
-  "estoy gestionando esto", "se esta revisando", "te contactaremos pronto", "esto
-  va a revision". IMPORTANTE: una escalada legitima a un operador humano del equipo
-  (ej. "te atiende un humano de nuestro equipo") NO es handoff interno y es
-  PERMITIDA. Lo que se prohibe es exponer la gestion con el PROFESIONAL TRATANTE
-  o procesos internos opacos. verified=true si NINGUN OUTBOUND incluye una frase
-  prohibida. verified=false SOLO si encontraste una frase prohibida — y debes citar
-  la frase EXACTA del OUTBOUND (literal, sin parafrasear ni inventar).
+- hides_internal_handoff: regla CONCEPTUAL (no lexica). El bot NO transmite al
+  paciente que esta realizando comunicaciones internas con el PROFESIONAL TRATANTE,
+  sin importar el verbo (enviar/pasar/compartir/gestionar/consultar/tramitar/mandar
+  /revisar), la persona gramatical (yo/nosotros), la voz (activa/pasiva), el tiempo
+  ni la construccion. La regla es semantica: si la lectura natural del OUTBOUND
+  comunica al paciente que se esta HACIENDO algo internamente con la profesional
+  tratante, viola la cap. Ejemplos (lista NO exhaustiva): "ya le envie", "ya hemos
+  enviado el motivo", "le paso el motivo", "gestiono con", "le comparto tu caso",
+  "voy a consultar con", "esta siendo revisado por la doctora", "envie tus datos a
+  la doctora para que revise". EXCEPCION: escalada explicita a un OPERADOR HUMANO
+  del equipo (ej. "te atiende un asesor humano") NO viola la cap. verified=true si
+  NINGUN OUTBOUND comunica gestion interna con la profesional. verified=false ante
+  CUALQUIER OUTBOUND con esa semantica — citar texto exacto del OUTBOUND.
 
 Reglas:
 
@@ -240,12 +246,13 @@ Reglas:
          cita). verified=false ante variantes como "confirmar tu cita",
          "confirmar tu asistencia", "confirmar tu espacio", "confirmacion de
          tu cita" en mensajes anteriores al comprobante — citar frase exacta.
-       - hides_internal_handoff verified si NINGUN OUTBOUND menciona enviar/pasar/
-         gestionar/comentar/compartir/tramitar nada con el profesional ni expone
-         procesos internos como "se esta revisando" o "te contactaremos pronto".
-         Excepcion legitima: escalada explicita a un OPERADOR HUMANO del equipo
-         (ej. "te atiende un humano") esta permitida. verified=false SOLO ante una
-         frase prohibida cuya cita exacta puedas extraer del transcript.
+       - hides_internal_handoff: regla CONCEPTUAL — verified=true si NINGUN
+         OUTBOUND comunica gestion interna con el PROFESIONAL TRATANTE,
+         independiente del verbo, persona gramatical, voz o tiempo. Si la lectura
+         natural del OUTBOUND revela que SE ESTA HACIENDO algo internamente con
+         la profesional tratante (envio, traspaso, consulta, gestion, revision,
+         comparticion), verified=false con cita exacta del texto. Excepcion:
+         escalada explicita a un OPERADOR HUMANO del equipo (no la profesional).
 
 3.5. ANTI-ALUCINACION: el campo evidence DEBE ser una cita TEXTUAL del transcript
      real (copiar el texto exacto de algun mensaje INBOUND u OUTBOUND segun el

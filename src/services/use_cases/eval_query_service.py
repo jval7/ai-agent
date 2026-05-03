@@ -129,14 +129,20 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
     eval_dto.EvalCapabilityDocDTO(
         id="hides_internal_handoff",
         description=(
-            "el bot NO le dice al paciente que envía, pasa, gestiona, comparte o comenta "
-            "nada con el profesional. El handoff interno es invisible para el paciente."
+            "regla conceptual: el bot NO transmite al paciente que está realizando "
+            "comunicaciones internas con el profesional tratante. Cualquier verbo de "
+            "comunicación / gestión / transferencia aplicado al profesional como "
+            "destinatario interno (enviar, pasar, compartir, gestionar, consultar, "
+            "tramitar, revisar) viola la cap, sin importar la persona gramatical "
+            "(yo/nosotros), voz (activa/pasiva) o tiempo verbal."
         ),
         implications=(
-            "EL BOT no debe usar frases como 'ya le envié al profesional', 'le paso el "
-            "motivo', 'gestiono con la doctora', 'le comparto tu caso', 'voy a consultar "
-            "con'. La conversación debe sentirse autosuficiente — al paciente no le "
-            "interesa el proceso interno."
+            "EL BOT debe mantener invisible la gestión interna con la profesional "
+            "tratante. Falla ante 'ya le envié', 'ya hemos enviado el motivo', 'le paso "
+            "el motivo', 'le comparto tu caso', 'voy a consultar con', 'está siendo "
+            "revisado por la doctora', 'envié tus datos a la doctora para que revise', y "
+            "cualquier variante semánticamente equivalente. Excepción: escalada explícita "
+            "a un operador humano del equipo es comunicación legítima."
         ),
         category="bot_behavior",
     ),

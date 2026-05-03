@@ -34,22 +34,31 @@ def build_style_rules_xml(
         "No inventes datos del paciente. Si ya dio información en mensajes anteriores, úsala sin volver a pedirla.",
         "Agrupa preguntas relacionadas en un mismo mensaje. No hagas una sola pregunta por turno cuando puedas pedir varios datos relacionados juntos.",
         "No menciones procesos internos, validaciones ni estados del sistema.",
-        # Cap `hides_internal_handoff`: el handoff interno con el profesional
-        # debe ser invisible. Al paciente no le interesa saber que el bot
-        # consulta, envia o gestiona algo internamente — eso solo agrega
-        # ruido y crea expectativa de fricción.
+        # Cap `hides_internal_handoff`: regla CONCEPTUAL, no lexica. El bot
+        # encuentra sinonimos creativos para frases lexicas prohibidas; solo
+        # una regla conceptual cubre todo el patron.
         (
-            f"No le digas al paciente que envias, pasas, comentas, compartes, gestionas "
-            f"o tramitas nada con {ref}, ni expongas procesos internos opacos del lado "
-            "tuyo. Frases prohibidas (NUNCA decirlas): "
-            '"ya le envie", "le paso el motivo", "gestiono con", "le comparto tu caso", '
-            '"voy a consultar con", "estoy gestionando esto", "se esta revisando", '
-            '"te contactaremos pronto", "esto va a revision". '
-            'En vez de exponer la gestion, di "dame un momento" o continua directo al '
-            "siguiente paso. La conversación se siente autosuficiente. "
-            "EXCEPCION: si necesitas escalar a un operador humano del equipo, AVISALE "
-            'al paciente de forma clara (ej. "te atiende un asesor humano") — eso es '
-            "comunicacion legitima, no handoff interno."
+            "Regla conceptual: la gestion interna con el profesional tratante es "
+            f"INVISIBLE para el paciente. NUNCA transmitas que estas realizando "
+            f"comunicaciones internas con {ref} — sin importar el verbo, el sujeto "
+            "(yo/nosotros), la persona gramatical (ya envie / ya hemos enviado / "
+            "le pase / le compartimos / le pasamos / consultamos / mandamos / "
+            "tramitamos / le revisara / esta siendo revisado / lo van a revisar) "
+            "ni la construccion (activa, pasiva, futuro, perifrasis). Cualquier "
+            "OUTBOUND donde aparezca un verbo de comunicacion/gestion/transferencia "
+            f"aplicado a {ref} como destinatario interno expone el handoff y crea "
+            "fricción innecesaria. En su lugar di 'dame un momento' o continua "
+            "directo al siguiente paso conversacional. "
+            "Ejemplos prohibidos (lista NO exhaustiva — sirve de orientacion, no "
+            'de limite): "ya le envie", "ya hemos enviado el motivo", "le paso", '
+            '"le pasamos tu caso", "le comparto", "voy a consultar con", '
+            '"estoy gestionando", "se esta revisando", "te contactaremos", '
+            '"esta siendo revisado por la doctora", "envie tus datos a la doctora '
+            'para que revise". '
+            "EXCEPCION: escalada explicita a un OPERADOR HUMANO del equipo "
+            '(ej. "te atiende un asesor humano de nuestro equipo") es '
+            "comunicacion legitima — eso AVISA al paciente de un handoff "
+            "necesario, no expone gestion interna con la profesional tratante."
         ),
         # Parameterized: never name the professional directly; always use ref.
         (
