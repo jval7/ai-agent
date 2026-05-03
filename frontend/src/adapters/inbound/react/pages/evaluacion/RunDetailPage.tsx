@@ -16,6 +16,28 @@ const OVERALL_BADGE: Record<
   none: { label: "none", className: "bg-red-100 text-red-700" }
 };
 
+// ---------------------------------------------------------------------------
+// Effective status helper
+// ---------------------------------------------------------------------------
+
+type EffectiveStatus = "ok" | "partial" | "fail" | "skipped";
+
+function getEffectiveStatus(conv: evaluationModel.EvalRunConversationSnapshot): EffectiveStatus {
+  if (conv.status === "fail") return "fail";
+  if (conv.status === "skipped") return "skipped";
+  // status === "ok" — check judge verdict
+  const overall = conv.judgeVerdict?.overall;
+  if (overall === "partial" || overall === "none") return "partial";
+  return "ok";
+}
+
+function effectiveStatusClass(s: EffectiveStatus): string {
+  if (s === "ok") return "bg-green-100 text-green-700";
+  if (s === "partial") return "bg-amber-100 text-amber-700";
+  if (s === "fail") return "bg-red-100 text-red-700";
+  return "bg-slate-100 text-slate-600";
+}
+
 function CapabilityChip(props: {
   verification: evaluationModel.EvalCapabilityVerification;
   expanded: boolean;
@@ -161,11 +183,7 @@ function ConversationCard(props: { conv: evaluationModel.EvalRunConversationSnap
   const [expanded, setExpanded] = reactModule.useState(false);
   const { conv } = props;
 
-  const statusClass: Record<"ok" | "fail" | "skipped", string> = {
-    ok: "bg-green-100 text-green-700",
-    fail: "bg-red-100 text-red-700",
-    skipped: "bg-amber-100 text-amber-700"
-  };
+  const effectiveStatus = getEffectiveStatus(conv);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -180,9 +198,9 @@ function ConversationCard(props: { conv: evaluationModel.EvalRunConversationSnap
           <div className="flex flex-wrap items-center gap-2">
             <p className="font-mono text-xs font-semibold text-slate-700">{conv.personaId}</p>
             <span
-              className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${statusClass[conv.status]}`}
+              className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${effectiveStatusClass(effectiveStatus)}`}
             >
-              {conv.status}
+              {effectiveStatus}
             </span>
             {conv.elapsedSeconds !== null ? (
               <span className="text-xs text-slate-400">{conv.elapsedSeconds.toFixed(1)}s</span>
@@ -340,26 +358,41 @@ export function RunDetailPage() {
                 ) : null}
               </div>
 
-              <div className="mt-4 flex gap-6">
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-slate-800">{runQuery.data.totalPersonas}</p>
-                  <p className="text-xs text-slate-500">Total</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-green-600">{runQuery.data.ok}</p>
-                  <p className="text-xs text-slate-500">OK</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-red-600">{runQuery.data.fail}</p>
-                  <p className="text-xs text-slate-500">Fail</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-amber-600">
-                    {runQuery.data.skipped ? "Sí" : "No"}
-                  </p>
-                  <p className="text-xs text-slate-500">Skip</p>
-                </div>
-              </div>
+              {(() => {
+                const partialCount = runQuery.data.conversations.filter(
+                  (c) => getEffectiveStatus(c) === "partial"
+                ).length;
+                return (
+                  <div className="mt-4 flex gap-6">
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-slate-800">
+                        {runQuery.data.totalPersonas}
+                      </p>
+                      <p className="text-xs text-slate-500">Total</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-green-600">{runQuery.data.ok}</p>
+                      <p className="text-xs text-slate-500">OK</p>
+                    </div>
+                    {partialCount > 0 ? (
+                      <div className="text-center">
+                        <p className="text-2xl font-bold text-amber-500">{partialCount}</p>
+                        <p className="text-xs text-slate-500">Partial</p>
+                      </div>
+                    ) : null}
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-red-600">{runQuery.data.fail}</p>
+                      <p className="text-xs text-slate-500">Fail</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-amber-600">
+                        {runQuery.data.skipped ? "Sí" : "No"}
+                      </p>
+                      <p className="text-xs text-slate-500">Skip</p>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Conversations */}

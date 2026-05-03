@@ -49,6 +49,20 @@ function formatDateShort(iso: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Effective status helper (mirrors RunDetailPage)
+// ---------------------------------------------------------------------------
+
+type EffectiveStatus = "ok" | "partial" | "fail" | "skipped";
+
+function getEffectiveStatus(conv: evaluationModel.EvalRunConversationSnapshot): EffectiveStatus {
+  if (conv.status === "fail") return "fail";
+  if (conv.status === "skipped") return "skipped";
+  const overall = conv.judgeVerdict?.overall;
+  if (overall === "partial" || overall === "none") return "partial";
+  return "ok";
+}
+
+// ---------------------------------------------------------------------------
 // Run group types
 // ---------------------------------------------------------------------------
 
@@ -125,8 +139,13 @@ function groupRuns(runs: evaluationModel.EvalRunListItem[]): RunGroup[] {
 // Status badges
 // ---------------------------------------------------------------------------
 
-function GroupStatusBadge(props: { status: GroupStatus; totalOk: number; totalFail: number }) {
-  const { status, totalOk, totalFail } = props;
+function GroupStatusBadge(props: {
+  status: GroupStatus;
+  totalOk: number;
+  totalFail: number;
+  totalPartial: number;
+}) {
+  const { status, totalOk, totalFail, totalPartial } = props;
 
   if (status === "fail") {
     return (
@@ -149,6 +168,14 @@ function GroupStatusBadge(props: { status: GroupStatus; totalOk: number; totalFa
       </span>
     );
   }
+  // ok — may have partials
+  if (totalPartial > 0) {
+    return (
+      <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
+        {totalOk} OK / {totalPartial} Partial
+      </span>
+    );
+  }
   return (
     <span className="inline-block rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
       {totalOk} OK
@@ -156,26 +183,200 @@ function GroupStatusBadge(props: { status: GroupStatus; totalOk: number; totalFa
   );
 }
 
-function ShapeStatusBadge(props: { run: evaluationModel.EvalRunListItem }) {
-  const { run } = props;
-  if (run.fail > 0) {
+// ---------------------------------------------------------------------------
+// Caps fallidas inline — sub-row para una shape row
+// ---------------------------------------------------------------------------
+
+interface FailedCapSummary {
+  personaId: string;
+  caps: { capability: string; reasoning: string | null }[];
+}
+
+function extractFailedCaps(detail: evaluationModel.EvalRunDetail): FailedCapSummary[] {
+  const result: FailedCapSummary[] = [];
+  for (const conv of detail.conversations) {
+    const eff = getEffectiveStatus(conv);
+    if (eff !== "partial" && eff !== "fail") continue;
+    if (conv.judgeVerdict === null) continue;
+
+    const failedVerifications = conv.judgeVerdict.verifications.filter((v) => !v.verified);
+    if (failedVerifications.length === 0) continue;
+
+    result.push({
+      personaId: conv.personaId,
+      caps: failedVerifications.map((v) => ({
+        capability: v.capability,
+        reasoning: v.reasoning ?? null
+      }))
+    });
+  }
+  return result;
+}
+
+function FailedCapsPanel(props: { runDocId: string }) {
+  const { runDocId } = props;
+  const appContainer = appContainerContextModule.useAppContainer();
+
+  const detailQuery = reactQueryModule.useQuery({
+    queryKey: ["eval-run", runDocId],
+    queryFn: () => appContainer.evaluationUseCase.getRun(runDocId),
+    staleTime: Infinity
+  });
+
+  if (detailQuery.isLoading) {
     return (
-      <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
-        FAIL
-      </span>
+      <tr>
+        <td colSpan={8} className="bg-amber-50 px-8 py-3 text-xs text-slate-500">
+          Cargando caps fallidas...
+        </td>
+      </tr>
     );
   }
-  if (run.skipped) {
+
+  if (detailQuery.isError || detailQuery.data === undefined) {
     return (
-      <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-700">
-        omitido
-      </span>
+      <tr>
+        <td colSpan={8} className="bg-amber-50 px-8 py-3 text-xs text-red-600">
+          No se pudo cargar el detalle.
+        </td>
+      </tr>
     );
   }
+
+  const failed = extractFailedCaps(detailQuery.data);
+
+  if (failed.length === 0) {
+    return (
+      <tr>
+        <td colSpan={8} className="bg-amber-50 px-8 py-3 text-xs text-slate-500 italic">
+          Sin caps fallidas.
+        </td>
+      </tr>
+    );
+  }
+
   return (
-    <span className="inline-block rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-      OK
-    </span>
+    <tr>
+      <td colSpan={8} className="bg-amber-50 px-8 py-4">
+        <div className="space-y-3">
+          {failed.map((item) => (
+            <div key={item.personaId}>
+              <p className="mb-1 font-mono text-xs font-semibold text-slate-700">
+                {item.personaId}
+              </p>
+              <div className="space-y-1">
+                {item.caps.map((cap) => (
+                  <div
+                    key={cap.capability}
+                    className="rounded-lg border border-red-200 bg-white px-3 py-2"
+                  >
+                    <p className="text-xs font-semibold text-red-700">{cap.capability}</p>
+                    {cap.reasoning !== null ? (
+                      <p className="mt-0.5 text-xs text-slate-500 leading-snug">{cap.reasoning}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shape child row with caps count + inline expand
+// ---------------------------------------------------------------------------
+
+function countFailedCapsFromDetail(detail: evaluationModel.EvalRunDetail): number {
+  let count = 0;
+  for (const conv of detail.conversations) {
+    if (conv.judgeVerdict === null) continue;
+    count += conv.judgeVerdict.verifications.filter((v) => !v.verified).length;
+  }
+  return count;
+}
+
+function ShapeRow(props: { run: evaluationModel.EvalRunListItem }) {
+  const { run } = props;
+  const navigate = reactRouterDomModule.useNavigate();
+  const appContainer = appContainerContextModule.useAppContainer();
+  const [capsExpanded, setCapsExpanded] = reactModule.useState(false);
+
+  // Prefetch detail to get failed caps count — only when group is already
+  // expanded (parent renders this component), so we fetch eagerly.
+  const detailQuery = reactQueryModule.useQuery({
+    queryKey: ["eval-run", run.runDocId],
+    queryFn: () => appContainer.evaluationUseCase.getRun(run.runDocId),
+    staleTime: Infinity
+  });
+
+  const failedCapsCount =
+    detailQuery.data !== undefined ? countFailedCapsFromDetail(detailQuery.data) : null;
+
+  function handleRowClick(): void {
+    navigate(`/evaluacion/runs/${run.runDocId}`);
+  }
+
+  function handleCapsToggle(e: reactModule.MouseEvent): void {
+    e.stopPropagation();
+    setCapsExpanded((v) => !v);
+  }
+
+  return (
+    <>
+      <tr
+        className="cursor-pointer bg-white hover:bg-slate-50 transition-colors"
+        onClick={handleRowClick}
+      >
+        <td className="w-6 py-2" />
+        <td className="py-2 pr-4 font-mono text-xs text-slate-600">
+          <span className="ml-2 flex items-center gap-1 text-slate-400">
+            <span>└</span>
+            <span className="text-slate-700">{run.shapeName}</span>
+          </span>
+        </td>
+        <td className="py-2 pr-4 text-xs text-slate-500">{formatDateShort(run.startedAt)}</td>
+        <td className="py-2 pr-4 text-right text-xs text-slate-600">{run.totalPersonas}</td>
+        <td className="py-2 pr-4 text-right text-xs font-semibold text-green-700">{run.ok}</td>
+        <td className="py-2 pr-4 text-right text-xs font-semibold text-red-700">{run.fail}</td>
+        {/* Caps fallidas column */}
+        <td className="py-2 pr-4 text-xs" onClick={handleCapsToggle}>
+          {detailQuery.isLoading ? (
+            <span className="text-slate-400">...</span>
+          ) : failedCapsCount !== null && failedCapsCount > 0 ? (
+            <button
+              className="flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+              type="button"
+            >
+              <span>
+                {failedCapsCount} cap{failedCapsCount !== 1 ? "s" : ""} fallida
+                {failedCapsCount !== 1 ? "s" : ""}
+              </span>
+              <span className="opacity-70">{capsExpanded ? "▲" : "▼"}</span>
+            </button>
+          ) : (
+            <span className="text-slate-300">—</span>
+          )}
+        </td>
+        <td
+          className="py-2 pr-4"
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          <reactRouterDomModule.Link
+            className="text-xs font-semibold text-brand-teal hover:underline"
+            to={`/evaluacion/runs/${run.runDocId}`}
+          >
+            Ver →
+          </reactRouterDomModule.Link>
+        </td>
+      </tr>
+
+      {capsExpanded ? <FailedCapsPanel runDocId={run.runDocId} /> : null}
+    </>
   );
 }
 
@@ -190,6 +391,19 @@ function RunGroupRow(props: {
 }) {
   const { group, onDelete, isDeleting } = props;
   const [expanded, setExpanded] = reactModule.useState(false);
+  const queryClient = reactQueryModule.useQueryClient();
+
+  // Read already-cached shape details (populated by ShapeRow queries) to
+  // compute the partial count for the group badge. No new fetches here —
+  // ShapeRow handles fetching when it mounts.
+  const totalPartial = group.shapes.reduce((acc, shape) => {
+    const cached = queryClient.getQueryData<evaluationModel.EvalRunDetail>([
+      "eval-run",
+      shape.runDocId
+    ]);
+    if (cached === undefined) return acc;
+    return acc + cached.conversations.filter((c) => getEffectiveStatus(c) === "partial").length;
+  }, 0);
 
   const groupRowBg =
     group.status === "fail"
@@ -235,6 +449,7 @@ function RunGroupRow(props: {
             status={group.status}
             totalFail={group.totalFail}
             totalOk={group.totalOk}
+            totalPartial={totalPartial}
           />
         </td>
         <td
@@ -258,38 +473,7 @@ function RunGroupRow(props: {
       </tr>
 
       {/* Child shape rows */}
-      {expanded
-        ? group.shapes.map((run) => (
-            <tr className="bg-white hover:bg-slate-50" key={run.runDocId}>
-              <td className="w-6 py-2" />
-              <td className="py-2 pr-4 font-mono text-xs text-slate-600">
-                <span className="ml-2 flex items-center gap-1 text-slate-400">
-                  <span>└</span>
-                  <span className="text-slate-700">{run.shapeName}</span>
-                </span>
-              </td>
-              <td className="py-2 pr-4 text-xs text-slate-500">{formatDateShort(run.startedAt)}</td>
-              <td className="py-2 pr-4 text-right text-xs text-slate-600">{run.totalPersonas}</td>
-              <td className="py-2 pr-4 text-right text-xs font-semibold text-green-700">
-                {run.ok}
-              </td>
-              <td className="py-2 pr-4 text-right text-xs font-semibold text-red-700">
-                {run.fail}
-              </td>
-              <td className="py-2 pr-4">
-                <ShapeStatusBadge run={run} />
-              </td>
-              <td className="py-2 pr-4">
-                <reactRouterDomModule.Link
-                  className="text-xs font-semibold text-brand-teal hover:underline"
-                  to={`/evaluacion/runs/${run.runDocId}`}
-                >
-                  Ver →
-                </reactRouterDomModule.Link>
-              </td>
-            </tr>
-          ))
-        : null}
+      {expanded ? group.shapes.map((run) => <ShapeRow key={run.runDocId} run={run} />) : null}
     </>
   );
 }
@@ -300,8 +484,15 @@ function RunGroupRow(props: {
 
 function FlatRunRow(props: { run: evaluationModel.EvalRunListItem }) {
   const { run } = props;
+  const navigate = reactRouterDomModule.useNavigate();
+
   return (
-    <tr className="hover:bg-slate-50" key={run.runDocId}>
+    <tr
+      className="cursor-pointer hover:bg-slate-50 transition-colors"
+      onClick={() => {
+        navigate(`/evaluacion/runs/${run.runDocId}`);
+      }}
+    >
       <td className="px-4 py-3 font-mono text-xs text-slate-700" colSpan={2}>
         {run.shapeName}
       </td>
@@ -309,12 +500,12 @@ function FlatRunRow(props: { run: evaluationModel.EvalRunListItem }) {
       <td className="px-4 py-3 text-right text-xs text-slate-600">{run.totalPersonas}</td>
       <td className="px-4 py-3 text-right text-xs font-semibold text-green-700">{run.ok}</td>
       <td className="px-4 py-3 text-right text-xs font-semibold text-red-700">{run.fail}</td>
-      <td className="px-4 py-3">
-        <ShapeStatusBadge run={run} />
-      </td>
-      <td className="px-4 py-3">
+      <td className="px-4 py-3" colSpan={2}>
         <reactRouterDomModule.Link
           className="text-xs font-semibold text-brand-teal hover:underline"
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
           to={`/evaluacion/runs/${run.runDocId}`}
         >
           Ver →
@@ -494,7 +685,7 @@ export function RunsTab() {
                   Fail
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Estado
+                  Estado / Caps
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   Detalle
