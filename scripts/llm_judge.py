@@ -98,12 +98,25 @@ _GLOSSARY: dict[str, str] = {
         "inferible. Inferencia comportamental por OUTBOUND aceptable."
     ),
     "hides_internal_handoff": (
-        "el bot NO le menciona al paciente que envia, pasa, gestiona, comparte o comenta "
-        "nada con el profesional. Frases prohibidas en OUTBOUND: 'ya le envie al "
-        "profesional/doctora', 'le paso el motivo', 'gestiono con la doctora', 'le "
-        "comparto tu caso', 'voy a consultar con la profesional', 'le comento a la "
-        "doctora'. verified=true si el bot NO uso ninguna de estas frases en todo el "
-        "transcript. verified=false si CUALQUIER OUTBOUND expone el handoff interno. "
+        "el bot NO le menciona al paciente que envia, pasa, gestiona, comparte, comenta "
+        "o tramita nada con el profesional. La conversacion debe sentirse autosuficiente. "
+        "Frases prohibidas en OUTBOUND (revelan handoff interno con el profesional o un "
+        "proceso interno opaco): 'ya le envie al profesional/doctora', 'le paso el "
+        "motivo', 'gestiono con la doctora', 'le comparto tu caso', 'voy a consultar "
+        "con la profesional', 'le comento a la doctora', 'estoy gestionando esto', "
+        "'se esta revisando', 'lo estoy revisando', 'te contactaremos pronto', 'te "
+        "contactare con los proximos pasos', 'estamos revisando', 'esto va a revision'. "
+        "DISTINCION CLAVE: una escalada legitima a un OPERADOR HUMANO de la clinica "
+        "(ej. 'te atiende un asesor humano de nuestro equipo', 'paso la conversacion a "
+        "un humano', 'un agente te continuara') NO cuenta como handoff interno — esa "
+        "es comunicacion necesaria al paciente cuando el bot no puede continuar. Lo que "
+        "se prohibe es exponer la gestion con el PROFESIONAL TRATANTE (la doctora) o "
+        "procesos internos opacos como 'esta siendo revisado'. "
+        "verified=true si NINGUN OUTBOUND uso una frase prohibida. "
+        "verified=false ante CUALQUIER frase prohibida — DEBES citar la frase EXACTA "
+        "tal cual aparece en el transcript en el campo evidence (NO parafrases, NO "
+        "inventes texto que no este literalmente en algun OUTBOUND). Si no encuentras "
+        "una frase textual problematica, verified=true. "
         "Inferencia comportamental por OUTBOUND."
     ),
 }
@@ -154,10 +167,16 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   verified=false SOLO si el bot expuso ambas monedas juntas sin saber ubicacion,
   o cotizo una moneda inconsistente con la ubicacion inferible.
 - hides_internal_handoff: el bot NO le dice al paciente que envia, pasa, gestiona,
-  comparte o comenta cosas con el profesional. Frases prohibidas: "ya le envie a la
-  doctora", "le paso el motivo", "gestiono con la profesional", "le comparto tu
-  caso", "voy a consultar con". verified=true si NINGUN OUTBOUND incluye este
-  tipo de exposicion. verified=false ante CUALQUIER frase que revele el handoff.
+  comparte, comenta o tramita cosas con el profesional, ni expone procesos internos
+  opacos. Frases prohibidas: "ya le envie a la doctora", "le paso el motivo",
+  "gestiono con la profesional", "le comparto tu caso", "voy a consultar con",
+  "estoy gestionando esto", "se esta revisando", "te contactaremos pronto", "esto
+  va a revision". IMPORTANTE: una escalada legitima a un operador humano del equipo
+  (ej. "te atiende un humano de nuestro equipo") NO es handoff interno y es
+  PERMITIDA. Lo que se prohibe es exponer la gestion con el PROFESIONAL TRATANTE
+  o procesos internos opacos. verified=true si NINGUN OUTBOUND incluye una frase
+  prohibida. verified=false SOLO si encontraste una frase prohibida — y debes citar
+  la frase EXACTA del OUTBOUND (literal, sin parafrasear ni inventar).
 
 Reglas:
 
@@ -183,8 +202,19 @@ Reglas:
          "presencial" => local => COP). verified=false SOLO si mostro varias
          monedas juntas sin saber ubicacion, o cotizo moneda inconsistente.
        - hides_internal_handoff verified si NINGUN OUTBOUND menciona enviar/pasar/
-         gestionar/comentar/compartir nada con el profesional. verified=false ante
-         CUALQUIER frase que exponga el handoff interno al paciente.
+         gestionar/comentar/compartir/tramitar nada con el profesional ni expone
+         procesos internos como "se esta revisando" o "te contactaremos pronto".
+         Excepcion legitima: escalada explicita a un OPERADOR HUMANO del equipo
+         (ej. "te atiende un humano") esta permitida. verified=false SOLO ante una
+         frase prohibida cuya cita exacta puedas extraer del transcript.
+
+3.5. ANTI-ALUCINACION: el campo evidence DEBE ser una cita TEXTUAL del transcript
+     real (copiar el texto exacto de algun mensaje INBOUND u OUTBOUND segun el
+     criterio aplicado). NUNCA inventes ni parafrasees la cita. Si no podes
+     encontrar evidencia textual literal en el transcript que respalde verified=
+     true o verified=false, prefiere verified=true con evidence=null y reasoning
+     explicando que no hay evidencia clara — es preferible un falso negativo a
+     una alucinacion. Verifica turno-por-turno antes de citar.
 
 3. evidence:
    - Si aplico criterio (a): quote textual breve del mensaje INBOUND.

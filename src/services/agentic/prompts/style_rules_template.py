@@ -39,10 +39,17 @@ def build_style_rules_xml(
         # consulta, envia o gestiona algo internamente — eso solo agrega
         # ruido y crea expectativa de fricción.
         (
-            f"No le digas al paciente que envias, pasas, comentas, compartes o gestionas "
-            f"nada con {ref}. Frases prohibidas: 'ya le envie', 'le paso el motivo', "
-            f'"gestiono con", "le comparto tu caso", "voy a consultar con". '
-            "El handoff interno es invisible — la conversación se siente autosuficiente."
+            f"No le digas al paciente que envias, pasas, comentas, compartes, gestionas "
+            f"o tramitas nada con {ref}, ni expongas procesos internos opacos del lado "
+            "tuyo. Frases prohibidas (NUNCA decirlas): "
+            '"ya le envie", "le paso el motivo", "gestiono con", "le comparto tu caso", '
+            '"voy a consultar con", "estoy gestionando esto", "se esta revisando", '
+            '"te contactaremos pronto", "esto va a revision". '
+            'En vez de exponer la gestion, di "dame un momento" o continua directo al '
+            "siguiente paso. La conversación se siente autosuficiente. "
+            "EXCEPCION: si necesitas escalar a un operador humano del equipo, AVISALE "
+            'al paciente de forma clara (ej. "te atiende un asesor humano") — eso es '
+            "comunicacion legitima, no handoff interno."
         ),
         # Parameterized: never name the professional directly; always use ref.
         (
