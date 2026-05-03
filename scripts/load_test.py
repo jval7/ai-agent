@@ -1123,18 +1123,27 @@ async def _capture_conversation_snapshot(
         error=error,
     )
 
-    # Llamar al juez si la conversacion tiene transcript y combos satisfechos.
+    # Llamar al juez si la conversacion tiene transcript y al menos una cap
+    # declarada para evaluar. Las caps `bot_behavior` son TRANSVERSALES: se
+    # evaluan aunque NO esten en los combos del shape (ej. hides_internal_handoff
+    # aplica a toda conversacion, sin necesidad de combo dedicado). Las caps que
+    # vienen de combos cubren la cobertura del shape; las bot_behavior cubren
+    # propiedades universales del bot.
     # judge_conversation es sync (Gemini SDK no expone async); usamos
     # asyncio.to_thread para no bloquear el event loop ~5s por persona.
-    if snapshot.transcript and snapshot.combos_satisfied:
-        declared_caps = list({cap for combo in snapshot.combos_satisfied for cap in combo})
-        snapshot.judge_verdict = await asyncio.to_thread(
-            llm_judge.judge_conversation,
-            persona_id=persona.id,
-            declared_capabilities=declared_caps,
-            transcript=snapshot.transcript,
-            gemini_client=_get_gemini_client(),
-        )
+    if snapshot.transcript:
+        declared_caps_set: set[str] = {cap for combo in snapshot.combos_satisfied for cap in combo}
+        declared_caps_set |= {
+            cap for cap in persona.capabilities if cap in personas_module.BOT_BEHAVIOR_CAPS
+        }
+        if declared_caps_set:
+            snapshot.judge_verdict = await asyncio.to_thread(
+                llm_judge.judge_conversation,
+                persona_id=persona.id,
+                declared_capabilities=list(declared_caps_set),
+                transcript=snapshot.transcript,
+                gemini_client=_get_gemini_client(),
+            )
 
     return snapshot
 

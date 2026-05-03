@@ -37,6 +37,22 @@ Capability = typing.Literal[
 ]
 
 
+# Caps que describen comportamiento del BOT (no del paciente). Son TRANSVERSALES:
+# se evaluan en cada conversacion sin necesidad de aparecer en los `required_combos`
+# del shape. El runner las pasa al judge cuando la persona las declara, junto con
+# las caps que vienen de los combos del shape.
+#
+# Si agregas una cap nueva al Literal `Capability` con categoria "bot_behavior" en
+# `eval_query_service._CAPABILITIES_DOC`, agregala tambien aca para que el runner
+# la presente al judge.
+BOT_BEHAVIOR_CAPS: frozenset[Capability] = frozenset(
+    {
+        "quotes_currency_per_location",
+        "hides_internal_handoff",
+    }
+)
+
+
 @dataclasses.dataclass(frozen=True)
 class Persona:
     """Paciente simulado con capabilities anotadas.

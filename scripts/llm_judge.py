@@ -85,11 +85,17 @@ _GLOSSARY: dict[str, str] = {
     ),
     # Comportamiento del BOT (no del paciente). Se verifica observando los OUTBOUND.
     "quotes_currency_per_location": (
-        "el bot maneja correctamente las tarifas multi-moneda: cuando una tarifa tiene "
-        "varios precios en monedas distintas (ej. COP y USD), el bot pide la ubicacion "
-        "del paciente antes de cotizar (si no la sabe), y luego cotiza UNICAMENTE la "
-        "moneda apropiada. NUNCA debe mostrar dos monedas juntas en el mismo mensaje. "
-        "Inferencia comportamental por OUTBOUND aceptable."
+        "el bot maneja correctamente las tarifas multi-moneda. La regla critica es: "
+        "NUNCA muestra varias monedas juntas en el mismo mensaje cuando no sabe la "
+        "ubicacion del paciente. verified=true si el bot cotizo UNA sola moneda Y esa "
+        "moneda es consistente con la ubicacion del paciente — sea porque el bot la "
+        "pregunto explicitamente, sea porque la INFIRIO de pistas claras del paciente "
+        "(ej. paciente dijo 'presencial' => local => COP; paciente dijo 'virtual desde "
+        "Berlin' => foreign => USD; paciente menciono ciudad colombiana => COP). La "
+        "inferencia por contexto es valida — no es obligatorio preguntar si hay pistas. "
+        "verified=false SOLO si el bot expuso multiples monedas juntas sin tener forma "
+        "de saber la ubicacion, o cotizo una moneda inconsistente con la ubicacion "
+        "inferible. Inferencia comportamental por OUTBOUND aceptable."
     ),
     "hides_internal_handoff": (
         "el bot NO le menciona al paciente que envia, pasa, gestiona, comparte o comenta "
@@ -139,10 +145,14 @@ Inferenciales por flujo (pueden verificarse por como bot/paciente se comportan):
 - returning_patient: el bot saluda por nombre sin pedirlo; referencias a tratamiento previo
 
 Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
-- quotes_currency_per_location: ante tarifas multi-moneda, el bot pide ubicacion
-  antes de cotizar (si no la sabe) y luego cotiza UNA sola moneda. NUNCA muestra
-  COP y USD juntos en el mismo mensaje. verified=false si el bot expone ambos
-  precios sin saber donde reside el paciente.
+- quotes_currency_per_location: ante tarifas multi-moneda, el bot cotiza UNA sola
+  moneda Y esa moneda es consistente con la ubicacion del paciente — sea porque
+  la pregunto, sea porque la infirio del contexto (presencial => local => COP;
+  virtual desde otro pais => foreign => USD; ciudad colombiana mencionada => COP).
+  La inferencia por contexto es valida; no es obligatorio preguntar si hay pistas.
+  NUNCA debe mostrar varias monedas juntas en el mismo mensaje sin saber ubicacion.
+  verified=false SOLO si el bot expuso ambas monedas juntas sin saber ubicacion,
+  o cotizo una moneda inconsistente con la ubicacion inferible.
 - hides_internal_handoff: el bot NO le dice al paciente que envia, pasa, gestiona,
   comparte o comenta cosas con el profesional. Frases prohibidas: "ya le envie a la
   doctora", "le paso el motivo", "gestiono con la profesional", "le comparto tu
@@ -168,9 +178,10 @@ Reglas:
        - returning_patient verified si el bot saluda por nombre desde el primer mensaje.
        - local_patient verified si el bot cotizo en COP y ofrecio Nequi.
        - foreign_patient verified si el bot cotizo en USD y ofrecio Zelle.
-       - quotes_currency_per_location verified si el bot pidio ubicacion antes de
-         cotizar (cuando hay multi-moneda) y luego cotizo UNA sola. verified=false
-         si mostro varios precios juntos sin saber ubicacion.
+       - quotes_currency_per_location verified si el bot cotizo UNA sola moneda
+         consistente con la ubicacion (preguntada O inferida del contexto, ej.
+         "presencial" => local => COP). verified=false SOLO si mostro varias
+         monedas juntas sin saber ubicacion, o cotizo moneda inconsistente.
        - hides_internal_handoff verified si NINGUN OUTBOUND menciona enviar/pasar/
          gestionar/comentar/compartir nada con el profesional. verified=false ante
          CUALQUIER frase que exponga el handoff interno al paciente.
