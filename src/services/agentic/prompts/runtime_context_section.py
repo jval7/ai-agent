@@ -6,6 +6,29 @@ import src.services.scheduling_slot_formatter as scheduling_slot_formatter
 
 _FALLBACK_TIMEZONE = "America/Bogota"
 
+# El nombre canonico del estado (en el codigo, en Firestore y en los DTOs)
+# contiene la palabra "CONFIRMATION" por razones historicas. Pero proyectar
+# ese nombre literal en el system prompt satura la attention del LLM con el
+# concepto "confirmation" y lo hace generar slips como "para confirmarte la
+# cita" / "confirmar tu reserva" en pre-pago, violando uses_pre_payment_vocabulary.
+#
+# Para reducir esa saturacion sin tocar persistence, este modulo proyecta un
+# ALIAS visible al LLM mientras el codigo interno sigue usando el nombre
+# canonico. La traduccion es solo en lectura (rendering) — los entries que
+# se persisten o se comparan en el codigo no cambian.
+#
+# AWAITING_ATTENDANCE_CONFIRMATION queda IGUAL: ese estado SI es legitimo de
+# confirmacion (post-pago, recordatorio: el paciente confirma su asistencia).
+_LLM_VISIBLE_STATE_ALIASES: dict[str, str] = {
+    "AWAITING_PAYMENT_CONFIRMATION": "AWAITING_PAYMENT_RECEIPT",
+    "COLLECTING_CONFIRMATION_DATA": "COLLECTING_FINAL_DATA",
+}
+
+
+def _llm_visible_state_name(canonical_name: str) -> str:
+    """Return the alias projected to the LLM for a canonical state name."""
+    return _LLM_VISIBLE_STATE_ALIASES.get(canonical_name, canonical_name)
+
 
 def _resolve_timezone(agent_profile: agent_profile_entity.AgentProfile | None) -> str:
     """Return the tenant's configured timezone, falling back to America/Bogota."""
@@ -27,12 +50,14 @@ class RuntimeContextSection(prompt_section.PromptSection):
         timezone_name = _resolve_timezone(agent_profile)
         lines = [
             "INSTRUCCIONES RUNTIME (PRIORIDAD ALTA):",
-            f"- estado_conversacion: {runtime_context.state}",
+            f"- estado_conversacion: {_llm_visible_state_name(runtime_context.state)}",
         ]
         if runtime_context.request_id is not None:
             lines.append(f"- request_id_activo: {runtime_context.request_id}")
         if runtime_context.request_status is not None:
-            lines.append(f"- request_status_activo: {runtime_context.request_status}")
+            lines.append(
+                f"- request_status_activo: {_llm_visible_state_name(runtime_context.request_status)}"
+            )
         if runtime_context.appointment_modality is not None:
             lines.append(f"- modalidad_actual: {runtime_context.appointment_modality}")
         if runtime_context.patient_location is not None:

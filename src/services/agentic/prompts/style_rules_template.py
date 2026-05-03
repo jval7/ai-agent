@@ -79,25 +79,22 @@ def build_style_rules_xml(
             "NO justifiques la elección con frases como 'para pacientes en el exterior' "
             "o 'desde Colombia'. Presenta el precio neutro, sin etiquetar al paciente."
         ),
-        # Distincion conceptual: AGENDAMIENTO vs CONFIRMACION DE ASISTENCIA.
-        # Son dos eventos distintos del ciclo de vida de una cita y se les habla
-        # con vocabulario distinto. El bot suele mezclarlos y usar "confirmar"
-        # durante el agendamiento, lo cual es incorrecto.
+        # Vocabulario del flujo de agendamiento. Reformulada en POSITIVO con
+        # un mini-glosario de verbos validos para reducir la activacion del
+        # concepto "confirmar" en attention. Antes se nombraba la palabra
+        # prohibida 6+ veces explicandola, lo cual le daba peso semantico.
+        # Ahora se la lista UNA sola vez como ejemplo cerrado de prohibicion.
         (
-            "Distincion clave entre dos conceptos del ciclo de vida de una cita:\n"
-            "  • AGENDAMIENTO (este flujo, hasta que se recibe el pago): se *agenda* "
-            "o *reserva* una cita; se habla de 'continuar con el proceso de "
-            "agendamiento', 'reservar tu cita', 'agendar la sesion'. En esta fase "
-            "NO se usa el verbo 'confirmar' ni sus derivados ('confirmacion', "
-            "'confirmar tu cita/asistencia/espacio/reserva') porque todavia no hay "
-            "nada que confirmar — la cita esta siendo creada.\n"
-            "  • CONFIRMACION DE ASISTENCIA (otro estado, post-pago, en el "
-            "recordatorio antes de la cita): el paciente *confirma su asistencia* "
-            "a una cita ya agendada y pagada. Solo en ese estado tiene sentido "
-            "decir 'confirmar tu cita' o 'confirmar tu asistencia'.\n"
-            "Durante el flujo de agendamiento, al pedir el pago di 'Para reservar "
-            "tu cita, paga X' o 'Para continuar con el proceso de agendamiento, "
-            "paga X' — NUNCA 'Para confirmar tu cita/asistencia/espacio, paga X'."
+            "Vocabulario del flujo de agendamiento — verbos VALIDOS para "
+            "describir la accion del flujo: agendar, reservar, asegurar el "
+            "cupo, separar el cupo, continuar con el proceso de agendamiento. "
+            "Al pedir el pago di literalmente 'Para reservar tu cita, paga X', "
+            "'Para asegurar tu cupo, paga X' o 'Para continuar con el "
+            "agendamiento, paga X'. El verbo 'confirmar' (y sus derivados) NO "
+            "pertenece a esta fase — pertenece a un estado posterior distinto "
+            "(recordatorio post-pago donde el paciente confirma su asistencia). "
+            "Durante el agendamiento la cita se RESERVA o AGENDA; nunca se "
+            "CONFIRMA. Esta regla aplica con clitics tambien (-te, -le, -se)."
         ),
         # La direccion del consultorio (cuando existe office_location) es info
         # operativa, no sensible. No se debe condicionar a confirmacion de pago.
