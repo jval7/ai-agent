@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import * as reactRouterDomModule from "react-router-dom";
 
 // ---------------------------------------------------------------------------
@@ -21,12 +21,6 @@ interface PricingCardProps {
   highlighted?: boolean;
 }
 
-interface StepCardProps {
-  number: string;
-  title: string;
-  description: string;
-}
-
 interface CompareRow {
   feature: string;
   agendachat: string;
@@ -35,21 +29,27 @@ interface CompareRow {
   respondio: string;
 }
 
+interface RoadmapItemProps {
+  icon: string;
+  title: string;
+  status: "building" | "soon" | "research";
+}
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function Navbar() {
+export function Navbar() {
   return (
     <header className="sticky top-0 z-50 border-b border-border-subtle bg-white/95 backdrop-blur shadow-card-sm">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4">
         {/* Logo */}
-        <a className="flex shrink-0 items-center gap-2" href="#">
+        <reactRouterDomModule.Link className="flex shrink-0 items-center gap-2" to="/">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-teal text-sm font-bold text-white select-none">
             A
           </div>
           <span className="text-lg font-bold tracking-tight text-brand-ink">Agendachat</span>
-        </a>
+        </reactRouterDomModule.Link>
 
         {/* Nav links – hidden on mobile */}
         <nav className="hidden items-center gap-6 text-sm font-medium text-slate-600 md:flex">
@@ -62,6 +62,12 @@ function Navbar() {
           <a className="transition-colors hover:text-brand-teal" href="#comparativa">
             Comparativa
           </a>
+          <reactRouterDomModule.Link
+            className="transition-colors hover:text-brand-teal"
+            to="/roadmap"
+          >
+            Roadmap
+          </reactRouterDomModule.Link>
           <a className="transition-colors hover:text-brand-teal" href="#faq">
             FAQ
           </a>
@@ -80,66 +86,66 @@ function Navbar() {
 }
 
 // ---------------------------------------------------------------------------
+// Hero — 2-column mockup (Change 1)
+// ---------------------------------------------------------------------------
 
-function WhatsAppMockup() {
+function WhatsAppChat() {
   return (
-    <div className="flex justify-center md:justify-end">
-      <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-border-subtle bg-[#e5ddd5] shadow-card-hover">
-        {/* Chat header */}
-        <div className="flex items-center gap-3 bg-brand-teal px-4 py-3 text-white">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-lg">
-            🤖
-          </div>
-          <div>
-            <p className="text-sm font-semibold leading-none">Asistente Dr. García</p>
-            <p className="mt-0.5 text-xs text-brand-accent-light">en línea</p>
+    <div className="w-full overflow-hidden rounded-2xl border border-border-subtle bg-[#e5ddd5] shadow-card-hover">
+      {/* Chat header */}
+      <div className="flex items-center gap-3 bg-brand-teal px-4 py-3 text-white">
+        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-lg">
+          🤖
+        </div>
+        <div>
+          <p className="text-sm font-semibold leading-none">Asistente Dr. García</p>
+          <p className="mt-0.5 text-xs text-brand-accent-light">en línea</p>
+        </div>
+      </div>
+      {/* Messages */}
+      <div className="space-y-2 p-3 text-sm">
+        <div className="flex justify-end">
+          <div className="max-w-[80%] rounded-tl-2xl rounded-bl-2xl rounded-tr-sm rounded-br-2xl bg-[#dcf8c6] px-3 py-2 text-gray-800 shadow-card-sm">
+            Hola, quiero una cita
+            <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:14</span>
           </div>
         </div>
-        {/* Messages */}
-        <div className="space-y-2 p-3 text-sm">
-          <div className="flex justify-end">
-            <div className="max-w-[80%] rounded-tl-2xl rounded-bl-2xl rounded-tr-sm rounded-br-2xl bg-[#dcf8c6] px-3 py-2 text-gray-800 shadow-card-sm">
-              Hola, quiero una cita
-              <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:14</span>
-            </div>
+        <div className="flex justify-start">
+          <div className="max-w-[80%] rounded-tl-sm rounded-tr-2xl rounded-bl-2xl rounded-br-2xl bg-white px-3 py-2 text-gray-800 shadow-card-sm">
+            ¡Hola! Soy la asistente del Dr. García. ¿Cuál es tu nombre?
+            <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:14</span>
           </div>
-          <div className="flex justify-start">
-            <div className="max-w-[80%] rounded-tl-sm rounded-tr-2xl rounded-bl-2xl rounded-br-2xl bg-white px-3 py-2 text-gray-800 shadow-card-sm">
-              ¡Hola! Soy la asistente del Dr. García. ¿Cuál es tu nombre?
-              <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:14</span>
-            </div>
+        </div>
+        <div className="flex justify-end">
+          <div className="max-w-[80%] rounded-tl-2xl rounded-bl-2xl rounded-tr-sm rounded-br-2xl bg-[#dcf8c6] px-3 py-2 text-gray-800 shadow-card-sm">
+            María
+            <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:14</span>
           </div>
-          <div className="flex justify-end">
-            <div className="max-w-[80%] rounded-tl-2xl rounded-bl-2xl rounded-tr-sm rounded-br-2xl bg-[#dcf8c6] px-3 py-2 text-gray-800 shadow-card-sm">
-              María
-              <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:14</span>
-            </div>
+        </div>
+        <div className="flex justify-start">
+          <div className="max-w-[80%] rounded-tl-sm rounded-tr-2xl rounded-bl-2xl rounded-br-2xl bg-white px-3 py-2 text-gray-800 shadow-card-sm">
+            Tengo disponibles:
+            <br />
+            📅 Martes 3pm
+            <br />
+            📅 Miércoles 10am
+            <br />
+            📅 Jueves 5pm
+            <br />
+            ¿Cuál preferís?
+            <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:14</span>
           </div>
-          <div className="flex justify-start">
-            <div className="max-w-[80%] rounded-tl-sm rounded-tr-2xl rounded-bl-2xl rounded-br-2xl bg-white px-3 py-2 text-gray-800 shadow-card-sm">
-              Tengo disponibles:
-              <br />
-              📅 Martes 3pm
-              <br />
-              📅 Miércoles 10am
-              <br />
-              📅 Jueves 5pm
-              <br />
-              ¿Cuál preferís?
-              <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:14</span>
-            </div>
+        </div>
+        <div className="flex justify-end">
+          <div className="max-w-[80%] rounded-tl-2xl rounded-bl-2xl rounded-tr-sm rounded-br-2xl bg-[#dcf8c6] px-3 py-2 text-gray-800 shadow-card-sm">
+            Miércoles 10am
+            <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:15</span>
           </div>
-          <div className="flex justify-end">
-            <div className="max-w-[80%] rounded-tl-2xl rounded-bl-2xl rounded-tr-sm rounded-br-2xl bg-[#dcf8c6] px-3 py-2 text-gray-800 shadow-card-sm">
-              Miércoles 10am
-              <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:15</span>
-            </div>
-          </div>
-          <div className="flex justify-start">
-            <div className="max-w-[80%] rounded-tl-sm rounded-tr-2xl rounded-bl-2xl rounded-br-2xl bg-white px-3 py-2 text-gray-800 shadow-card-sm">
-              ✅ Listo María, agendada miércoles 10am. Te mando recordatorio el martes.
-              <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:15</span>
-            </div>
+        </div>
+        <div className="flex justify-start">
+          <div className="max-w-[80%] rounded-tl-sm rounded-tr-2xl rounded-bl-2xl rounded-br-2xl bg-white px-3 py-2 text-gray-800 shadow-card-sm">
+            ✅ Listo María, agendada miércoles 10am. Te mando recordatorio el martes.
+            <span className="mt-0.5 block text-right text-[10px] text-gray-400">9:15</span>
           </div>
         </div>
       </div>
@@ -147,48 +153,141 @@ function WhatsAppMockup() {
   );
 }
 
-// ---------------------------------------------------------------------------
+interface CalendarSlotProps {
+  label: string;
+  isNew?: boolean | undefined;
+}
+
+function CalendarSlot({ label, isNew }: CalendarSlotProps) {
+  if (isNew) {
+    return (
+      <div className="flex items-center gap-1.5 rounded-lg bg-brand-teal px-2 py-1.5 text-xs font-semibold text-white shadow-sm">
+        <span>✨</span>
+        <span>{label}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-center rounded-lg bg-slate-100 px-2 py-1.5 text-xs text-slate-500">
+      {label}
+    </div>
+  );
+}
+
+function AgendaWidget() {
+  const days: { day: string; slots: { label: string; isNew?: boolean }[] }[] = [
+    { day: "Lun", slots: [{ label: "9am Bloque" }, { label: "3pm Laura M." }] },
+    { day: "Mar", slots: [{ label: "10am Carlos R." }, { label: "3pm María C." }] },
+    {
+      day: "Mié",
+      slots: [{ label: "10am — María", isNew: true }, { label: "4pm Bloque" }]
+    },
+    { day: "Jue", slots: [{ label: "9am Bloque" }, { label: "5pm Pedro G." }] },
+    { day: "Vie", slots: [{ label: "11am Ana T." }, { label: "2pm Bloque" }] }
+  ];
+
+  return (
+    <div className="w-full overflow-hidden rounded-2xl border border-border-subtle bg-white shadow-card-hover">
+      {/* Widget header */}
+      <div className="border-b border-border-subtle bg-brand-surface px-4 py-3">
+        <p className="text-xs font-bold uppercase tracking-widest text-slate-500">
+          Tu agenda — esta semana
+        </p>
+      </div>
+      {/* Days grid */}
+      <div className="divide-y divide-border-subtle">
+        {days.map((d) => (
+          <div className="flex items-start gap-3 px-4 py-2.5" key={d.day}>
+            <span className="w-7 shrink-0 pt-1 text-xs font-bold text-slate-400">{d.day}</span>
+            <div className="flex flex-1 flex-col gap-1.5">
+              {d.slots.map((s) => (
+                <CalendarSlot isNew={s.isNew} key={s.label} label={s.label} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {/* Notification toast */}
+      <div className="m-3 flex items-center gap-3 rounded-xl border border-brand-teal/30 bg-brand-surface px-3 py-2.5 shadow-card-sm">
+        <span className="text-lg">🔔</span>
+        <div className="min-w-0">
+          <p className="text-xs font-bold text-brand-ink">Tu IA agendó una nueva cita</p>
+          <p className="truncate text-[11px] text-slate-500">
+            María — Miércoles, 10:00 am — Consulta presencial
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeroMockup() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <WhatsAppChat />
+      <AgendaWidget />
+    </div>
+  );
+}
 
 function Hero() {
   return (
     <section className="border-b border-border-subtle bg-white">
-      <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-14 md:grid-cols-2 md:py-20">
-        {/* Copy */}
-        <div>
-          <span className="inline-block rounded-full border border-brand-accent-light bg-brand-surface px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand-teal">
-            WhatsApp Business API · IA · Google Calendar
-          </span>
-          <h1 className="mb-4 mt-4 text-4xl font-extrabold leading-tight tracking-tight text-brand-ink md:text-5xl">
-            Tu IA secretaria que agenda citas por WhatsApp{" "}
-            <span className="text-brand-teal">24/7</span>
-          </h1>
-          <p className="mb-8 text-lg leading-relaxed text-slate-500">
-            Para psicólogos, médicos y profesionales que pierden citas respondiendo WhatsApp a mano.
-            Conectada a tu Google Calendar. Recordatorios de pago automáticos.{" "}
-            <strong className="text-brand-ink">Probalo en 2 minutos.</strong>
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <reactRouterDomModule.Link
-              className="inline-flex items-center gap-2 rounded-full bg-brand-teal px-6 py-3 text-base font-bold text-white shadow-md transition hover:bg-brand-teal-hover"
-              to="/login"
-            >
-              Quiero probarlo gratis →
-            </reactRouterDomModule.Link>
-            <a
-              className="inline-flex items-center gap-2 rounded-full border border-border-subtle px-6 py-3 text-base font-semibold text-brand-ink transition hover:border-brand-teal hover:text-brand-teal"
-              href="#como-funciona"
-            >
-              Ver cómo funciona
-            </a>
+      <div className="mx-auto max-w-6xl px-4 py-14 md:py-20">
+        <div className="mb-10 grid items-center gap-10 md:grid-cols-2">
+          {/* Copy */}
+          <div>
+            <span className="inline-block rounded-full border border-brand-accent-light bg-brand-surface px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand-teal">
+              WhatsApp Business API · IA · Google Calendar
+            </span>
+            <h1 className="mb-4 mt-4 text-4xl font-extrabold leading-tight tracking-tight text-brand-ink md:text-5xl">
+              Tu IA secretaria que agenda citas por WhatsApp{" "}
+              <span className="text-brand-teal">24/7</span>
+            </h1>
+            <p className="mb-8 text-lg leading-relaxed text-slate-500">
+              Para psicólogos, médicos y profesionales que pierden citas respondiendo WhatsApp a
+              mano. Conectada a tu Google Calendar. Recordatorios automáticos.{" "}
+              <strong className="text-brand-ink">Probalo en 2 minutos.</strong>
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <reactRouterDomModule.Link
+                className="inline-flex items-center gap-2 rounded-full bg-brand-teal px-6 py-3 text-base font-bold text-white shadow-md transition hover:bg-brand-teal-hover"
+                to="/login"
+              >
+                Quiero probarlo gratis →
+              </reactRouterDomModule.Link>
+              <a
+                className="inline-flex items-center gap-2 rounded-full border border-border-subtle px-6 py-3 text-base font-semibold text-brand-ink transition hover:border-brand-teal hover:text-brand-teal"
+                href="#como-funciona"
+              >
+                Ver cómo funciona
+              </a>
+            </div>
+          </div>
+
+          {/* Flow label */}
+          <div className="hidden items-center justify-center md:flex">
+            <div className="flex items-center gap-2 rounded-full border border-brand-accent-light bg-brand-surface px-4 py-2 text-sm font-medium text-brand-teal">
+              <span>👤</span>
+              <span>Paciente</span>
+              <span className="text-slate-400">→</span>
+              <span>🤖</span>
+              <span>IA</span>
+              <span className="text-slate-400">→</span>
+              <span>👨‍⚕️</span>
+              <span>Profesional</span>
+            </div>
           </div>
         </div>
 
-        <WhatsAppMockup />
+        <HeroMockup />
       </div>
     </section>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Why Agendachat (Change 2)
 // ---------------------------------------------------------------------------
 
 function FeatureCard(props: FeatureCardProps) {
@@ -210,19 +309,19 @@ function WhyAgendachat() {
         </h2>
         <div className="grid gap-6 md:grid-cols-3">
           <FeatureCard
-            description="La IA agenda sola incluso cuando dormís. Tu celular descansa. Tus citas, no."
-            icon="📱"
-            title="Dejá de responder WhatsApp a las 11pm"
+            description="La IA contesta las preguntas repetitivas — precios, horarios, ubicación, qué incluye cada servicio — para que vos solo intervengas cuando hay algo real que atender."
+            icon="💬"
+            title="Respondé solo lo importante"
           />
           <FeatureCard
-            description="Recordatorios automáticos de pago. Menos inasistencias. Hasta 70% menos citas perdidas."
-            icon="💰"
-            title="Cobrá antes de la cita"
+            description="La IA convierte conversaciones de WhatsApp en citas confirmadas: explica tus servicios, ofrece horarios y agenda directamente en tu Google Calendar."
+            icon="📋"
+            title="Cierra ventas mientras dormís"
           />
           <FeatureCard
-            description="Conectada a tu Google Calendar real. Sin doble-agendamiento. Sin conflictos de horarios."
-            icon="📅"
-            title="Que el paciente se agende solo"
+            description="Tu IA recuerda a cada paciente su cita el día anterior, reduce inasistencias y te libera de chequear quién confirmó y quién no."
+            icon="🔔"
+            title="Recordatorios automáticos"
           />
         </div>
       </div>
@@ -231,49 +330,143 @@ function WhyAgendachat() {
 }
 
 // ---------------------------------------------------------------------------
+// How It Works — 3-actor layout (Change 3)
+// ---------------------------------------------------------------------------
 
-function StepCard(props: StepCardProps) {
+interface ActorRowProps {
+  actorEmoji: string;
+  actorLabel: string;
+  description: string;
+}
+
+function ActorRow({ actorEmoji, actorLabel, description }: ActorRowProps) {
   return (
-    <div className="flex flex-col items-start gap-3">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-brand-accent-light bg-brand-surface text-2xl font-extrabold text-brand-teal">
-        {props.number}
+    <div className="flex items-start gap-3">
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-surface text-base">
+        {actorEmoji}
       </div>
-      <h3 className="text-lg font-bold text-brand-ink">{props.title}</h3>
-      <p className="text-sm leading-relaxed text-slate-500">{props.description}</p>
+      <div className="flex-1">
+        <span className="text-xs font-bold uppercase tracking-wide text-brand-teal">
+          {actorLabel}
+        </span>
+        <p className="mt-0.5 text-sm leading-relaxed text-slate-500">{description}</p>
+      </div>
+    </div>
+  );
+}
+
+interface StepData {
+  number: string;
+  title: string;
+  actors: ActorRowProps[];
+}
+
+function StepCard3({ step }: { step: StepData }) {
+  return (
+    <div className="rounded-2xl border border-border-subtle bg-white p-6 shadow-card">
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-brand-accent-light bg-brand-surface text-xl font-extrabold text-brand-teal">
+          {step.number}
+        </div>
+        <h3 className="text-base font-bold text-brand-ink">{step.title}</h3>
+      </div>
+      <div className="space-y-3">
+        {step.actors.map((actor) => (
+          <ActorRow key={actor.actorLabel} {...actor} />
+        ))}
+      </div>
     </div>
   );
 }
 
 function HowItWorks() {
+  const steps: StepData[] = [
+    {
+      number: "1",
+      title: "El paciente escribe",
+      actors: [
+        {
+          actorEmoji: "👤",
+          actorLabel: "Paciente",
+          description: "Manda un WhatsApp pidiendo info o cita"
+        },
+        {
+          actorEmoji: "🤖",
+          actorLabel: "Asistente IA",
+          description: "Responde al instante con los datos de tu práctica"
+        },
+        {
+          actorEmoji: "👨‍⚕️",
+          actorLabel: "Profesional",
+          description: "No interviene — está atendiendo"
+        }
+      ]
+    },
+    {
+      number: "2",
+      title: "La IA negocia y agenda",
+      actors: [
+        {
+          actorEmoji: "👤",
+          actorLabel: "Paciente",
+          description: "Elige horario entre los que la IA ofrece"
+        },
+        {
+          actorEmoji: "🤖",
+          actorLabel: "Asistente IA",
+          description: "Consulta tu Google Calendar y propone slots libres"
+        },
+        {
+          actorEmoji: "👨‍⚕️",
+          actorLabel: "Profesional",
+          description: "Recibe notificación de la nueva cita"
+        }
+      ]
+    },
+    {
+      number: "3",
+      title: "La cita se cumple",
+      actors: [
+        {
+          actorEmoji: "👤",
+          actorLabel: "Paciente",
+          description: "Recibe recordatorio el día anterior"
+        },
+        {
+          actorEmoji: "🤖",
+          actorLabel: "Asistente IA",
+          description: "Manda recordatorio automático y confirma asistencia"
+        },
+        {
+          actorEmoji: "👨‍⚕️",
+          actorLabel: "Profesional",
+          description: "Llega a la cita con paciente confirmado"
+        }
+      ]
+    }
+  ];
+
   return (
     <section className="border-b border-border-subtle bg-white py-14 md:py-20" id="como-funciona">
-      <div className="mx-auto max-w-4xl px-4 text-center">
-        <h2 className="mb-3 text-2xl font-bold text-brand-ink md:text-3xl">Cómo funciona</h2>
-        <p className="mb-12 text-slate-500">
+      <div className="mx-auto max-w-5xl px-4">
+        <h2 className="mb-3 text-center text-2xl font-bold text-brand-ink md:text-3xl">
+          Cómo funciona
+        </h2>
+        <p className="mb-12 text-center text-slate-500">
           Tres pasos. Sin código. Sin configuraciones complejas.
         </p>
-        <div className="grid gap-8 text-left md:grid-cols-3">
-          <StepCard
-            description="2 minutos, sin código. Te guiamos en el onboarding paso a paso."
-            number="1"
-            title="Conectás tu WhatsApp y Google Calendar"
-          />
-          <StepCard
-            description="La IA atiende sola, negocia horarios y agenda. Vos no respondés."
-            number="2"
-            title="El paciente te escribe normal"
-          />
-          <StepCard
-            description="Recordatorio de asistencia y de pago. Automático. Sin que hagas nada."
-            number="3"
-            title="La cita queda agendada con recordatorio"
-          />
+        <div className="grid gap-6 md:grid-cols-3">
+          {steps.map((step) => (
+            <StepCard3 key={step.number} step={step} />
+          ))}
         </div>
       </div>
     </section>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Pricing (Changes 4 & 5)
 // ---------------------------------------------------------------------------
 
 function PricingCard(props: PricingCardProps) {
@@ -346,29 +539,30 @@ function PricingCard(props: PricingCardProps) {
 
 function Pricing() {
   const starterFeatures: { text: string; included: boolean }[] = [
-    { text: "Hasta 200 conversaciones IA/mes", included: true },
+    { text: "Hasta 50 conversaciones IA/mes (o 1M tokens, lo que primero ocurra)", included: true },
     { text: "1 número WhatsApp Business", included: true },
-    { text: "1 Google Calendar", included: true },
-    { text: "Recordatorios básicos", included: true },
-    { text: "Recordatorios de pago automáticos", included: false },
-    { text: "Plantillas WhatsApp personalizadas", included: false },
-    { text: "System prompt editable", included: false }
+    { text: "1 Google Calendar conectado", included: true },
+    { text: "CRM de pacientes", included: true },
+    { text: "Inbox con modo manual / automático", included: true },
+    { text: "Agendamiento manual desde la app", included: true }
   ];
 
   const proFeatures: { text: string; included: boolean }[] = [
-    { text: "Conversaciones IA ilimitadas (fair use)", included: true },
-    { text: "Recordatorios de pago + asistencia", included: true },
-    { text: "Plantillas WhatsApp personalizadas", included: true },
-    { text: "Etiquetas y CRM de pacientes", included: true },
-    { text: "System prompt editable", included: true },
-    { text: "Soporte por WhatsApp", included: true }
+    { text: "Todo lo de Starter", included: true },
+    {
+      text: "Hasta 250 conversaciones IA/mes (o 5M tokens, lo que primero ocurra)",
+      included: true
+    },
+    { text: "Recordatorios automáticos (asistencia + pago)", included: true },
+    { text: "Registro de pagos por cita", included: true },
+    { text: "Handoff a humano cuando quieras", included: true }
   ];
 
   const clinicFeatures: { text: string; included: boolean }[] = [
     { text: "Todo lo de Pro", included: true },
-    { text: "Multi-agenda y multi-usuario", included: true },
-    { text: "System prompt avanzado", included: true },
-    { text: "Soporte prioritario", included: true }
+    { text: "2-5 profesionales con agendas independientes", included: true },
+    { text: "Cuotas IA escalables (consultanos)", included: true },
+    { text: "Onboarding asistido", included: true }
   ];
 
   return (
@@ -382,19 +576,19 @@ function Pricing() {
         </p>
 
         {/* Cards */}
-        <div className="mb-10 grid items-start gap-6 md:grid-cols-3">
+        <div className="mb-8 grid items-start gap-6 md:grid-cols-3">
           <PricingCard
             copPrice="~$120.000 COP/mes"
             ctaLabel="Empezar →"
-            description="Para profesional solo, bajo volumen"
+            description="Para empezar, validar el flujo"
             features={starterFeatures}
             price="$29"
             tier="Starter"
           />
           <PricingCard
             copPrice="~$240.000 COP/mes"
-            ctaLabel="Probar 14 días gratis →"
-            description="Para profesional con agenda llena"
+            ctaLabel="Empezar Pro →"
+            description="Para profesionales con agenda activa"
             features={proFeatures}
             highlighted
             price="$59"
@@ -403,50 +597,23 @@ function Pricing() {
           <PricingCard
             copPrice="~$520.000 COP/mes"
             ctaLabel="Hablar con ventas →"
-            description="Para consultorios 2-5 profesionales"
+            description="Consultorios con 2-5 profesionales"
             features={clinicFeatures}
             price="$129"
             tier="Clinic"
           />
         </div>
 
-        {/* Founding Members banner */}
-        <div className="mb-8 rounded-2xl border-2 border-yellow-300 bg-gradient-to-r from-yellow-50 to-orange-50 p-6 text-center md:p-8">
-          <p className="mb-2 text-2xl">🎁</p>
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-yellow-700">
-            Oferta de lanzamiento — Founding Members
-          </p>
-          <p className="mb-1 text-2xl font-extrabold text-brand-ink md:text-3xl">
-            Pro a <span className="text-brand-teal">$29 USD</span> /{" "}
-            <span className="text-brand-teal">$120.000 COP</span>
-          </p>
-          <p className="mb-2 text-slate-600">
-            Precio fijo <strong>de por vida</strong>. Solo los primeros 30 cupos.
-          </p>
-          <p className="mb-5 text-lg font-bold text-orange-600">
-            Quedan <span className="underline">17 lugares</span>.
-          </p>
-          <reactRouterDomModule.Link
-            className="inline-flex items-center gap-2 rounded-full bg-brand-teal px-8 py-3 font-bold text-white shadow-md transition hover:bg-brand-teal-hover"
-            to="/login"
-          >
-            Quiero ser Founding Member →
-          </reactRouterDomModule.Link>
-        </div>
-
-        {/* Guarantee */}
-        <div className="mx-auto flex max-w-2xl items-start gap-4 rounded-2xl border border-border-subtle bg-white p-5">
-          <span className="shrink-0 text-2xl">🛡️</span>
-          <p className="text-sm leading-relaxed text-slate-600">
-            <strong className="text-brand-ink">Garantía 30 días:</strong> si no recuperás el plan
-            con 1 cita rescatada por recordatorio, te devolvemos la plata. Sin preguntas.
-          </p>
-        </div>
+        <p className="text-center text-sm text-slate-500">
+          Todos los planes incluyen soporte por WhatsApp y configuración inicial sin costo.
+        </p>
       </div>
     </section>
   );
 }
 
+// ---------------------------------------------------------------------------
+// Comparator (unchanged)
 // ---------------------------------------------------------------------------
 
 function Comparator() {
@@ -558,109 +725,70 @@ function Comparator() {
 }
 
 // ---------------------------------------------------------------------------
+// Roadmap section (compact, Change 7)
+// ---------------------------------------------------------------------------
 
-function ROICalculator() {
-  const [precioCita, setPrecioCita] = useState<number>(100000);
-  const [citasCaidas, setCitasCaidas] = useState<number>(5);
+function statusLabel(status: RoadmapItemProps["status"]): string {
+  if (status === "building") return "En construcción";
+  if (status === "soon") return "Próximamente";
+  return "En investigación";
+}
 
-  const result = useMemo(() => {
-    const perdida = precioCita * citasCaidas;
-    const recuperado = perdida * 0.7;
-    const costoPlan = 240000;
-    const roi = costoPlan > 0 ? recuperado / costoPlan : 0;
-    return { perdida, recuperado, costoPlan, roi };
-  }, [precioCita, citasCaidas]);
+function statusClasses(status: RoadmapItemProps["status"]): string {
+  if (status === "building") return "bg-brand-teal/10 text-brand-teal";
+  if (status === "soon") return "bg-amber-100 text-amber-700";
+  return "bg-slate-100 text-slate-600";
+}
 
-  function formatCOP(n: number): string {
-    return "$" + Math.round(n).toLocaleString("es-CO");
-  }
+function RoadmapItemCard({ icon, title, status }: RoadmapItemProps) {
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-border-subtle bg-white p-4 shadow-card-sm">
+      <span className="text-2xl">{icon}</span>
+      <p className="text-sm font-semibold text-brand-ink">{title}</p>
+      <span
+        className={`self-start rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide ${statusClasses(status)}`}
+      >
+        {statusLabel(status)}
+      </span>
+    </div>
+  );
+}
+
+function RoadmapSection() {
+  const items: RoadmapItemProps[] = [
+    { icon: "🏷️", title: "Etiquetas inteligentes", status: "building" },
+    { icon: "📝", title: "Plantillas de WhatsApp custom", status: "building" },
+    { icon: "⚙️", title: "System prompt editable desde la app", status: "building" },
+    { icon: "🔌", title: "Integraciones (Zapier, Sheets)", status: "soon" },
+    { icon: "📊", title: "Reportes y métricas", status: "soon" },
+    { icon: "📩", title: "Multi-canal (Instagram DM)", status: "research" }
+  ];
 
   return (
-    <section className="border-b border-border-subtle bg-brand-surface py-14 md:py-20" id="roi">
-      <div className="mx-auto max-w-2xl px-4">
-        <h2 className="mb-3 text-center text-2xl font-bold text-brand-ink md:text-3xl">
-          Calculadora de ROI
-        </h2>
-        <p className="mb-10 text-center text-slate-500">
-          ¿Cuánto estás perdiendo cada mes por inasistencias?
-        </p>
-
-        <div className="space-y-6 rounded-2xl border border-border-subtle bg-white p-7 shadow-card">
-          {/* Precio cita */}
-          <div>
-            <label
-              className="mb-1.5 block text-sm font-semibold text-brand-ink"
-              htmlFor="precio-cita"
-            >
-              ¿Cuánto cobrás por cita? (COP)
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-                $
-              </span>
-              <input
-                className="w-full rounded-xl border border-border-subtle py-3 pl-7 pr-4 text-sm text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent"
-                id="precio-cita"
-                min={0}
-                onChange={(e) => setPrecioCita(parseFloat(e.target.value) || 0)}
-                step={10000}
-                type="number"
-                value={precioCita}
-              />
-            </div>
-          </div>
-
-          {/* Citas caidas */}
-          <div>
-            <label
-              className="mb-1.5 block text-sm font-semibold text-brand-ink"
-              htmlFor="citas-caidas"
-            >
-              ¿Cuántas citas se caen al mes por inasistencia?
-            </label>
-            <input
-              className="w-full rounded-xl border border-border-subtle px-4 py-3 text-sm text-brand-ink focus:outline-none focus:ring-2 focus:ring-brand-teal focus:border-transparent"
-              id="citas-caidas"
-              min={0}
-              onChange={(e) => setCitasCaidas(parseFloat(e.target.value) || 0)}
-              type="number"
-              value={citasCaidas}
-            />
-          </div>
-
-          {/* Result */}
-          <div className="space-y-2 rounded-xl border border-brand-accent-light bg-brand-surface p-5 text-sm">
-            <p className="text-slate-700">
-              Estás perdiendo <strong className="text-red-600">{formatCOP(result.perdida)}</strong>{" "}
-              al mes.
-            </p>
-            <p className="text-slate-700">
-              Agendachat recupera ~70% ={" "}
-              <strong className="text-brand-teal">{formatCOP(result.recuperado)}</strong>
-            </p>
-            <p className="text-slate-700">
-              Costo del plan Pro:{" "}
-              <strong className="text-brand-ink">{formatCOP(result.costoPlan)}</strong>
-            </p>
-            <div className="mt-3 border-t border-brand-accent-light pt-3">
-              <p className="text-lg font-extrabold text-brand-teal">
-                ROI: <span>{result.roi.toFixed(1)}x</span> tu inversión
-              </p>
-            </div>
-          </div>
-
-          <a
-            className="block rounded-full bg-brand-teal py-3 text-center text-sm font-bold text-white transition hover:bg-brand-teal-hover"
-            href="#pricing"
+    <section className="border-b border-border-subtle bg-brand-surface py-14 md:py-20" id="roadmap">
+      <div className="mx-auto max-w-6xl px-4">
+        <h2 className="mb-3 text-center text-2xl font-bold text-brand-ink md:text-3xl">Roadmap</h2>
+        <p className="mb-10 text-center text-slate-500">Lo que viene en Agendachat</p>
+        <div className="mb-8 grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+          {items.map((item) => (
+            <RoadmapItemCard key={item.title} {...item} />
+          ))}
+        </div>
+        <div className="text-center">
+          <reactRouterDomModule.Link
+            className="inline-flex items-center gap-1 text-sm font-semibold text-brand-teal underline underline-offset-4 transition hover:text-brand-teal-hover"
+            to="/roadmap"
           >
-            Recuperá ese dinero con Agendachat →
-          </a>
+            Ver roadmap completo →
+          </reactRouterDomModule.Link>
         </div>
       </div>
     </section>
   );
 }
 
+// ---------------------------------------------------------------------------
+// FAQ
 // ---------------------------------------------------------------------------
 
 function FAQ() {
@@ -759,6 +887,8 @@ function FAQ() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Lead Form
 // ---------------------------------------------------------------------------
 
 interface LeadFormState {
@@ -903,8 +1033,10 @@ function LeadForm() {
 }
 
 // ---------------------------------------------------------------------------
+// Footer (Change 8)
+// ---------------------------------------------------------------------------
 
-function Footer() {
+export function Footer() {
   return (
     <footer className="bg-brand-ink py-12 text-slate-400">
       <div className="mx-auto max-w-6xl px-4">
@@ -944,8 +1076,16 @@ function Footer() {
                 </a>
               </li>
               <li>
-                <a className="transition-colors hover:text-white" href="#roi">
-                  Calculadora ROI
+                <reactRouterDomModule.Link
+                  className="transition-colors hover:text-white"
+                  to="/roadmap"
+                >
+                  Roadmap
+                </reactRouterDomModule.Link>
+              </li>
+              <li>
+                <a className="transition-colors hover:text-white" href="#faq">
+                  FAQ
                 </a>
               </li>
             </ul>
@@ -1005,7 +1145,7 @@ function Footer() {
 
         <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-800 pt-6 text-xs text-slate-600 sm:flex-row">
           <p>© 2026 Agendachat</p>
-          <p>Última actualización: 2026-04-27</p>
+          <p>Última actualización: 2026-05-03</p>
         </div>
       </div>
     </footer>
@@ -1025,7 +1165,7 @@ export function LandingPage() {
       <HowItWorks />
       <Pricing />
       <Comparator />
-      <ROICalculator />
+      <RoadmapSection />
       <FAQ />
       <LeadForm />
       <Footer />
