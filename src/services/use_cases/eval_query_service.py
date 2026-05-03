@@ -109,15 +109,20 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
     eval_dto.EvalCapabilityDocDTO(
         id="uses_pre_payment_vocabulary",
         description=(
-            "el bot NO usa 'confirmar tu cita' / 'para confirmar' antes del pago. Antes "
-            "del pago debe usar 'agendar', 'reservar', 'para continuar con el proceso de "
-            "agendamiento'. El término 'confirmar' está reservado para después del pago."
+            "el bot distingue conceptualmente AGENDAMIENTO (flujo actual, hasta recibir el "
+            "pago) de CONFIRMACIÓN DE ASISTENCIA (estado posterior, recordatorio antes de "
+            "la cita). En el agendamiento se 'agenda' o 'reserva' una cita — NO se "
+            "'confirma' nada todavía. El verbo 'confirmar' aplicado a la cita/asistencia/"
+            "espacio/reserva pertenece al estado de confirmación de asistencia, no al "
+            "agendamiento."
         ),
         implications=(
-            "EL BOT debe respetar el vocabulario por fase. Falla si dice 'Para confirmar "
-            "tu cita, paga X' (mezcla confirmación con cobro). La forma correcta es 'Para "
-            "continuar con el proceso de agendamiento, paga X'. No aplica cuando "
-            "payment_timing=AFTER_SESSION (no hay pago previo a la cita)."
+            "EL BOT debe respetar la distinción conceptual. Falla si dice 'Para confirmar "
+            "tu cita/asistencia/espacio, paga X' o 'Confirmación de tu cita' durante el "
+            "flujo de agendamiento. Forma correcta: 'Para reservar tu cita, paga X' o "
+            "'Para continuar con el proceso de agendamiento, paga X'. 'Confirmar el pago' "
+            "sí se permite (se refiere al pago, no a la cita). No aplica cuando "
+            "payment_timing=AFTER_SESSION."
         ),
         category="bot_behavior",
     ),

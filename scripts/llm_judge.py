@@ -98,19 +98,26 @@ _GLOSSARY: dict[str, str] = {
         "inferible. Inferencia comportamental por OUTBOUND aceptable."
     ),
     "uses_pre_payment_vocabulary": (
-        "el bot usa vocabulario apropiado en la fase ANTES del pago. El termino "
-        "'confirmar la cita' (y variaciones: 'para confirmar tu cita', 'confirmar "
-        "tu reserva') esta reservado para DESPUES del pago. ANTES del pago, el bot "
-        "debe usar 'agendar', 'reservar', 'para continuar con el proceso de "
-        "agendamiento' o frases similares. La frase 'Para confirmar tu cita, paga X' "
-        "es INCORRECTA porque mezcla la confirmacion con el cobro. La forma correcta "
-        "es 'Para continuar con el proceso de agendamiento, paga X' o 'Para reservar "
-        "tu cita, paga X'. verified=true si el bot NO uso 'confirmar' (ni variaciones) "
-        "antes de tener el comprobante de pago. verified=false si encontraste alguna "
-        "frase pre-pago que use 'confirmar la cita / tu cita / la reserva' — debes "
-        "citar la frase EXACTA del OUTBOUND y el turno. Si el shape tiene "
-        "payment_timing=AFTER_SESSION, esta cap NO aplica (el bot puede confirmar "
-        "directo); en ese caso verified=true sin necesidad de evidencia."
+        "el bot distingue conceptualmente entre AGENDAMIENTO y CONFIRMACION DE "
+        "ASISTENCIA. Son dos eventos distintos del ciclo de vida de una cita. "
+        "AGENDAMIENTO: la fase actual del flujo (recoleccion de datos, propuesta "
+        "de horario, solicitud de pago, recoleccion de datos finales). En esta fase "
+        "se *agenda* o *reserva* una cita — NO se confirma nada todavia. CONFIRMACION "
+        "DE ASISTENCIA: estado posterior, en el recordatorio pre-cita, donde el "
+        "paciente confirma que asistira a una cita ya agendada y pagada. El verbo "
+        "'confirmar' (y derivados: 'confirmacion', 'confirmar tu cita/asistencia/"
+        "espacio/reserva') pertenece al segundo concepto y es INCORRECTO usarlo "
+        "durante el flujo de agendamiento. La forma correcta al pedir el pago es "
+        "'Para reservar tu cita, paga X' o 'Para continuar con el proceso de "
+        "agendamiento, paga X' — NO 'Para confirmar tu cita/asistencia/espacio, paga X'. "
+        "verified=true si el bot NO uso 'confirmar' ni derivados aplicados a la cita/"
+        "asistencia/espacio/reserva durante el flujo de agendamiento (antes de recibir "
+        "el comprobante de pago). verified=false ante frases como 'para confirmar tu "
+        "cita', 'confirmar tu asistencia', 'confirmar tu espacio', 'confirmacion de "
+        "tu cita' aplicadas en pre-pago — citar la frase EXACTA del OUTBOUND y el turno. "
+        "Notas: (1) 'confirmar el pago' o 'cuando se confirme el pago' se refiere al "
+        "pago en si, no a la cita — eso es PERMITIDO. (2) Si el shape tiene "
+        "payment_timing=AFTER_SESSION, esta cap NO aplica (verified=true automatico)."
     ),
     "hides_internal_handoff": (
         "el bot NO le menciona al paciente que envia, pasa, gestiona, comparte, comenta "
@@ -182,12 +189,16 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   NUNCA debe mostrar varias monedas juntas en el mismo mensaje sin saber ubicacion.
   verified=false SOLO si el bot expuso ambas monedas juntas sin saber ubicacion,
   o cotizo una moneda inconsistente con la ubicacion inferible.
-- uses_pre_payment_vocabulary: el bot NO usa "confirmar tu cita" / "para confirmar"
-  antes del pago. Antes del pago debe usar "agendar", "reservar", "para continuar
-  con el proceso de agendamiento". El termino "confirmar" se reserva para despues
-  de recibir el comprobante. verified=false si encontraste frase pre-pago que diga
-  "confirmar la cita/tu cita/tu reserva" — citar la frase EXACTA del OUTBOUND.
-  No aplica si payment_timing=AFTER_SESSION (verified=true automatico).
+- uses_pre_payment_vocabulary: el bot distingue AGENDAMIENTO (flujo actual, hasta
+  el pago) de CONFIRMACION DE ASISTENCIA (estado posterior, recordatorio). En el
+  agendamiento se *agenda*/*reserva* — NO se confirma. El verbo "confirmar" (y
+  derivados: "confirmacion", "confirmar tu cita/asistencia/espacio/reserva")
+  pertenece al estado de confirmacion de asistencia (post-pago, recordatorio),
+  no al agendamiento. verified=false ante frases pre-pago como "para confirmar
+  tu cita", "confirmar tu asistencia", "confirmar tu espacio", "confirmacion de
+  tu cita" — citar la frase EXACTA del OUTBOUND. "Confirmar el pago" si esta
+  permitido (se refiere al pago en si, no a la cita). No aplica si
+  payment_timing=AFTER_SESSION.
 - hides_internal_handoff: el bot NO le dice al paciente que envia, pasa, gestiona,
   comparte, comenta o tramita cosas con el profesional, ni expone procesos internos
   opacos. Frases prohibidas: "ya le envie a la doctora", "le paso el motivo",
@@ -224,9 +235,11 @@ Reglas:
          "presencial" => local => COP). verified=false SOLO si mostro varias
          monedas juntas sin saber ubicacion, o cotizo moneda inconsistente.
        - uses_pre_payment_vocabulary verified si NINGUN OUTBOUND pre-pago usa
-         "confirmar la cita / tu cita / tu reserva". verified=false ante alguna
-         de esas frases en mensajes anteriores al comprobante de pago — citar
-         la frase exacta y el turno.
+         "confirmar"/"confirmacion" aplicado a cita/asistencia/espacio/reserva.
+         "Confirmar el pago" SI esta permitido (se refiere al pago, no a la
+         cita). verified=false ante variantes como "confirmar tu cita",
+         "confirmar tu asistencia", "confirmar tu espacio", "confirmacion de
+         tu cita" en mensajes anteriores al comprobante — citar frase exacta.
        - hides_internal_handoff verified si NINGUN OUTBOUND menciona enviar/pasar/
          gestionar/comentar/compartir/tramitar nada con el profesional ni expone
          procesos internos como "se esta revisando" o "te contactaremos pronto".

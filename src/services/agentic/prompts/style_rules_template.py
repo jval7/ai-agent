@@ -70,10 +70,36 @@ def build_style_rules_xml(
             "NO justifiques la elección con frases como 'para pacientes en el exterior' "
             "o 'desde Colombia'. Presenta el precio neutro, sin etiquetar al paciente."
         ),
+        # Distincion conceptual: AGENDAMIENTO vs CONFIRMACION DE ASISTENCIA.
+        # Son dos eventos distintos del ciclo de vida de una cita y se les habla
+        # con vocabulario distinto. El bot suele mezclarlos y usar "confirmar"
+        # durante el agendamiento, lo cual es incorrecto.
         (
-            "El término 'confirmar cita' está reservado para el paso final, después del pago. "
-            "Antes del pago no digas 'confirmar tu cita' ni 'para confirmar'; usa 'agendar', "
-            "'reservar' o 'para seguir con el proceso de agendamiento'."
+            "Distincion clave entre dos conceptos del ciclo de vida de una cita:\n"
+            "  • AGENDAMIENTO (este flujo, hasta que se recibe el pago): se *agenda* "
+            "o *reserva* una cita; se habla de 'continuar con el proceso de "
+            "agendamiento', 'reservar tu cita', 'agendar la sesion'. En esta fase "
+            "NO se usa el verbo 'confirmar' ni sus derivados ('confirmacion', "
+            "'confirmar tu cita/asistencia/espacio/reserva') porque todavia no hay "
+            "nada que confirmar — la cita esta siendo creada.\n"
+            "  • CONFIRMACION DE ASISTENCIA (otro estado, post-pago, en el "
+            "recordatorio antes de la cita): el paciente *confirma su asistencia* "
+            "a una cita ya agendada y pagada. Solo en ese estado tiene sentido "
+            "decir 'confirmar tu cita' o 'confirmar tu asistencia'.\n"
+            "Durante el flujo de agendamiento, al pedir el pago di 'Para reservar "
+            "tu cita, paga X' o 'Para continuar con el proceso de agendamiento, "
+            "paga X' — NUNCA 'Para confirmar tu cita/asistencia/espacio, paga X'."
+        ),
+        # La direccion del consultorio (cuando existe office_location) es info
+        # operativa, no sensible. No se debe condicionar a confirmacion de pago.
+        (
+            "La direccion del consultorio (cuando esta en `<office_location>`) es "
+            "informacion operativa, NO sensible. Si el paciente la pide, dasela en "
+            "ese momento — no la retengas con frases como 'te la enviamos cuando "
+            "se confirme el pago' ni 'te la dare despues del pago'. El paciente "
+            "puede tener motivos legitimos para conocerla antes (calcular ruta, "
+            "tiempo, transporte). Que el pago este pendiente no es razon para "
+            "ocultar la direccion."
         ),
         # Parameterized: clinical questions are deferred to the professional.
         (
