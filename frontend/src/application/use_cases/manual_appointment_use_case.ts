@@ -36,4 +36,11 @@ export class ManualAppointmentUseCase {
   ) {
     return this.api.updateManualAppointmentPayment(appointmentId, input);
   }
+
+  async changeModality(
+    appointmentId: string,
+    input: manualAppointmentModel.ChangeManualAppointmentModalityInput
+  ) {
+    return this.api.changeManualAppointmentModality(appointmentId, input);
+  }
 }

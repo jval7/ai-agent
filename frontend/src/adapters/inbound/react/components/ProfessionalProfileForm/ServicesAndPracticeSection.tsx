@@ -2,15 +2,10 @@ import type * as agentModel from "@domain/models/agent";
 import * as chipListModule from "@adapters/inbound/react/components/form/ChipList";
 import * as dynamicListModule from "@adapters/inbound/react/components/form/DynamicList";
 import * as formFieldModule from "@adapters/inbound/react/components/form/FormField";
-import * as weekdayRangeSelectorModule from "@adapters/inbound/react/components/form/WeekdayRangeSelector";
 import * as serviceOfferingItemModule from "@adapters/inbound/react/components/ProfessionalProfileForm/ServiceOfferingItem";
 
 const TEXTAREA_CLASS =
   "mt-1 w-full rounded-xl bg-surface-low border-none px-3 py-2.5 text-sm transition-colors placeholder:text-sidebar-text/50 focus:outline-none focus:ring-2 focus:ring-brand-teal/20 disabled:cursor-not-allowed disabled:opacity-60";
-
-function newScheduleBlock(): agentModel.ScheduleBlock {
-  return { weekdayFrom: "MON", weekdayTo: null, startTime: "08:00", endTime: "17:00" };
-}
 
 function newServiceOffering(): agentModel.ServiceOffering {
   return {
@@ -25,10 +20,6 @@ function newServiceOffering(): agentModel.ServiceOffering {
 interface ServicesAndPracticeSectionProps {
   professionalContext: agentModel.ProfessionalContext;
   onContextChange: (next: agentModel.ProfessionalContext) => void;
-  presencialSchedule: agentModel.ScheduleBlock[];
-  onPresencialScheduleChange: (next: agentModel.ScheduleBlock[]) => void;
-  virtualSchedule: agentModel.ScheduleBlock[];
-  onVirtualScheduleChange: (next: agentModel.ScheduleBlock[]) => void;
   services: agentModel.ServiceOffering[];
   onServicesChange: (next: agentModel.ServiceOffering[]) => void;
   disabled: boolean;
@@ -111,71 +102,6 @@ export function ServicesAndPracticeSection(props: ServicesAndPracticeSectionProp
             value={ctx.coverageNotes ?? ""}
           />
         </formFieldModule.FormField>
-      </div>
-
-      {/* Horarios */}
-      <div className="space-y-4 pt-6">
-        <h4 className="text-base font-semibold font-display text-brand-ink">Horarios</h4>
-
-        <div>
-          <p className="mb-2 text-sm font-medium text-slate-700">Presencial</p>
-          <dynamicListModule.DynamicList
-            addLabel="Agregar bloque presencial"
-            emptyMessage="Sin horarios presenciales configurados."
-            items={props.presencialSchedule}
-            newItemFactory={newScheduleBlock}
-            onChange={props.onPresencialScheduleChange}
-            renderItem={(item, _i, onItemChange) => (
-              <weekdayRangeSelectorModule.WeekdayRangeSelector
-                disabled={disabled}
-                onChange={(next) => {
-                  onItemChange({
-                    weekdayFrom: next.weekday_from,
-                    weekdayTo: next.weekday_to,
-                    startTime: next.start_time,
-                    endTime: next.end_time
-                  });
-                }}
-                value={{
-                  weekday_from: item.weekdayFrom,
-                  weekday_to: item.weekdayTo,
-                  start_time: item.startTime,
-                  end_time: item.endTime
-                }}
-              />
-            )}
-          />
-        </div>
-
-        <div>
-          <p className="mb-2 text-sm font-medium text-slate-700">Virtual</p>
-          <dynamicListModule.DynamicList
-            addLabel="Agregar bloque virtual"
-            emptyMessage="Sin horarios virtuales configurados."
-            items={props.virtualSchedule}
-            newItemFactory={newScheduleBlock}
-            onChange={props.onVirtualScheduleChange}
-            renderItem={(item, _i, onItemChange) => (
-              <weekdayRangeSelectorModule.WeekdayRangeSelector
-                disabled={disabled}
-                onChange={(next) => {
-                  onItemChange({
-                    weekdayFrom: next.weekday_from,
-                    weekdayTo: next.weekday_to,
-                    startTime: next.start_time,
-                    endTime: next.end_time
-                  });
-                }}
-                value={{
-                  weekday_from: item.weekdayFrom,
-                  weekday_to: item.weekdayTo,
-                  start_time: item.startTime,
-                  end_time: item.endTime
-                }}
-              />
-            )}
-          />
-        </div>
       </div>
 
       {/* Servicios */}

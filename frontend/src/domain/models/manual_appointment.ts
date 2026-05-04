@@ -55,3 +55,7 @@ export interface UpdateManualAppointmentPaymentInput {
   paymentMethod: AppointmentPaymentMethod;
   paymentStatus: AppointmentPaymentStatus;
 }
+
+export interface ChangeManualAppointmentModalityInput {
+  newModality: "PRESENCIAL" | "VIRTUAL";
+}

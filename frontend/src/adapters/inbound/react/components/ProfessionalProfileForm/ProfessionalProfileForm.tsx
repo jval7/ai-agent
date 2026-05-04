@@ -34,8 +34,6 @@ function buildEmptyProfile(): agentModel.UpdateProfessionalProfileInput {
     identity: EMPTY_IDENTITY,
     professionalContext: EMPTY_PROFESSIONAL_CONTEXT,
     services: [],
-    presencialSchedule: [],
-    virtualSchedule: [],
     paymentMethods: []
   };
 }
@@ -58,18 +56,14 @@ function buildIdentityPreview(identity: agentModel.AssistantIdentity | null): st
 
 function buildServicesPreview(
   services: agentModel.ServiceOffering[],
-  presencialSchedule: agentModel.ScheduleBlock[],
-  virtualSchedule: agentModel.ScheduleBlock[],
   professionalContext: agentModel.ProfessionalContext | null
 ): string {
-  const totalSchedules = presencialSchedule.length + virtualSchedule.length;
   const totalTopics = professionalContext?.commonTopics.length ?? 0;
-  if (services.length === 0 && totalSchedules === 0 && totalTopics === 0) {
+  if (services.length === 0 && totalTopics === 0) {
     return "Sin configurar";
   }
   const parts: string[] = [];
   parts.push(`${services.length} ${services.length === 1 ? "servicio" : "servicios"}`);
-  parts.push(`${totalSchedules} ${totalSchedules === 1 ? "horario" : "horarios"}`);
   if (totalTopics > 0) {
     parts.push(`${totalTopics} ${totalTopics === 1 ? "tema" : "temas"}`);
   }
@@ -91,8 +85,6 @@ function profileToInput(
     identity: profile.identity ?? EMPTY_IDENTITY,
     professionalContext: profile.professionalContext ?? EMPTY_PROFESSIONAL_CONTEXT,
     services: profile.services,
-    presencialSchedule: profile.presencialSchedule,
-    virtualSchedule: profile.virtualSchedule,
     paymentMethods: profile.paymentMethods
   };
 }
@@ -165,12 +157,7 @@ export function ProfessionalProfileForm() {
       <sectionCardModule.SectionCard
         collapsible
         defaultOpen={false}
-        previewWhenCollapsed={buildServicesPreview(
-          draft.services,
-          draft.presencialSchedule,
-          draft.virtualSchedule,
-          draft.professionalContext
-        )}
+        previewWhenCollapsed={buildServicesPreview(draft.services, draft.professionalContext)}
         storageKey="cfg.section.services"
         subtitle="Contexto profesional, horarios y servicios ofrecidos."
         title="Servicios y práctica"
@@ -180,19 +167,11 @@ export function ProfessionalProfileForm() {
           onContextChange={(nextCtx) => {
             updateDraft({ ...draft, professionalContext: nextCtx });
           }}
-          onPresencialScheduleChange={(next) => {
-            updateDraft({ ...draft, presencialSchedule: next });
-          }}
           onServicesChange={(next) => {
             updateDraft({ ...draft, services: next });
           }}
-          onVirtualScheduleChange={(next) => {
-            updateDraft({ ...draft, virtualSchedule: next });
-          }}
-          presencialSchedule={draft.presencialSchedule}
           professionalContext={draft.professionalContext ?? EMPTY_PROFESSIONAL_CONTEXT}
           services={draft.services}
-          virtualSchedule={draft.virtualSchedule}
         />
       </sectionCardModule.SectionCard>
 

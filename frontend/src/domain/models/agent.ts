@@ -11,13 +11,6 @@ export interface AssistantIdentity {
   languages: string[];
 }
 
-export interface ScheduleBlock {
-  weekdayFrom: Weekday;
-  weekdayTo: Weekday | null;
-  startTime: string; // "HH:MM"
-  endTime: string;
-}
-
 export interface TariffPrice {
   currency: string;
   amount: number;
@@ -59,8 +52,6 @@ export interface ProfessionalProfile {
   identity: AssistantIdentity | null;
   professionalContext: ProfessionalContext | null;
   services: ServiceOffering[];
-  presencialSchedule: ScheduleBlock[];
-  virtualSchedule: ScheduleBlock[];
   paymentMethods: PaymentMethod[];
 }
 
@@ -68,8 +59,6 @@ export interface UpdateProfessionalProfileInput {
   identity: AssistantIdentity | null;
   professionalContext: ProfessionalContext | null;
   services: ServiceOffering[];
-  presencialSchedule: ScheduleBlock[];
-  virtualSchedule: ScheduleBlock[];
   paymentMethods: PaymentMethod[];
 }
 

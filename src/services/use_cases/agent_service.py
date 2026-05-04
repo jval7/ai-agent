@@ -148,28 +148,6 @@ def _service_offering_dto_to_entity(
     )
 
 
-def _schedule_block_to_dto(
-    block: agent_profile_entity.ScheduleBlock,
-) -> agent_dto.ScheduleBlockDTO:
-    return agent_dto.ScheduleBlockDTO(
-        weekday_from=block.weekday_from,
-        weekday_to=block.weekday_to,
-        start_time=block.start_time,
-        end_time=block.end_time,
-    )
-
-
-def _schedule_block_dto_to_entity(
-    dto: agent_dto.ScheduleBlockDTO,
-) -> agent_profile_entity.ScheduleBlock:
-    return agent_profile_entity.ScheduleBlock(
-        weekday_from=dto.weekday_from,
-        weekday_to=dto.weekday_to,
-        start_time=dto.start_time,
-        end_time=dto.end_time,
-    )
-
-
 def _payment_method_to_dto(pm: agent_profile_entity.PaymentMethod) -> agent_dto.PaymentMethodDTO:
     return agent_dto.PaymentMethodDTO(
         currency=pm.currency,
@@ -201,8 +179,6 @@ def _professional_profile_to_dto(
         identity=_identity_to_dto(profile.identity),
         professional_context=_professional_context_to_dto(profile.professional_context),
         services=[_service_offering_to_dto(s) for s in profile.services],
-        presencial_schedule=[_schedule_block_to_dto(b) for b in profile.presencial_schedule],
-        virtual_schedule=[_schedule_block_to_dto(b) for b in profile.virtual_schedule],
         payment_methods=[_payment_method_to_dto(pm) for pm in profile.payment_methods],
     )
 
@@ -283,12 +259,6 @@ class AgentService:
                 existing_profile.professional_context if existing_profile is not None else None
             ),
             services=list(existing_profile.services) if existing_profile is not None else [],
-            presencial_schedule=(
-                list(existing_profile.presencial_schedule) if existing_profile is not None else []
-            ),
-            virtual_schedule=(
-                list(existing_profile.virtual_schedule) if existing_profile is not None else []
-            ),
             payment_methods=(
                 list(existing_profile.payment_methods) if existing_profile is not None else []
             ),
@@ -364,12 +334,6 @@ class AgentService:
                 existing_profile.professional_context if existing_profile is not None else None
             ),
             services=list(existing_profile.services) if existing_profile is not None else [],
-            presencial_schedule=(
-                list(existing_profile.presencial_schedule) if existing_profile is not None else []
-            ),
-            virtual_schedule=(
-                list(existing_profile.virtual_schedule) if existing_profile is not None else []
-            ),
             payment_methods=(
                 list(existing_profile.payment_methods) if existing_profile is not None else []
             ),
@@ -429,12 +393,6 @@ class AgentService:
                 update_dto.professional_context
             ),
             services=[_service_offering_dto_to_entity(s) for s in update_dto.services],
-            presencial_schedule=[
-                _schedule_block_dto_to_entity(b) for b in update_dto.presencial_schedule
-            ],
-            virtual_schedule=[
-                _schedule_block_dto_to_entity(b) for b in update_dto.virtual_schedule
-            ],
             payment_methods=[
                 _payment_method_dto_to_entity(pm) for pm in update_dto.payment_methods
             ],

@@ -53,8 +53,6 @@ export function AgentIdentityDetailSection() {
         identity,
         professionalContext: profileQuery.data?.professionalContext ?? EMPTY_PROFESSIONAL_CONTEXT,
         services: profileQuery.data?.services ?? [],
-        presencialSchedule: profileQuery.data?.presencialSchedule ?? [],
-        virtualSchedule: profileQuery.data?.virtualSchedule ?? [],
         paymentMethods: profileQuery.data?.paymentMethods ?? []
       }),
     onSuccess: async () => {

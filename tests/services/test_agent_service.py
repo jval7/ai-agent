@@ -200,8 +200,6 @@ def test_get_professional_profile_returns_empty_dto_when_unset() -> None:
     assert result.identity is None
     assert result.professional_context is None
     assert result.services == []
-    assert result.presencial_schedule == []
-    assert result.virtual_schedule == []
     assert result.payment_methods == []
 
 
@@ -230,16 +228,6 @@ def test_update_professional_profile_persists_structured_fields() -> None:
                 ],
             )
         ],
-        presencial_schedule=[
-            agent_dto.ScheduleBlockDTO(
-                weekday_from="WED", weekday_to="FRI", start_time="08:00", end_time="16:00"
-            )
-        ],
-        virtual_schedule=[
-            agent_dto.ScheduleBlockDTO(
-                weekday_from="MON", weekday_to="FRI", start_time="08:00", end_time="18:00"
-            )
-        ],
         payment_methods=[
             agent_dto.PaymentMethodDTO(
                 currency="COP",
@@ -262,9 +250,6 @@ def test_update_professional_profile_persists_structured_fields() -> None:
     assert "ansiedad" in result.professional_context.common_topics
     assert len(result.services) == 1
     assert result.services[0].name == "Consulta Adultos"
-    assert len(result.presencial_schedule) == 1
-    assert result.presencial_schedule[0].weekday_from == "WED"
-    assert len(result.virtual_schedule) == 1
     assert len(result.payment_methods) == 1
     assert result.payment_methods[0].method_name == "Nequi"
 

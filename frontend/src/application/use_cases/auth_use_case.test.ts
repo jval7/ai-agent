@@ -321,6 +321,20 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async changeBookedSlotModality(
+    _requestId: string,
+    _input: schedulingModel.ChangeBookedSlotModalityInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    throw new Error("not used");
+  }
+
+  async changeManualAppointmentModality(
+    _appointmentId: string,
+    _input: manualAppointmentModel.ChangeManualAppointmentModalityInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    throw new Error("not used");
+  }
+
   async closeSession(_conversationId: string): Promise<{ status: string }> {
     throw new Error("not used");
   }

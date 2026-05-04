@@ -17,13 +17,6 @@ class AssistantIdentityDTO(pydantic.BaseModel):
     languages: list[str] = []
 
 
-class ScheduleBlockDTO(pydantic.BaseModel):
-    weekday_from: typing.Literal["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-    weekday_to: typing.Literal["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] | None = None
-    start_time: str
-    end_time: str
-
-
 class TariffPriceDTO(pydantic.BaseModel):
     currency: str
     amount: float
@@ -63,8 +56,6 @@ class ProfessionalProfileResponseDTO(pydantic.BaseModel):
     identity: AssistantIdentityDTO | None = None
     professional_context: ProfessionalContextDTO | None = None
     services: list[ServiceOfferingDTO] = []
-    presencial_schedule: list[ScheduleBlockDTO] = []
-    virtual_schedule: list[ScheduleBlockDTO] = []
     payment_methods: list[PaymentMethodDTO] = []
 
 
@@ -72,8 +63,6 @@ class UpdateProfessionalProfileDTO(pydantic.BaseModel):
     identity: AssistantIdentityDTO | None = None
     professional_context: ProfessionalContextDTO | None = None
     services: list[ServiceOfferingDTO] = []
-    presencial_schedule: list[ScheduleBlockDTO] = []
-    virtual_schedule: list[ScheduleBlockDTO] = []
     payment_methods: list[PaymentMethodDTO] = []
 
 

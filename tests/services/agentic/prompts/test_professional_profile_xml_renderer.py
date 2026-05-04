@@ -52,19 +52,6 @@ def _full_profile() -> agent_profile_entity.AgentProfile:
                 ],
             ),
         ],
-        presencial_schedule=[
-            agent_profile_entity.ScheduleBlock(
-                weekday_from="WED", weekday_to="FRI", start_time="08:00", end_time="16:00"
-            ),
-            agent_profile_entity.ScheduleBlock(
-                weekday_from="SAT", start_time="08:00", end_time="12:00"
-            ),
-        ],
-        virtual_schedule=[
-            agent_profile_entity.ScheduleBlock(
-                weekday_from="MON", weekday_to="FRI", start_time="08:00", end_time="18:00"
-            ),
-        ],
         payment_methods=[
             agent_profile_entity.PaymentMethod(
                 currency="COP",
@@ -193,65 +180,11 @@ class TestRendererFullProfile:
         assert "Zelle" in result
 
 
-class TestRendererScheduleFormat:
-    def test_range_weekday_schedule_formats_correctly(self) -> None:
-        profile = agent_profile_entity.AgentProfile(
-            tenant_id="t-1",
-            presencial_schedule=[
-                agent_profile_entity.ScheduleBlock(
-                    weekday_from="WED", weekday_to="FRI", start_time="08:00", end_time="16:00"
-                )
-            ],
-            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
-        )
-        result = renderer.render_system_prompt_xml(profile)
-        assert "Miércoles a Viernes de 8am a 4pm" in result
-
-    def test_single_weekday_schedule_formats_correctly(self) -> None:
-        profile = agent_profile_entity.AgentProfile(
-            tenant_id="t-1",
-            virtual_schedule=[
-                agent_profile_entity.ScheduleBlock(
-                    weekday_from="SAT", start_time="08:00", end_time="12:00"
-                )
-            ],
-            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
-        )
-        result = renderer.render_system_prompt_xml(profile)
-        assert "Sábados de 8am a 12pm" in result
-
-    def test_time_with_minutes_formats_correctly(self) -> None:
-        profile = agent_profile_entity.AgentProfile(
-            tenant_id="t-1",
-            presencial_schedule=[
-                agent_profile_entity.ScheduleBlock(
-                    weekday_from="MON", start_time="09:30", end_time="17:45"
-                )
-            ],
-            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
-        )
-        result = renderer.render_system_prompt_xml(profile)
-        assert "9:30am" in result
-        assert "5:45pm" in result
-
-    def test_presencial_and_virtual_schedules_labeled_separately(self) -> None:
-        profile = agent_profile_entity.AgentProfile(
-            tenant_id="t-1",
-            presencial_schedule=[
-                agent_profile_entity.ScheduleBlock(
-                    weekday_from="WED", weekday_to="FRI", start_time="08:00", end_time="16:00"
-                )
-            ],
-            virtual_schedule=[
-                agent_profile_entity.ScheduleBlock(
-                    weekday_from="MON", weekday_to="FRI", start_time="08:00", end_time="18:00"
-                )
-            ],
-            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
-        )
-        result = renderer.render_system_prompt_xml(profile)
-        assert "Horario Presencial" in result
-        assert "Horario Virtual" in result
+class TestRendererNoScheduleLeak:
+    def test_full_profile_does_not_leak_weekly_schedule(self) -> None:
+        result = renderer.render_system_prompt_xml(_full_profile())
+        assert "Horario Presencial" not in result
+        assert "Horario Virtual" not in result
 
 
 class TestRendererPaymentMethods:
