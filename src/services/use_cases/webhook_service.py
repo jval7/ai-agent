@@ -103,42 +103,13 @@ class WebhookService:
 
     def process_payload(self, payload: dict[str, object]) -> webhook_dto.WebhookEventResponseDTO:
         events = self._whatsapp_provider.parse_incoming_message_events(payload)
-        # Temporary diagnostic: shape-only summary of the change fields and
-        # which value keys are present, with NO message content. Helps us
-        # confirm whether Meta is delivering smb_message_echoes at all.
-        # Remove once echo delivery is verified.
-        change_fields_summary: list[dict[str, object]] = []
-        entries = payload.get("entry") if isinstance(payload, dict) else None
-        if isinstance(entries, list):
-            for entry in entries:
-                if not isinstance(entry, dict):
-                    continue
-                changes = entry.get("changes")
-                if not isinstance(changes, list):
-                    continue
-                for change in changes:
-                    if not isinstance(change, dict):
-                        continue
-                    value = change.get("value")
-                    value_keys: list[str] = []
-                    if isinstance(value, dict):
-                        value_keys = sorted(value.keys())
-                    change_fields_summary.append(
-                        {
-                            "field": change.get("field"),
-                            "value_keys": value_keys,
-                        }
-                    )
         logger.info(
             "webhook.received",
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="webhook.received",
                     message="webhook payload parsed",
-                    data={
-                        "event_count": len(events),
-                        "change_fields_summary": change_fields_summary,
-                    },
+                    data={"event_count": len(events)},
                 )
             },
         )
