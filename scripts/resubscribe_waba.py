@@ -30,10 +30,11 @@ import typing
 import google.cloud.firestore as google_cloud_firestore
 import httpx
 
-import src.adapters.outbound.firestore.paths as firestore_paths
-
 _DEFAULT_META_API_VERSION = "v23.0"
 _SUBSCRIBED_FIELDS = ["messages", "smb_message_echoes"]
+# Mirrors WHATSAPP_CONNECTION_COLLECTION in src/adapters/outbound/firestore/paths.py.
+# Duplicated here so the script stays import-free and runs as a standalone CLI.
+_WHATSAPP_CONNECTION_COLLECTION = "whatsapp_connection"
 
 
 def _iter_connected_wabas(
@@ -42,7 +43,7 @@ def _iter_connected_wabas(
 ) -> typing.Iterator[tuple[str, str, str]]:
     """Yield (tenant_id, access_token, business_account_id) for every
     CONNECTED whatsapp_connection in Firestore."""
-    query = client.collection_group(firestore_paths.WHATSAPP_CONNECTION_COLLECTION)
+    query = client.collection_group(_WHATSAPP_CONNECTION_COLLECTION)
     for snapshot in query.stream():
         data = snapshot.to_dict()
         if data is None:
