@@ -38,12 +38,6 @@ export function AgentServicesDetailSection() {
   const [professionalContext, setProfessionalContext] =
     reactModule.useState<agentModel.ProfessionalContext>(EMPTY_PROFESSIONAL_CONTEXT);
   const [services, setServices] = reactModule.useState<agentModel.ServiceOffering[]>([]);
-  const [presencialSchedule, setPresencialSchedule] = reactModule.useState<
-    agentModel.ScheduleBlock[]
-  >([]);
-  const [virtualSchedule, setVirtualSchedule] = reactModule.useState<agentModel.ScheduleBlock[]>(
-    []
-  );
   const [successMessage, setSuccessMessage] = reactModule.useState<string | null>(null);
   const [isDirty, setIsDirty] = reactModule.useState(false);
 
@@ -51,8 +45,6 @@ export function AgentServicesDetailSection() {
     if (profileQuery.data !== undefined) {
       setProfessionalContext(profileQuery.data.professionalContext ?? EMPTY_PROFESSIONAL_CONTEXT);
       setServices(profileQuery.data.services);
-      setPresencialSchedule(profileQuery.data.presencialSchedule);
-      setVirtualSchedule(profileQuery.data.virtualSchedule);
       setIsDirty(false);
     }
   }, [profileQuery.data]);
@@ -68,8 +60,6 @@ export function AgentServicesDetailSection() {
         identity: profileQuery.data?.identity ?? EMPTY_IDENTITY,
         professionalContext,
         services,
-        presencialSchedule,
-        virtualSchedule,
         paymentMethods: profileQuery.data?.paymentMethods ?? []
       }),
     onSuccess: async () => {
@@ -102,22 +92,12 @@ export function AgentServicesDetailSection() {
           setProfessionalContext(next);
           markDirty();
         }}
-        onPresencialScheduleChange={(next) => {
-          setPresencialSchedule(next);
-          markDirty();
-        }}
         onServicesChange={(next) => {
           setServices(next);
           markDirty();
         }}
-        onVirtualScheduleChange={(next) => {
-          setVirtualSchedule(next);
-          markDirty();
-        }}
-        presencialSchedule={presencialSchedule}
         professionalContext={professionalContext}
         services={services}
-        virtualSchedule={virtualSchedule}
       />
 
       {successMessage !== null ? (

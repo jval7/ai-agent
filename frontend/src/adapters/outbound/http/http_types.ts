@@ -399,13 +399,6 @@ export interface AssistantIdentityApiResponse {
   languages: string[];
 }
 
-export interface ScheduleBlockApiResponse {
-  weekday_from: string;
-  weekday_to: string | null;
-  start_time: string;
-  end_time: string;
-}
-
 export interface TariffPriceApiResponse {
   currency: string;
   amount: number;
@@ -445,8 +438,6 @@ export interface ProfessionalProfileApiResponse {
   identity: AssistantIdentityApiResponse | null;
   professional_context: ProfessionalContextApiResponse | null;
   services: ServiceOfferingApiResponse[];
-  presencial_schedule: ScheduleBlockApiResponse[];
-  virtual_schedule: ScheduleBlockApiResponse[];
   payment_methods: PaymentMethodApiResponse[];
 }
 
@@ -454,7 +445,5 @@ export interface UpdateProfessionalProfileApiRequest {
   identity: AssistantIdentityApiResponse | null;
   professional_context: ProfessionalContextApiResponse | null;
   services: ServiceOfferingApiResponse[];
-  presencial_schedule: ScheduleBlockApiResponse[];
-  virtual_schedule: ScheduleBlockApiResponse[];
   payment_methods: PaymentMethodApiResponse[];
 }

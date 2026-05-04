@@ -957,8 +957,7 @@ async def _apply_shape_agent_profile(
     PUT /v1/agent/professional-profile.
 
     El shape JSON ya esta en formato compatible con UpdateProfessionalProfileDTO:
-    los campos identity, services, presencial_schedule, virtual_schedule,
-    payment_methods son exactamente los que acepta el endpoint.
+    los campos identity, services, payment_methods son exactamente los que acepta el endpoint.
     """
     # agent_profile viene deserializado como AgentProfile desde el shape JSON.
     # Lo convertimos a dict (mode="json" para que sea JSON-serializable) y

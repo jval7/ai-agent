@@ -52,8 +52,6 @@ export function AgentPaymentsDetailSection() {
         identity: profileQuery.data?.identity ?? EMPTY_IDENTITY,
         professionalContext: profileQuery.data?.professionalContext ?? EMPTY_PROFESSIONAL_CONTEXT,
         services: profileQuery.data?.services ?? [],
-        presencialSchedule: profileQuery.data?.presencialSchedule ?? [],
-        virtualSchedule: profileQuery.data?.virtualSchedule ?? [],
         paymentMethods
       }),
     onSuccess: async () => {

@@ -17,8 +17,6 @@ const EMPTY_PROFILE: agentModel.ProfessionalProfile = {
   identity: null,
   professionalContext: null,
   services: [],
-  presencialSchedule: [],
-  virtualSchedule: [],
   paymentMethods: []
 };
 
@@ -54,10 +52,6 @@ const FULL_PROFILE: agentModel.ProfessionalProfile = {
       ]
     }
   ],
-  presencialSchedule: [
-    { weekdayFrom: "WED", weekdayTo: "FRI", startTime: "08:00", endTime: "16:00" }
-  ],
-  virtualSchedule: [],
   paymentMethods: [
     {
       currency: "COP",

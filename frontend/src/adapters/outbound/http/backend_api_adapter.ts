@@ -1506,27 +1506,6 @@ function tariffOptionToApi(item: agentModel.TariffOption): httpTypes.TariffOptio
   };
 }
 
-function mapScheduleBlock(raw: httpTypes.ScheduleBlockApiResponse): agentModel.ScheduleBlock {
-  return {
-    weekdayFrom: raw.weekday_from as agentModel.Weekday,
-    weekdayTo:
-      raw.weekday_to !== null && raw.weekday_to !== undefined
-        ? (raw.weekday_to as agentModel.Weekday)
-        : null,
-    startTime: raw.start_time,
-    endTime: raw.end_time
-  };
-}
-
-function scheduleBlockToApi(item: agentModel.ScheduleBlock): httpTypes.ScheduleBlockApiResponse {
-  return {
-    weekday_from: item.weekdayFrom,
-    weekday_to: item.weekdayTo,
-    start_time: item.startTime,
-    end_time: item.endTime
-  };
-}
-
 function mapServiceOffering(raw: httpTypes.ServiceOfferingApiResponse): agentModel.ServiceOffering {
   // Default fully-visible when the field is missing (legacy data).
   const rawTargetPatients =
@@ -1603,8 +1582,6 @@ function mapProfessionalProfile(
           }
         : null,
     services: raw.services.map(mapServiceOffering),
-    presencialSchedule: raw.presencial_schedule.map(mapScheduleBlock),
-    virtualSchedule: raw.virtual_schedule.map(mapScheduleBlock),
     paymentMethods: raw.payment_methods.map(mapPaymentMethod)
   };
 }
@@ -1635,8 +1612,6 @@ function profileInputToApi(
           }
         : null,
     services: input.services.map(serviceOfferingToApi),
-    presencial_schedule: input.presencialSchedule.map(scheduleBlockToApi),
-    virtual_schedule: input.virtualSchedule.map(scheduleBlockToApi),
     payment_methods: input.paymentMethods.map(paymentMethodToApi)
   };
 }
