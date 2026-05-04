@@ -901,6 +901,40 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return mapSchedulingRequestSummary(payload);
   }
 
+  async changeBookedSlotModality(
+    requestId: string,
+    input: schedulingModel.ChangeBookedSlotModalityInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    const payload = await this.request<httpTypes.SchedulingRequestSummaryApiResponse>(
+      `/v1/scheduling/${requestId}/change-modality`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          new_modality: input.newModality
+        } satisfies httpTypes.ChangeBookedModalityApiRequest)
+      }
+    );
+    return mapSchedulingRequestSummary(payload);
+  }
+
+  async changeManualAppointmentModality(
+    appointmentId: string,
+    input: manualAppointmentModel.ChangeManualAppointmentModalityInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
+      `/v1/manual-appointments/${appointmentId}/change-modality`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          new_modality: input.newModality
+        } satisfies httpTypes.ChangeManualAppointmentModalityApiRequest)
+      }
+    );
+    return mapManualAppointment(payload);
+  }
+
   async closeSession(conversationId: string): Promise<{ status: string }> {
     return this.request<{ status: string }>(
       `/v1/conversations/${conversationId}/scheduling/close-session`,

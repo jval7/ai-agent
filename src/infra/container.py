@@ -366,6 +366,7 @@ class AppContainer:
             whatsapp_connection_repository=self.whatsapp_connection_repository,
             whatsapp_provider=self.whatsapp_provider_adapter,
             scheduling_repository=self.scheduling_repository,
+            tenant_repository=self.tenant_repository,
         )
 
         self.patient_profile_resolver = patient_profile_resolver.PatientProfileResolver(

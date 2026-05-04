@@ -116,3 +116,7 @@ export interface UpdateBookedSlotPaymentInput {
   paymentMethod: AppointmentPaymentMethod;
   paymentStatus: AppointmentPaymentStatus;
 }
+
+export interface ChangeBookedSlotModalityInput {
+  newModality: "PRESENCIAL" | "VIRTUAL";
+}

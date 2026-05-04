@@ -327,6 +327,14 @@ export interface CancelBookedSlotApiRequest {
   reason: string | null;
 }
 
+export interface ChangeBookedModalityApiRequest {
+  new_modality: "PRESENCIAL" | "VIRTUAL";
+}
+
+export interface ChangeManualAppointmentModalityApiRequest {
+  new_modality: "PRESENCIAL" | "VIRTUAL";
+}
+
 export interface UpdateBookedSlotPaymentApiRequest {
   payment_amount_cop: number;
   payment_currency: "COP" | "USD";

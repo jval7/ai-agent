@@ -128,4 +128,45 @@ vitestModule.describe("AppointmentDetailCard", () => {
     renderCard({ durationMinutes: 45 });
     expect(testingLibraryReactModule.screen.getByText("45 min")).toBeInTheDocument();
   });
+
+  vitestModule.it(
+    'renders "Cambiar a virtual" when modality is PRESENCIAL and onChangeModality is provided',
+    () => {
+      const onChangeModality = vitestModule.vi.fn();
+      renderCard({ modality: "PRESENCIAL", onChangeModality });
+      expect(
+        testingLibraryReactModule.screen.getByRole("button", { name: /Cambiar a virtual/i })
+      ).toBeInTheDocument();
+    }
+  );
+
+  vitestModule.it(
+    'renders "Cambiar a presencial" when modality is VIRTUAL and onChangeModality is provided',
+    () => {
+      const onChangeModality = vitestModule.vi.fn();
+      renderCard({ modality: "VIRTUAL", onChangeModality });
+      expect(
+        testingLibraryReactModule.screen.getByRole("button", { name: /Cambiar a presencial/i })
+      ).toBeInTheDocument();
+    }
+  );
+
+  vitestModule.it(
+    "does not render change-modality button when onChangeModality is not provided",
+    () => {
+      renderCard({ modality: "PRESENCIAL" });
+      expect(
+        testingLibraryReactModule.screen.queryByRole("button", { name: /Cambiar a virtual/i })
+      ).toBeNull();
+    }
+  );
+
+  vitestModule.it("calls onChangeModality when change-modality button is clicked", () => {
+    const onChangeModality = vitestModule.vi.fn();
+    renderCard({ modality: "PRESENCIAL", onChangeModality });
+    testingLibraryReactModule.fireEvent.click(
+      testingLibraryReactModule.screen.getByRole("button", { name: /Cambiar a virtual/i })
+    );
+    expect(onChangeModality).toHaveBeenCalledTimes(1);
+  });
 });

@@ -284,6 +284,8 @@ class GoogleCalendarOnboardingService:
         attendee_emails: list[str],
         description: str | None = None,
         location: str | None = None,
+        with_meet: bool | None = None,
+        conference_request_id: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         connection = self._get_connected_connection_with_fresh_access_token(tenant_id)
         calendar_id = connection.calendar_id
@@ -304,6 +306,8 @@ class GoogleCalendarOnboardingService:
             attendee_emails=attendee_emails,
             description=description,
             location=location,
+            with_meet=with_meet,
+            conference_request_id=conference_request_id,
         )
 
     def _finalize_connection(

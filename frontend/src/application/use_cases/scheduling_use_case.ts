@@ -59,6 +59,13 @@ export class SchedulingUseCase {
     return this.api.updateBookedSlotPayment(requestId, input);
   }
 
+  async changeBookedSlotModality(
+    requestId: string,
+    input: schedulingModel.ChangeBookedSlotModalityInput
+  ) {
+    return this.api.changeBookedSlotModality(requestId, input);
+  }
+
   async closeSession(conversationId: string) {
     return this.api.closeSession(conversationId);
   }

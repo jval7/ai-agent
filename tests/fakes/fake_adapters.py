@@ -225,6 +225,7 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         self.updated_event_summaries: list[str] = []
         self.updated_event_descriptions: list[str | None] = []
         self.last_update_attendee_emails: list[list[str]] = []
+        self.last_update_with_meet: list[bool | None] = []
         self.busy_interval_errors: list[service_exceptions.ExternalProviderError] = []
         self.create_event_errors: list[service_exceptions.ExternalProviderError] = []
         self.delete_event_errors: list[service_exceptions.ExternalProviderError] = []
@@ -332,6 +333,8 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         attendee_emails: list[str],
         description: str | None = None,
         location: str | None = None,
+        with_meet: bool | None = None,
+        conference_request_id: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         if self.update_event_errors:
             raise self.update_event_errors.pop(0)
@@ -339,13 +342,21 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         del calendar_id
         del timezone
         del location
+        del conference_request_id
         self.updated_event_summaries.append(summary)
         self.updated_event_descriptions.append(description)
         self.last_update_attendee_emails.append(list(attendee_emails))
+        self.last_update_with_meet.append(with_meet)
+        meet_url: str | None = None
+        if with_meet is True:
+            meet_url = "https://meet.google.com/fake-meet"
+        elif with_meet is False:
+            meet_url = None
         event = google_calendar_dto.GoogleCalendarEventDTO(
             event_id=event_id,
             start_at=start_at,
             end_at=end_at,
+            meet_url=meet_url,
         )
         self.updated_events.append(event)
         return event.model_copy(deep=True)

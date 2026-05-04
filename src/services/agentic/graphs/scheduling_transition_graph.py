@@ -125,6 +125,7 @@ class SchedulingTransitionGraph:
                     "RESCHEDULE_BOOKED_SLOT",
                     "CANCEL_BOOKED_SLOT",
                     "UPDATE_BOOKED_PAYMENT",
+                    "CHANGE_BOOKED_MODALITY",
                 ],
                 action,
             ),
