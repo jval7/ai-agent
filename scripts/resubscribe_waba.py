@@ -13,9 +13,19 @@ replaced by this one. Idempotent: re-running it keeps the same state.
 Requires:
     - ADC with Firestore access (``GOOGLE_APPLICATION_CREDENTIALS``)
     - Optional ``META_API_VERSION`` env var (defaults to ``v23.0``)
+    - ``GOOGLE_CLOUD_PROJECT`` to pick which env's Firestore to read from.
+      The project is printed at the start of the run so you cannot mistake
+      dev for prod.
 
 Usage:
-    uv run python scripts/resubscribe_waba.py
+    # via Makefile (production):
+    #   .env pins GOOGLE_CLOUD_PROJECT=...-dev, so a shell-level export is
+    #   ignored. Pass the project as a make-arg instead so it overrides:
+    make resubscribe-waba GOOGLE_CLOUD_PROJECT=ai-agent-calendar-2603011621
+    make resubscribe-waba GOOGLE_CLOUD_PROJECT=<prod-id> ARGS="--dry-run"
+
+    # direct (any project):
+    GOOGLE_CLOUD_PROJECT=<id> uv run python scripts/resubscribe_waba.py
     uv run python scripts/resubscribe_waba.py --tenant-id <id>
     uv run python scripts/resubscribe_waba.py --dry-run
 """
@@ -109,6 +119,14 @@ def main() -> None:
     args = _parse_args()
     meta_api_version = os.environ.get("META_API_VERSION", _DEFAULT_META_API_VERSION)
     firestore_client = google_cloud_firestore.Client()
+
+    # Print the resolved GCP project up-front. The Firestore SDK and gcloud CLI
+    # resolve project independently — gcloud config is not enough — so it is
+    # easy to think you are running against prod while the SDK is hitting dev.
+    print(f"GCP project (Firestore): {firestore_client.project}")
+    print(f"Meta API version:        {meta_api_version}")
+    print(f"Subscribing fields:      {_SUBSCRIBED_FIELDS}")
+    print()
 
     summary_ok: list[str] = []
     summary_fail: list[tuple[str, str]] = []
