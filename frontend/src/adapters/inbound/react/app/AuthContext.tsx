@@ -4,10 +4,13 @@ import type * as authModel from "@domain/models/auth";
 
 import * as appContainerContextModule from "./AppContainerContext";
 
-interface AuthContextValue {
+export interface AuthContextValue {
   status: authModel.AuthStatus;
   login(input: authModel.LoginInput): Promise<void>;
   logout(): Promise<void>;
+  acceptInvitation(input: authModel.AcceptInvitationInput): Promise<void>;
+  requestPasswordReset(input: authModel.RequestPasswordResetInput): Promise<void>;
+  confirmPasswordReset(input: authModel.ConfirmPasswordResetInput): Promise<void>;
 }
 
 const AuthContext = reactModule.createContext<AuthContextValue | null>(null);
@@ -44,6 +47,16 @@ export function AuthProvider(props: { children: reactModule.ReactNode }) {
       logout: async () => {
         await appContainer.authUseCase.logout();
         setStatus("anonymous");
+      },
+      acceptInvitation: async (input) => {
+        await appContainer.authUseCase.acceptInvitation(input);
+        setStatus("authenticated");
+      },
+      requestPasswordReset: async (input) => {
+        await appContainer.authUseCase.requestPasswordReset(input);
+      },
+      confirmPasswordReset: async (input) => {
+        await appContainer.authUseCase.confirmPasswordReset(input);
       }
     }),
     [appContainer.authUseCase, status]

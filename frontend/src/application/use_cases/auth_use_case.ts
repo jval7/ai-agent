@@ -43,6 +43,19 @@ export class AuthUseCase {
     this.persistTokens(tokens);
   }
 
+  async acceptInvitation(input: authModel.AcceptInvitationInput): Promise<void> {
+    const tokens = await this.api.acceptInvitation(input);
+    this.persistTokens(tokens);
+  }
+
+  async requestPasswordReset(input: authModel.RequestPasswordResetInput): Promise<void> {
+    await this.api.requestPasswordReset(input);
+  }
+
+  async confirmPasswordReset(input: authModel.ConfirmPasswordResetInput): Promise<void> {
+    await this.api.confirmPasswordReset(input);
+  }
+
   async logout(): Promise<void> {
     const refreshToken = this.tokenSession.getRefreshToken();
     if (refreshToken !== null) {

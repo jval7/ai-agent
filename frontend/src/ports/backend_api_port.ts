@@ -17,6 +17,9 @@ export interface BackendApiPort {
   login(input: authModel.LoginInput): Promise<authModel.AuthTokens>;
   refresh(refreshToken: string): Promise<authModel.AuthTokens>;
   logout(refreshToken: string): Promise<void>;
+  acceptInvitation(input: authModel.AcceptInvitationInput): Promise<authModel.AuthTokens>;
+  requestPasswordReset(input: authModel.RequestPasswordResetInput): Promise<void>;
+  confirmPasswordReset(input: authModel.ConfirmPasswordResetInput): Promise<void>;
 
   getSystemPrompt(): Promise<agentModel.SystemPrompt>;
   updateSystemPrompt(systemPrompt: string): Promise<agentModel.SystemPrompt>;

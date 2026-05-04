@@ -8,18 +8,13 @@ import * as uiErrorModule from "@shared/http/ui_error";
 const inputClassName =
   "h-12 w-full rounded-xl border border-palette-mist bg-white px-4 text-base text-slate-800 placeholder:text-slate-400 focus:border-brand-teal focus:outline-none focus:ring-2 focus:ring-brand-teal/20 md:h-14 md:text-lg";
 
-export function LoginPage() {
+export function ForgotPasswordPage() {
   const auth = authContextModule.useAuth();
-  const navigate = reactRouterDomModule.useNavigate();
-  const [searchParams] = reactRouterDomModule.useSearchParams();
 
   const [email, setEmail] = reactModule.useState("");
-  const [password, setPassword] = reactModule.useState("");
-  const [isPasswordVisible, setIsPasswordVisible] = reactModule.useState(false);
   const [isSubmitting, setIsSubmitting] = reactModule.useState(false);
   const [errorMessage, setErrorMessage] = reactModule.useState<string | null>(null);
-
-  const showResetSuccessBanner = searchParams.get("reset") === "success";
+  const [hasSubmittedSuccessfully, setHasSubmittedSuccessfully] = reactModule.useState(false);
 
   const handleSubmit = async (event: reactModule.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -27,11 +22,8 @@ export function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      await auth.login({
-        email: email.trim(),
-        password
-      });
-      navigate("/configuraciones", { replace: true });
+      await auth.requestPasswordReset({ email: email.trim() });
+      setHasSubmittedSuccessfully(true);
     } catch (error: unknown) {
       const resolvedErrorMessage = uiErrorModule.resolveUiErrorMessage([error]);
       if (resolvedErrorMessage === null) {
@@ -43,17 +35,36 @@ export function LoginPage() {
     }
   };
 
+  if (hasSubmittedSuccessfully) {
+    return (
+      <authSharedModule.AuthScreenContainer>
+        <authSharedModule.AuthCard
+          subtitle="Revisá tu bandeja de entrada"
+          title="Reestablecer contraseña"
+        >
+          <p className="text-center text-base text-slate-600 md:text-xl">
+            Si la cuenta existe, te enviamos un link para reestablecer la contraseña. Revisá tu
+            bandeja de entrada (y la carpeta de spam).
+          </p>
+          <p className="mt-8 text-center text-base text-slate-600 md:text-xl">
+            <reactRouterDomModule.Link
+              className="font-medium text-brand-teal underline hover:text-brand-teal-hover"
+              to="/login"
+            >
+              Volver al inicio de sesión
+            </reactRouterDomModule.Link>
+          </p>
+        </authSharedModule.AuthCard>
+      </authSharedModule.AuthScreenContainer>
+    );
+  }
+
   return (
     <authSharedModule.AuthScreenContainer>
-      <authSharedModule.AuthCard subtitle="Accede a tu panel de control" title="Iniciar sesión">
-        {showResetSuccessBanner ? (
-          <div
-            className="mb-5 rounded-xl bg-green-100 px-3 py-2 text-base font-medium text-green-700 md:text-[18px]"
-            role="status"
-          >
-            Contraseña actualizada. Iniciá sesión con tu nueva contraseña.
-          </div>
-        ) : null}
+      <authSharedModule.AuthCard
+        subtitle="Te enviaremos un link para crear una nueva"
+        title="Reestablecer contraseña"
+      >
         <form className="space-y-5" onSubmit={(event) => void handleSubmit(event)}>
           <div>
             <authSharedModule.AuthInputLabel htmlFor="email" text="Correo electrónico" />
@@ -71,31 +82,6 @@ export function LoginPage() {
             />
           </div>
 
-          <div>
-            <authSharedModule.AuthInputLabel htmlFor="password" text="Contraseña" />
-            <div className="relative">
-              <input
-                autoComplete="current-password"
-                className={`${inputClassName} pr-12`}
-                id="password"
-                minLength={8}
-                onChange={(event) => {
-                  setPassword(event.target.value);
-                }}
-                placeholder="••••••••"
-                required
-                type={isPasswordVisible ? "text" : "password"}
-                value={password}
-              />
-              <authSharedModule.EyeToggleButton
-                isVisible={isPasswordVisible}
-                onClick={() => {
-                  setIsPasswordVisible((currentValue) => !currentValue);
-                }}
-              />
-            </div>
-          </div>
-
           {errorMessage !== null ? (
             <errorBannerModule.ErrorBanner
               className="rounded-xl bg-red-100 px-3 py-2 text-base font-medium text-red-700 md:text-[18px]"
@@ -108,23 +94,17 @@ export function LoginPage() {
             disabled={isSubmitting}
             type="submit"
           >
-            {isSubmitting ? "Iniciando..." : "Iniciar sesión"}
+            {isSubmitting ? "Enviando..." : "Enviar link"}
           </button>
         </form>
 
-        <p className="mt-5 text-center text-base text-slate-600 md:text-lg">
+        <p className="mt-8 text-center text-base text-slate-600 md:text-xl">
           <reactRouterDomModule.Link
             className="font-medium text-brand-teal underline hover:text-brand-teal-hover"
-            to="/forgot-password"
+            to="/login"
           >
-            ¿Olvidaste tu contraseña?
+            Volver al inicio de sesión
           </reactRouterDomModule.Link>
-        </p>
-
-        <authSharedModule.SecurityHint />
-
-        <p className="mt-8 text-center text-base text-slate-600 md:text-xl">
-          El registro está deshabilitado. Solicita acceso al administrador local.
         </p>
       </authSharedModule.AuthCard>
     </authSharedModule.AuthScreenContainer>

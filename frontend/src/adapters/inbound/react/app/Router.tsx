@@ -1,14 +1,17 @@
 import * as reactRouterDomModule from "react-router-dom";
 
+import * as acceptInvitePageModule from "@adapters/inbound/react/pages/AcceptInvitePage";
 import * as agendaPageModule from "@adapters/inbound/react/pages/AgendaPage";
 import * as clientsPageModule from "@adapters/inbound/react/pages/ClientsPage";
 import * as configuracionesPageModule from "@adapters/inbound/react/pages/ConfiguracionesPage";
 import * as evaluacionPageModule from "@adapters/inbound/react/pages/EvaluacionPage";
 import * as runDetailPageModule from "@adapters/inbound/react/pages/evaluacion/RunDetailPage";
 import * as finanzasPageModule from "@adapters/inbound/react/pages/FinanzasPage";
+import * as forgotPasswordPageModule from "@adapters/inbound/react/pages/ForgotPasswordPage";
 import * as inboxPageModule from "@adapters/inbound/react/pages/InboxPage";
 import * as landingPageModule from "@adapters/inbound/react/pages/LandingPage";
 import * as loginPageModule from "@adapters/inbound/react/pages/LoginPage";
+import * as resetPasswordPageModule from "@adapters/inbound/react/pages/ResetPasswordPage";
 import * as roadmapPageModule from "@adapters/inbound/react/pages/RoadmapPage";
 import * as recordatoriosPageModule from "@adapters/inbound/react/pages/RecordatoriosPage";
 
@@ -141,6 +144,30 @@ export function AppRouter() {
             </publicOnlyRouteModule.PublicOnlyRoute>
           }
           path="/roadmap"
+        />
+        <reactRouterDomModule.Route
+          element={
+            <publicOnlyRouteModule.PublicOnlyRoute>
+              <acceptInvitePageModule.AcceptInvitePage />
+            </publicOnlyRouteModule.PublicOnlyRoute>
+          }
+          path="/accept-invite"
+        />
+        <reactRouterDomModule.Route
+          element={
+            <publicOnlyRouteModule.PublicOnlyRoute>
+              <forgotPasswordPageModule.ForgotPasswordPage />
+            </publicOnlyRouteModule.PublicOnlyRoute>
+          }
+          path="/forgot-password"
+        />
+        <reactRouterDomModule.Route
+          element={
+            <publicOnlyRouteModule.PublicOnlyRoute>
+              <resetPasswordPageModule.ResetPasswordPage />
+            </publicOnlyRouteModule.PublicOnlyRoute>
+          }
+          path="/reset-password"
         />
         <reactRouterDomModule.Route
           element={<reactRouterDomModule.Navigate replace to="/configuraciones" />}

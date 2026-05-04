@@ -64,6 +64,18 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async acceptInvitation(_input: authModel.AcceptInvitationInput): Promise<authModel.AuthTokens> {
+    throw new Error("not used");
+  }
+
+  async requestPasswordReset(_input: authModel.RequestPasswordResetInput): Promise<void> {
+    return;
+  }
+
+  async confirmPasswordReset(_input: authModel.ConfirmPasswordResetInput): Promise<void> {
+    return;
+  }
+
   async refresh(_refreshToken: string): Promise<authModel.AuthTokens> {
     this.refreshCalls += 1;
     return {

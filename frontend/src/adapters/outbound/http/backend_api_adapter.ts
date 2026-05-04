@@ -51,6 +51,39 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return mapAuthTokens(payload);
   }
 
+  async acceptInvitation(input: authModel.AcceptInvitationInput): Promise<authModel.AuthTokens> {
+    const payload = await this.request<httpTypes.AuthTokensApiResponse>("/v1/auth/accept-invite", {
+      method: "POST",
+      authRequired: false,
+      body: JSON.stringify({
+        token: input.token,
+        new_password: input.password
+      })
+    });
+    return mapAuthTokens(payload);
+  }
+
+  async requestPasswordReset(input: authModel.RequestPasswordResetInput): Promise<void> {
+    await this.request<void>("/v1/auth/password-reset/request", {
+      method: "POST",
+      authRequired: false,
+      body: JSON.stringify({
+        email: input.email
+      })
+    });
+  }
+
+  async confirmPasswordReset(input: authModel.ConfirmPasswordResetInput): Promise<void> {
+    await this.request<void>("/v1/auth/password-reset/confirm", {
+      method: "POST",
+      authRequired: false,
+      body: JSON.stringify({
+        token: input.token,
+        new_password: input.password
+      })
+    });
+  }
+
   async refresh(refreshToken: string): Promise<authModel.AuthTokens> {
     const payload = await this.refreshTokens(refreshToken);
     return mapAuthTokens(payload);
