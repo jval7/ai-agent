@@ -5,16 +5,23 @@ import sys
 
 import pydantic
 
+import src.adapters.outbound.email_resend.logging_email_notifier_adapter as logging_email_notifier_adapter
+import src.adapters.outbound.email_resend.resend_email_notifier_adapter as resend_email_notifier_adapter
 import src.adapters.outbound.firestore.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.firestore.client_factory as firestore_client_factory
+import src.adapters.outbound.firestore.invitation_token_repository_adapter as invitation_token_repository_adapter
+import src.adapters.outbound.firestore.refresh_token_repository_adapter as refresh_token_repository_adapter
 import src.adapters.outbound.firestore.tenant_repository_adapter as tenant_repository_adapter
 import src.adapters.outbound.firestore.user_repository_adapter as user_repository_adapter
 import src.adapters.outbound.secret_manager.app_config_secret_loader_adapter as app_config_secret_loader_adapter
 import src.adapters.outbound.security.password_hasher_adapter as password_hasher_adapter
 import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
+import src.ports.email_notifier_port as email_notifier_port
 import src.services.dto.user_admin_dto as user_admin_dto
 import src.services.exceptions as service_exceptions
+import src.services.use_cases.auth_service as auth_service_mod
+import src.services.use_cases.invitation_service as invitation_service_mod
 import src.services.use_cases.user_admin_service as user_admin_service
 
 
@@ -51,6 +58,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "list-professionals",
         help="List all professionals (email, tenant, role, active, created_at)",
     )
+
+    invite_parser = subparsers.add_parser(
+        "invite-professional",
+        help="Create a professional and send an email invitation to set up their password",
+    )
+    invite_parser.add_argument("--tenant-name", required=True)
+    invite_parser.add_argument("--email", required=True)
+    invite_parser.add_argument("--professional-name", default=None)
 
     return parser
 
@@ -102,7 +117,7 @@ def _print_professionals_table(
     print(f"\nTotal: {len(rows)} professional(s)")
 
 
-def _build_service() -> user_admin_service.UserAdminService:
+def _build_settings_and_firestore() -> tuple[app_settings.Settings, object]:
     app_config_loader = app_config_secret_loader_adapter.SecretManagerAppConfigLoaderAdapter()
     loaded_secret = app_config_loader.load()
     settings = app_settings.Settings.from_secret_json(
@@ -113,6 +128,11 @@ def _build_service() -> user_admin_service.UserAdminService:
         project_id=settings.google_cloud_project_id,
         database_id=settings.firestore_database_id,
     )
+    return settings, firestore_client
+
+
+def _build_service() -> user_admin_service.UserAdminService:
+    settings, firestore_client = _build_settings_and_firestore()
     tenant_repository = tenant_repository_adapter.FirestoreTenantRepositoryAdapter(firestore_client)
     user_repository = user_repository_adapter.FirestoreUserRepositoryAdapter(firestore_client)
     agent_profile_repository = (
@@ -129,11 +149,103 @@ def _build_service() -> user_admin_service.UserAdminService:
     )
 
 
+def _build_service_with_invitation() -> user_admin_service.UserAdminService:
+    settings, firestore_client = _build_settings_and_firestore()
+    tenant_repo = tenant_repository_adapter.FirestoreTenantRepositoryAdapter(firestore_client)
+    user_repo = user_repository_adapter.FirestoreUserRepositoryAdapter(firestore_client)
+    agent_profile_repo = agent_profile_repository_adapter.FirestoreAgentProfileRepositoryAdapter(
+        firestore_client
+    )
+    refresh_token_repo = refresh_token_repository_adapter.FirestoreRefreshTokenRepositoryAdapter(
+        firestore_client
+    )
+    invitation_token_repo = (
+        invitation_token_repository_adapter.FirestoreInvitationTokenRepositoryAdapter(
+            firestore_client
+        )
+    )
+    hasher = password_hasher_adapter.Pbkdf2PasswordHasherAdapter()
+    id_gen = system_adapters.UuidIdGeneratorAdapter()
+    clock = system_adapters.SystemClockAdapter()
+
+    notifier: email_notifier_port.EmailNotifierPort
+    if settings.email_notifier_enabled and settings.resend_api_key:
+        notifier = resend_email_notifier_adapter.ResendEmailNotifierAdapter(settings=settings)
+    else:
+        notifier = logging_email_notifier_adapter.LoggingEmailNotifierAdapter()
+
+    import src.adapters.outbound.security.jwt_provider_adapter as jwt_provider_adapter_mod
+
+    jwt_provider = jwt_provider_adapter_mod.Hs256JwtProviderAdapter(
+        secret=settings.jwt_secret,
+        clock=clock,
+    )
+
+    import src.adapters.outbound.firestore.agent_profile_repository_adapter as ap_adapter
+    import src.adapters.outbound.firestore.user_repository_adapter as u_adapter
+
+    auth_svc = auth_service_mod.AuthService(
+        tenant_repository=tenant_repo,
+        user_repository=user_repo,
+        agent_profile_repository=agent_profile_repo,
+        password_hasher=hasher,
+        jwt_provider=jwt_provider,
+        refresh_token_repository=refresh_token_repo,
+        id_generator=id_gen,
+        clock=clock,
+        default_system_prompt=settings.default_system_prompt,
+        access_ttl_seconds=settings.jwt_access_ttl_seconds,
+        refresh_ttl_seconds=settings.jwt_refresh_ttl_seconds,
+    )
+    del ap_adapter, u_adapter
+
+    inv_service = invitation_service_mod.InvitationService(
+        invitation_token_repository=invitation_token_repo,
+        user_repository=user_repo,
+        tenant_repository=tenant_repo,
+        password_hasher=hasher,
+        email_notifier=notifier,
+        id_generator=id_gen,
+        clock=clock,
+        refresh_token_repository=refresh_token_repo,
+        auth_service=auth_svc,
+        frontend_app_base_url=settings.frontend_app_base_url,
+        account_setup_ttl_hours=settings.invitation_account_setup_ttl_hours,
+        password_reset_ttl_minutes=settings.invitation_password_reset_ttl_minutes,
+    )
+
+    return user_admin_service.UserAdminService(
+        tenant_repository=tenant_repo,
+        user_repository=user_repo,
+        agent_profile_repository=agent_profile_repo,
+        password_hasher=hasher,
+        id_generator=id_gen,
+        clock=clock,
+        default_system_prompt=settings.default_system_prompt,
+        invitation_service=inv_service,
+    )
+
+
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
 
     try:
+        if args.command == "invite-professional":
+            service = _build_service_with_invitation()
+            service.invite_professional(
+                user_admin_dto.InviteProfessionalDTO(
+                    tenant_name=args.tenant_name,
+                    email=args.email,
+                    professional_name=args.professional_name,
+                )
+            )
+            print("Invitation sent successfully.")
+            print(f"  Tenant: {args.tenant_name}")
+            print(f"  Email:  {args.email}")
+            print("The user will receive an email to configure their password.")
+            return 0
+
         service = _build_service()
         if args.command == "create-professional":
             alphabet = string.ascii_letters + string.digits

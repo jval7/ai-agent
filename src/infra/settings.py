@@ -47,6 +47,12 @@ class Settings(pydantic.BaseModel):
     whatsapp_outbound_noop: bool
     eval_admin_secret: str | None = None
     eval_endpoints_enabled: bool = False
+    resend_api_key: str | None = None
+    resend_from_email: str = "no-reply@example.com"
+    resend_from_name: str = "Agendachat"
+    invitation_account_setup_ttl_hours: int = 168
+    invitation_password_reset_ttl_minutes: int = 30
+    email_notifier_enabled: bool = False
 
     @classmethod
     def from_secret_json(cls, raw_app_config_json: str, adc_project_id: str) -> "Settings":
@@ -168,6 +174,21 @@ class Settings(pydantic.BaseModel):
             ),
             eval_endpoints_enabled=app_config_overrides.get(
                 "EVAL_ENDPOINTS_ENABLED", "false"
+            ).lower()
+            == "true",
+            resend_api_key=cls._normalize_optional_text(
+                app_config_overrides.get("RESEND_API_KEY", "")
+            ),
+            resend_from_email=app_config_overrides.get("RESEND_FROM_EMAIL", "no-reply@example.com"),
+            resend_from_name=app_config_overrides.get("RESEND_FROM_NAME", "Agendachat"),
+            invitation_account_setup_ttl_hours=int(
+                app_config_overrides.get("INVITATION_ACCOUNT_SETUP_TTL_HOURS", "168")
+            ),
+            invitation_password_reset_ttl_minutes=int(
+                app_config_overrides.get("INVITATION_PASSWORD_RESET_TTL_MINUTES", "30")
+            ),
+            email_notifier_enabled=app_config_overrides.get(
+                "EMAIL_NOTIFIER_ENABLED", "false"
             ).lower()
             == "true",
         )

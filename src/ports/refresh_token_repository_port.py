@@ -27,3 +27,7 @@ class RefreshTokenRepositoryPort(abc.ABC):
     @abc.abstractmethod
     def revoke(self, jti: str, revoked_at: datetime.datetime) -> bool:
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def revoke_all_for_user(self, user_id: str, now: datetime.datetime) -> int:
+        raise NotImplementedError

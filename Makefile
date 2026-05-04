@@ -69,6 +69,7 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 
 .PHONY: \
 	create-professional \
+	invite-professional \
 	delete-professional \
 	list-professionals \
 	reset-password \
@@ -107,6 +108,7 @@ help:
 	@echo ""
 	@echo "=== Usuarios ==="
 	@echo "  create-professional    Crear profesional (EMAIL, TENANT_NAME)"
+	@echo "  invite-professional    Invitar profesional por email (EMAIL, TENANT_NAME)"
 	@echo "  delete-professional    Eliminar profesional (EMAIL)"
 	@echo "  list-professionals     Listar todos los profesionales"
 	@echo "  reset-password         Resetear password (EMAIL)"
@@ -158,6 +160,16 @@ create-professional:
 			echo "Credentials saved to $(MAKE_CREDENTIALS_FILE)"; \
 		fi; \
 	fi
+
+invite-professional:
+	@if [[ -z "$(EMAIL)" ]]; then \
+		echo "EMAIL is required. Example: make invite-professional EMAIL=doc@acme.com TENANT_NAME=DrAcme"; \
+		exit 1; \
+	fi
+	@GOOGLE_CLOUD_PROJECT="$(CLI_PROJECT_ID)" uv run python -m src.entrypoints.local.user_admin_cli invite-professional \
+		--tenant-name "$(TENANT_NAME)" \
+		--email "$(EMAIL)" \
+		$(if $(PROFESSIONAL_NAME),--professional-name "$(PROFESSIONAL_NAME)",)
 
 reset-password:
 	@if [[ -z "$(EMAIL)" ]]; then \

@@ -1,6 +1,7 @@
 import datetime
 import typing
 
+import src.adapters.outbound.inmemory.email_notifier_adapter as inmemory_email_notifier_adapter
 import src.domain.entities.tenant as tenant_entity
 import src.ports.clock_port as clock_port
 import src.ports.google_calendar_provider_port as google_calendar_provider_port
@@ -14,6 +15,14 @@ import src.services.dto.webhook_dto as webhook_dto
 import src.services.dto.whatsapp_dto as whatsapp_dto
 import src.services.dto.whatsapp_template_dto as whatsapp_template_dto
 import src.services.exceptions as service_exceptions
+
+FakeEmailNotifier = inmemory_email_notifier_adapter.FakeEmailNotifierAdapter
+SentEmail = inmemory_email_notifier_adapter.SentEmail
+
+__all__ = [
+    "FakeEmailNotifier",
+    "SentEmail",
+]
 
 
 class FixedClock(clock_port.ClockPort):

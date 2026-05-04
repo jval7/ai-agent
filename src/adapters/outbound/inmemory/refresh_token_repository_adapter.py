@@ -58,3 +58,14 @@ class InMemoryRefreshTokenRepositoryAdapter(
             updated_record.revoked_at = revoked_at
             self._records_by_jti[jti] = updated_record
             return True
+
+    def revoke_all_for_user(self, user_id: str, now: datetime.datetime) -> int:
+        with self._lock:
+            count = 0
+            for jti, record in self._records_by_jti.items():
+                if record.user_id == user_id and record.revoked_at is None:
+                    updated_record = record.model_copy(deep=True)
+                    updated_record.revoked_at = now
+                    self._records_by_jti[jti] = updated_record
+                    count += 1
+            return count

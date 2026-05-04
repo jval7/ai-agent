@@ -49,3 +49,31 @@ class TokenClaimsDTO(pydantic.BaseModel):
     exp: int
     jti: str
     token_kind: str
+
+
+class AcceptInvitationDTO(pydantic.BaseModel):
+    token: str
+    new_password: str
+
+    @pydantic.field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("new_password must have at least 8 characters")
+        return value
+
+
+class RequestPasswordResetDTO(pydantic.BaseModel):
+    email: str
+
+
+class ConfirmPasswordResetDTO(pydantic.BaseModel):
+    token: str
+    new_password: str
+
+    @pydantic.field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if len(value) < 8:
+            raise ValueError("new_password must have at least 8 characters")
+        return value

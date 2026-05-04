@@ -2,6 +2,8 @@ import pathlib
 import time
 
 import src.adapters.outbound.cloud_tasks.cloud_tasks_adapter as cloud_tasks_adapter
+import src.adapters.outbound.email_resend.logging_email_notifier_adapter as logging_email_notifier_adapter
+import src.adapters.outbound.email_resend.resend_email_notifier_adapter as resend_email_notifier_adapter
 import src.adapters.outbound.firestore.agent_profile_repository_adapter as agent_profile_repository_adapter
 import src.adapters.outbound.firestore.blacklist_repository_adapter as blacklist_repository_adapter
 import src.adapters.outbound.firestore.client_factory as firestore_client_factory
@@ -9,6 +11,7 @@ import src.adapters.outbound.firestore.conversation_processing_lock_adapter as c
 import src.adapters.outbound.firestore.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.firestore.eval_run_repository_adapter as eval_run_repository_adapter
 import src.adapters.outbound.firestore.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
+import src.adapters.outbound.firestore.invitation_token_repository_adapter as invitation_token_repository_adapter
 import src.adapters.outbound.firestore.manual_appointment_repository_adapter as manual_appointment_repository_adapter
 import src.adapters.outbound.firestore.memory_admin_adapter as memory_admin_adapter
 import src.adapters.outbound.firestore.patient_repository_adapter as patient_repository_adapter
@@ -31,6 +34,7 @@ import src.adapters.outbound.whatsapp_meta.meta_whatsapp_provider_adapter as met
 import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
+import src.ports.email_notifier_port as email_notifier_port
 import src.ports.scheduled_reminder_repository_port as scheduled_reminder_repository_port
 import src.ports.task_scheduler_port as task_scheduler_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
@@ -63,6 +67,7 @@ import src.services.use_cases.eval_tenant_service as eval_tenant_service
 import src.services.use_cases.event_description_builder as event_description_builder
 import src.services.use_cases.event_stream_service as event_stream_service
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
+import src.services.use_cases.invitation_service as invitation_service
 import src.services.use_cases.manual_appointment_service as manual_appointment_service
 import src.services.use_cases.memory_admin_service as memory_admin_service
 import src.services.use_cases.onboarding_status_service as onboarding_status_service
@@ -160,6 +165,12 @@ class AppContainer:
             self.firestore_client
         )
 
+        self.invitation_token_repository = (
+            invitation_token_repository_adapter.FirestoreInvitationTokenRepositoryAdapter(
+                self.firestore_client
+            )
+        )
+
         self.password_hasher_adapter = password_hasher_adapter.Pbkdf2PasswordHasherAdapter()
         self.jwt_provider_adapter = jwt_provider_adapter.Hs256JwtProviderAdapter(
             secret=self.settings.jwt_secret,
@@ -210,6 +221,29 @@ class AppContainer:
             default_system_prompt=self.settings.default_system_prompt,
             access_ttl_seconds=self.settings.jwt_access_ttl_seconds,
             refresh_ttl_seconds=self.settings.jwt_refresh_ttl_seconds,
+        )
+
+        self.email_notifier: email_notifier_port.EmailNotifierPort
+        if self.settings.email_notifier_enabled and self.settings.resend_api_key:
+            self.email_notifier = resend_email_notifier_adapter.ResendEmailNotifierAdapter(
+                settings=self.settings,
+            )
+        else:
+            self.email_notifier = logging_email_notifier_adapter.LoggingEmailNotifierAdapter()
+
+        self.invitation_service = invitation_service.InvitationService(
+            invitation_token_repository=self.invitation_token_repository,
+            user_repository=self.user_repository,
+            tenant_repository=self.tenant_repository,
+            password_hasher=self.password_hasher_adapter,
+            email_notifier=self.email_notifier,
+            id_generator=self.id_generator_adapter,
+            clock=self.clock_adapter,
+            refresh_token_repository=self.refresh_token_repository,
+            auth_service=self.auth_service,
+            frontend_app_base_url=self.settings.frontend_app_base_url,
+            account_setup_ttl_hours=self.settings.invitation_account_setup_ttl_hours,
+            password_reset_ttl_minutes=self.settings.invitation_password_reset_ttl_minutes,
         )
 
         self.agent_service = agent_service.AgentService(

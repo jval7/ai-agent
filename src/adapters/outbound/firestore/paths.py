@@ -28,6 +28,7 @@ WHATSAPP_SIGNUP_STATE_INDEX_COLLECTION = "wa_signup_state"
 GOOGLE_OAUTH_STATE_INDEX_COLLECTION = "google_oauth_state"
 
 REFRESH_TOKENS_COLLECTION = "refresh_tokens"
+INVITATION_TOKENS_COLLECTION = "invitation_tokens"
 
 EVAL_RUNS_COLLECTION = "eval_runs"
 EVAL_RUN_CONVERSATIONS_SUBCOLLECTION = "conversations"
@@ -360,3 +361,16 @@ def refresh_token_document(
     jti: str,
 ) -> google_cloud_firestore.DocumentReference:
     return client.collection(REFRESH_TOKENS_COLLECTION).document(jti)
+
+
+def invitation_token_document(
+    client: google_cloud_firestore.Client,
+    token_hash: str,
+) -> google_cloud_firestore.DocumentReference:
+    return client.collection(INVITATION_TOKENS_COLLECTION).document(token_hash)
+
+
+def invitation_tokens_collection(
+    client: google_cloud_firestore.Client,
+) -> google_cloud_firestore.CollectionReference:
+    return client.collection(INVITATION_TOKENS_COLLECTION)

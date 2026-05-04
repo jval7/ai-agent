@@ -3,13 +3,19 @@ import datetime
 import pytest
 
 import src.adapters.outbound.inmemory.agent_profile_repository_adapter as agent_profile_repository_adapter
+import src.adapters.outbound.inmemory.email_notifier_adapter as email_notifier_adapter
+import src.adapters.outbound.inmemory.invitation_token_repository_adapter as invitation_token_repository_adapter
+import src.adapters.outbound.inmemory.refresh_token_repository_adapter as refresh_token_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.tenant_repository_adapter as tenant_repository_adapter
 import src.adapters.outbound.inmemory.user_repository_adapter as user_repository_adapter
+import src.adapters.outbound.security.jwt_provider_adapter as jwt_provider_adapter
 import src.adapters.outbound.security.password_hasher_adapter as password_hasher_adapter
 import src.domain.entities.user as user_entity
 import src.services.dto.user_admin_dto as user_admin_dto
 import src.services.exceptions as service_exceptions
+import src.services.use_cases.auth_service as auth_service_mod
+import src.services.use_cases.invitation_service as invitation_service_mod
 import src.services.use_cases.user_admin_service as user_admin_service
 import tests.fakes.fake_adapters as fake_adapters
 
@@ -200,6 +206,96 @@ def test_list_professionals_returns_all_professionals_sorted_by_email() -> None:
     assert bravo_summary.tenant_id == "tenant-b"
     assert bravo_summary.tenant_name == "Bravo Clinic"
     assert bravo_summary.user_id == "user-b"
+
+
+def build_user_admin_service_with_invitation(
+    id_values: list[str],
+) -> tuple[
+    user_admin_service.UserAdminService,
+    tenant_repository_adapter.InMemoryTenantRepositoryAdapter,
+    user_repository_adapter.InMemoryUserRepositoryAdapter,
+    email_notifier_adapter.FakeEmailNotifierAdapter,
+]:
+    store = in_memory_store.InMemoryStore()
+    tenant_repo = tenant_repository_adapter.InMemoryTenantRepositoryAdapter(store)
+    user_repo = user_repository_adapter.InMemoryUserRepositoryAdapter(store)
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    refresh_token_repo = refresh_token_repository_adapter.InMemoryRefreshTokenRepositoryAdapter()
+    invitation_token_repo = (
+        invitation_token_repository_adapter.InMemoryInvitationTokenRepositoryAdapter()
+    )
+    notifier = email_notifier_adapter.FakeEmailNotifierAdapter()
+    password_hasher = password_hasher_adapter.Pbkdf2PasswordHasherAdapter()
+    clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
+    id_gen = fake_adapters.SequenceIdGenerator(id_values)
+    jwt = jwt_provider_adapter.Hs256JwtProviderAdapter(secret="test-secret", clock=clock)
+
+    auth_svc = auth_service_mod.AuthService(
+        tenant_repository=tenant_repo,
+        user_repository=user_repo,
+        agent_profile_repository=agent_profile_repo,
+        password_hasher=password_hasher,
+        jwt_provider=jwt,
+        refresh_token_repository=refresh_token_repo,
+        id_generator=id_gen,
+        clock=clock,
+        default_system_prompt="default-prompt",
+        access_ttl_seconds=600,
+        refresh_ttl_seconds=3600,
+    )
+    inv_service = invitation_service_mod.InvitationService(
+        invitation_token_repository=invitation_token_repo,
+        user_repository=user_repo,
+        tenant_repository=tenant_repo,
+        password_hasher=password_hasher,
+        email_notifier=notifier,
+        id_generator=id_gen,
+        clock=clock,
+        refresh_token_repository=refresh_token_repo,
+        auth_service=auth_svc,
+        frontend_app_base_url="http://localhost:5173",
+        account_setup_ttl_hours=168,
+        password_reset_ttl_minutes=30,
+    )
+    service = user_admin_service.UserAdminService(
+        tenant_repository=tenant_repo,
+        user_repository=user_repo,
+        agent_profile_repository=agent_profile_repo,
+        password_hasher=password_hasher,
+        id_generator=id_gen,
+        clock=clock,
+        default_system_prompt="default-prompt",
+        invitation_service=inv_service,
+    )
+    return service, tenant_repo, user_repo, notifier
+
+
+def test_invite_professional_creates_user_inactive_and_emits_invitation() -> None:
+    service, tenant_repo, user_repo, notifier = build_user_admin_service_with_invitation(
+        ["tenant-1", "user-1", "jti-1"]
+    )
+
+    service.invite_professional(
+        user_admin_dto.InviteProfessionalDTO(
+            tenant_name="Acme",
+            email="doc@acme.com",
+        )
+    )
+
+    tenant = tenant_repo.get_by_id("tenant-1")
+    user = user_repo.get_by_email("doc@acme.com")
+    assert tenant is not None
+    assert tenant.name == "Acme"
+    assert user is not None
+    assert user.is_active is False
+    assert len(notifier.sent_emails) == 1
+    sent = notifier.sent_emails[0]
+    assert sent.kind == "account_invitation"
+    assert sent.to_email == "doc@acme.com"
+    assert sent.url is not None
+    assert "/accept-invite?token=" in sent.url
 
 
 def test_list_professionals_uses_empty_tenant_name_when_tenant_missing() -> None:

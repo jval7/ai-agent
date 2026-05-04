@@ -72,3 +72,25 @@ class ProfessionalSummaryDTO(pydantic.BaseModel):
     role: str
     is_active: bool
     created_at: datetime.datetime
+
+
+class InviteProfessionalDTO(pydantic.BaseModel):
+    tenant_name: str
+    email: str
+    professional_name: str | None = None
+
+    @pydantic.field_validator("tenant_name")
+    @classmethod
+    def validate_tenant_name(cls, value: str) -> str:
+        normalized_value = value.strip()
+        if not normalized_value:
+            raise ValueError("tenant_name cannot be empty")
+        return normalized_value
+
+    @pydantic.field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        normalized_value = value.strip().lower()
+        if "@" not in normalized_value:
+            raise ValueError("email must contain @")
+        return normalized_value

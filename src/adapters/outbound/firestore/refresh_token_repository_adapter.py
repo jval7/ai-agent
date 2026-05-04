@@ -140,3 +140,39 @@ class FirestoreRefreshTokenRepositoryAdapter(
                 "failed to revoke refresh token in firestore"
             ) from error
         return True
+
+    def revoke_all_for_user(self, user_id: str, now: datetime.datetime) -> int:
+        collection = self._client.collection(firestore_paths.REFRESH_TOKENS_COLLECTION)
+        try:
+            snapshots = (
+                collection.where(
+                    filter=google_cloud_firestore.FieldFilter("user_id", "==", user_id)
+                )
+                .where(filter=google_cloud_firestore.FieldFilter("revoked_at", "==", None))
+                .stream()
+            )
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to query refresh tokens in firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to query refresh tokens in firestore"
+            ) from error
+
+        count = 0
+        for snapshot in snapshots:
+            try:
+                snapshot.reference.update({"revoked_at": now})
+                count += 1
+            except google_api_exceptions.NotFound:
+                pass
+            except google_api_exceptions.GoogleAPICallError as error:
+                raise firestore_errors.FirestoreRepositoryError(
+                    "failed to revoke refresh token in firestore"
+                ) from error
+            except google_api_exceptions.RetryError as error:
+                raise firestore_errors.FirestoreRepositoryError(
+                    "failed to revoke refresh token in firestore"
+                ) from error
+        return count

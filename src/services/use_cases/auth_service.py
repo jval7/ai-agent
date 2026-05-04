@@ -294,6 +294,9 @@ class AuthService:
             raise service_exceptions.AuthenticationError("token is not an access token")
         return claims
 
+    def issue_session_tokens_for_user(self, user: user_entity.User) -> auth_dto.AuthTokensDTO:
+        return self._issue_auth_tokens(user)
+
     def _resolve_email_domain(self, email: str) -> str:
         normalized_email = email.strip().lower()
         email_segments = normalized_email.split("@", maxsplit=1)
