@@ -1,4 +1,6 @@
 import argparse
+import logging
+import os
 import secrets
 import string
 import sys
@@ -149,7 +151,11 @@ def _build_service() -> user_admin_service.UserAdminService:
     )
 
 
-def _build_service_with_invitation() -> user_admin_service.UserAdminService:
+def _build_service_with_invitation() -> tuple[
+    user_admin_service.UserAdminService,
+    email_notifier_port.EmailNotifierPort,
+    app_settings.Settings,
+]:
     settings, firestore_client = _build_settings_and_firestore()
     tenant_repo = tenant_repository_adapter.FirestoreTenantRepositoryAdapter(firestore_client)
     user_repo = user_repository_adapter.FirestoreUserRepositoryAdapter(firestore_client)
@@ -214,7 +220,7 @@ def _build_service_with_invitation() -> user_admin_service.UserAdminService:
         password_reset_ttl_minutes=settings.invitation_password_reset_ttl_minutes,
     )
 
-    return user_admin_service.UserAdminService(
+    service = user_admin_service.UserAdminService(
         tenant_repository=tenant_repo,
         user_repository=user_repo,
         agent_profile_repository=agent_profile_repo,
@@ -224,6 +230,7 @@ def _build_service_with_invitation() -> user_admin_service.UserAdminService:
         default_system_prompt=settings.default_system_prompt,
         invitation_service=inv_service,
     )
+    return service, notifier, settings
 
 
 def main() -> int:
@@ -232,7 +239,34 @@ def main() -> int:
 
     try:
         if args.command == "invite-professional":
-            service = _build_service_with_invitation()
+            logging.basicConfig(
+                level=logging.INFO,
+                format="[%(levelname)s] %(name)s: %(message)s",
+                stream=sys.stderr,
+                force=True,
+            )
+            service, notifier, settings = _build_service_with_invitation()
+            notifier_class = type(notifier).__name__
+            print("--- diagnostic ---", file=sys.stderr)
+            print(
+                f"  GOOGLE_CLOUD_PROJECT: {os.environ.get('GOOGLE_CLOUD_PROJECT', '<unset>')}",
+                file=sys.stderr,
+            )
+            print(
+                f"  google_cloud_project_id (from secret): {settings.google_cloud_project_id}",
+                file=sys.stderr,
+            )
+            print(f"  email_notifier_enabled: {settings.email_notifier_enabled}", file=sys.stderr)
+            print(
+                f"  resend_api_key set: {bool(settings.resend_api_key)} (len={len(settings.resend_api_key) if settings.resend_api_key else 0})",
+                file=sys.stderr,
+            )
+            print(f"  resend_from_email: {settings.resend_from_email!r}", file=sys.stderr)
+            print(f"  resend_from_name: {settings.resend_from_name!r}", file=sys.stderr)
+            print(f"  email_notifier class: {notifier_class}", file=sys.stderr)
+            print(f"  frontend_app_base_url: {settings.frontend_app_base_url}", file=sys.stderr)
+            print("------------------", file=sys.stderr)
+
             service.invite_professional(
                 user_admin_dto.InviteProfessionalDTO(
                     tenant_name=args.tenant_name,
@@ -240,10 +274,18 @@ def main() -> int:
                     professional_name=args.professional_name,
                 )
             )
-            print("Invitation sent successfully.")
-            print(f"  Tenant: {args.tenant_name}")
-            print(f"  Email:  {args.email}")
-            print("The user will receive an email to configure their password.")
+            if notifier_class == "ResendEmailNotifierAdapter":
+                print("Invitation sent via Resend.")
+                print(f"  Tenant: {args.tenant_name}")
+                print(f"  Email:  {args.email}")
+                print("Check Resend dashboard at https://resend.com/emails for delivery status.")
+            else:
+                print("WARNING: Logging adapter is active — NO real email was sent.")
+                print(f"  Notifier: {notifier_class}")
+                print(f"  Tenant: {args.tenant_name}")
+                print(f"  Email:  {args.email}")
+                print("The invitation link was logged above. To send real emails, ensure")
+                print("RESEND_API_KEY is set in the secret and EMAIL_NOTIFIER_ENABLED=true.")
             return 0
 
         service = _build_service()
