@@ -107,3 +107,7 @@ class UpdateManualAppointmentPaymentDTO(pydantic.BaseModel):
         if value <= 0:
             raise ValueError("payment_amount_cop must be greater than zero")
         return value
+
+
+class ChangeManualAppointmentModalityInputDTO(pydantic.BaseModel):
+    new_modality: typing.Literal["PRESENCIAL", "VIRTUAL"]

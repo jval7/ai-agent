@@ -6,47 +6,11 @@ RuntimePromptBuilder.compose_base_and_runtime_system_prompt().
 Design decisions:
 - Sections are omitted entirely when the corresponding fields are empty.
 - style_rules are always included regardless of form completion state.
-- schedule blocks are formatted as human-readable Spanish text.
 - Each service emits a single <tariffs> block; multiple currencies coexist.
 """
 
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.services.agentic.prompts.style_rules_template as style_rules_template
-
-_WEEKDAY_LABELS: dict[str, str] = {
-    "MON": "Lunes",
-    "TUE": "Martes",
-    "WED": "Miércoles",
-    "THU": "Jueves",
-    "FRI": "Viernes",
-    "SAT": "Sábados",
-    "SUN": "Domingos",
-}
-
-
-def _format_time(time_str: str) -> str:
-    """Convert "HH:MM" 24h to a human-readable label like "8am" or "4:30pm"."""
-    hour_str, minute_str = time_str.split(":")
-    hour = int(hour_str)
-    minute = int(minute_str)
-    suffix = "am" if hour < 12 else "pm"
-    display_hour = hour if hour <= 12 else hour - 12
-    if display_hour == 0:
-        display_hour = 12
-    if minute == 0:
-        return f"{display_hour}{suffix}"
-    return f"{display_hour}:{minute_str}{suffix}"
-
-
-def _format_schedule_block(block: agent_profile_entity.ScheduleBlock) -> str:
-    """Return a Spanish sentence like 'Miércoles a Viernes de 8am a 4pm'."""
-    from_label = _WEEKDAY_LABELS.get(block.weekday_from, block.weekday_from)
-    start = _format_time(block.start_time)
-    end = _format_time(block.end_time)
-    if block.weekday_to is not None and block.weekday_to != block.weekday_from:
-        to_label = _WEEKDAY_LABELS.get(block.weekday_to, block.weekday_to)
-        return f"{from_label} a {to_label} de {start} a {end}"
-    return f"{from_label} de {start} a {end}"
 
 
 def _professional_label(identity: agent_profile_entity.AssistantIdentity) -> str:
@@ -92,8 +56,6 @@ def _render_identity(identity: agent_profile_entity.AssistantIdentity) -> str:
 
 def _render_professional_context(
     context: agent_profile_entity.ProfessionalContext | None,
-    presencial_schedule: list[agent_profile_entity.ScheduleBlock],
-    virtual_schedule: list[agent_profile_entity.ScheduleBlock],
     identity: agent_profile_entity.AssistantIdentity | None,
 ) -> str:
     items: list[str] = []
@@ -117,14 +79,6 @@ def _render_professional_context(
     # present appointment times in the correct local zone.
     if identity is not None and identity.timezone:
         items.append(f"<item>Zona horaria: {identity.timezone}</item>")
-
-    # Schedules
-    if presencial_schedule:
-        schedule_text = ", ".join(_format_schedule_block(b) for b in presencial_schedule)
-        items.append(f"<item>Horario Presencial: {schedule_text}</item>")
-    if virtual_schedule:
-        schedule_text = ", ".join(_format_schedule_block(b) for b in virtual_schedule)
-        items.append(f"<item>Horario Virtual: {schedule_text}</item>")
 
     if not items:
         return ""
@@ -241,11 +195,9 @@ def render_system_prompt_xml(profile: agent_profile_entity.AgentProfile) -> str:
         if rendered:
             sections.append(rendered)
 
-    # Professional context (includes schedule and languages)
+    # Professional context (includes languages and timezone)
     context_rendered = _render_professional_context(
         context=profile.professional_context,
-        presencial_schedule=profile.presencial_schedule,
-        virtual_schedule=profile.virtual_schedule,
         identity=profile.identity,
     )
     if context_rendered:
@@ -277,8 +229,6 @@ def _has_structured_data(profile: agent_profile_entity.AgentProfile) -> bool:
     if profile.professional_context is not None:
         return True
     if profile.services:
-        return True
-    if profile.presencial_schedule or profile.virtual_schedule:
         return True
     return bool(profile.payment_methods)
 

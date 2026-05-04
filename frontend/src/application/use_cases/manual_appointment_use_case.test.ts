@@ -91,12 +91,34 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       updatedAt: "2026-03-03T11:00:00Z",
       cancelledAt: null
     }));
+    const changeManualAppointmentModalityMock = vitestModule.vi.fn(async () => ({
+      appointmentId: "appt-1",
+      tenantId: "tenant-1",
+      patientWhatsappUserId: "wa-1",
+      status: "SCHEDULED" as const,
+      calendarEventId: "event-1",
+      startAt: "2026-03-11T10:00:00Z",
+      endAt: "2026-03-11T11:00:00Z",
+      timezone: "America/Bogota",
+      summary: "Cita - Jane Doe",
+      isVirtual: false,
+      meetUrl: null,
+      paymentAmountCop: null,
+      paymentCurrency: "COP" as const,
+      paymentMethod: null,
+      paymentStatus: "PENDING" as const,
+      paymentUpdatedAt: null,
+      createdAt: "2026-03-01T10:00:00Z",
+      updatedAt: "2026-03-11T10:00:00Z",
+      cancelledAt: null
+    }));
     const apiMock = {
       listManualAppointments: listManualAppointmentsMock,
       createManualAppointment: createManualAppointmentMock,
       rescheduleManualAppointment: rescheduleManualAppointmentMock,
       cancelManualAppointment: cancelManualAppointmentMock,
-      updateManualAppointmentPayment: updateManualAppointmentPaymentMock
+      updateManualAppointmentPayment: updateManualAppointmentPaymentMock,
+      changeManualAppointmentModality: changeManualAppointmentModalityMock
     } as Partial<backendApiPort.BackendApiPort> as backendApiPort.BackendApiPort;
 
     const useCase = new manualAppointmentUseCaseModule.ManualAppointmentUseCase(apiMock);
@@ -126,11 +148,16 @@ vitestModule.describe("ManualAppointmentUseCase", () => {
       paymentMethod: "TRANSFER",
       paymentStatus: "PAID"
     });
+    const changeResult = await useCase.changeModality("appt-1", { newModality: "PRESENCIAL" });
 
     vitestModule.expect(listManualAppointmentsMock).toHaveBeenCalledTimes(1);
     vitestModule.expect(createManualAppointmentMock).toHaveBeenCalledTimes(1);
     vitestModule.expect(rescheduleManualAppointmentMock).toHaveBeenCalledTimes(1);
     vitestModule.expect(cancelManualAppointmentMock).toHaveBeenCalledTimes(1);
     vitestModule.expect(updateManualAppointmentPaymentMock).toHaveBeenCalledTimes(1);
+    vitestModule.expect(changeManualAppointmentModalityMock).toHaveBeenCalledWith("appt-1", {
+      newModality: "PRESENCIAL"
+    });
+    vitestModule.expect(changeResult.isVirtual).toBe(false);
   });
 });

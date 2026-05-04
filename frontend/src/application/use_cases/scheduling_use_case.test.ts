@@ -69,6 +69,10 @@ vitestModule.describe("SchedulingUseCase", () => {
         paymentMethod: "TRANSFER",
         paymentStatus: "PAID",
         paymentUpdatedAt: "2026-03-02T10:00:00Z"
+      })),
+      changeBookedSlotModality: vitestModule.vi.fn(async () => ({
+        ...requestSummary,
+        appointmentModality: "VIRTUAL" as const
       }))
     } as Partial<backendApiPort.BackendApiPort> as backendApiPort.BackendApiPort;
 
@@ -105,10 +109,14 @@ vitestModule.describe("SchedulingUseCase", () => {
       paymentMethod: "TRANSFER",
       paymentStatus: "PAID"
     });
+    const changeModalityResult = await useCase.changeBookedSlotModality("req-1", {
+      newModality: "VIRTUAL"
+    });
 
     vitestModule.expect(requests[0]?.requestId).toBe("req-1");
     vitestModule.expect(conversationRequests).toEqual([]);
     vitestModule.expect(availability.timezone).toBe("America/Bogota");
     vitestModule.expect(submitResult.status).toBe("AWAITING_PATIENT_CHOICE");
+    vitestModule.expect(changeModalityResult.requestId).toBe("req-1");
   });
 });

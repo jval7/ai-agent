@@ -172,7 +172,7 @@ export function AgendaPage() {
   const [bookedPaymentFormState, setBookedPaymentFormState] =
     reactModule.useState<PaymentFormState>(emptyPaymentForm());
   const [expandedBookedAction, setExpandedBookedAction] = reactModule.useState<
-    "reschedule" | "cancel" | "payment" | null
+    "reschedule" | "cancel" | "payment" | "change-modality" | null
   >(null);
   const [desktopDrawerOpen, setDesktopDrawerOpen] = reactModule.useState(false);
   const [drawerPaymentDraft, setDrawerPaymentDraft] = reactModule.useState<{
@@ -677,6 +677,35 @@ export function AgendaPage() {
     }
   });
 
+  const changeModalityMutation = reactQueryModule.useMutation<
+    void,
+    Error,
+    { source: "BOT" | "MANUAL"; id: string; newModality: "PRESENCIAL" | "VIRTUAL" }
+  >({
+    mutationFn: async (payload) => {
+      if (payload.source === "BOT") {
+        await appContainer.schedulingUseCase.changeBookedSlotModality(payload.id, {
+          newModality: payload.newModality
+        });
+      } else {
+        await appContainer.manualAppointmentUseCase.changeModality(payload.id, {
+          newModality: payload.newModality
+        });
+      }
+    },
+    onSuccess: async (_data, payload) => {
+      const modalityLabel = payload.newModality === "VIRTUAL" ? "virtual" : "presencial";
+      setSubmitSuccessMessage(`Modalidad cambiada a ${modalityLabel} correctamente.`);
+      setLocalSubmitErrorMessage(null);
+      setExpandedBookedAction(null);
+      if (payload.source === "BOT") {
+        await queryClient.invalidateQueries({ queryKey: schedulingRequestsQueryKey });
+      } else {
+        await queryClient.invalidateQueries({ queryKey: manualAppointmentsQueryKey });
+      }
+    }
+  });
+
   const submitErrorMessage = uiErrorModule.resolveUiErrorMessage([
     resolvePaymentReviewMutation.error,
     rescheduleManualAppointmentMutation.error,
@@ -684,7 +713,8 @@ export function AgendaPage() {
     updateManualPaymentMutation.error,
     rescheduleBookedSlotMutation.error,
     cancelBookedSlotMutation.error,
-    updateBookedPaymentMutation.error
+    updateBookedPaymentMutation.error,
+    changeModalityMutation.error
   ]);
   const loadingErrorMessage = uiErrorModule.resolveUiErrorMessage([
     requestsQuery.error,
@@ -1374,6 +1404,15 @@ export function AgendaPage() {
                     expandedBookedAction === "reschedule" ? null : "reschedule"
                   );
                 }}
+                {...(selectedBookedAppointment.startAt > nowDate
+                  ? {
+                      onChangeModality: () => {
+                        setLocalSubmitErrorMessage(null);
+                        setSubmitSuccessMessage(null);
+                        setExpandedBookedAction("change-modality");
+                      }
+                    }
+                  : {})}
                 onCancel={() => {
                   if (selectedBookedAppointment === null) {
                     return;
@@ -1504,6 +1543,82 @@ export function AgendaPage() {
                 </div>
               </div>
             ) : null}
+
+            {isBookedTab &&
+            selectedBookedAppointment !== null &&
+            expandedBookedAction === "change-modality"
+              ? (() => {
+                  const currentModality =
+                    selectedBookedAppointment.source === "MANUAL" &&
+                    selectedBookedAppointment.manualAppointment !== null
+                      ? selectedBookedAppointment.manualAppointment.isVirtual
+                        ? "VIRTUAL"
+                        : "PRESENCIAL"
+                      : selectedBookedAppointment.request?.appointmentModality === "PRESENCIAL"
+                        ? "PRESENCIAL"
+                        : "VIRTUAL";
+                  const targetModality: "PRESENCIAL" | "VIRTUAL" =
+                    currentModality === "PRESENCIAL" ? "VIRTUAL" : "PRESENCIAL";
+                  const currentLabel = currentModality === "VIRTUAL" ? "virtual" : "presencial";
+                  const targetLabel = targetModality === "VIRTUAL" ? "virtual" : "presencial";
+                  const formattedDate = luxonModule.DateTime.fromISO(
+                    selectedBookedAppointment.startAt.toISO() ?? "",
+                    { setZone: true }
+                  )
+                    .setZone(timezone)
+                    .setLocale("es")
+                    .toFormat("EEE dd LLL yyyy");
+                  return (
+                    <div className="rounded-lg border border-border-subtle p-4 space-y-4">
+                      <div>
+                        <p className="text-sm font-semibold text-brand-ink">Cambiar modalidad</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {`¿Cambiar la cita de ${selectedBookedAppointment.patientDisplayName} del ${formattedDate} de ${currentLabel} a ${targetLabel}?`}
+                        </p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Se enviará automáticamente un correo al paciente con los nuevos datos del
+                          evento.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <button
+                          className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={changeModalityMutation.isPending}
+                          onClick={() => {
+                            const source = selectedBookedAppointment.source;
+                            const id =
+                              source === "BOT"
+                                ? (selectedBookedAppointment.requestId ?? "")
+                                : (selectedBookedAppointment.manualAppointmentId ?? "");
+                            if (id === "") {
+                              return;
+                            }
+                            setLocalSubmitErrorMessage(null);
+                            setSubmitSuccessMessage(null);
+                            changeModalityMutation.mutate({
+                              source,
+                              id,
+                              newModality: targetModality
+                            });
+                          }}
+                          type="button"
+                        >
+                          {changeModalityMutation.isPending ? "Guardando..." : "Confirmar cambio"}
+                        </button>
+                        <button
+                          className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                          onClick={() => {
+                            setExpandedBookedAction(null);
+                          }}
+                          type="button"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()
+              : null}
 
             {isBookedTab && selectedBookedAppointment === null ? (
               <p className="text-sm text-slate-500">

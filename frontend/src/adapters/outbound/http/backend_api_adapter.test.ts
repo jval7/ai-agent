@@ -944,4 +944,116 @@ vitestModule.describe("BackendApiAdapter", () => {
     vitestModule.expect(caps[1]?.id).toBe("local_patient");
     vitestModule.expect(caps[1]?.category).toBe("location");
   });
+
+  vitestModule.it(
+    "changeBookedSlotModality posts to /v1/scheduling/{id}/change-modality",
+    async () => {
+      serverModule.server.use(
+        mswModule.http.post(
+          "http://api.test/v1/scheduling/req-1/change-modality",
+          async ({ request }) => {
+            const body = (await request.json()) as { new_modality: string };
+            vitestModule.expect(body.new_modality).toBe("VIRTUAL");
+            return mswModule.HttpResponse.json({
+              request_id: "req-1",
+              conversation_id: "conv-1",
+              whatsapp_user_id: "wa-1",
+              request_kind: "INITIAL",
+              status: "BOOKED",
+              round_number: 1,
+              patient_preference_note: null,
+              rejection_summary: null,
+              professional_note: null,
+              patient_first_name: "Ana",
+              patient_last_name: "Lopez",
+              patient_age: 29,
+              consultation_reason: "Control",
+              consultation_details: null,
+              appointment_modality: "VIRTUAL",
+              patient_location: "Cali",
+              slot_options_map: {},
+              selected_slot_id: "slot-1",
+              calendar_event_id: "event-1",
+              payment_amount_cop: null,
+              payment_currency: "COP",
+              payment_method: null,
+              payment_status: "PENDING",
+              payment_updated_at: null,
+              created_at: "2026-03-01T10:00:00Z",
+              updated_at: "2026-03-10T10:00:00Z",
+              slots: [
+                {
+                  slot_id: "slot-1",
+                  start_at: "2026-03-10T10:00:00Z",
+                  end_at: "2026-03-10T11:00:00Z",
+                  timezone: "America/Bogota",
+                  status: "BOOKED"
+                }
+              ]
+            });
+          }
+        )
+      );
+
+      const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+      const adapter = new backendApiAdapterModule.BackendApiAdapter(
+        "http://api.test",
+        tokenSession
+      );
+
+      const result = await adapter.changeBookedSlotModality("req-1", { newModality: "VIRTUAL" });
+
+      vitestModule.expect(result.requestId).toBe("req-1");
+      vitestModule.expect(result.appointmentModality).toBe("VIRTUAL");
+    }
+  );
+
+  vitestModule.it(
+    "changeManualAppointmentModality posts to /v1/manual-appointments/{id}/change-modality",
+    async () => {
+      serverModule.server.use(
+        mswModule.http.post(
+          "http://api.test/v1/manual-appointments/appt-1/change-modality",
+          async ({ request }) => {
+            const body = (await request.json()) as { new_modality: string };
+            vitestModule.expect(body.new_modality).toBe("PRESENCIAL");
+            return mswModule.HttpResponse.json({
+              appointment_id: "appt-1",
+              tenant_id: "tenant-1",
+              patient_whatsapp_user_id: "wa-1",
+              status: "SCHEDULED",
+              calendar_event_id: "event-1",
+              start_at: "2026-03-10T10:00:00Z",
+              end_at: "2026-03-10T11:00:00Z",
+              timezone: "America/Bogota",
+              summary: "Cita control",
+              is_virtual: false,
+              meet_url: null,
+              payment_amount_cop: null,
+              payment_currency: "COP",
+              payment_method: null,
+              payment_status: "PENDING",
+              payment_updated_at: null,
+              created_at: "2026-03-01T10:00:00Z",
+              updated_at: "2026-03-10T10:00:00Z",
+              cancelled_at: null
+            });
+          }
+        )
+      );
+
+      const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+      const adapter = new backendApiAdapterModule.BackendApiAdapter(
+        "http://api.test",
+        tokenSession
+      );
+
+      const result = await adapter.changeManualAppointmentModality("appt-1", {
+        newModality: "PRESENCIAL"
+      });
+
+      vitestModule.expect(result.appointmentId).toBe("appt-1");
+      vitestModule.expect(result.isVirtual).toBe(false);
+    }
+  );
 });

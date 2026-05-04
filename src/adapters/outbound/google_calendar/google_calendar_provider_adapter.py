@@ -231,6 +231,8 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
         attendee_emails: list[str],
         description: str | None = None,
         location: str | None = None,
+        with_meet: bool | None = None,
+        conference_request_id: str | None = None,
     ) -> google_calendar_dto.GoogleCalendarEventDTO:
         encoded_calendar_id = urllib.parse.quote(calendar_id, safe="")
         encoded_event_id = urllib.parse.quote(event_id, safe="")
@@ -251,7 +253,20 @@ class GoogleCalendarProviderAdapter(google_calendar_provider_port.GoogleCalendar
             body["location"] = location
         if attendee_emails:
             body["attendees"] = [{"email": e} for e in attendee_emails]
-        query_params = {"sendUpdates": "all"}
+        query_params: dict[str, str] = {"sendUpdates": "all"}
+        if with_meet is True:
+            request_id = conference_request_id or "meet-toggle"
+            body["conferenceData"] = {
+                "createRequest": {
+                    "requestId": request_id,
+                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
+                }
+            }
+            query_params["conferenceDataVersion"] = "1"
+        elif with_meet is False:
+            body["conferenceData"] = None
+            query_params["conferenceDataVersion"] = "1"
+        # with_meet is None: do not touch conferenceData at all
         encoded_query = urllib.parse.urlencode(query_params)
         payload = self._patch_json(
             url=f"https://www.googleapis.com/calendar/v3/calendars/{encoded_calendar_id}/events/{encoded_event_id}?{encoded_query}",

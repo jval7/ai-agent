@@ -1,5 +1,4 @@
 import datetime
-import re
 import typing
 
 import pydantic
@@ -18,11 +17,6 @@ class OfficeLocation(pydantic.BaseModel):
         return normalized
 
 
-_TIME_RE = re.compile(r"^\d{2}:\d{2}$")
-
-_WEEKDAY_LITERAL = typing.Literal["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-
-
 class AssistantIdentity(pydantic.BaseModel):
     assistant_name: str | None = None
     professional_title: str | None = None  # "Doc.", "Psic.", "Dra." — prefix
@@ -32,20 +26,6 @@ class AssistantIdentity(pydantic.BaseModel):
     timezone: str | None = None  # IANA timezone, e.g. "America/Bogota"
     tone: str | None = None
     languages: list[str] = []
-
-
-class ScheduleBlock(pydantic.BaseModel):
-    weekday_from: _WEEKDAY_LITERAL
-    weekday_to: _WEEKDAY_LITERAL | None = None
-    start_time: str  # "HH:MM" 24h
-    end_time: str
-
-    @pydantic.field_validator("start_time", "end_time")
-    @classmethod
-    def validate_time_format(cls, value: str) -> str:
-        if not _TIME_RE.match(value):
-            raise ValueError("time must be in HH:MM format")
-        return value
 
 
 class TariffPrice(pydantic.BaseModel):
@@ -174,8 +154,6 @@ class AgentProfile(pydantic.BaseModel):
     identity: AssistantIdentity | None = None
     professional_context: ProfessionalContext | None = None
     services: list[ServiceOffering] = []
-    presencial_schedule: list[ScheduleBlock] = []
-    virtual_schedule: list[ScheduleBlock] = []
     payment_methods: list[PaymentMethod] = []
     payment_timing: typing.Literal["BEFORE_SESSION", "AFTER_SESSION"] = "BEFORE_SESSION"
     updated_at: datetime.datetime

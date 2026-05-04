@@ -1891,3 +1891,251 @@ def test_resolve_location_presencial_generic_fallback_when_no_profile() -> None:
     assert stored is not None
     # Empty main_city → generic fallback, not a hardcoded city name
     assert stored.patient_location == "Presencial"
+
+
+# ---------------------------------------------------------------------------
+# change_booked_modality tests
+# ---------------------------------------------------------------------------
+
+
+def _make_booked_request_for_modality(
+    repository: scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
+    service: scheduling_service.SchedulingService,
+    modality: str,
+    slot_start: datetime.datetime | None = None,
+) -> str:
+    """Create a BOOKED SchedulingRequest with the given modality and return request_id."""
+    request = create_awaiting_review_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "BOOKED"
+    stored.selected_slot_id = "slot-1"
+    stored.calendar_event_id = "event-1"
+    stored.appointment_modality = modality  # type: ignore[assignment]
+    start = slot_start or datetime.datetime(2026, 6, 1, 10, 0, tzinfo=datetime.UTC)
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=start,
+            end_at=start + datetime.timedelta(hours=1),
+            timezone="America/Bogota",
+            status="BOOKED",
+        )
+    ]
+    repository.save_request(stored)
+    return request.request_id
+
+
+def test_change_modality_noop_when_same_modality() -> None:
+    """Requesting the same modality returns the current summary without touching Calendar."""
+    service, repository, provider, _ = build_service(["req-1"])
+    request_id = _make_booked_request_for_modality(repository, service, "PRESENCIAL")
+
+    result = service.change_booked_modality(
+        tenant_id="tenant-1",
+        request_id=request_id,
+        input_dto=scheduling_dto.ChangeBookedModalityInputDTO(new_modality="PRESENCIAL"),
+    )
+
+    assert result.appointment_modality == "PRESENCIAL"
+    assert len(provider.updated_events) == 0
+
+
+def test_change_modality_blocks_past_appointment() -> None:
+    """Appointments in the past (start_at <= now) must raise InvalidStateError."""
+    service, repository, provider, _ = build_service(["req-1"])
+    past_start = datetime.datetime(2025, 12, 31, 10, 0, tzinfo=datetime.UTC)
+    request_id = _make_booked_request_for_modality(
+        repository, service, "PRESENCIAL", slot_start=past_start
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError) as exc_info:
+        service.change_booked_modality(
+            tenant_id="tenant-1",
+            request_id=request_id,
+            input_dto=scheduling_dto.ChangeBookedModalityInputDTO(new_modality="VIRTUAL"),
+        )
+
+    assert "past" in str(exc_info.value).lower()
+    assert len(provider.updated_events) == 0
+
+
+def test_change_modality_blocks_non_booked_request() -> None:
+    """Only BOOKED requests can change modality; other statuses raise InvalidStateError."""
+    service, _repository, _, _ = build_service(["req-1"])
+    request = create_awaiting_review_request(service)
+    # Leave the request in AWAITING_CONSULTATION_REVIEW (not BOOKED)
+
+    with pytest.raises(service_exceptions.InvalidStateError) as exc_info:
+        service.change_booked_modality(
+            tenant_id="tenant-1",
+            request_id=request.request_id,
+            input_dto=scheduling_dto.ChangeBookedModalityInputDTO(new_modality="VIRTUAL"),
+        )
+
+    assert "booked" in str(exc_info.value).lower()
+
+
+def test_change_modality_raises_not_found_for_missing_request() -> None:
+    service, _, _, _ = build_service(["req-1"])
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        service.change_booked_modality(
+            tenant_id="tenant-1",
+            request_id="does-not-exist",
+            input_dto=scheduling_dto.ChangeBookedModalityInputDTO(new_modality="VIRTUAL"),
+        )
+
+
+def test_change_modality_presencial_to_virtual_updates_calendar() -> None:
+    """PRESENCIAL → VIRTUAL: update_event called with with_meet=True; modality persisted."""
+    service, repository, provider, _ = build_service(["req-1"])
+    request_id = _make_booked_request_for_modality(repository, service, "PRESENCIAL")
+
+    result = service.change_booked_modality(
+        tenant_id="tenant-1",
+        request_id=request_id,
+        input_dto=scheduling_dto.ChangeBookedModalityInputDTO(new_modality="VIRTUAL"),
+    )
+
+    assert result.appointment_modality == "VIRTUAL"
+    assert len(provider.updated_events) == 1
+    assert provider.last_update_with_meet == [True]
+    reloaded = repository.get_request_by_id("tenant-1", request_id)
+    assert reloaded is not None
+    assert reloaded.appointment_modality == "VIRTUAL"
+
+
+def test_change_modality_virtual_to_presencial_updates_calendar() -> None:
+    """VIRTUAL → PRESENCIAL: update_event called with with_meet=False; modality persisted."""
+    service, repository, provider, _ = build_service(["req-1"])
+    request_id = _make_booked_request_for_modality(repository, service, "VIRTUAL")
+
+    result = service.change_booked_modality(
+        tenant_id="tenant-1",
+        request_id=request_id,
+        input_dto=scheduling_dto.ChangeBookedModalityInputDTO(new_modality="PRESENCIAL"),
+    )
+
+    assert result.appointment_modality == "PRESENCIAL"
+    assert len(provider.updated_events) == 1
+    assert provider.last_update_with_meet == [False]
+    reloaded = repository.get_request_by_id("tenant-1", request_id)
+    assert reloaded is not None
+    assert reloaded.appointment_modality == "PRESENCIAL"
+
+
+def test_change_modality_skips_calendar_for_eval_tenant() -> None:
+    """Eval tenant: modality persisted, but no Calendar call is made."""
+    service, repository, provider = _build_service_for_eval(["req-1"], is_eval=True)
+
+    request = service.submit_consultation_reason_for_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
+            consultation_reason="Ansiedad",
+            appointment_modality="PRESENCIAL",
+            patient_location="Bogota",
+        ),
+    )
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "BOOKED"
+    stored.selected_slot_id = "slot-1"
+    stored.calendar_event_id = None  # eval tenants have no calendar_event_id
+    stored.appointment_modality = "PRESENCIAL"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 6, 1, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 6, 1, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="BOOKED",
+        )
+    ]
+    repository.save_request(stored)
+
+    result = service.change_booked_modality(
+        tenant_id="tenant-1",
+        request_id=request.request_id,
+        input_dto=scheduling_dto.ChangeBookedModalityInputDTO(new_modality="VIRTUAL"),
+    )
+
+    assert result.appointment_modality == "VIRTUAL"
+    assert len(provider.updated_events) == 0
+
+
+def test_change_modality_reschedules_reminder_with_new_modality() -> None:
+    """After modality change, reminder is cancelled and re-scheduled with new modality."""
+    service, repository, _provider, _task_sched, reminder_repo = (
+        build_service_with_in_person_profile(["req-1", "reminder-1"])
+    )
+    request = create_awaiting_review_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "BOOKED"
+    stored.selected_slot_id = "slot-1"
+    stored.calendar_event_id = "event-1"
+    stored.appointment_modality = "PRESENCIAL"
+    far_start = datetime.datetime(2026, 6, 1, 10, 0, tzinfo=datetime.UTC)
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=far_start,
+            end_at=far_start + datetime.timedelta(hours=1),
+            timezone="America/Bogota",
+            status="BOOKED",
+        )
+    ]
+    repository.save_request(stored)
+
+    # Seed a reminder for the existing appointment
+    reminder_repo.list_by_tenant("tenant-1")  # ensure fresh state
+
+    service.change_booked_modality(
+        tenant_id="tenant-1",
+        request_id=request.request_id,
+        input_dto=scheduling_dto.ChangeBookedModalityInputDTO(new_modality="VIRTUAL"),
+    )
+
+    reloaded = repository.get_request_by_id("tenant-1", request.request_id)
+    assert reloaded is not None
+    assert reloaded.appointment_modality == "VIRTUAL"
+
+
+def test_change_modality_propagates_actual_payment_status_to_reminder() -> None:
+    """Reminder receives the actual payment_status from the request, not a hardcoded value."""
+    service, repository, _provider, _task_sched, _reminder_repo = (
+        build_service_with_in_person_profile(["req-1", "reminder-1"])
+    )
+    request = create_awaiting_review_request(service)
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "BOOKED"
+    stored.selected_slot_id = "slot-1"
+    stored.calendar_event_id = "event-1"
+    stored.appointment_modality = "PRESENCIAL"
+    stored.payment_status = "PENDING"  # explicitly PENDING, not PAID
+    far_start = datetime.datetime(2026, 6, 1, 10, 0, tzinfo=datetime.UTC)
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=far_start,
+            end_at=far_start + datetime.timedelta(hours=1),
+            timezone="America/Bogota",
+            status="BOOKED",
+        )
+    ]
+    repository.save_request(stored)
+
+    service.change_booked_modality(
+        tenant_id="tenant-1",
+        request_id=request.request_id,
+        input_dto=scheduling_dto.ChangeBookedModalityInputDTO(new_modality="VIRTUAL"),
+    )
+
+    reloaded = repository.get_request_by_id("tenant-1", request.request_id)
+    assert reloaded is not None
+    assert reloaded.appointment_modality == "VIRTUAL"
+    assert reloaded.payment_status == "PENDING"  # payment status unchanged

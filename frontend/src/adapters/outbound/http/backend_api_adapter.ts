@@ -901,6 +901,40 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return mapSchedulingRequestSummary(payload);
   }
 
+  async changeBookedSlotModality(
+    requestId: string,
+    input: schedulingModel.ChangeBookedSlotModalityInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    const payload = await this.request<httpTypes.SchedulingRequestSummaryApiResponse>(
+      `/v1/scheduling/${requestId}/change-modality`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          new_modality: input.newModality
+        } satisfies httpTypes.ChangeBookedModalityApiRequest)
+      }
+    );
+    return mapSchedulingRequestSummary(payload);
+  }
+
+  async changeManualAppointmentModality(
+    appointmentId: string,
+    input: manualAppointmentModel.ChangeManualAppointmentModalityInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
+      `/v1/manual-appointments/${appointmentId}/change-modality`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          new_modality: input.newModality
+        } satisfies httpTypes.ChangeManualAppointmentModalityApiRequest)
+      }
+    );
+    return mapManualAppointment(payload);
+  }
+
   async closeSession(conversationId: string): Promise<{ status: string }> {
     return this.request<{ status: string }>(
       `/v1/conversations/${conversationId}/scheduling/close-session`,
@@ -1506,27 +1540,6 @@ function tariffOptionToApi(item: agentModel.TariffOption): httpTypes.TariffOptio
   };
 }
 
-function mapScheduleBlock(raw: httpTypes.ScheduleBlockApiResponse): agentModel.ScheduleBlock {
-  return {
-    weekdayFrom: raw.weekday_from as agentModel.Weekday,
-    weekdayTo:
-      raw.weekday_to !== null && raw.weekday_to !== undefined
-        ? (raw.weekday_to as agentModel.Weekday)
-        : null,
-    startTime: raw.start_time,
-    endTime: raw.end_time
-  };
-}
-
-function scheduleBlockToApi(item: agentModel.ScheduleBlock): httpTypes.ScheduleBlockApiResponse {
-  return {
-    weekday_from: item.weekdayFrom,
-    weekday_to: item.weekdayTo,
-    start_time: item.startTime,
-    end_time: item.endTime
-  };
-}
-
 function mapServiceOffering(raw: httpTypes.ServiceOfferingApiResponse): agentModel.ServiceOffering {
   // Default fully-visible when the field is missing (legacy data).
   const rawTargetPatients =
@@ -1603,8 +1616,6 @@ function mapProfessionalProfile(
           }
         : null,
     services: raw.services.map(mapServiceOffering),
-    presencialSchedule: raw.presencial_schedule.map(mapScheduleBlock),
-    virtualSchedule: raw.virtual_schedule.map(mapScheduleBlock),
     paymentMethods: raw.payment_methods.map(mapPaymentMethod)
   };
 }
@@ -1635,8 +1646,6 @@ function profileInputToApi(
           }
         : null,
     services: input.services.map(serviceOfferingToApi),
-    presencial_schedule: input.presencialSchedule.map(scheduleBlockToApi),
-    virtual_schedule: input.virtualSchedule.map(scheduleBlockToApi),
     payment_methods: input.paymentMethods.map(paymentMethodToApi)
   };
 }

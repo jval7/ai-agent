@@ -174,3 +174,22 @@ def update_booked_slot_payment(
         request_id=request_id,
         input_dto=input_dto,
     )
+
+
+@router.post(
+    "/v1/scheduling-requests/{request_id}/booked-slot/change-modality",
+    response_model=scheduling_dto.SchedulingRequestSummaryDTO,
+)
+def change_booked_modality(
+    request_id: str,
+    input_dto: scheduling_dto.ChangeBookedModalityInputDTO,
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> scheduling_dto.SchedulingRequestSummaryDTO:
+    if claims.role != service_constants.DEFAULT_PROFESSIONAL_ROLE:
+        raise service_exceptions.AuthorizationError("professional role required")
+    return container.scheduling_service.change_booked_modality(
+        tenant_id=claims.tenant_id,
+        request_id=request_id,
+        input_dto=input_dto,
+    )

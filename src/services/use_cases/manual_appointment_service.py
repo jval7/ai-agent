@@ -9,6 +9,7 @@ import src.ports.id_generator_port as id_generator_port
 import src.ports.manual_appointment_repository_port as manual_appointment_repository_port
 import src.ports.patient_repository_port as patient_repository_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
+import src.ports.tenant_repository_port as tenant_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.constants as service_constants
@@ -45,6 +46,7 @@ class ManualAppointmentService:
         ) = None,
         whatsapp_provider: whatsapp_provider_port.WhatsappProviderPort | None = None,
         scheduling_repository: (scheduling_repository_port.SchedulingRepositoryPort | None) = None,
+        tenant_repository: (tenant_repository_port.TenantRepositoryPort | None) = None,
     ) -> None:
         self._manual_appointment_repository = manual_appointment_repository
         self._patient_repository = patient_repository
@@ -57,6 +59,7 @@ class ManualAppointmentService:
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._whatsapp_provider = whatsapp_provider
         self._scheduling_repository = scheduling_repository
+        self._tenant_repository = tenant_repository
 
     def list_appointments(
         self,
@@ -372,6 +375,119 @@ class ManualAppointmentService:
                         "payment_status": appointment.payment_status,
                         "payment_method": appointment.payment_method,
                         "payment_amount_cop": appointment.payment_amount_cop,
+                    },
+                )
+            },
+        )
+        return self._to_dto(appointment)
+
+    def _is_eval_tenant(self, tenant_id: str) -> bool:
+        if self._tenant_repository is None:
+            return False
+        tenant = self._tenant_repository.get_by_id(tenant_id)
+        if tenant is None:
+            return False
+        return tenant.is_eval_tenant
+
+    def change_modality(
+        self,
+        claims: auth_dto.TokenClaimsDTO,
+        appointment_id: str,
+        input_dto: manual_appointment_dto.ChangeManualAppointmentModalityInputDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
+        self._ensure_professional(claims)
+        appointment = self._manual_appointment_repository.get_by_id(
+            claims.tenant_id, appointment_id
+        )
+        if appointment is None:
+            raise service_exceptions.EntityNotFoundError("manual appointment not found")
+        if appointment.status != "SCHEDULED":
+            raise service_exceptions.InvalidStateError("manual appointment is not scheduled")
+
+        now_value = self._clock.now()
+        if appointment.start_at <= now_value:
+            raise service_exceptions.InvalidStateError(
+                "cannot change modality for past appointments"
+            )
+
+        requested_is_virtual = input_dto.new_modality == "VIRTUAL"
+
+        # Idempotency: same modality → noop
+        if requested_is_virtual == appointment.is_virtual:
+            return self._to_dto(appointment)
+
+        is_eval = self._is_eval_tenant(claims.tenant_id)
+        appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] = input_dto.new_modality
+
+        new_meet_url: str | None = None
+        if not is_eval and appointment.calendar_event_id is not None:
+            patient = self._patient_repository.get_by_whatsapp_user(
+                claims.tenant_id, appointment.patient_whatsapp_user_id
+            )
+            attendee_emails = [patient.email] if patient is not None else []
+            event_title = self._build_event_title(
+                tenant_id=claims.tenant_id,
+                patient=patient,
+            )
+            event_description_result = self._event_description_builder.build(
+                tenant_id=claims.tenant_id,
+                modality=appointment_modality,
+                payment_status=appointment.payment_status,
+            )
+            updated_event = self._google_calendar_onboarding_service.update_event(
+                tenant_id=claims.tenant_id,
+                event_id=appointment.calendar_event_id,
+                start_at=appointment.start_at,
+                end_at=appointment.end_at,
+                timezone=appointment.timezone,
+                summary=event_title,
+                attendee_emails=attendee_emails,
+                description=event_description_result.description,
+                location=event_description_result.location,
+                with_meet=requested_is_virtual,
+            )
+            new_meet_url = updated_event.meet_url
+
+        appointment.is_virtual = requested_is_virtual
+        appointment.meet_url = new_meet_url
+        appointment.updated_at = now_value
+        self._manual_appointment_repository.save(appointment)
+
+        if self._reminder_service is not None and not is_eval:
+            self._reminder_service.cancel_reminders_for_source(
+                tenant_id=claims.tenant_id,
+                source_type="MANUAL_APPOINTMENT",
+                source_id=appointment.id,
+            )
+            patient_for_reminder = self._patient_repository.get_by_whatsapp_user(
+                claims.tenant_id, appointment.patient_whatsapp_user_id
+            )
+            patient_name = (
+                patient_for_reminder.first_name if patient_for_reminder is not None else "Paciente"
+            )
+            self._reminder_service.maybe_schedule_reminder(
+                tenant_id=claims.tenant_id,
+                source_type="MANUAL_APPOINTMENT",
+                source_id=appointment.id,
+                patient_whatsapp_user_id=appointment.patient_whatsapp_user_id,
+                patient_name=patient_name,
+                appointment_start_at=appointment.start_at,
+                payment_status=appointment.payment_status,
+                appointment_modality=appointment_modality,
+                meet_url=new_meet_url,
+            )
+
+        logger.info(
+            "manual_appointment.modality_changed",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="manual_appointment.modality_changed",
+                    message="manual appointment modality changed",
+                    data={
+                        "tenant_id": claims.tenant_id,
+                        "appointment_id": appointment.id,
+                        "new_modality": appointment_modality,
+                        "calendar_event_id": appointment.calendar_event_id,
                     },
                 )
             },

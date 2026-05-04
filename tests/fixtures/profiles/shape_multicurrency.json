@@ -50,12 +50,6 @@
         ]
       }
     ],
-    "presencial_schedule": [
-      {"weekday_from": "WED", "weekday_to": "FRI", "start_time": "08:00", "end_time": "16:00"}
-    ],
-    "virtual_schedule": [
-      {"weekday_from": "MON", "weekday_to": "FRI", "start_time": "08:00", "end_time": "18:00"}
-    ],
     "payment_methods": [
       {
         "currency": "COP",

@@ -124,6 +124,14 @@ export interface BackendApiPort {
     requestId: string,
     input: schedulingModel.UpdateBookedSlotPaymentInput
   ): Promise<schedulingModel.SchedulingRequestSummary>;
+  changeBookedSlotModality(
+    requestId: string,
+    input: schedulingModel.ChangeBookedSlotModalityInput
+  ): Promise<schedulingModel.SchedulingRequestSummary>;
+  changeManualAppointmentModality(
+    appointmentId: string,
+    input: manualAppointmentModel.ChangeManualAppointmentModalityInput
+  ): Promise<manualAppointmentModel.ManualAppointment>;
   closeSession(conversationId: string): Promise<{ status: string }>;
 
   getProfessionalProfile(): Promise<agentModel.ProfessionalProfile>;

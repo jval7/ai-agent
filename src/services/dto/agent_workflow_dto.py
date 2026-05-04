@@ -49,6 +49,7 @@ class SchedulingTransitionInputDTO(pydantic.BaseModel):
         "APPROVE_PAYMENT",
         "ESCALATE_PATIENT_SLOT_REJECTION",
         "CLOSE_SESSION",
+        "CHANGE_BOOKED_MODALITY",
     ]
     payload: object | None = None
 

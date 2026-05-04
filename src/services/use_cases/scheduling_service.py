@@ -191,6 +191,7 @@ class SchedulingService:
             "APPROVE_PAYMENT",
             "ESCALATE_PATIENT_SLOT_REJECTION",
             "CLOSE_SESSION",
+            "CHANGE_BOOKED_MODALITY",
         ],
         payload: object | None,
         apply_transition: typing.Callable[
@@ -404,6 +405,27 @@ class SchedulingService:
                 "input": input_dto,
             },
             apply_transition=lambda _: self._update_booked_payment_impl(
+                tenant_id=tenant_id,
+                request_id=request_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
+
+    def change_booked_modality(
+        self,
+        tenant_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.ChangeBookedModalityInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="CHANGE_BOOKED_MODALITY",
+            payload={
+                "tenant_id": tenant_id,
+                "request_id": request_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._change_booked_modality_impl(
                 tenant_id=tenant_id,
                 request_id=request_id,
                 input_dto=input_dto,
@@ -1378,6 +1400,111 @@ class SchedulingService:
                         "payment_method": request.payment_method,
                         "payment_amount_cop": request.payment_amount_cop,
                         "payment_currency": request.payment_currency,
+                    },
+                )
+            },
+        )
+        return self._to_summary_dto(request)
+
+    def _change_booked_modality_impl(
+        self,
+        tenant_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.ChangeBookedModalityInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        request = self._scheduling_repository.get_request_by_id(tenant_id, request_id)
+        if request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+        if request.status != "BOOKED":
+            raise service_exceptions.InvalidStateError("only BOOKED requests can change modality")
+
+        booked_slot = self._find_booked_slot(request)
+        if booked_slot is None:
+            raise service_exceptions.InvalidStateError("no booked slot found in request")
+
+        now_value = self._clock.now()
+        if booked_slot.start_at <= now_value:
+            raise service_exceptions.InvalidStateError(
+                "cannot change modality for past appointments"
+            )
+
+        # Idempotency: same modality → noop
+        if request.appointment_modality == input_dto.new_modality:
+            return self._to_summary_dto(request)
+
+        is_eval = self._is_eval_tenant(tenant_id)
+        new_modality = input_dto.new_modality
+        with_meet = new_modality == "VIRTUAL"
+
+        new_meet_url: str | None = None
+        if not is_eval and request.calendar_event_id is not None:
+            attendee_emails: list[str] = []
+            if self._patient_repository is not None:
+                patient = self._patient_repository.get_by_whatsapp_user(
+                    tenant_id, request.whatsapp_user_id
+                )
+                if patient is not None:
+                    attendee_emails = [patient.email]
+
+            event_description_result = self._event_description_builder.build(
+                tenant_id=tenant_id,
+                modality=new_modality,
+                payment_status=request.payment_status,
+            )
+            event_summary = self._resolve_booked_event_summary(
+                request=request,
+                requested_summary=None,
+            )
+            updated_event = self._google_calendar_onboarding_service.update_event(
+                tenant_id=tenant_id,
+                event_id=request.calendar_event_id,
+                start_at=booked_slot.start_at,
+                end_at=booked_slot.end_at,
+                timezone=booked_slot.timezone,
+                summary=event_summary,
+                attendee_emails=attendee_emails,
+                description=event_description_result.description,
+                location=event_description_result.location,
+                with_meet=with_meet,
+            )
+            new_meet_url = updated_event.meet_url
+
+        request.appointment_modality = new_modality
+        request.updated_at = now_value
+        self._scheduling_repository.save_request(request)
+
+        if self._reminder_service is not None and not is_eval:
+            self._reminder_service.cancel_reminders_for_source(
+                tenant_id=tenant_id,
+                source_type="SCHEDULING_REQUEST",
+                source_id=request.id,
+            )
+            reminder_payment_status: typing.Literal["PAID", "PENDING"] = (
+                "PAID" if request.payment_status == "PAID" else "PENDING"
+            )
+            self._reminder_service.maybe_schedule_reminder(
+                tenant_id=tenant_id,
+                source_type="SCHEDULING_REQUEST",
+                source_id=request.id,
+                patient_whatsapp_user_id=request.whatsapp_user_id,
+                patient_name=request.patient_first_name or "Paciente",
+                appointment_start_at=booked_slot.start_at,
+                payment_status=reminder_payment_status,
+                appointment_modality=new_modality,
+                meet_url=new_meet_url,
+            )
+
+        logger.info(
+            "scheduling.modality_changed",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.modality_changed",
+                    message="booked appointment modality changed",
+                    data={
+                        "tenant_id": tenant_id,
+                        "request_id": request.id,
+                        "new_modality": new_modality,
+                        "calendar_event_id": request.calendar_event_id,
                     },
                 )
             },

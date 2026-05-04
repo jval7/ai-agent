@@ -27,6 +27,7 @@ export interface AppointmentDetailCardProps {
   isSavingPayment: boolean;
   onSavePayment: () => void;
   onReschedule: () => void;
+  onChangeModality?: () => void;
   onCancel: () => void;
   errorMessage: string | null;
   successMessage: string | null;
@@ -74,6 +75,7 @@ export function AppointmentDetailCard({
   isSavingPayment,
   onSavePayment,
   onReschedule,
+  onChangeModality,
   onCancel,
   errorMessage,
   successMessage
@@ -247,6 +249,29 @@ export function AppointmentDetailCard({
           </svg>
           Reprogramar cita
         </button>
+
+        {onChangeModality !== undefined ? (
+          <button
+            className="flex w-full items-center gap-2 rounded-lg border border-brand-teal px-4 py-2.5 text-sm font-semibold text-brand-teal transition-colors hover:bg-brand-accent-light"
+            onClick={onChangeModality}
+            type="button"
+          >
+            <svg
+              className="h-4 w-4 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M7.5 21 3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5"
+              />
+            </svg>
+            {modality === "PRESENCIAL" ? "Cambiar a virtual" : "Cambiar a presencial"}
+          </button>
+        ) : null}
 
         <button
           className="flex w-full items-center gap-2 rounded-lg border border-rose-500 px-4 py-2.5 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50"

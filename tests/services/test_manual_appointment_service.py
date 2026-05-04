@@ -499,3 +499,254 @@ def test_create_appointment_falls_back_to_profesional_when_name_unavailable() ->
     assert google_provider.created_event_descriptions == [
         booking_constants.VIRTUAL_SESSION_EVENT_INSTRUCTIONS
     ]
+
+
+# ---------------------------------------------------------------------------
+# change_modality tests
+# ---------------------------------------------------------------------------
+
+
+def _build_service_with_eval_tenant(
+    is_eval: bool,
+) -> tuple[
+    manual_appointment_service.ManualAppointmentService,
+    manual_appointment_repository_adapter.InMemoryManualAppointmentRepositoryAdapter,
+    patient_repository_adapter.InMemoryPatientRepositoryAdapter,
+    fake_adapters.FakeGoogleCalendarProvider,
+]:
+    store = in_memory_store.InMemoryStore()
+    manual_repository = (
+        manual_appointment_repository_adapter.InMemoryManualAppointmentRepositoryAdapter(store)
+    )
+    patient_repository = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
+    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
+        store
+    )
+    tenant_repo = fake_adapters.FakeTenantRepository()
+    tenant_repo.save(
+        tenant_entity.Tenant(
+            id="tenant-1",
+            name="Test Tenant",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            is_eval_tenant=is_eval,
+        )
+    )
+    google_provider = fake_adapters.FakeGoogleCalendarProvider()
+    clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 10, tzinfo=datetime.UTC))
+    id_generator = fake_adapters.SequenceIdGenerator(
+        ["conf-req-1", "manual-appt-1", "manual-appt-2"]
+    )
+    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
+        google_calendar_connection_repository=calendar_connection_repository,
+        google_calendar_provider=google_provider,
+        id_generator=id_generator,
+        clock=clock,
+    )
+    calendar_connection_repository.save(
+        google_calendar_connection_entity.GoogleCalendarConnection(
+            tenant_id="tenant-1",
+            professional_user_id="user-1",
+            status="CONNECTED",
+            calendar_id="primary",
+            timezone="America/Bogota",
+            access_token="access-1",
+            refresh_token="refresh-1",
+            token_expires_at=datetime.datetime(2026, 1, 11, tzinfo=datetime.UTC),
+            oauth_state=None,
+            scope="calendar",
+            updated_at=datetime.datetime(2026, 1, 10, tzinfo=datetime.UTC),
+            connected_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    builder = _build_event_description_builder(store)
+    svc = manual_appointment_service.ManualAppointmentService(
+        manual_appointment_repository=manual_repository,
+        patient_repository=patient_repository,
+        google_calendar_onboarding_service=google_service,
+        id_generator=id_generator,
+        clock=clock,
+        event_description_builder=builder,
+        tenant_repository=tenant_repo,
+    )
+    return svc, manual_repository, patient_repository, google_provider
+
+
+def _seed_patient(
+    patient_repository: patient_repository_adapter.InMemoryPatientRepositoryAdapter,
+) -> None:
+    patient_repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-1",
+            first_name="Jane",
+            last_name="Doe",
+            email="jane@example.com",
+            age=29,
+            location="Bogota",
+            phone="573001112233",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+
+def _create_scheduled_appointment(
+    svc: manual_appointment_service.ManualAppointmentService,
+    is_virtual: bool = True,
+    start_at: datetime.datetime | None = None,
+) -> manual_appointment_dto.ManualAppointmentDTO:
+    resolved_start = start_at or datetime.datetime(2026, 6, 1, 10, 0, tzinfo=datetime.UTC)
+    return svc.create_appointment(
+        claims=build_claims("professional"),
+        create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
+            patient_whatsapp_user_id="wa-1",
+            start_at=resolved_start,
+            end_at=resolved_start + datetime.timedelta(hours=1),
+            timezone="America/Bogota",
+            is_virtual=is_virtual,
+            payment_amount_cop=120000,
+        ),
+    )
+
+
+def test_change_modality_noop_when_same_modality_manual() -> None:
+    """Requesting the same modality returns DTO without calling Calendar."""
+    service, _manual_repository, patient_repository, google_provider = build_service()
+    _seed_patient(patient_repository)
+    created = _create_scheduled_appointment(service, is_virtual=True)
+
+    result = service.change_modality(
+        claims=build_claims("professional"),
+        appointment_id=created.appointment_id,
+        input_dto=manual_appointment_dto.ChangeManualAppointmentModalityInputDTO(
+            new_modality="VIRTUAL"
+        ),
+    )
+
+    assert result.is_virtual is True
+    # No additional Calendar calls beyond create_event
+    assert len(google_provider.updated_events) == 0
+
+
+def test_change_modality_blocks_past_appointment_manual() -> None:
+    """Past appointments (start_at <= now) raise InvalidStateError."""
+    service, _manual_repository, patient_repository, google_provider = build_service()
+    _seed_patient(patient_repository)
+    past_start = datetime.datetime(2026, 1, 5, 10, 0, tzinfo=datetime.UTC)
+    created = _create_scheduled_appointment(service, is_virtual=True, start_at=past_start)
+
+    with pytest.raises(service_exceptions.InvalidStateError) as exc_info:
+        service.change_modality(
+            claims=build_claims("professional"),
+            appointment_id=created.appointment_id,
+            input_dto=manual_appointment_dto.ChangeManualAppointmentModalityInputDTO(
+                new_modality="PRESENCIAL"
+            ),
+        )
+
+    assert "past" in str(exc_info.value).lower()
+    assert len(google_provider.updated_events) == 0
+
+
+def test_change_modality_raises_not_found_for_missing_appointment() -> None:
+    service, _, _, _ = build_service()
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        service.change_modality(
+            claims=build_claims("professional"),
+            appointment_id="does-not-exist",
+            input_dto=manual_appointment_dto.ChangeManualAppointmentModalityInputDTO(
+                new_modality="VIRTUAL"
+            ),
+        )
+
+
+def test_change_modality_virtual_to_presencial_updates_calendar_manual() -> None:
+    """VIRTUAL → PRESENCIAL: update_event called with with_meet=False; is_virtual persisted."""
+    service, manual_repository, patient_repository, google_provider = build_service()
+    _seed_patient(patient_repository)
+    created = _create_scheduled_appointment(service, is_virtual=True)
+
+    result = service.change_modality(
+        claims=build_claims("professional"),
+        appointment_id=created.appointment_id,
+        input_dto=manual_appointment_dto.ChangeManualAppointmentModalityInputDTO(
+            new_modality="PRESENCIAL"
+        ),
+    )
+
+    assert result.is_virtual is False
+    assert len(google_provider.updated_events) == 1
+    assert google_provider.last_update_with_meet == [False]
+    reloaded = manual_repository.get_by_id("tenant-1", created.appointment_id)
+    assert reloaded is not None
+    assert reloaded.is_virtual is False
+
+
+def test_change_modality_presencial_to_virtual_updates_calendar_manual() -> None:
+    """PRESENCIAL → VIRTUAL: update_event called with with_meet=True; meet_url set."""
+    service, manual_repository, patient_repository, google_provider = build_service()
+    _seed_patient(patient_repository)
+    created = _create_scheduled_appointment(service, is_virtual=False)
+
+    result = service.change_modality(
+        claims=build_claims("professional"),
+        appointment_id=created.appointment_id,
+        input_dto=manual_appointment_dto.ChangeManualAppointmentModalityInputDTO(
+            new_modality="VIRTUAL"
+        ),
+    )
+
+    assert result.is_virtual is True
+    assert result.meet_url == "https://meet.google.com/fake-meet"
+    assert len(google_provider.updated_events) == 1
+    assert google_provider.last_update_with_meet == [True]
+    reloaded = manual_repository.get_by_id("tenant-1", created.appointment_id)
+    assert reloaded is not None
+    assert reloaded.is_virtual is True
+    assert reloaded.meet_url == "https://meet.google.com/fake-meet"
+
+
+def test_change_modality_skips_calendar_for_eval_tenant_manual() -> None:
+    """Eval tenant: is_virtual flipped in DB, no Calendar call."""
+    service, manual_repository, patient_repository, google_provider = (
+        _build_service_with_eval_tenant(is_eval=True)
+    )
+    _seed_patient(patient_repository)
+    created = _create_scheduled_appointment(service, is_virtual=True)
+
+    result = service.change_modality(
+        claims=build_claims("professional"),
+        appointment_id=created.appointment_id,
+        input_dto=manual_appointment_dto.ChangeManualAppointmentModalityInputDTO(
+            new_modality="PRESENCIAL"
+        ),
+    )
+
+    assert result.is_virtual is False
+    # No update_event calls (only the original create_event from create_appointment)
+    assert len(google_provider.updated_events) == 0
+    reloaded = manual_repository.get_by_id("tenant-1", created.appointment_id)
+    assert reloaded is not None
+    assert reloaded.is_virtual is False
+
+
+def test_change_modality_blocks_cancelled_appointment() -> None:
+    """Cancelled appointments raise InvalidStateError."""
+    service, _manual_repository, patient_repository, _google_provider = build_service()
+    _seed_patient(patient_repository)
+    created = _create_scheduled_appointment(service, is_virtual=True)
+    service.cancel_appointment(
+        claims=build_claims("professional"),
+        appointment_id=created.appointment_id,
+        input_dto=manual_appointment_dto.CancelManualAppointmentDTO(reason=None),
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.change_modality(
+            claims=build_claims("professional"),
+            appointment_id=created.appointment_id,
+            input_dto=manual_appointment_dto.ChangeManualAppointmentModalityInputDTO(
+                new_modality="PRESENCIAL"
+            ),
+        )
