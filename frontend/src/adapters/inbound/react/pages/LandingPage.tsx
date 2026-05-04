@@ -115,7 +115,10 @@ function WhatsAppChatMockup() {
       {/* Messages */}
       <div
         className="flex min-h-[320px] flex-col space-y-3 p-4"
-        style={{ backgroundColor: "#e5ddd5" }}
+        style={{
+          backgroundColor: "#e5ddd5",
+          backgroundImage: "linear-gradient(to bottom, rgba(0, 109, 119, 0.18), transparent 70%)"
+        }}
       >
         <div className="self-end max-w-[80%] rounded-lg bg-[#dcf8c6] p-2 text-[11px] shadow-sm">
           Hola, quiero agendar una cita
