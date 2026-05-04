@@ -7,8 +7,8 @@ const config: Config = {
       colors: {
         // Veridian Clinical — primary teal palette
         "brand-ink": "#181c1d",
-        "brand-teal": "#00685d",
-        "brand-teal-hover": "#008376",
+        "brand-teal": "#006D77",
+        "brand-teal-hover": "#008080",
         // Surface hierarchy (no-border rule — use tonal backgrounds)
         "brand-surface": "#f7fafa",
         "surface-low": "#f1f4f4",
