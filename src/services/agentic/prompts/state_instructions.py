@@ -13,6 +13,18 @@ _NEVER_INVENT_INJECTED_DATA = (
     "NUNCA inventes ni parafrasees fechas, horas, nombres ni datos del paciente."
 )
 
+# Rule shared across states that may quote prices. Agnostico al estilo del
+# profesional: dice QUE hacer, no COMO redactar. La forma exacta de la
+# pregunta la define el `<tone>` del profesional. Tampoco le explica al
+# paciente por que se le pide la ubicacion.
+_QUOTE_CURRENCY_PER_LOCATION = (
+    "Si una `<tariff>` tiene multiples `<price>` con `<currency>` distintas "
+    "(p.ej. COP y USD) y aun no sabes la ubicacion del paciente, NO cotices "
+    "ningun precio todavia: antes preguntale donde reside. Cuando sepas la "
+    "ubicacion, cotiza unicamente la moneda apropiada. NUNCA muestres precios "
+    "de varias monedas juntos en el mismo mensaje."
+)
+
 
 class StateInstructionsSection(prompt_section.PromptSection):
     def render(
@@ -21,24 +33,61 @@ class StateInstructionsSection(prompt_section.PromptSection):
         known_patient: patient_entity.Patient | None,
         agent_profile: agent_profile_entity.AgentProfile | None = None,
     ) -> list[str]:
-        del known_patient
-        return _instructions_for_state(runtime_context, agent_profile)
+        return _instructions_for_state(runtime_context, agent_profile, known_patient)
 
 
 def _instructions_for_state(
     runtime_context: agentic_state_models.RuntimePromptContext,
     agent_profile: agent_profile_entity.AgentProfile | None = None,
+    known_patient: patient_entity.Patient | None = None,
 ) -> list[str]:
     identity = agent_profile.identity if agent_profile is not None else None
     ref = professional_reference.professional_reference(identity)
 
     if runtime_context.state == "NO_ACTIVE_REQUEST":
+        is_returning_patient = known_patient is not None
+        if is_returning_patient:
+            # Patient is already in the system. Skip the "what is your name"
+            # step and offer follow-up flows. Filter services by RETURNING.
+            return [
+                "Flujo actual: inicio de conversacion con un paciente RECURRENTE "
+                "(ya tiene historia con el profesional — ver 'Known patient profile' "
+                "en este prompt).",
+                "Saluda al paciente por su nombre (de 'Known patient profile') y pregunta "
+                "para que necesita la conversacion. Tres flujos posibles:\n"
+                "  (a) Cita de control / seguimiento — agendar una nueva cita.\n"
+                "  (b) Una consulta sobre su tratamiento o cuidados — responde con la "
+                "informacion disponible; si no puedes, ofrece pasar a humano.\n"
+                "  (c) Reprogramar o cancelar una cita previa — usa handoff_to_human "
+                "(el bot no gestiona cambios de citas pasadas).",
+                "Si el paciente quiere agendar (caso a):\n"
+                "  - SOLO ofrece servicios marcados con `<target_patients>` que incluya "
+                "'recurrentes' (Pacientes nuevos y recurrentes O Solo pacientes recurrentes). "
+                "Ignora los servicios marcados solo para pacientes nuevos.\n"
+                "  - Pregunta motivo (consultation_reason) y modalidad (si el servicio "
+                "soporta ambas; si soporta una sola, asumela).\n"
+                "  - Si la modalidad es VIRTUAL y no tienes patient_location del paciente "
+                "conocido, preguntala.\n"
+                "  - Cuando tengas los datos, llama submit_consultation_reason_for_review.",
+                "Si el paciente solo tiene una pregunta (caso b), responde con la informacion "
+                "del system prompt (precios, horarios, datos de pago, etc.). NO llames "
+                "submit_consultation_reason_for_review si solo es una consulta.",
+                _QUOTE_CURRENCY_PER_LOCATION,
+                "Si pide reprogramar/cancelar una cita previa (caso c), usa handoff_to_human "
+                "directamente — no intentes gestionar el cambio.",
+                "No llames confirm_selected_slot_and_create_event en este estado.",
+            ]
+
+        # Patient is brand new (no profile in the repository).
         return [
-            "Flujo actual: inicio de agendamiento.",
+            "Flujo actual: inicio de agendamiento con un paciente NUEVO "
+            "(no esta registrado, primera vez).",
             "Sigue esta secuencia conversacional, agrupando preguntas relacionadas en un mismo mensaje:\n"
             "  1. Si es el primer mensaje, presentate y pregunta el nombre del paciente.\n"
-            "  2. Presenta los servicios disponibles (de la seccion <services> del system prompt) "
-            "y pregunta cual le interesa.\n"
+            "  2. Presenta los servicios disponibles. SOLO ofrece servicios marcados con "
+            "`<target_patients>` que incluya 'nuevos' (Pacientes nuevos y recurrentes O "
+            "Solo pacientes nuevos). Ignora los servicios marcados solo para pacientes "
+            "recurrentes.\n"
             "  3. Pregunta el motivo (consultation_reason). En el mismo mensaje, pregunta la "
             "modalidad SOLO si el servicio elegido en el paso 2 soporta ambas (revisa "
             "`<modalities>` del `<service>` correspondiente). Si el servicio solo soporta una "
@@ -52,6 +101,7 @@ def _instructions_for_state(
             "  • appointment_modality (PRESENCIAL o VIRTUAL — inferida del servicio si solo "
             "soporta una; preguntada al paciente si soporta ambas)\n"
             "  • patient_location (solo si modalidad es VIRTUAL)",
+            _QUOTE_CURRENCY_PER_LOCATION,
             "Cuando tengas todos los datos, llama submit_consultation_reason_for_review.",
             "No llames confirm_selected_slot_and_create_event en este estado.",
             "Si el paciente pregunta por un servicio que no se ofrece y no le interesa ninguna alternativa, "
@@ -75,21 +125,37 @@ def _instructions_for_state(
             "No llames confirm_selected_slot_and_create_event en este estado.",
         ]
     if runtime_context.state == "COLLECTING_CONFIRMATION_DATA":
+        # NOTA: el nombre del estado contiene "CONFIRMATION" por razones de
+        # persistencia (ver state_models.py), pero EN LAS INSTRUCCIONES VISIBLES
+        # AL LLM evitamos la palabra "confirmar" para no inundar su attention
+        # con un concepto que termina filtrandose al paciente como "confirmar
+        # tu cita / asistencia" pre-pago. Vocabulario interno aqui: "finalizar
+        # el agendamiento", "datos finales".
         if runtime_context.missing_confirmation_fields:
             missing_fields_bullet = "\n• ".join(runtime_context.missing_confirmation_fields)
             return [
-                "Flujo actual: ya hay slot seleccionado, completa perfil para confirmar.",
-                f"Campos faltantes para confirmar:\n• {missing_fields_bullet}",
-                "Pide todos los campos faltantes en un solo mensaje. "
-                "Cuando no falte ningun campo, llama confirm_selected_slot_and_create_event.",
+                "Flujo actual: ya hay slot seleccionado, completa el perfil para finalizar el agendamiento.",
+                f"Datos finales faltantes:\n• {missing_fields_bullet}",
+                "Pide todos los datos faltantes en un solo mensaje. "
+                "Cuando no falte ningun dato, llama confirm_selected_slot_and_create_event.",
             ]
         return [
-            "Flujo actual: ya hay slot seleccionado y no faltan campos de perfil.",
+            "Flujo actual: ya hay slot seleccionado y no faltan datos de perfil.",
             "Llama confirm_selected_slot_and_create_event para completar la reserva.",
         ]
     if runtime_context.state == "AWAITING_CONSULTATION_REVIEW":
         return [
-            "Flujo actual: motivo de consulta enviado, esperando revision del profesional.",
+            # Esta linea es informacion para TI (el LLM), NO para reflejar al
+            # paciente. Antes el LLM tomaba este texto y lo retransmitia con
+            # frases como "ya envie tu motivo a la doctora para revision",
+            # violando hides_internal_handoff. Mantener la instruccion en
+            # voz neutra interna y reforzar la prohibicion explicita abajo.
+            "Estado interno: el flujo esta pausado mientras avanza un paso "
+            "interno del agendamiento. NO compartas con el paciente que se "
+            "envio, comparti, paso, gestiono, tramito, consulto, notifico, "
+            f"compartio o esta siendo revisado nada por {ref} ni por nadie. "
+            "La gestion interna es invisible. Si necesitas pedirle paciencia, "
+            'di solo "dame un momento" sin justificar la espera.',
             "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
             "horarios, modalidades, direccion del consultorio o informacion general del profesional.",
             "No avances el flujo de agendamiento ni solicites datos adicionales.",
@@ -98,9 +164,22 @@ def _instructions_for_state(
         ]
     if runtime_context.state == "AWAITING_PAYMENT_CONFIRMATION":
         return [
+            # NOTA: el nombre del estado contiene "CONFIRMATION" por persistencia
+            # pero las instrucciones visibles al LLM evitan la palabra "confirmar"
+            # — el LLM la filtraba al paciente como "para confirmarte/confirmar
+            # tu cita" violando uses_pre_payment_vocabulary.
             "Flujo actual: pago pendiente de aprobacion.",
             "Si el paciente avisa que ya pago o envia comprobante, responde solo 'Gracias, dame un momento'. "
-            f"No menciones que alguien esta revisando el pago ni que {ref} lo va a confirmar.",
+            f"No menciones que alguien esta revisando el pago ni que {ref} lo va a aprobar.",
+            # Frase POSITIVA literal: el LLM tiende a generar slips como
+            # "para confirmarte la cita" al pedir el pago. Indicamos
+            # explicitamente la formula valida y la prohibicion concreta.
+            "Cuando pidas el pago, usa LITERALMENTE alguna de estas formulas: "
+            '"Para reservar tu cita, paga X" / "Para asegurar tu cupo, paga X" / '
+            '"Para continuar con el agendamiento, paga X". '
+            "PROHIBIDO agregar a continuacion frases como 'para poder confirmarte la cita', "
+            "'para confirmarte el espacio', 'para confirmar tu asistencia' — ni siquiera con "
+            "clitics (-te, -le, -se). En esta fase la cita se RESERVA, no se confirma.",
             "Cuando indiques como pagar, da las instrucciones directas (monto, medio, "
             "numero o referencia, beneficiario). No preguntes si el paciente puede pagar por ese medio.",
             "Si el paciente pregunta por otros medios de pago (efectivo, tarjeta, otra app, etc.), "
@@ -163,10 +242,16 @@ def _instructions_for_state(
             "Para mensajes siguientes, responde preguntas generales del paciente usando los datos del contexto.",
             "NO inicies un nuevo proceso de agendamiento. Si el paciente quiere agendar otra cita, "
             "usa handoff_to_human.",
-            "Cuando el paciente se despida o confirme que no necesita nada mas (ej: 'gracias', "
-            "'no gracias', 'eso es todo', 'ya estoy bien', 'listo', 'ok'), "
-            "DEBES llamar close_session obligatoriamente. No te despidas solo con texto; "
-            "tu respuesta de despedida DEBE incluir la llamada a close_session.",
+            "Cuando el paciente se despida o confirme que no necesita nada mas, "
+            "DEBES llamar close_session obligatoriamente. Reconoce como senales de cierre: "
+            "agradecimientos finales ('gracias', 'muchas gracias'); "
+            "confirmaciones simples ('ok', 'listo', 'enterado', 'dale'); "
+            "expresiones de cierre ('eso es todo', 'ya estoy bien', 'no gracias', "
+            "'quedo atento', 'estamos en contacto'); "
+            "secuencias cortas y repetitivas (ej. el paciente envia 2-3 mensajes seguidos "
+            "de agradecimiento sin contenido nuevo). "
+            "No te despidas solo con texto; tu respuesta de despedida DEBE incluir "
+            "la llamada a close_session.",
         ]
         return lines
     return ["Mantente en flujo natural y sin mencionar procesos internos."]

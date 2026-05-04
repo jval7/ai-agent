@@ -488,6 +488,344 @@ vitestModule.describe("BackendApiAdapter", () => {
     await adapter.removePatient("wa-1");
   });
 
+  vitestModule.it("listEvalShapes maps snake_case to camelCase", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/shapes", () => {
+        return mswModule.HttpResponse.json({
+          items: [
+            {
+              name: "shape_minimal",
+              description: "Shape mínima para testear onboarding básico",
+              required_combos: [["new_patient"]],
+              rendered_system_prompt: "Eres un asistente de agenda..."
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const shapes = await adapter.listEvalShapes();
+
+    vitestModule.expect(shapes).toHaveLength(1);
+    vitestModule.expect(shapes[0]?.name).toBe("shape_minimal");
+    vitestModule.expect(shapes[0]?.requiredCombos).toEqual([["new_patient"]]);
+    vitestModule.expect(shapes[0]?.renderedSystemPrompt).toBe("Eres un asistente de agenda...");
+  });
+
+  vitestModule.it("listEvalPersonas maps snake_case to camelCase", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/personas", () => {
+        return mswModule.HttpResponse.json({
+          items: [
+            {
+              id: "carlos_local_basic",
+              display_name: "Carlos Pérez",
+              capabilities: ["new_patient", "asks_about_price"],
+              profile_group: "psicologa"
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const personas = await adapter.listEvalPersonas();
+
+    vitestModule.expect(personas).toHaveLength(1);
+    vitestModule.expect(personas[0]?.id).toBe("carlos_local_basic");
+    vitestModule.expect(personas[0]?.displayName).toBe("Carlos Pérez");
+    vitestModule.expect(personas[0]?.capabilities).toEqual(["new_patient", "asks_about_price"]);
+    vitestModule.expect(personas[0]?.profileGroup).toBe("psicologa");
+  });
+
+  vitestModule.it("listEvalPromptVersions maps items correctly", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/prompt-versions", () => {
+        return mswModule.HttpResponse.json({
+          items: [{ id: "current", label: "Versión actual", active: true }]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const versions = await adapter.listEvalPromptVersions();
+
+    vitestModule.expect(versions).toHaveLength(1);
+    vitestModule.expect(versions[0]?.id).toBe("current");
+    vitestModule.expect(versions[0]?.active).toBe(true);
+  });
+
+  vitestModule.it("listEvalRuns maps snake_case to camelCase with limit param", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/runs", ({ request }) => {
+        const url = new URL(request.url);
+        vitestModule.expect(url.searchParams.get("limit")).toBe("10");
+        return mswModule.HttpResponse.json({
+          items: [
+            {
+              run_doc_id: "doc-abc",
+              run_id: "abc123",
+              shape_name: "shape_minimal",
+              started_at: "2026-04-30T10:00:00Z",
+              finished_at: "2026-04-30T10:05:00Z",
+              total_personas: 1,
+              ok: 1,
+              fail: 0,
+              skipped: false
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const runs = await adapter.listEvalRuns(10);
+
+    vitestModule.expect(runs).toHaveLength(1);
+    vitestModule.expect(runs[0]?.runDocId).toBe("doc-abc");
+    vitestModule.expect(runs[0]?.runId).toBe("abc123");
+    vitestModule.expect(runs[0]?.shapeName).toBe("shape_minimal");
+    vitestModule.expect(runs[0]?.totalPersonas).toBe(1);
+    vitestModule.expect(runs[0]?.ok).toBe(1);
+    vitestModule.expect(runs[0]?.fail).toBe(0);
+  });
+
+  vitestModule.it("getEvalRun maps detail with conversations and transcript", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/runs/doc-abc", () => {
+        return mswModule.HttpResponse.json({
+          run_doc_id: "doc-abc",
+          run_id: "abc123",
+          shape_name: "shape_minimal",
+          prompt_version_id: null,
+          started_at: "2026-04-30T10:00:00Z",
+          finished_at: "2026-04-30T10:05:00Z",
+          total_personas: 1,
+          ok: 1,
+          fail: 0,
+          skipped: false,
+          conversations: [
+            {
+              persona_id: "carlos_local_basic",
+              combos_satisfied: [["new_patient"]],
+              status: "ok",
+              elapsed_seconds: 12.4,
+              conversation_id: "conv-xyz",
+              scheduling_request_id: "sr-xyz",
+              final_status: "SESSION_CLOSED",
+              error: null,
+              transcript: [
+                {
+                  direction: "INBOUND",
+                  content: "Hola, quiero una cita",
+                  timestamp: "2026-04-30T10:01:00Z"
+                },
+                {
+                  direction: "OUTBOUND",
+                  content: "Claro, con gusto",
+                  timestamp: "2026-04-30T10:01:05Z"
+                }
+              ],
+              judge_verdict: null
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const detail = await adapter.getEvalRun("doc-abc");
+
+    vitestModule.expect(detail.runDocId).toBe("doc-abc");
+    vitestModule.expect(detail.promptVersionId).toBeNull();
+    vitestModule.expect(detail.conversations).toHaveLength(1);
+    const conv = detail.conversations[0];
+    vitestModule.expect(conv?.personaId).toBe("carlos_local_basic");
+    vitestModule.expect(conv?.combosSatisfied).toEqual([["new_patient"]]);
+    vitestModule.expect(conv?.status).toBe("ok");
+    vitestModule.expect(conv?.elapsedSeconds).toBe(12.4);
+    vitestModule.expect(conv?.transcript).toHaveLength(2);
+    vitestModule.expect(conv?.transcript[0]?.direction).toBe("INBOUND");
+    vitestModule.expect(conv?.transcript[1]?.direction).toBe("OUTBOUND");
+  });
+
+  vitestModule.it("getEvalRun maps judge_verdict with verifications to camelCase", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/runs/doc-judge", () => {
+        return mswModule.HttpResponse.json({
+          run_doc_id: "doc-judge",
+          run_id: "judge123",
+          shape_name: "shape_full",
+          prompt_version_id: null,
+          started_at: "2026-05-01T10:00:00Z",
+          finished_at: "2026-05-01T10:10:00Z",
+          total_personas: 1,
+          ok: 1,
+          fail: 0,
+          skipped: false,
+          conversations: [
+            {
+              persona_id: "carlos_local_basic",
+              combos_satisfied: [["asks_about_price", "new_patient"]],
+              status: "ok",
+              elapsed_seconds: 15.2,
+              conversation_id: "conv-judge",
+              scheduling_request_id: null,
+              final_status: "SESSION_CLOSED",
+              error: null,
+              transcript: [],
+              judge_verdict: {
+                declared_capabilities: ["asks_about_price", "new_patient"],
+                verifications: [
+                  {
+                    capability: "asks_about_price",
+                    verified: true,
+                    evidence: "Hola Dra. Cuánto vale la consulta?",
+                    reasoning: "El paciente pregunta el precio en el primer mensaje."
+                  },
+                  {
+                    capability: "new_patient",
+                    verified: true,
+                    evidence: null,
+                    reasoning: "No menciona haber sido paciente antes."
+                  }
+                ],
+                overall: "all_verified",
+                judge_model: "gemini-2.5-flash",
+                judged_at: "2026-05-01T17:49:46Z",
+                error: null
+              }
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const detail = await adapter.getEvalRun("doc-judge");
+    const conv = detail.conversations[0];
+    const verdict = conv?.judgeVerdict;
+
+    vitestModule.expect(verdict).not.toBeNull();
+    vitestModule.expect(verdict?.overall).toBe("all_verified");
+    vitestModule.expect(verdict?.judgeModel).toBe("gemini-2.5-flash");
+    vitestModule.expect(verdict?.judgedAt).toBe("2026-05-01T17:49:46Z");
+    vitestModule.expect(verdict?.declaredCapabilities).toEqual(["asks_about_price", "new_patient"]);
+    vitestModule.expect(verdict?.verifications).toHaveLength(2);
+    vitestModule.expect(verdict?.verifications[0]?.capability).toBe("asks_about_price");
+    vitestModule.expect(verdict?.verifications[0]?.verified).toBe(true);
+    vitestModule
+      .expect(verdict?.verifications[0]?.evidence)
+      .toBe("Hola Dra. Cuánto vale la consulta?");
+    vitestModule.expect(verdict?.verifications[1]?.evidence).toBeNull();
+    vitestModule.expect(verdict?.error).toBeNull();
+  });
+
+  vitestModule.it("getEvalRun maps judge_verdict: null to judgeVerdict: null", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/runs/doc-no-judge", () => {
+        return mswModule.HttpResponse.json({
+          run_doc_id: "doc-no-judge",
+          run_id: "nojudge",
+          shape_name: "shape_minimal",
+          prompt_version_id: null,
+          started_at: "2026-05-01T10:00:00Z",
+          finished_at: null,
+          total_personas: 1,
+          ok: 0,
+          fail: 1,
+          skipped: false,
+          conversations: [
+            {
+              persona_id: "persona-a",
+              combos_satisfied: [],
+              status: "fail",
+              elapsed_seconds: null,
+              conversation_id: null,
+              scheduling_request_id: null,
+              final_status: null,
+              error: "timeout",
+              transcript: [],
+              judge_verdict: null
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const detail = await adapter.getEvalRun("doc-no-judge");
+    const conv = detail.conversations[0];
+
+    vitestModule.expect(conv?.judgeVerdict).toBeNull();
+  });
+
+  vitestModule.it("getEvalRun maps judge_verdict with error and empty verifications", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/runs/doc-judge-err", () => {
+        return mswModule.HttpResponse.json({
+          run_doc_id: "doc-judge-err",
+          run_id: "judgerr",
+          shape_name: "shape_full",
+          prompt_version_id: null,
+          started_at: "2026-05-01T10:00:00Z",
+          finished_at: "2026-05-01T10:05:00Z",
+          total_personas: 1,
+          ok: 0,
+          fail: 1,
+          skipped: false,
+          conversations: [
+            {
+              persona_id: "persona-b",
+              combos_satisfied: [],
+              status: "fail",
+              elapsed_seconds: 5.0,
+              conversation_id: "conv-err",
+              scheduling_request_id: null,
+              final_status: null,
+              error: null,
+              transcript: [],
+              judge_verdict: {
+                declared_capabilities: ["asks_about_price"],
+                verifications: [],
+                overall: "none",
+                judge_model: "gemini-2.5-flash",
+                judged_at: "2026-05-01T10:04:00Z",
+                error: "parse_error: schema mismatch"
+              }
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const detail = await adapter.getEvalRun("doc-judge-err");
+    const verdict = detail.conversations[0]?.judgeVerdict;
+
+    vitestModule.expect(verdict).not.toBeNull();
+    vitestModule.expect(verdict?.overall).toBe("none");
+    vitestModule.expect(verdict?.verifications).toHaveLength(0);
+    vitestModule.expect(verdict?.error).toBe("parse_error: schema mismatch");
+  });
+
   vitestModule.it("maps phone_prefix round-trip for create and get patient", async () => {
     serverModule.server.use(
       mswModule.http.post("http://api.test/v1/patients", async ({ request }) => {
@@ -545,5 +883,65 @@ vitestModule.describe("BackendApiAdapter", () => {
     const legacy = await adapter.getPatient("wa-null-prefix");
     vitestModule.expect(legacy.phonePrefix).toBeNull();
     vitestModule.expect(legacy.phone).toBe("573009998888");
+  });
+
+  vitestModule.it("deleteEvalRun sends JWT and maps response (no admin secret)", async () => {
+    serverModule.server.use(
+      mswModule.http.delete("http://api.test/v1/dev/eval-runs/run-to-delete", ({ request }) => {
+        // El borrado de runs ya no requiere EVAL_ADMIN_SECRET — usa JWT
+        // del tenant logueado. Solo /v1/dev/eval-tenants requiere el secret.
+        const adminSecret = request.headers.get("x-eval-admin-secret");
+        vitestModule.expect(adminSecret).toBeNull();
+        const authHeader = request.headers.get("authorization");
+        vitestModule.expect(authHeader).toBe("Bearer test-access-token");
+        return mswModule.HttpResponse.json({
+          eval_runs_deleted: 3,
+          tenants_deleted: 2
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession("test-access-token", null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const result = await adapter.deleteEvalRun("run-to-delete");
+
+    vitestModule.expect(result.evalRunsDeleted).toBe(3);
+    vitestModule.expect(result.tenantsDeleted).toBe(2);
+  });
+
+  vitestModule.it("listEvalCapabilities maps snake_case to camelCase and category", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/eval/capabilities", () => {
+        return mswModule.HttpResponse.json({
+          items: [
+            {
+              id: "returning_patient",
+              description: "El paciente ya ha tenido citas anteriores.",
+              implications: "EL RUNNER pre-seed una cita pasada antes de iniciar la conversacion.",
+              category: "cohort"
+            },
+            {
+              id: "local_patient",
+              description: "El paciente esta en la misma ciudad que el profesional.",
+              implications: "No requiere configuracion adicional.",
+              category: "location"
+            }
+          ]
+        });
+      })
+    );
+
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const caps = await adapter.listEvalCapabilities();
+
+    vitestModule.expect(caps).toHaveLength(2);
+    vitestModule.expect(caps[0]?.id).toBe("returning_patient");
+    vitestModule.expect(caps[0]?.category).toBe("cohort");
+    vitestModule.expect(caps[0]?.implications).toContain("EL RUNNER");
+    vitestModule.expect(caps[1]?.id).toBe("local_patient");
+    vitestModule.expect(caps[1]?.category).toBe("location");
   });
 });

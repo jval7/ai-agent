@@ -29,6 +29,21 @@ GOOGLE_OAUTH_STATE_INDEX_COLLECTION = "google_oauth_state"
 
 REFRESH_TOKENS_COLLECTION = "refresh_tokens"
 
+EVAL_RUNS_COLLECTION = "eval_runs"
+EVAL_RUN_CONVERSATIONS_SUBCOLLECTION = "conversations"
+
+
+def eval_run_document(run_id: str) -> str:
+    return f"{EVAL_RUNS_COLLECTION}/{run_id}"
+
+
+def eval_run_conversations_collection(run_id: str) -> str:
+    return f"{EVAL_RUNS_COLLECTION}/{run_id}/{EVAL_RUN_CONVERSATIONS_SUBCOLLECTION}"
+
+
+def eval_run_conversation_document(run_id: str, persona_id: str) -> str:
+    return f"{EVAL_RUNS_COLLECTION}/{run_id}/{EVAL_RUN_CONVERSATIONS_SUBCOLLECTION}/{persona_id}"
+
 
 def _encode_key(value: str) -> str:
     encoded = base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii")

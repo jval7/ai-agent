@@ -6,6 +6,8 @@ __pycache__/
 .ruff_cache/
 .venv/
 .env
+.env.local
+**/.env.local
 .make-flow/
 .coverage
 htmlcov/
@@ -23,7 +25,17 @@ frontend/coverage/
 !infra/terraform/**/envs/*.tfvars
 **/tfplan
 **/*.tfplan
-.claude/
+# Ignora todo el contenido de .claude/ (settings personales, agents, plans, etc).
+.claude/*
+# Skills a nivel proyecto: comiteables, compartidos con el equipo. Negacion
+# en dos pasos para no incluir skills personales (ej. stitch/).
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/persona-from-combo/
+# Agents a nivel proyecto: subagentes definidos en markdown que el equipo
+# puede usar (Backend Engineer, Eval Analyzer, etc.).
+!.claude/agents/
+!.claude/agents/**
 .vite/
 frontend/.claude/
 .mcp.json

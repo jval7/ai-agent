@@ -421,6 +421,7 @@ export interface ServiceOfferingApiResponse {
   name: string | null;
   description: string | null;
   modalities: string[];
+  target_patients: string[];
   tariffs: TariffOptionApiResponse[];
 }
 

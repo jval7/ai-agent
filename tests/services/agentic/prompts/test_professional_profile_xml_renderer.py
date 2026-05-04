@@ -112,11 +112,14 @@ class TestRendererMinimum:
         assert "la Doc" in result
 
     def test_no_extra_sections_when_all_fields_empty(self) -> None:
+        # Use closing tags as section markers — opening tags can also appear
+        # inside style rules that reference the section name (e.g. "los
+        # valores de <identity>"), which would create false positives.
         result = renderer.render_system_prompt_xml(_empty_profile())
-        assert "<identity>" not in result
-        assert "<professional_context>" not in result
-        assert "<services>" not in result
-        assert "<payment_info>" not in result
+        assert "</identity>" not in result
+        assert "</professional_context>" not in result
+        assert "</services>" not in result
+        assert "</payment_info>" not in result
 
 
 class TestRendererSectionOmission:
@@ -127,8 +130,8 @@ class TestRendererSectionOmission:
             updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         )
         result = renderer.render_system_prompt_xml(profile)
-        assert "<identity>" not in result
-        assert "<professional_context>" in result
+        assert "</identity>" not in result  # closing tag = real section
+        assert "</professional_context>" in result
 
     def test_omits_services_when_list_empty(self) -> None:
         profile = agent_profile_entity.AgentProfile(
@@ -137,11 +140,11 @@ class TestRendererSectionOmission:
             updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         )
         result = renderer.render_system_prompt_xml(profile)
-        assert "<services>" not in result
+        assert "</services>" not in result
 
     def test_omits_payment_info_when_list_empty(self) -> None:
         result = renderer.render_system_prompt_xml(_empty_profile())
-        assert "<payment_info>" not in result
+        assert "</payment_info>" not in result
 
     def test_omits_professional_context_when_all_context_fields_empty(self) -> None:
         profile = agent_profile_entity.AgentProfile(
@@ -149,7 +152,7 @@ class TestRendererSectionOmission:
             updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         )
         result = renderer.render_system_prompt_xml(profile)
-        assert "<professional_context>" not in result
+        assert "</professional_context>" not in result
 
 
 class TestRendererFullProfile:

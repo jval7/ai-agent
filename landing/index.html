@@ -3,169 +3,741 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agendachat | Asistente de WhatsApp con Google Calendar para agendamiento de citas</title>
-  <meta name="description" content="Agendachat conecta WhatsApp con Google Calendar para que profesionales independientes agenden, reagenden y cancelen citas con sus clientes en una conversacion natural.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@500;600&family=Sora:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css">
-</head>
-<body>
-  <main class="page">
-    <header class="topbar">
-      <div class="brand">
-        <span class="brand-mark">AC</span>
-        <p class="brand-name">Agendachat</p>
-      </div>
-      <nav class="nav" aria-label="Navegacion principal">
-        <a href="#producto">Producto</a>
-        <a href="#funcionalidades">Funcionalidades</a>
-        <a href="#integraciones">Integraciones</a>
-        <a href="#contacto">Contacto</a>
-        <a href="./privacy.html">Privacidad</a>
-        <a href="./terms.html">Terminos</a>
-      </nav>
-    </header>
+  <title>Agendachat — Tu IA secretaria que agenda citas por WhatsApp</title>
+  <meta name="description" content="IA que agenda citas por WhatsApp para psicólogos, médicos y profesionales. Conectada a Google Calendar. Recordatorios de pago automáticos. Probalo en 2 minutos.">
 
-    <section class="hero hero-product" id="producto">
-      <div class="hero-copy">
-        <span class="pill">WhatsApp + Google Calendar + IA</span>
-        <h1>Agenda citas por WhatsApp, sincronizadas con tu Google Calendar</h1>
-        <p>Agendachat es un asistente de WhatsApp para profesionales independientes (medicos, terapeutas, coaches, esteticistas) que agenda, reagenda y cancela citas conversando en lenguaje natural con sus clientes.</p>
-        <p>Cada confirmacion crea automaticamente un evento en tu Google Calendar; cada reagendamiento o cancelacion lo refleja al instante. Tu disponibilidad real (incluyendo otros eventos personales) se respeta gracias a la integracion <code>freeBusy</code> con Google Calendar.</p>
-        <div class="hero-actions">
-          <a class="btn btn-primary" href="#contacto">Solicitar contacto</a>
-          <a class="btn btn-ghost" href="#cumplimiento">Ver politicas</a>
+  <!-- Open Graph / WhatsApp / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Agendachat — Tu IA secretaria por WhatsApp">
+  <meta property="og:description" content="La IA agenda citas sola, manda recordatorios de pago y se conecta a tu Google Calendar. Para psicólogos, médicos y profesionales LATAM.">
+  <meta property="og:image" content="https://agendachat.co/og-image.png"><!-- TODO: reemplazar con URL real -->
+  <meta property="og:url" content="https://agendachat.co">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Agendachat — Tu IA secretaria por WhatsApp">
+  <meta name="twitter:description" content="Agenda citas sola, recordatorios de pago, Google Calendar. Para profesionales LATAM.">
+  <meta name="twitter:image" content="https://agendachat.co/og-image.png"><!-- TODO: reemplazar con URL real -->
+
+  <!-- Favicon placeholder -->
+  <link rel="icon" href="data:,">
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50:  '#f0fdf9',
+              100: '#ccfbf1',
+              200: '#99f6e4',
+              500: '#14b8a6',
+              600: '#0d9488',
+              700: '#0f766e',
+              800: '#115e59',
+              900: '#134e4a',
+            },
+            wa: '#25d366',
+          },
+          fontFamily: {
+            sans: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+
+  <!-- Minimal overrides -->
+  <link rel="stylesheet" href="./styles.css">
+
+  <!-- TODO: pegar script de Plausible o GA4 acá -->
+</head>
+<body class="bg-gray-50 text-gray-900 antialiased">
+
+<!-- ============================================================
+     NAVBAR
+     ============================================================ -->
+<header class="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-gray-100 shadow-sm">
+  <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+    <!-- Logo -->
+    <a href="#" class="flex items-center gap-2 shrink-0">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-sm select-none">A</div>
+      <span class="font-bold text-gray-900 text-lg tracking-tight">Agendachat</span>
+    </a>
+
+    <!-- Nav links (hidden on mobile) -->
+    <nav class="hidden md:flex items-center gap-6 text-sm font-medium text-gray-600">
+      <a href="#como-funciona" class="hover:text-brand-700 transition-colors">Cómo funciona</a>
+      <a href="#pricing"       class="hover:text-brand-700 transition-colors">Precios</a>
+      <a href="#comparativa"   class="hover:text-brand-700 transition-colors">Comparativa</a>
+      <a href="#faq"           class="hover:text-brand-700 transition-colors">FAQ</a>
+    </nav>
+
+    <!-- CTA -->
+    <a href="#pricing" class="shrink-0 inline-flex items-center gap-1 bg-brand-700 hover:bg-brand-800 text-white text-sm font-semibold px-4 py-2 rounded-full transition-colors">
+      Probá gratis
+    </a>
+  </div>
+</header>
+
+
+<!-- ============================================================
+     HERO
+     ============================================================ -->
+<section class="bg-white border-b border-gray-100">
+  <div class="max-w-6xl mx-auto px-4 py-14 md:py-20 grid md:grid-cols-2 gap-10 items-center">
+
+    <!-- Copy -->
+    <div>
+      <span class="inline-block mb-4 text-xs font-bold uppercase tracking-widest text-brand-700 bg-brand-50 border border-brand-100 px-3 py-1 rounded-full">
+        WhatsApp Business API · IA · Google Calendar
+      </span>
+      <h1 class="text-4xl md:text-5xl font-extrabold leading-tight tracking-tight text-gray-900 mb-4">
+        Tu IA secretaria que agenda citas por WhatsApp <span class="text-brand-700">24/7</span>
+      </h1>
+      <p class="text-lg text-gray-500 leading-relaxed mb-8">
+        Para psicólogos, médicos y profesionales que pierden citas respondiendo WhatsApp a mano.
+        Conectada a tu Google Calendar. Recordatorios de pago automáticos.
+        <strong class="text-gray-700">Probalo en 2 minutos.</strong>
+      </p>
+      <div class="flex flex-wrap gap-3">
+        <a href="#pricing" class="inline-flex items-center gap-2 bg-brand-700 hover:bg-brand-800 text-white font-bold px-6 py-3 rounded-full text-base transition-colors shadow-md">
+          Quiero probarlo gratis →
+        </a>
+        <a href="#como-funciona" class="inline-flex items-center gap-2 border border-gray-300 hover:border-brand-500 text-gray-700 hover:text-brand-700 font-semibold px-6 py-3 rounded-full text-base transition-colors">
+          Ver cómo funciona
+        </a>
+      </div>
+    </div>
+
+    <!-- WhatsApp chat mockup -->
+    <div class="flex justify-center md:justify-end">
+      <div class="w-full max-w-sm bg-[#e5ddd5] rounded-2xl shadow-xl overflow-hidden border border-gray-200">
+        <!-- Chat header -->
+        <div class="bg-brand-700 text-white px-4 py-3 flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-lg">🤖</div>
+          <div>
+            <p class="font-semibold text-sm leading-none">Asistente Dr. García</p>
+            <p class="text-xs text-brand-100 mt-0.5">en línea</p>
+          </div>
+        </div>
+        <!-- Messages -->
+        <div class="p-3 space-y-2 text-sm">
+          <!-- Paciente -->
+          <div class="flex justify-end">
+            <div class="bg-[#dcf8c6] text-gray-800 rounded-tl-2xl rounded-bl-2xl rounded-tr-sm rounded-br-2xl px-3 py-2 max-w-[80%] shadow-sm">
+              Hola, quiero una cita
+              <span class="block text-right text-[10px] text-gray-400 mt-0.5">9:14</span>
+            </div>
+          </div>
+          <!-- IA -->
+          <div class="flex justify-start">
+            <div class="bg-white text-gray-800 rounded-tl-sm rounded-tr-2xl rounded-bl-2xl rounded-br-2xl px-3 py-2 max-w-[80%] shadow-sm">
+              ¡Hola! Soy la asistente del Dr. García. ¿Cuál es tu nombre?
+              <span class="block text-right text-[10px] text-gray-400 mt-0.5">9:14</span>
+            </div>
+          </div>
+          <!-- Paciente -->
+          <div class="flex justify-end">
+            <div class="bg-[#dcf8c6] text-gray-800 rounded-tl-2xl rounded-bl-2xl rounded-tr-sm rounded-br-2xl px-3 py-2 max-w-[80%] shadow-sm">
+              María
+              <span class="block text-right text-[10px] text-gray-400 mt-0.5">9:14</span>
+            </div>
+          </div>
+          <!-- IA -->
+          <div class="flex justify-start">
+            <div class="bg-white text-gray-800 rounded-tl-sm rounded-tr-2xl rounded-bl-2xl rounded-br-2xl px-3 py-2 max-w-[80%] shadow-sm">
+              Tengo disponibles:<br>
+              📅 Martes 3pm<br>
+              📅 Miércoles 10am<br>
+              📅 Jueves 5pm<br>
+              ¿Cuál preferís?
+              <span class="block text-right text-[10px] text-gray-400 mt-0.5">9:14</span>
+            </div>
+          </div>
+          <!-- Paciente -->
+          <div class="flex justify-end">
+            <div class="bg-[#dcf8c6] text-gray-800 rounded-tl-2xl rounded-bl-2xl rounded-tr-sm rounded-br-2xl px-3 py-2 max-w-[80%] shadow-sm">
+              Miércoles 10am
+              <span class="block text-right text-[10px] text-gray-400 mt-0.5">9:15</span>
+            </div>
+          </div>
+          <!-- IA -->
+          <div class="flex justify-start">
+            <div class="bg-white text-gray-800 rounded-tl-sm rounded-tr-2xl rounded-bl-2xl rounded-br-2xl px-3 py-2 max-w-[80%] shadow-sm">
+              ✅ Listo María, agendada miércoles 10am. Te mando recordatorio el martes.
+              <span class="block text-right text-[10px] text-gray-400 mt-0.5">9:15</span>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="hero-panel">
-        <p class="panel-title">Resultado esperado</p>
-        <ul class="legal-list">
-          <li>Citas confirmadas sin que tengas que responder cada mensaje.</li>
-          <li>Tu Google Calendar siempre actualizado con eventos creados por la IA.</li>
-          <li>Reagendamientos y cancelaciones gestionados en la misma conversacion.</li>
-          <li>Recordatorios automaticos antes de cada cita.</li>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ============================================================
+     POR QUÉ ELEGIR AGENDACHAT
+     ============================================================ -->
+<section class="bg-gray-50 border-b border-gray-100 py-14 md:py-20">
+  <div class="max-w-6xl mx-auto px-4">
+    <h2 class="text-2xl md:text-3xl font-bold text-center text-gray-900 mb-10">
+      Por qué profesionales eligen Agendachat
+    </h2>
+    <div class="grid md:grid-cols-3 gap-6">
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div class="text-3xl mb-3">📱</div>
+        <h3 class="font-bold text-gray-900 text-lg mb-2">Dejá de responder WhatsApp a las 11pm</h3>
+        <p class="text-gray-500 text-sm leading-relaxed">La IA agenda sola incluso cuando dormís. Tu celular descansa. Tus citas, no.</p>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div class="text-3xl mb-3">💰</div>
+        <h3 class="font-bold text-gray-900 text-lg mb-2">Cobrá antes de la cita</h3>
+        <p class="text-gray-500 text-sm leading-relaxed">Recordatorios automáticos de pago. Menos inasistencias. Hasta 70% menos citas perdidas.</p>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div class="text-3xl mb-3">📅</div>
+        <h3 class="font-bold text-gray-900 text-lg mb-2">Que el paciente se agende solo</h3>
+        <p class="text-gray-500 text-sm leading-relaxed">Conectada a tu Google Calendar real. Sin doble-agendamiento. Sin conflictos de horarios.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     CÓMO FUNCIONA
+     ============================================================ -->
+<section id="como-funciona" class="bg-white border-b border-gray-100 py-14 md:py-20">
+  <div class="max-w-4xl mx-auto px-4 text-center">
+    <h2 class="text-2xl md:text-3xl font-bold text-gray-900 mb-3">Cómo funciona</h2>
+    <p class="text-gray-500 mb-12">Tres pasos. Sin código. Sin configuraciones complejas.</p>
+
+    <div class="grid md:grid-cols-3 gap-8 text-left">
+
+      <div class="flex flex-col items-start gap-3">
+        <div class="w-14 h-14 rounded-2xl bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-700 font-extrabold text-2xl">1</div>
+        <h3 class="font-bold text-gray-900 text-lg">Conectás tu WhatsApp y Google Calendar</h3>
+        <p class="text-gray-500 text-sm leading-relaxed">2 minutos, sin código. Te guiamos en el onboarding paso a paso.</p>
+      </div>
+
+      <div class="flex flex-col items-start gap-3">
+        <div class="w-14 h-14 rounded-2xl bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-700 font-extrabold text-2xl">2</div>
+        <h3 class="font-bold text-gray-900 text-lg">El paciente te escribe normal</h3>
+        <p class="text-gray-500 text-sm leading-relaxed">La IA atiende sola, negocia horarios y agenda. Vos no respondés.</p>
+      </div>
+
+      <div class="flex flex-col items-start gap-3">
+        <div class="w-14 h-14 rounded-2xl bg-brand-50 border border-brand-100 flex items-center justify-center text-brand-700 font-extrabold text-2xl">3</div>
+        <h3 class="font-bold text-gray-900 text-lg">La cita queda agendada con recordatorio</h3>
+        <p class="text-gray-500 text-sm leading-relaxed">Recordatorio de asistencia y de pago. Automático. Sin que hagas nada.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     PRECIOS
+     ============================================================ -->
+<section id="pricing" class="bg-gray-50 border-b border-gray-100 py-14 md:py-20">
+  <div class="max-w-6xl mx-auto px-4">
+    <h2 class="text-2xl md:text-3xl font-bold text-center text-gray-900 mb-3">Precios simples, sin sorpresas</h2>
+    <p class="text-center text-gray-500 mb-12">Cancelás cuando quieras. Sin permanencia.</p>
+
+    <!-- 3 pricing cards -->
+    <div class="grid md:grid-cols-3 gap-6 items-start mb-10">
+
+      <!-- STARTER -->
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-7">
+        <p class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Starter</p>
+        <p class="text-4xl font-extrabold text-gray-900 mb-1">$29<span class="text-lg font-semibold text-gray-400">/mes</span></p>
+        <p class="text-sm text-gray-400 mb-6">~$120.000 COP/mes</p>
+        <p class="text-sm font-medium text-gray-600 mb-5">Para profesional solo, bajo volumen</p>
+        <ul class="space-y-2.5 text-sm mb-8">
+          <li class="flex items-start gap-2 text-gray-700"><span class="text-brand-600 mt-0.5">✅</span> Hasta 200 conversaciones IA/mes</li>
+          <li class="flex items-start gap-2 text-gray-700"><span class="text-brand-600 mt-0.5">✅</span> 1 número WhatsApp Business</li>
+          <li class="flex items-start gap-2 text-gray-700"><span class="text-brand-600 mt-0.5">✅</span> 1 Google Calendar</li>
+          <li class="flex items-start gap-2 text-gray-700"><span class="text-brand-600 mt-0.5">✅</span> Recordatorios básicos</li>
+          <li class="flex items-start gap-2 text-gray-400"><span class="mt-0.5">❌</span> Recordatorios de pago automáticos</li>
+          <li class="flex items-start gap-2 text-gray-400"><span class="mt-0.5">❌</span> Plantillas WhatsApp personalizadas</li>
+          <li class="flex items-start gap-2 text-gray-400"><span class="mt-0.5">❌</span> System prompt editable</li>
+        </ul>
+        <a href="#empezar" class="block text-center border border-brand-600 text-brand-700 hover:bg-brand-50 font-semibold rounded-full py-2.5 transition-colors text-sm">
+          Empezar →
+        </a>
+      </div>
+
+      <!-- PRO — destacado -->
+      <div class="bg-brand-700 rounded-2xl shadow-2xl p-7 relative ring-4 ring-brand-500/30 scale-[1.03]">
+        <span class="absolute -top-4 left-1/2 -translate-x-1/2 bg-yellow-400 text-yellow-900 text-xs font-bold uppercase tracking-wider px-4 py-1.5 rounded-full shadow">⭐ Más elegido</span>
+        <p class="text-xs font-bold uppercase tracking-widest text-brand-200 mb-2">Pro</p>
+        <p class="text-4xl font-extrabold text-white mb-1">$59<span class="text-lg font-semibold text-brand-200">/mes</span></p>
+        <p class="text-sm text-brand-200 mb-6">~$240.000 COP/mes</p>
+        <p class="text-sm font-medium text-brand-100 mb-5">Para profesional con agenda llena</p>
+        <ul class="space-y-2.5 text-sm mb-8">
+          <li class="flex items-start gap-2 text-white"><span class="mt-0.5">✅</span> Conversaciones IA ilimitadas (fair use)</li>
+          <li class="flex items-start gap-2 text-white"><span class="mt-0.5">✅</span> Recordatorios de pago + asistencia</li>
+          <li class="flex items-start gap-2 text-white"><span class="mt-0.5">✅</span> Plantillas WhatsApp personalizadas</li>
+          <li class="flex items-start gap-2 text-white"><span class="mt-0.5">✅</span> Etiquetas y CRM de pacientes</li>
+          <li class="flex items-start gap-2 text-white"><span class="mt-0.5">✅</span> System prompt editable</li>
+          <li class="flex items-start gap-2 text-white"><span class="mt-0.5">✅</span> Soporte por WhatsApp</li>
+        </ul>
+        <a href="#empezar" class="block text-center bg-white text-brand-700 hover:bg-brand-50 font-bold rounded-full py-2.5 transition-colors text-sm shadow-md">
+          Probar 14 días gratis →
+        </a>
+      </div>
+
+      <!-- CLINIC -->
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-7">
+        <p class="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Clinic</p>
+        <p class="text-4xl font-extrabold text-gray-900 mb-1">$129<span class="text-lg font-semibold text-gray-400">/mes</span></p>
+        <p class="text-sm text-gray-400 mb-6">~$520.000 COP/mes</p>
+        <p class="text-sm font-medium text-gray-600 mb-5">Para consultorios 2-5 profesionales</p>
+        <ul class="space-y-2.5 text-sm mb-8">
+          <li class="flex items-start gap-2 text-gray-700"><span class="text-brand-600 mt-0.5">✅</span> Todo lo de Pro</li>
+          <li class="flex items-start gap-2 text-gray-700"><span class="text-brand-600 mt-0.5">✅</span> Multi-agenda y multi-usuario</li>
+          <li class="flex items-start gap-2 text-gray-700"><span class="text-brand-600 mt-0.5">✅</span> System prompt avanzado</li>
+          <li class="flex items-start gap-2 text-gray-700"><span class="text-brand-600 mt-0.5">✅</span> Soporte prioritario</li>
+        </ul>
+        <a href="#empezar" class="block text-center border border-gray-300 text-gray-700 hover:border-brand-500 hover:text-brand-700 font-semibold rounded-full py-2.5 transition-colors text-sm">
+          Hablar con ventas →
+        </a>
+      </div>
+
+    </div><!-- /grid -->
+
+    <!-- Founding Members banner -->
+    <div class="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-2xl p-6 md:p-8 text-center mb-8">
+      <p class="text-2xl mb-2">🎁</p>
+      <p class="text-xs font-bold uppercase tracking-widest text-yellow-700 mb-2">Oferta de lanzamiento — Founding Members</p>
+      <p class="text-2xl md:text-3xl font-extrabold text-gray-900 mb-1">Pro a <span class="text-brand-700">$29 USD</span> / <span class="text-brand-700">$120.000 COP</span></p>
+      <p class="text-gray-600 mb-2">Precio fijo <strong>de por vida</strong>. Solo los primeros 30 cupos.</p>
+      <p class="text-lg font-bold text-orange-600 mb-5">Quedan <span class="underline">17 lugares</span>.</p>
+      <a href="#empezar" class="inline-flex items-center gap-2 bg-brand-700 hover:bg-brand-800 text-white font-bold px-8 py-3 rounded-full transition-colors shadow-md">
+        Quiero ser Founding Member →
+      </a>
+    </div>
+
+    <!-- Garantía -->
+    <div class="bg-white border border-gray-200 rounded-2xl p-5 flex items-start gap-4 max-w-2xl mx-auto">
+      <span class="text-2xl shrink-0">🛡️</span>
+      <p class="text-sm text-gray-600 leading-relaxed">
+        <strong class="text-gray-900">Garantía 30 días:</strong> si no recuperás el plan con 1 cita rescatada por recordatorio, te devolvemos la plata. Sin preguntas.
+      </p>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ============================================================
+     COMPARATIVA
+     ============================================================ -->
+<section id="comparativa" class="bg-white border-b border-gray-100 py-14 md:py-20">
+  <div class="max-w-6xl mx-auto px-4">
+    <h2 class="text-2xl md:text-3xl font-bold text-center text-gray-900 mb-3">Cómo se compara Agendachat</h2>
+    <p class="text-center text-gray-500 mb-10">La única herramienta en LATAM que combina los 4 ejes.</p>
+
+    <!-- Scroll horizontal en mobile -->
+    <div class="overflow-x-auto rounded-2xl border border-gray-200 shadow-sm">
+      <table class="w-full text-sm min-w-[600px]">
+        <thead>
+          <tr class="bg-gray-50 border-b border-gray-200">
+            <th class="text-left px-5 py-4 font-semibold text-gray-700">Feature</th>
+            <th class="px-4 py-4 font-bold text-brand-700 bg-brand-50 text-center">Agendachat</th>
+            <th class="px-4 py-4 font-semibold text-gray-600 text-center">Wati</th>
+            <th class="px-4 py-4 font-semibold text-gray-600 text-center">Agendapro</th>
+            <th class="px-4 py-4 font-semibold text-gray-600 text-center">Respond.io</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <tr>
+            <td class="px-5 py-3.5 text-gray-700">WhatsApp Business API oficial</td>
+            <td class="px-4 py-3.5 text-center bg-brand-50/50 text-lg">✅</td>
+            <td class="px-4 py-3.5 text-center text-lg">✅</td>
+            <td class="px-4 py-3.5 text-center text-lg">❌</td>
+            <td class="px-4 py-3.5 text-center text-lg">✅</td>
+          </tr>
+          <tr class="bg-gray-50/50">
+            <td class="px-5 py-3.5 text-gray-700">IA que agenda sola 24/7</td>
+            <td class="px-4 py-3.5 text-center bg-brand-50/50 text-lg">✅</td>
+            <td class="px-4 py-3.5 text-center text-lg">❌</td>
+            <td class="px-4 py-3.5 text-center text-lg">❌</td>
+            <td class="px-4 py-3.5 text-center text-gray-500 text-sm">✅ (desde $159)</td>
+          </tr>
+          <tr>
+            <td class="px-5 py-3.5 text-gray-700">Google Calendar bidireccional</td>
+            <td class="px-4 py-3.5 text-center bg-brand-50/50 text-lg">✅</td>
+            <td class="px-4 py-3.5 text-center text-lg">❌</td>
+            <td class="px-4 py-3.5 text-center text-gray-500 text-sm">Parcial</td>
+            <td class="px-4 py-3.5 text-center text-lg">❌</td>
+          </tr>
+          <tr class="bg-gray-50/50">
+            <td class="px-5 py-3.5 text-gray-700">Recordatorios de pago</td>
+            <td class="px-4 py-3.5 text-center bg-brand-50/50 text-lg">✅</td>
+            <td class="px-4 py-3.5 text-center text-lg">❌</td>
+            <td class="px-4 py-3.5 text-center text-gray-500 text-sm">Parcial</td>
+            <td class="px-4 py-3.5 text-center text-lg">❌</td>
+          </tr>
+          <tr>
+            <td class="px-5 py-3.5 text-gray-700">CRM de pacientes incluido</td>
+            <td class="px-4 py-3.5 text-center bg-brand-50/50 text-lg">✅</td>
+            <td class="px-4 py-3.5 text-center text-lg">✅</td>
+            <td class="px-4 py-3.5 text-center text-lg">✅</td>
+            <td class="px-4 py-3.5 text-center text-lg">✅</td>
+          </tr>
+          <tr class="bg-gray-50/50">
+            <td class="px-5 py-3.5 font-semibold text-gray-700">Precio plan principal (USD/mes)</td>
+            <td class="px-4 py-3.5 text-center bg-brand-50/50 font-bold text-brand-700">$59</td>
+            <td class="px-4 py-3.5 text-center text-gray-600">$69–$149</td>
+            <td class="px-4 py-3.5 text-center text-gray-600">$59</td>
+            <td class="px-4 py-3.5 text-center text-gray-600">$159</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-xs text-gray-400 mt-3 text-center">
+      Precios públicos verificados a 2026. Pueden variar.
+      Ver fuentes: <a href="https://wati.io/pricing" class="underline" target="_blank" rel="noopener">wati.io/pricing</a>,
+      <a href="https://respond.io/pricing" class="underline" target="_blank" rel="noopener">respond.io/pricing</a>,
+      agendapro.co/planes.
+    </p>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     CALCULADORA DE ROI
+     ============================================================ -->
+<section id="roi" class="bg-gray-50 border-b border-gray-100 py-14 md:py-20">
+  <div class="max-w-2xl mx-auto px-4">
+    <h2 class="text-2xl md:text-3xl font-bold text-center text-gray-900 mb-3">Calculadora de ROI</h2>
+    <p class="text-center text-gray-500 mb-10">¿Cuánto estás perdiendo cada mes por inasistencias?</p>
+
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-7 space-y-6">
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5" for="precio-cita">
+          ¿Cuánto cobrás por cita? (COP)
+        </label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+          <input
+            id="precio-cita"
+            type="number"
+            value="100000"
+            min="0"
+            step="10000"
+            class="w-full border border-gray-200 rounded-xl pl-7 pr-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm"
+          >
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5" for="citas-caidas">
+          ¿Cuántas citas se caen al mes por inasistencia?
+        </label>
+        <input
+          id="citas-caidas"
+          type="number"
+          value="5"
+          min="0"
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent text-sm"
+        >
+      </div>
+
+      <div id="roi-result" class="bg-brand-50 border border-brand-100 rounded-xl p-5 space-y-2 text-sm">
+        <!-- Populated by JS -->
+      </div>
+
+      <a href="#pricing" class="block text-center bg-brand-700 hover:bg-brand-800 text-white font-bold rounded-full py-3 transition-colors text-sm">
+        Recuperá ese dinero con Agendachat →
+      </a>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FAQ
+     ============================================================ -->
+<section id="faq" class="bg-white border-b border-gray-100 py-14 md:py-20">
+  <div class="max-w-3xl mx-auto px-4">
+    <h2 class="text-2xl md:text-3xl font-bold text-center text-gray-900 mb-10">Preguntas frecuentes</h2>
+
+    <div class="space-y-3">
+
+      <details class="bg-gray-50 border border-gray-200 rounded-2xl group">
+        <summary class="cursor-pointer px-6 py-4 font-semibold text-gray-900 text-sm flex justify-between items-center list-none">
+          ¿Necesito tener WhatsApp Business API?
+          <span class="text-brand-600 text-lg transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <div class="px-6 pb-4 text-sm text-gray-500 leading-relaxed">
+          Te ayudamos a configurarlo en el onboarding. Si ya tenés WhatsApp Business normal, te migramos a la API oficial.
+        </div>
+      </details>
+
+      <details class="bg-gray-50 border border-gray-200 rounded-2xl group">
+        <summary class="cursor-pointer px-6 py-4 font-semibold text-gray-900 text-sm flex justify-between items-center list-none">
+          ¿Y si la IA se equivoca? ¿Puedo intervenir?
+          <span class="text-brand-600 text-lg transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <div class="px-6 pb-4 text-sm text-gray-500 leading-relaxed">
+          Sí. Cada conversación tiene un toggle "modo manual": tomás el control cuando querés y la IA se calla.
+        </div>
+      </details>
+
+      <details class="bg-gray-50 border border-gray-200 rounded-2xl group">
+        <summary class="cursor-pointer px-6 py-4 font-semibold text-gray-900 text-sm flex justify-between items-center list-none">
+          ¿Funciona con mi Google Calendar actual?
+          <span class="text-brand-600 text-lg transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <div class="px-6 pb-4 text-sm text-gray-500 leading-relaxed">
+          Sí, conexión directa con cualquier cuenta de Google. Sin apps adicionales.
+        </div>
+      </details>
+
+      <details class="bg-gray-50 border border-gray-200 rounded-2xl group">
+        <summary class="cursor-pointer px-6 py-4 font-semibold text-gray-900 text-sm flex justify-between items-center list-none">
+          ¿Hay permanencia o contrato?
+          <span class="text-brand-600 text-lg transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <div class="px-6 pb-4 text-sm text-gray-500 leading-relaxed">
+          No. Cancelás cuando quieras desde la app. Sin letras chicas.
+        </div>
+      </details>
+
+      <details class="bg-gray-50 border border-gray-200 rounded-2xl group">
+        <summary class="cursor-pointer px-6 py-4 font-semibold text-gray-900 text-sm flex justify-between items-center list-none">
+          ¿Cuánto cuesta WhatsApp aparte del plan?
+          <span class="text-brand-600 text-lg transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <div class="px-6 pb-4 text-sm text-gray-500 leading-relaxed">
+          Meta cobra ~$0.01–0.04 USD por mensaje de utilidad. En el plan Pro incluimos un cupo mensual. Arriba de eso facturamos al costo de Meta sin sobreprecio.
+        </div>
+      </details>
+
+      <details class="bg-gray-50 border border-gray-200 rounded-2xl group">
+        <summary class="cursor-pointer px-6 py-4 font-semibold text-gray-900 text-sm flex justify-between items-center list-none">
+          ¿Es legal en Colombia?
+          <span class="text-brand-600 text-lg transition-transform group-open:rotate-45">+</span>
+        </summary>
+        <div class="px-6 pb-4 text-sm text-gray-500 leading-relaxed">
+          Sí, cumplimos Habeas Data (Ley 1581/2012). Ver nuestra <a href="privacy.html" class="text-brand-700 underline underline-offset-2">política de privacidad</a>.
+        </div>
+      </details>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     CAPTURA DE LEADS
+     ============================================================ -->
+<section id="empezar" class="bg-brand-700 py-14 md:py-20">
+  <div class="max-w-xl mx-auto px-4">
+    <h2 class="text-2xl md:text-3xl font-bold text-white text-center mb-2">Empezá hoy</h2>
+    <p class="text-center text-brand-200 mb-10">Te configuramos todo en 24 horas.</p>
+
+    <!-- TODO: conectar a webhook real (reemplazar action="mailto:..." con endpoint real) -->
+    <form
+      action="mailto:jhonvalderramaa7@gmail.com"
+      method="get"
+      enctype="text/plain"
+      class="bg-white rounded-2xl shadow-xl p-7 space-y-4"
+    >
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5" for="nombre">Nombre completo</label>
+        <input
+          id="nombre"
+          name="nombre"
+          type="text"
+          required
+          placeholder="Tu nombre"
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+        >
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5" for="profesion">Profesión</label>
+        <select
+          id="profesion"
+          name="profesion"
+          required
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white"
+        >
+          <option value="" disabled selected>Seleccioná tu profesión</option>
+          <option>Psicólogo/a</option>
+          <option>Médico/a</option>
+          <option>Esteticista</option>
+          <option>Odontólogo/a</option>
+          <option>Entrenador/a personal</option>
+          <option>Otro</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5" for="whatsapp">Tu WhatsApp</label>
+        <input
+          id="whatsapp"
+          name="whatsapp"
+          type="tel"
+          required
+          placeholder="+57 300 000 0000"
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
+        >
+      </div>
+
+      <div>
+        <label class="block text-sm font-semibold text-gray-700 mb-1.5" for="citas-semana">¿Cuántas citas atendés por semana?</label>
+        <select
+          id="citas-semana"
+          name="citas_semana"
+          required
+          class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-white"
+        >
+          <option value="" disabled selected>Seleccioná un rango</option>
+          <option>0-10</option>
+          <option>10-30</option>
+          <option>30-60</option>
+          <option>60+</option>
+        </select>
+      </div>
+
+      <button
+        type="submit"
+        class="w-full bg-brand-700 hover:bg-brand-800 text-white font-bold rounded-full py-3 transition-colors text-base shadow-md"
+      >
+        Quiero probarlo gratis
+      </button>
+    </form>
+
+    <p class="text-center text-brand-200 text-sm mt-5">Acceso directo al fundador. Sin chatbots de soporte.</p>
+  </div>
+</section>
+
+
+<!-- ============================================================
+     FOOTER
+     ============================================================ -->
+<footer class="bg-gray-900 text-gray-400 py-12">
+  <div class="max-w-6xl mx-auto px-4">
+    <div class="grid sm:grid-cols-2 md:grid-cols-4 gap-8 mb-10">
+
+      <!-- Brand -->
+      <div class="md:col-span-1">
+        <div class="flex items-center gap-2 mb-3">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-sm">A</div>
+          <span class="font-bold text-white text-lg">Agendachat</span>
+        </div>
+        <p class="text-sm leading-relaxed text-gray-500">Tu IA secretaria que agenda citas por WhatsApp.</p>
+      </div>
+
+      <!-- Producto -->
+      <div>
+        <p class="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Producto</p>
+        <ul class="space-y-2 text-sm">
+          <li><a href="#como-funciona" class="hover:text-white transition-colors">Cómo funciona</a></li>
+          <li><a href="#pricing"       class="hover:text-white transition-colors">Precios</a></li>
+          <li><a href="#comparativa"   class="hover:text-white transition-colors">Comparativa</a></li>
+          <li><a href="#roi"           class="hover:text-white transition-colors">Calculadora ROI</a></li>
         </ul>
       </div>
-    </section>
 
-    <section class="section metric-section">
-      <div class="metric-grid">
-        <article class="metric">
-          <p class="metric-value">24/7</p>
-          <p>Cobertura automatizada para primera respuesta</p>
-        </article>
-        <article class="metric">
-          <p class="metric-value">IA + reglas</p>
-          <p>Equilibrio entre automatizacion y control operativo</p>
-        </article>
-        <article class="metric">
-          <p class="metric-value">Escalable</p>
-          <p>Flujos adaptables a distintas industrias y equipos</p>
-        </article>
+      <!-- Legal -->
+      <div>
+        <p class="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Legal</p>
+        <ul class="space-y-2 text-sm">
+          <li><a href="privacy.html" class="hover:text-white transition-colors">Política de privacidad</a></li>
+          <li><a href="terms.html"   class="hover:text-white transition-colors">Términos de servicio</a></li>
+        </ul>
       </div>
-    </section>
 
-    <section class="section" id="funcionalidades">
-      <h2>Que ofrece Agendachat</h2>
-      <div class="feature-grid">
-        <article class="feature-card">
-          <p class="feature-icon">01</p>
-          <h3>Conversacion natural en WhatsApp</h3>
-          <p>El cliente escribe &quot;agendame para el martes en la tarde&quot; y la IA propone slots libres del profesional, sin formularios ni botones rigidos.</p>
-        </article>
-        <article class="feature-card">
-          <p class="feature-icon">02</p>
-          <h3>Sincronizacion con Google Calendar</h3>
-          <p>Cada cita confirmada se crea como evento en el Google Calendar del profesional. Reagendar o cancelar lo refleja al instante.</p>
-        </article>
-        <article class="feature-card">
-          <p class="feature-icon">03</p>
-          <h3>Disponibilidad real</h3>
-          <p>Agendachat consulta los intervalos ocupados (<code>freeBusy</code>) del calendario del profesional y nunca propone un horario que choque con un evento existente.</p>
-        </article>
-        <article class="feature-card">
-          <p class="feature-icon">04</p>
-          <h3>Recordatorios y seguimiento</h3>
-          <p>Recordatorios automaticos al cliente antes de cada cita y manejo ordenado de cancelaciones de ultimo momento.</p>
-        </article>
+      <!-- Contacto -->
+      <div>
+        <p class="text-xs font-bold uppercase tracking-widest text-gray-500 mb-3">Contacto</p>
+        <ul class="space-y-2 text-sm">
+          <li>
+            <a href="mailto:jhonvalderramaa7@gmail.com" class="hover:text-white transition-colors break-all">
+              jhonvalderramaa7@gmail.com
+            </a>
+          </li>
+          <li>
+            <a href="https://wa.me/573127457050" class="hover:text-white transition-colors" target="_blank" rel="noopener">
+              WhatsApp +57 312 745 7050
+            </a>
+          </li>
+          <li class="text-gray-600 text-xs">Cali, Colombia</li>
+        </ul>
       </div>
-    </section>
 
-    <section class="section" id="integraciones">
-      <h2>Integraciones</h2>
-      <p>Agendachat se integra con las herramientas que el profesional ya usa.</p>
-      <div class="grid">
-        <article class="card">
-          <p class="key">WhatsApp Business Platform</p>
-          <p>Canal oficial de mensajeria con tu numero verificado para conversar con clientes.</p>
-        </article>
-        <article class="card">
-          <p class="key">Google Calendar</p>
-          <p>Conexion OAuth con permisos minimos (<code>calendar.events</code> + <code>calendar.readonly</code>) para crear, leer y modificar eventos del profesional.</p>
-        </article>
-        <article class="card">
-          <p class="key">Google Meet (opcional)</p>
-          <p>Generacion automatica de link de Meet en cada cita cuando el profesional lo configura.</p>
-        </article>
-      </div>
-    </section>
+    </div>
 
-    <section class="section">
-      <h2>Como funciona</h2>
-      <div class="timeline">
-        <article class="timeline-item">
-          <p class="key">Paso 1</p>
-          <h3>El profesional conecta su Google Calendar</h3>
-          <p>Desde el dashboard, autoriza a Agendachat con OAuth de Google. Solo se piden los permisos minimos para gestionar citas.</p>
-        </article>
-        <article class="timeline-item">
-          <p class="key">Paso 2</p>
-          <h3>El cliente escribe por WhatsApp</h3>
-          <p>La IA entiende la solicitud, consulta la disponibilidad real del profesional y propone horarios libres.</p>
-        </article>
-        <article class="timeline-item">
-          <p class="key">Paso 3</p>
-          <h3>La cita queda en el calendario</h3>
-          <p>Al confirmar, se crea el evento en Google Calendar del profesional. Reagendamientos y cancelaciones se manejan en la misma conversacion.</p>
-        </article>
-      </div>
-    </section>
+    <div class="border-t border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-gray-600">
+      <p>© 2026 Agendachat · Jhon Valderrama</p>
+      <p>Última actualización: 2026-04-27</p>
+    </div>
+  </div>
+</footer>
 
-    <section class="section" id="contacto">
-      <h2>Contacto</h2>
-      <div class="grid">
-        <article class="card">
-          <p class="key">Titular</p>
-          <p>Jhon Valderrama<br>Desarrollador independiente</p>
-        </article>
-        <article class="card">
-          <p class="key">Ciudad y pais</p>
-          <p>Cali, Colombia</p>
-        </article>
-        <article class="card">
-          <p class="key">Correo de soporte y legal</p>
-          <p><a href="mailto:jhonvalderramaa7@gmail.com">jhonvalderramaa7@gmail.com</a></p>
-        </article>
-        <article class="card">
-          <p class="key">Telefono</p>
-          <p><a href="tel:+573127457050">+57 312 745 7050</a></p>
-        </article>
-      </div>
-    </section>
 
-    <section class="section" id="cumplimiento">
-      <h2>Confianza y cumplimiento</h2>
-      <p>Tambien publicamos nuestras politicas de tratamiento de datos y terminos de servicio para transparencia con clientes y plataformas.</p>
-      <ul class="legal-list">
-        <li><a href="./privacy.html">Politica de privacidad</a></li>
-        <li><a href="./terms.html">Terminos de servicio</a></li>
-      </ul>
-    </section>
+<!-- ============================================================
+     SCRIPTS
+     ============================================================ -->
+<script>
+  // Smooth scroll for nav links (complementa scroll-behavior CSS)
+  document.querySelectorAll('a[href^="#"]').forEach(function(a) {
+    a.addEventListener('click', function(e) {
+      var target = document.querySelector(this.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  });
 
-    <footer class="footer">
-      Agendachat · Actualizado el 2026-04-28.
-    </footer>
-  </main>
+  // Calculadora ROI
+  function formatCOP(n) {
+    return '$' + Math.round(n).toLocaleString('es-CO');
+  }
+
+  function calcROI() {
+    var precio = parseFloat(document.getElementById('precio-cita').value) || 0;
+    var caidas = parseFloat(document.getElementById('citas-caidas').value) || 0;
+    var perdida = precio * caidas;
+    var recuperado = perdida * 0.70;
+    var costoPlan = 240000;
+    var roi = costoPlan > 0 ? (recuperado / costoPlan) : 0;
+
+    var html = '';
+    html += '<p class="text-gray-700">Estás perdiendo <strong class="text-red-600">' + formatCOP(perdida) + '</strong> al mes.</p>';
+    html += '<p class="text-gray-700">Agendachat recupera ~70% = <strong class="text-brand-700">' + formatCOP(recuperado) + '</strong></p>';
+    html += '<p class="text-gray-700">Costo del plan Pro: <strong class="text-gray-900">' + formatCOP(costoPlan) + '</strong></p>';
+    html += '<div class="mt-3 pt-3 border-t border-brand-100">';
+    html += '<p class="text-lg font-extrabold text-brand-700">ROI: <span>' + roi.toFixed(1) + 'x</span> tu inversión</p>';
+    html += '</div>';
+
+    document.getElementById('roi-result').innerHTML = html;
+  }
+
+  document.getElementById('precio-cita').addEventListener('input', calcROI);
+  document.getElementById('citas-caidas').addEventListener('input', calcROI);
+
+  // Calcular al cargar con defaults
+  calcROI();
+</script>
+
 </body>
 </html>

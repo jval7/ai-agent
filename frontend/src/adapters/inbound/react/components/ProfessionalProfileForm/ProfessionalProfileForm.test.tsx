@@ -44,6 +44,7 @@ const FULL_PROFILE: agentModel.ProfessionalProfile = {
       name: "Consulta Individual",
       description: null,
       modalities: ["PRESENCIAL", "VIRTUAL"],
+      targetPatients: ["NEW", "RETURNING"],
       tariffs: [
         {
           label: "Sesión",

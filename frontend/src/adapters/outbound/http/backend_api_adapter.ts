@@ -2,6 +2,7 @@ import type * as agentModel from "@domain/models/agent";
 import type * as authModel from "@domain/models/auth";
 import type * as blacklistModel from "@domain/models/blacklist";
 import type * as conversationModel from "@domain/models/conversation";
+import type * as evaluationModel from "@domain/models/evaluation";
 import type * as googleCalendarModel from "@domain/models/google_calendar";
 import type * as manualAppointmentModel from "@domain/models/manual_appointment";
 import type * as onboardingModel from "@domain/models/onboarding";
@@ -24,6 +25,7 @@ interface RequestOptions {
   body?: string;
   retryOnUnauthorized?: boolean;
   requestId?: string;
+  customHeaders?: Record<string, string>;
 }
 
 export class BackendApiAdapter implements backendApiPort.BackendApiPort {
@@ -990,6 +992,200 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     });
   }
 
+  async listEvalShapes(): Promise<evaluationModel.EvalShape[]> {
+    const raw = await this.request<{
+      items: {
+        name: string;
+        description: string;
+        required_combos: string[][];
+        rendered_system_prompt: string;
+      }[];
+    }>("/v1/eval/shapes", { method: "GET", authRequired: false });
+    return raw.items.map((item) => ({
+      name: item.name,
+      description: item.description,
+      requiredCombos: item.required_combos,
+      renderedSystemPrompt: item.rendered_system_prompt
+    }));
+  }
+
+  async listEvalPersonas(): Promise<evaluationModel.EvalPersona[]> {
+    const raw = await this.request<{
+      items: {
+        id: string;
+        display_name: string;
+        capabilities: string[];
+        profile_group: string;
+      }[];
+    }>("/v1/eval/personas", { method: "GET", authRequired: false });
+    return raw.items.map((item) => ({
+      id: item.id,
+      displayName: item.display_name,
+      capabilities: item.capabilities,
+      profileGroup: item.profile_group
+    }));
+  }
+
+  async listEvalPromptVersions(): Promise<evaluationModel.EvalPromptVersion[]> {
+    const raw = await this.request<{
+      items: {
+        id: string;
+        label: string;
+        active: boolean;
+      }[];
+    }>("/v1/eval/prompt-versions", { method: "GET", authRequired: false });
+    return raw.items.map((item) => ({
+      id: item.id,
+      label: item.label,
+      active: item.active
+    }));
+  }
+
+  async listEvalRuns(limit?: number): Promise<evaluationModel.EvalRunListItem[]> {
+    const qs = limit !== undefined ? `?limit=${limit}` : "";
+    const raw = await this.request<{
+      items: {
+        run_doc_id: string;
+        run_id: string;
+        shape_name: string;
+        started_at: string;
+        finished_at: string | null;
+        total_personas: number;
+        ok: number;
+        fail: number;
+        skipped: boolean;
+      }[];
+    }>(`/v1/eval/runs${qs}`, { method: "GET", authRequired: false });
+    return raw.items.map((item) => ({
+      runDocId: item.run_doc_id,
+      runId: item.run_id,
+      shapeName: item.shape_name,
+      startedAt: item.started_at,
+      finishedAt: item.finished_at,
+      totalPersonas: item.total_personas,
+      ok: item.ok,
+      fail: item.fail,
+      skipped: item.skipped
+    }));
+  }
+
+  async deleteEvalRun(runId: string): Promise<evaluationModel.EvalDeleteResult> {
+    // Usa JWT del tenant logueado (cualquier role del ambiente dev). El
+    // EVAL_ADMIN_SECRET solo aplica a /v1/dev/eval-tenants (writes invasivos
+    // de tenants), no al borrado de un run.
+    const raw = await this.request<{ eval_runs_deleted: number; tenants_deleted: number }>(
+      `/v1/dev/eval-runs/${runId}`,
+      { method: "DELETE", authRequired: true }
+    );
+    return {
+      evalRunsDeleted: raw.eval_runs_deleted,
+      tenantsDeleted: raw.tenants_deleted
+    };
+  }
+
+  async listEvalCapabilities(): Promise<evaluationModel.EvalCapabilityDoc[]> {
+    const raw = await this.request<{
+      items: {
+        id: string;
+        description: string;
+        implications: string;
+        category: evaluationModel.EvalCapabilityCategory;
+      }[];
+    }>("/v1/eval/capabilities", { method: "GET", authRequired: false });
+    return raw.items.map((item) => ({
+      id: item.id,
+      description: item.description,
+      implications: item.implications,
+      category: item.category
+    }));
+  }
+
+  async getEvalRun(runDocId: string): Promise<evaluationModel.EvalRunDetail> {
+    const raw = await this.request<{
+      run_doc_id: string;
+      run_id: string;
+      shape_name: string;
+      prompt_version_id: string | null;
+      started_at: string;
+      finished_at: string | null;
+      total_personas: number;
+      ok: number;
+      fail: number;
+      skipped: boolean;
+      conversations: {
+        persona_id: string;
+        combos_satisfied: string[][];
+        status: "ok" | "fail" | "skipped";
+        elapsed_seconds: number | null;
+        conversation_id: string | null;
+        scheduling_request_id: string | null;
+        final_status: string | null;
+        error: string | null;
+        transcript: {
+          direction: "INBOUND" | "OUTBOUND";
+          content: string;
+          timestamp: string;
+        }[];
+        judge_verdict: {
+          declared_capabilities: string[];
+          verifications: {
+            capability: string;
+            verified: boolean;
+            evidence: string | null;
+            reasoning: string | null;
+          }[];
+          overall: "all_verified" | "partial" | "none";
+          judge_model: string;
+          judged_at: string;
+          error: string | null;
+        } | null;
+      }[];
+    }>(`/v1/eval/runs/${runDocId}`, { method: "GET", authRequired: false });
+    return {
+      runDocId: raw.run_doc_id,
+      runId: raw.run_id,
+      shapeName: raw.shape_name,
+      promptVersionId: raw.prompt_version_id,
+      startedAt: raw.started_at,
+      finishedAt: raw.finished_at,
+      totalPersonas: raw.total_personas,
+      ok: raw.ok,
+      fail: raw.fail,
+      skipped: raw.skipped,
+      conversations: raw.conversations.map((conv) => ({
+        personaId: conv.persona_id,
+        combosSatisfied: conv.combos_satisfied,
+        status: conv.status,
+        elapsedSeconds: conv.elapsed_seconds,
+        conversationId: conv.conversation_id,
+        schedulingRequestId: conv.scheduling_request_id,
+        finalStatus: conv.final_status,
+        error: conv.error,
+        transcript: conv.transcript.map((msg) => ({
+          direction: msg.direction,
+          content: msg.content,
+          timestamp: msg.timestamp
+        })),
+        judgeVerdict:
+          conv.judge_verdict !== null && conv.judge_verdict !== undefined
+            ? {
+                declaredCapabilities: conv.judge_verdict.declared_capabilities,
+                verifications: conv.judge_verdict.verifications.map((v) => ({
+                  capability: v.capability,
+                  verified: v.verified,
+                  evidence: v.evidence,
+                  reasoning: v.reasoning
+                })),
+                overall: conv.judge_verdict.overall,
+                judgeModel: conv.judge_verdict.judge_model,
+                judgedAt: conv.judge_verdict.judged_at,
+                error: conv.judge_verdict.error
+              }
+            : null
+      }))
+    };
+  }
+
   private async request<T>(path: string, options: RequestOptions): Promise<T> {
     const retryOnUnauthorized = options.retryOnUnauthorized ?? true;
     const requestId = options.requestId ?? requestIdModule.createRequestId();
@@ -1002,6 +1198,12 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       const accessToken = this.tokenSession.getAccessToken();
       if (accessToken) {
         headers.set("Authorization", `Bearer ${accessToken}`);
+      }
+    }
+
+    if (options.customHeaders !== undefined) {
+      for (const [key, value] of Object.entries(options.customHeaders)) {
+        headers.set(key, value);
       }
     }
 
@@ -1288,10 +1490,18 @@ function scheduleBlockToApi(item: agentModel.ScheduleBlock): httpTypes.ScheduleB
 }
 
 function mapServiceOffering(raw: httpTypes.ServiceOfferingApiResponse): agentModel.ServiceOffering {
+  // Default fully-visible when the field is missing (legacy data).
+  const rawTargetPatients =
+    raw.target_patients !== undefined &&
+    raw.target_patients !== null &&
+    raw.target_patients.length > 0
+      ? raw.target_patients
+      : ["NEW", "RETURNING"];
   return {
     name: raw.name,
     description: raw.description,
     modalities: raw.modalities as agentModel.Modality[],
+    targetPatients: rawTargetPatients as agentModel.TargetPatient[],
     tariffs: raw.tariffs.map(mapTariffOption)
   };
 }
@@ -1303,6 +1513,7 @@ function serviceOfferingToApi(
     name: item.name,
     description: item.description,
     modalities: item.modalities,
+    target_patients: item.targetPatients,
     tariffs: item.tariffs.map(tariffOptionToApi)
   };
 }

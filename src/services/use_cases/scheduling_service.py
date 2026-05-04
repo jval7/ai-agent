@@ -13,6 +13,7 @@ import src.ports.manual_appointment_repository_port as manual_appointment_reposi
 import src.ports.patient_repository_port as patient_repository_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
 import src.ports.task_scheduler_port as task_scheduler_port
+import src.ports.tenant_repository_port as tenant_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.workflow_engine as workflow_engine
@@ -102,6 +103,7 @@ class SchedulingService:
         agent_profile_repository: (
             agent_profile_repository_port.AgentProfileRepositoryPort | None
         ) = None,
+        tenant_repository: tenant_repository_port.TenantRepositoryPort | None = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
         self._conversation_repository = conversation_repository
@@ -118,11 +120,25 @@ class SchedulingService:
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._event_description_builder = event_description_builder
         self._agent_profile_repository = agent_profile_repository
+        self._tenant_repository = tenant_repository
         self._agent_workflow: agent_workflow_port.AgentWorkflowPort
         if agent_workflow is None:
             self._agent_workflow = workflow_engine.LangGraphAgentWorkflowEngine()
         else:
             self._agent_workflow = agent_workflow
+
+    def _is_eval_tenant(self, tenant_id: str) -> bool:
+        """Return True when the tenant is flagged as an eval tenant.
+
+        Defaults to False when the tenant is not found or no repository is
+        wired, so regular prod tenants are never affected.
+        """
+        if self._tenant_repository is None:
+            return False
+        tenant = self._tenant_repository.get_by_id(tenant_id)
+        if tenant is None:
+            return False
+        return tenant.is_eval_tenant
 
     def _sync_tags_after_status_change(
         self,
@@ -534,6 +550,7 @@ class SchedulingService:
                 appointment_modality=input_dto.appointment_modality,
                 patient_location=input_dto.patient_location,
                 fallback_patient_location=request.patient_location,
+                tenant_id=tenant_id,
             )
         request.professional_note = None
         request.rejection_summary = None
@@ -689,14 +706,21 @@ class SchedulingService:
         Checks for conflicts first and returns SLOT_CONFLICT if one is found.
         Schedules the auto-close task and the appointment reminder after a
         successful booking.
+
+        When the tenant has ``is_eval_tenant=True`` the Calendar integration is
+        skipped entirely (no conflict check, no event creation).  The request
+        still transitions to BOOKED with ``calendar_event_id=None``.
         """
-        has_conflict = self._google_calendar_onboarding_service.has_conflict(
-            tenant_id=tenant_id,
-            start_at=selected_slot.start_at,
-            end_at=selected_slot.end_at,
-        )
-        if has_conflict:
-            return self._mark_selected_slot_conflict(request, selected_slot, now_value)
+        is_eval = self._is_eval_tenant(tenant_id)
+
+        if not is_eval:
+            has_conflict = self._google_calendar_onboarding_service.has_conflict(
+                tenant_id=tenant_id,
+                start_at=selected_slot.start_at,
+                end_at=selected_slot.end_at,
+            )
+            if has_conflict:
+                return self._mark_selected_slot_conflict(request, selected_slot, now_value)
 
         with_meet = request.appointment_modality == "VIRTUAL"
         if request.appointment_modality is None:
@@ -711,31 +735,48 @@ class SchedulingService:
                 },
             )
 
-        try:
-            normalized_summary = event_summary.strip()
-            if not normalized_summary:
-                raise service_exceptions.InvalidStateError("event summary cannot be empty")
-            event_description_result = self._event_description_builder.build(
-                tenant_id=tenant_id,
-                modality=request.appointment_modality,
-                payment_status=request.payment_status,
+        calendar_event_id: str | None = None
+        meet_url: str | None = None
+
+        if is_eval:
+            logger.info(
+                "scheduling.calendar.skipped_for_eval_tenant",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="scheduling.calendar.skipped_for_eval_tenant",
+                        message="calendar event creation skipped for eval tenant",
+                        data={"tenant_id": tenant_id, "request_id": request.id},
+                    )
+                },
             )
-            event_description = event_description_result.description
-            event_location = event_description_result.location
-            event = self._google_calendar_onboarding_service.create_event(
-                tenant_id=tenant_id,
-                start_at=selected_slot.start_at,
-                end_at=selected_slot.end_at,
-                summary=normalized_summary,
-                attendee_emails=attendee_emails,
-                with_meet=with_meet,
-                description=event_description,
-                location=event_location,
-            )
-        except service_exceptions.ExternalProviderError as error:
-            if self._is_google_conflict_error(str(error)):
-                return self._mark_selected_slot_conflict(request, selected_slot, now_value)
-            raise
+        else:
+            try:
+                normalized_summary = event_summary.strip()
+                if not normalized_summary:
+                    raise service_exceptions.InvalidStateError("event summary cannot be empty")
+                event_description_result = self._event_description_builder.build(
+                    tenant_id=tenant_id,
+                    modality=request.appointment_modality,
+                    payment_status=request.payment_status,
+                )
+                event_description = event_description_result.description
+                event_location = event_description_result.location
+                event = self._google_calendar_onboarding_service.create_event(
+                    tenant_id=tenant_id,
+                    start_at=selected_slot.start_at,
+                    end_at=selected_slot.end_at,
+                    summary=normalized_summary,
+                    attendee_emails=attendee_emails,
+                    with_meet=with_meet,
+                    description=event_description,
+                    location=event_location,
+                )
+                calendar_event_id = event.event_id
+                meet_url = event.meet_url
+            except service_exceptions.ExternalProviderError as error:
+                if self._is_google_conflict_error(str(error)):
+                    return self._mark_selected_slot_conflict(request, selected_slot, now_value)
+                raise
 
         for slot in request.slots:
             if slot.id == selected_slot.id:
@@ -744,7 +785,7 @@ class SchedulingService:
                 slot.status = "REJECTED"
 
         request.selected_slot_id = selected_slot.id
-        request.calendar_event_id = event.event_id
+        request.calendar_event_id = calendar_event_id
         request.set_status("BOOKED", now_value)
         self._scheduling_repository.save_request(request)
         self._sync_tags_after_status_change(
@@ -753,7 +794,7 @@ class SchedulingService:
             new_status=request.status,
         )
         self._schedule_auto_close_task(tenant_id, request.id)
-        if self._reminder_service is not None:
+        if self._reminder_service is not None and not is_eval:
             self._reminder_service.maybe_schedule_reminder(
                 tenant_id=tenant_id,
                 source_type="SCHEDULING_REQUEST",
@@ -763,13 +804,13 @@ class SchedulingService:
                 appointment_start_at=selected_slot.start_at,
                 payment_status=reminder_payment_status,
                 appointment_modality=request.appointment_modality,
-                meet_url=event.meet_url,
+                meet_url=meet_url,
             )
         return scheduling_dto.ConfirmSelectedSlotResponseDTO(
             status="BOOKED",
             request_id=request.id,
             selected_slot_id=selected_slot.id,
-            calendar_event_id=event.event_id,
+            calendar_event_id=calendar_event_id,
             remaining_slot_ids=[],
         )
 
@@ -1823,9 +1864,20 @@ class SchedulingService:
         appointment_modality: str,
         patient_location: str | None,
         fallback_patient_location: str | None,
+        tenant_id: str | None = None,
     ) -> str:
         if appointment_modality == "PRESENCIAL":
-            return "Cali"
+            # Read main_city from AgentProfile; fall back to generic label when
+            # not configured so no hardcoded city leaks into production messages.
+            if tenant_id is not None and self._agent_profile_repository is not None:
+                profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+                if (
+                    profile is not None
+                    and profile.identity is not None
+                    and profile.identity.main_city
+                ):
+                    return profile.identity.main_city
+            return "Presencial"
 
         normalized_location = self._normalize_patient_text(patient_location)
         if normalized_location is None:

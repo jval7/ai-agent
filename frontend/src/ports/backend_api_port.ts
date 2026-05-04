@@ -2,6 +2,7 @@ import type * as agentModel from "@domain/models/agent";
 import type * as authModel from "@domain/models/auth";
 import type * as blacklistModel from "@domain/models/blacklist";
 import type * as conversationModel from "@domain/models/conversation";
+import type * as evaluationModel from "@domain/models/evaluation";
 import type * as googleCalendarModel from "@domain/models/google_calendar";
 import type * as manualAppointmentModel from "@domain/models/manual_appointment";
 import type * as onboardingModel from "@domain/models/onboarding";
@@ -146,4 +147,12 @@ export interface BackendApiPort {
     kind: whatsappTemplateModel.OfficialReminderKind
   ): Promise<whatsappTemplateModel.OfficialTemplateStatus>;
   deactivateOfficialTemplate(kind: whatsappTemplateModel.OfficialReminderKind): Promise<void>;
+
+  listEvalShapes(): Promise<evaluationModel.EvalShape[]>;
+  listEvalPersonas(): Promise<evaluationModel.EvalPersona[]>;
+  listEvalPromptVersions(): Promise<evaluationModel.EvalPromptVersion[]>;
+  listEvalRuns(limit?: number): Promise<evaluationModel.EvalRunListItem[]>;
+  getEvalRun(runDocId: string): Promise<evaluationModel.EvalRunDetail>;
+  deleteEvalRun(runId: string): Promise<evaluationModel.EvalDeleteResult>;
+  listEvalCapabilities(): Promise<evaluationModel.EvalCapabilityDoc[]>;
 }

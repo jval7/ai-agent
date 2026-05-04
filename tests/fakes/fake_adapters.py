@@ -205,6 +205,7 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
             timezone="America/Bogota",
         )
         self.busy_intervals: list[google_calendar_dto.GoogleCalendarBusyIntervalDTO] = []
+        self.list_busy_intervals_call_count: int = 0
         self.created_events: list[google_calendar_dto.GoogleCalendarEventDTO] = []
         self.created_event_summaries: list[str] = []
         self.created_event_descriptions: list[str | None] = []
@@ -260,6 +261,7 @@ class FakeGoogleCalendarProvider(google_calendar_provider_port.GoogleCalendarPro
         del time_min
         del time_max
         del timezone
+        self.list_busy_intervals_call_count += 1
         return [item.model_copy(deep=True) for item in self.busy_intervals]
 
     def create_event(

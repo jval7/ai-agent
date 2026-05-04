@@ -29,10 +29,13 @@ export interface TariffOption {
   prices: TariffPrice[];
 }
 
+export type TargetPatient = "NEW" | "RETURNING";
+
 export interface ServiceOffering {
   name: string | null;
   description: string | null;
   modalities: Modality[];
+  targetPatients: TargetPatient[];
   tariffs: TariffOption[];
 }
 

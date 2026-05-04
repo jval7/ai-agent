@@ -154,9 +154,14 @@ interface ServiceOfferingItemProps {
 }
 
 const MODALITIES: agentModel.Modality[] = ["PRESENCIAL", "VIRTUAL"];
+const TARGET_PATIENTS: agentModel.TargetPatient[] = ["NEW", "RETURNING"];
 
 function modalityLabel(m: agentModel.Modality): string {
   return m === "PRESENCIAL" ? "Presencial" : "Virtual";
+}
+
+function targetPatientLabel(t: agentModel.TargetPatient): string {
+  return t === "NEW" ? "Pacientes nuevos" : "Pacientes recurrentes";
 }
 
 export function ServiceOfferingItem(props: ServiceOfferingItemProps) {
@@ -175,6 +180,14 @@ export function ServiceOfferingItem(props: ServiceOfferingItemProps) {
       ? value.modalities.filter((m) => m !== modality)
       : [...value.modalities, modality];
     onChange({ ...value, modalities: next });
+  };
+
+  const toggleTargetPatient = (target: agentModel.TargetPatient) => {
+    const has = value.targetPatients.includes(target);
+    const next = has
+      ? value.targetPatients.filter((t) => t !== target)
+      : [...value.targetPatients, target];
+    onChange({ ...value, targetPatients: next });
   };
 
   const summaryName =
@@ -237,6 +250,29 @@ export function ServiceOfferingItem(props: ServiceOfferingItemProps) {
                   type="checkbox"
                 />
                 {modalityLabel(modality)}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="text-sm font-medium text-slate-700">Disponible para</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            El bot solo ofrece este servicio a los grupos seleccionados.
+          </p>
+          <div className="mt-1.5 flex gap-4">
+            {TARGET_PATIENTS.map((target) => (
+              <label className="inline-flex items-center gap-2 text-sm text-slate-700" key={target}>
+                <input
+                  checked={value.targetPatients.includes(target)}
+                  className="accent-brand-teal"
+                  disabled={disabled}
+                  onChange={() => {
+                    toggleTargetPatient(target);
+                  }}
+                  type="checkbox"
+                />
+                {targetPatientLabel(target)}
               </label>
             ))}
           </div>

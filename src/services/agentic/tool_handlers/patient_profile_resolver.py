@@ -95,6 +95,12 @@ class PatientProfileResolver:
         resolved_slot_id = tool_input_dto.slot_id
         if resolved_slot_id is None:
             resolved_slot_id = self._resolve_slot_id_for_confirmation(target_request)
+        elif not self._request_contains_proposed_slot(target_request, resolved_slot_id):
+            # The LLM passed a slot_id that does not match any PROPOSED/SELECTED slot in
+            # the request (e.g. the LLM hallucinated the value). Fall back to the
+            # selected_slot_id already stored on the request so the flow is not
+            # cancelled by _find_selectable_slot returning None downstream.
+            resolved_slot_id = self._resolve_slot_id_for_confirmation(target_request)
         resolved_patient_profile, patient_exists = self._resolve_patient_profile_for_confirmation(
             tenant_id=tenant_id,
             whatsapp_user_id=target_request.whatsapp_user_id,

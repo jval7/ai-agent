@@ -1,3 +1,4 @@
+import pathlib
 import time
 
 import src.adapters.outbound.cloud_tasks.cloud_tasks_adapter as cloud_tasks_adapter
@@ -6,6 +7,7 @@ import src.adapters.outbound.firestore.blacklist_repository_adapter as blacklist
 import src.adapters.outbound.firestore.client_factory as firestore_client_factory
 import src.adapters.outbound.firestore.conversation_processing_lock_adapter as conversation_processing_lock_adapter
 import src.adapters.outbound.firestore.conversation_repository_adapter as conversation_repository_adapter
+import src.adapters.outbound.firestore.eval_run_repository_adapter as eval_run_repository_adapter
 import src.adapters.outbound.firestore.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.firestore.manual_appointment_repository_adapter as manual_appointment_repository_adapter
 import src.adapters.outbound.firestore.memory_admin_adapter as memory_admin_adapter
@@ -55,6 +57,9 @@ import src.services.use_cases.auth_service as auth_service
 import src.services.use_cases.blacklist_service as blacklist_service
 import src.services.use_cases.conversation_control_service as conversation_control_service
 import src.services.use_cases.conversation_query_service as conversation_query_service
+import src.services.use_cases.eval_query_service as eval_query_service
+import src.services.use_cases.eval_run_cleanup_service as eval_run_cleanup_service
+import src.services.use_cases.eval_tenant_service as eval_tenant_service
 import src.services.use_cases.event_description_builder as event_description_builder
 import src.services.use_cases.event_stream_service as event_stream_service
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
@@ -149,6 +154,9 @@ class AppContainer:
             )
         )
         self.tag_repository = tag_repository_adapter.FirestoreTagRepositoryAdapter(
+            self.firestore_client
+        )
+        self.eval_run_repository = eval_run_repository_adapter.FirestoreEvalRunRepositoryAdapter(
             self.firestore_client
         )
 
@@ -296,6 +304,7 @@ class AppContainer:
             whatsapp_connection_repository=self.whatsapp_connection_repository,
             event_description_builder=self.event_description_builder,
             agent_profile_repository=self.agent_profile_repository,
+            tenant_repository=self.tenant_repository,
         )
         self.scheduling_inbox_service = scheduling_inbox_service.SchedulingInboxService(
             scheduling_repository=self.scheduling_repository,
@@ -309,6 +318,7 @@ class AppContainer:
             llm_provider=self.llm_provider_adapter,
             agent_profile_repository=self.agent_profile_repository,
             default_system_prompt=self.settings.default_system_prompt,
+            tenant_repository=self.tenant_repository,
         )
         self.manual_appointment_service = manual_appointment_service.ManualAppointmentService(
             manual_appointment_repository=self.manual_appointment_repository,
@@ -443,4 +453,25 @@ class AppContainer:
             manual_appointment_repository=self.manual_appointment_repository,
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
             clock=self.clock_adapter,
+        )
+        # container.py vive en src/infra/container.py → 3 niveles arriba = project root
+        _project_root = pathlib.Path(__file__).resolve().parent.parent.parent
+        self.eval_query_service = eval_query_service.EvalQueryService(
+            eval_run_repository=self.eval_run_repository,
+            shapes_directory=_project_root / "tests" / "fixtures" / "profiles",
+        )
+        self.eval_tenant_service = eval_tenant_service.EvalTenantService(
+            tenant_repository=self.tenant_repository,
+            user_repository=self.user_repository,
+            agent_profile_repository=self.agent_profile_repository,
+            whatsapp_connection_repository=self.whatsapp_connection_repository,
+            password_hasher=self.password_hasher_adapter,
+            auth_service=self.auth_service,
+            id_generator=self.id_generator_adapter,
+            clock=self.clock_adapter,
+        )
+        self.eval_run_cleanup_service = eval_run_cleanup_service.EvalRunCleanupService(
+            eval_run_repository=self.eval_run_repository,
+            tenant_repository=self.tenant_repository,
+            eval_tenant_service=self.eval_tenant_service,
         )

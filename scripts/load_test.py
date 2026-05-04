@@ -1,5 +1,5 @@
 """
-Load test script: simula 10 pacientes concurrentes enviando mensajes
+Load test script: simula pacientes concurrentes enviando mensajes
 al backend via webhook (sin WhatsApp real).
 
 Cada paciente es simulado por una LLM (Gemini) que genera respuestas
@@ -8,39 +8,123 @@ cuando retorna 200, el AI ya proceso y respondio. El script lee la
 respuesta del AI y la alimenta al LLM-paciente para generar la
 siguiente respuesta.
 
-Requiere:
-    - WHATSAPP_OUTBOUND_NOOP=true en el backend (modo sandbox)
-    - ADC configurado (gcloud auth application-default login)
-    - .secrets/make_credentials.env con: OWNER_EMAIL, OWNER_PASSWORD, PATIENT_EMAIL
-      (PATIENT_EMAIL es el correo que los pacientes simulados van a dar al bot — usalo
-      para recibir las invitaciones de Google Calendar y validar el contenido).
-    - .secrets/make_api_base.env con: API_BASE
+Modos de uso:
+---------------------------------------------------------------------------
 
-Uso:
-    uv run python scripts/load_test.py                              # default (prod)
-    ENV=dev uv run python scripts/load_test.py                      # carga make_credentials_dev.env y make_api_base_dev.env
-    API_BASE=https://tu-backend.run.app uv run python scripts/load_test.py  # override inline
+MODO LEGACY (--profile):
+    Requiere:
+        .secrets/make_credentials.env   → OWNER_EMAIL, OWNER_PASSWORD, PATIENT_EMAIL
+        .secrets/make_api_base.env      → API_BASE
+
+    Uso:
+        uv run python scripts/load_test.py                         # default (psicologa, prod)
+        uv run python scripts/load_test.py --profile ortodoncista  # pacientes de ortodoncia
+        ENV=dev uv run python scripts/load_test.py                 # carga make_credentials_dev.env
+
+MODO EVAL (--eval-mode):
+    Requiere:
+        .secrets/make_credentials_eval.env  → EVAL_API_BASE, EVAL_ADMIN_SECRET, PATIENT_EMAIL
+
+    Donde:
+        EVAL_API_BASE=https://dev-backend.run.app   # URL del backend dev
+        EVAL_ADMIN_SECRET=<shared secret>            # match con backend EVAL_ADMIN_SECRET
+        PATIENT_EMAIL=test@example.com               # email que el paciente simulado da al bot
+
+    Uso:
+        uv run python scripts/load_test.py --eval-mode
+        uv run python scripts/load_test.py --eval-mode --shape shape_minimal
+        uv run python scripts/load_test.py --eval-mode --no-cleanup
+
+    El modo eval:
+        - Carga shapes desde tests/fixtures/profiles/*.json.
+        - Por cada shape, crea un tenant efimero via POST /v1/dev/eval-tenants.
+        - Aplica el agent_profile del shape al tenant efimero.
+        - Pre-seed Patients para personas con cap returning_patient.
+        - Corre conversaciones reutilizando _run_patient.
+        - Persiste reporte en Firestore (eval_runs/{run_id}_{shape_name}).
+        - Borra el tenant efimero al terminar (salvo --no-cleanup).
+        - Imprime un summary al final.
+        - Exit code != 0 si alguna shape fue skipeada por gap de coverage.
 """
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import datetime
+import json
 import logging
 import os
 import pathlib
+import sys
 import time
 import typing
 import uuid
 import zoneinfo
 
-import httpx
-from google import genai
+# Project root en sys.path para poder importar `scripts.personas` cuando este
+# archivo se ejecuta directamente (`uv run python scripts/load_test.py`).
+_PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+import google.cloud.firestore as google_cloud_firestore  # noqa: E402
+import httpx  # noqa: E402
+from google import genai  # noqa: E402
+
+import scripts.coverage as coverage  # noqa: E402
+import scripts.llm_judge as llm_judge  # noqa: E402
+import scripts.personas as personas_module  # noqa: E402
+import src.adapters.outbound.firestore.paths as firestore_paths  # noqa: E402
+import src.domain.entities.agent_profile as agent_profile_entity  # noqa: E402
+import src.domain.entities.eval_run as eval_run_entity  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# Cargar archivos de .secrets/ segun ENV. Default: make_credentials.env y
-# make_api_base.env (apuntan a prod). Con ENV=dev: make_credentials_dev.env y
-# make_api_base_dev.env.
+# CLI parsing (antes de cargar .env para que --eval-mode sea conocido)
+# ---------------------------------------------------------------------------
+_arg_parser = argparse.ArgumentParser(description="Load test del bot WhatsApp")
+_arg_parser.add_argument(
+    "--profile",
+    choices=["psicologa", "ortodoncista"],
+    default=None,
+    help="Tipo de profesional a simular (solo modo legacy, incompatible con --eval-mode).",
+)
+_arg_parser.add_argument(
+    "--eval-mode",
+    action="store_true",
+    help="Corre evaluacion sistematica con shapes y personas anotadas.",
+)
+_arg_parser.add_argument(
+    "--shape",
+    action="append",
+    default=None,
+    help=(
+        "Filtrar a uno o mas shapes especificos (solo con --eval-mode). "
+        "Repetir el flag para varios: --shape A --shape B."
+    ),
+)
+_arg_parser.add_argument(
+    "--no-cleanup",
+    action="store_true",
+    help="No borrar tenants efimeros al finalizar (para inspeccion manual).",
+)
+_args, _ = _arg_parser.parse_known_args()
+
+# Validaciones de exclusividad mutua
+if _args.eval_mode and _args.profile is not None:
+    sys.exit("Error: --eval-mode y --profile son incompatibles. Usa uno u otro.")
+if _args.shape is not None and not _args.eval_mode:
+    sys.exit("Error: --shape solo es valido junto a --eval-mode.")
+
+EVAL_MODE: bool = _args.eval_mode
+SHAPE_FILTERS: list[str] = list(_args.shape) if _args.shape else []
+_NO_CLEANUP: bool = _args.no_cleanup
+
+# Default legacy profile cuando no se pasa --profile en modo legacy
+PROFILE_TYPE: str = _args.profile if _args.profile is not None else "psicologa"
+
+# ---------------------------------------------------------------------------
+# Cargar archivos de .secrets/ segun modo
 # ---------------------------------------------------------------------------
 _SECRETS_DIR = pathlib.Path(__file__).resolve().parent.parent / ".secrets"
 
@@ -58,9 +142,13 @@ def _load_env_file(path: pathlib.Path) -> None:
             os.environ[key] = value
 
 
-_ENV_SUFFIX = f"_{os.environ['ENV']}" if os.environ.get("ENV") else ""
-_load_env_file(_SECRETS_DIR / f"make_credentials{_ENV_SUFFIX}.env")
-_load_env_file(_SECRETS_DIR / f"make_api_base{_ENV_SUFFIX}.env")
+if EVAL_MODE:
+    # En eval-mode se usa exclusivamente make_credentials_eval.env
+    _load_env_file(_SECRETS_DIR / "make_credentials_eval.env")
+else:
+    _ENV_SUFFIX = f"_{os.environ['ENV']}" if os.environ.get("ENV") else ""
+    _load_env_file(_SECRETS_DIR / f"make_credentials{_ENV_SUFFIX}.env")
+    _load_env_file(_SECRETS_DIR / f"make_api_base{_ENV_SUFFIX}.env")
 
 # ---------------------------------------------------------------------------
 # Configuracion
@@ -73,17 +161,19 @@ PATIENT_EMAIL = os.environ.get("PATIENT_EMAIL", "")
 GEMINI_MODEL = "gemini-2.5-flash"
 GEMINI_LOCATION = "us-central1"
 
-NUM_PATIENTS = 3  # cuantos pacientes simular por batch
-RUN_ID = uuid.uuid4().hex[:6]  # ID unico por corrida para evitar reutilizar conversaciones
+NUM_PATIENTS = 3  # cuantos pacientes simular por batch (modo legacy)
+RUN_ID = uuid.uuid4().hex[:8]  # ID unico por corrida (8 chars para eval; era 6 antes)
 POLL_INTERVAL = 10  # segundos entre cada poll de scheduling requests
 STAGGER_DELAY = 5  # segundos entre lanzamiento de cada paciente
 MAX_TURNS = 20  # maximo de mensajes por paciente (evita loops infinitos)
+
+_SHAPES_DIR = _PROJECT_ROOT / "tests" / "fixtures" / "profiles"
 
 # ---------------------------------------------------------------------------
 # System prompt para el LLM que simula pacientes
 # ---------------------------------------------------------------------------
 _PATIENT_SYSTEM_INSTRUCTION = """\
-Eres {display_name}. Escribes por WhatsApp a un consultorio de psicologia.
+Eres {display_name}. Escribes por WhatsApp a un {practice_type}.
 
 Hoy es {today_human}. Cualquier fecha posterior a hoy es FUTURA. No asumas
 que estamos en otro año o mes — usa esta fecha como referencia absoluta.
@@ -93,7 +183,8 @@ que estamos en otro año o mes — usa esta fecha como referencia absoluta.
 IMPORTANTE — como escribir:
 - Eres una persona REAL, no un bot. Escribe como alguien normal por WhatsApp.
 - Mensajes CORTOS. Maximo 1-2 oraciones. La gente real no escribe parrafos por WhatsApp.
-- NO uses terminologia clinica ni del consultorio. No digas "consulta individual adultos" ni "terapia infantil". Di "una cita", "ver a la doctora", "una sesion para mi hijo".
+- NO uses terminologia clinica ni del consultorio. Di cosas naturales como "una cita", "ver a la doctora", "una valoracion", "una sesion para mi hijo" — no nombres tecnicos del servicio.
+- TU motivo de consulta DEBE ser coherente con el {practice_type}. NO inventes problemas que no aplican a esta especialidad (ej. si es ortodoncia, no hables de ansiedad ni terapia psicologica; si es psicologia, no hables de brackets ni dientes).
 - NO des toda tu informacion de una (a menos que tu comportamiento lo indique). La gente real responde lo que le preguntan.
 - Primer mensaje: saluda y di lo MINIMO. Ejemplos reales: "Hola buenas tardes, quiero pedir una cita", "Hola, cuanto vale la consulta?", "Buenas, quiero agendar una sesion".
 - Cuando te pidan datos (nombre, edad, telefono), responde con datos coherentes con tu perfil.
@@ -107,81 +198,35 @@ IMPORTANTE — como escribir:
 """
 
 # ---------------------------------------------------------------------------
-# 7 Pacientes composicionales
+# Pacientes por tipo de profesional (modo legacy)
 # ---------------------------------------------------------------------------
-PATIENTS: list[dict[str, str]] = [
-    # --- 2 Nacionales presencial (Cali) ---
-    {
-        "whatsapp_user_id": "573001110001",
-        "display_name": "Carlos Ramirez",
-        "persona": (
-            "Tienes 45 años, vives en Cali. Quieres ir presencial al consultorio. "
-            "Tu mamá falleció hace un mes y no sabes cómo manejarlo. "
-            "Comportamiento: coopera sin complicaciones, responde lo que te pregunten."
-        ),
-    },
-    {
-        "whatsapp_user_id": "573001110002",
-        "display_name": "Andres Torres",
-        "persona": (
-            "Tienes 40 años, vives en Cali. Tu hijo Santiago de 8 años tiene mucha ansiedad "
-            "y no quiere ir al colegio. Quieres llevarlo presencial. "
-            "Comportamiento: lo primero que preguntas es cuánto cuesta. No das más datos "
-            "hasta que te digan el precio. Insiste si no te lo dicen."
-        ),
-    },
-    # --- 2 Nacionales virtual ---
-    {
-        "whatsapp_user_id": "573001110003",
-        "display_name": "Ana Martinez",
-        "persona": (
-            "Tienes 28 años, vives en Barranquilla. Prefieres virtual porque no estás en Cali. "
-            "Estás en una relación que te hace daño pero no puedes dejarla. "
-            "Comportamiento: cuando te den horarios, di que el primero no te sirve. "
-            "Si te ofrecen otro, acepta."
-        ),
-    },
-    {
-        "whatsapp_user_id": "573001110004",
-        "display_name": "Sofia Vargas",
-        "persona": (
-            "Tienes 36 años, vives en Medellín. Tu hija Valentina de 10 años tiene cambios "
-            "de ánimo fuertes desde que te separaste. Quieres que la vea virtual. "
-            "Comportamiento: antes de agendar, pregunta qué enfoque usa la doctora "
-            "y si tiene experiencia con niños."
-        ),
-    },
-    # --- 3 Extranjeros virtual ---
-    {
-        "whatsapp_user_id": "573001110005",
-        "display_name": "Laura Gomez",
-        "persona": (
-            "Tienes 35 años, vives en Madrid, España. Te separaste hace poco y la estás "
-            "pasando muy mal. Necesitas hablar con alguien, virtual obviamente. "
-            "Comportamiento: cuando te digan que pagues por Nequi, pregunta si se puede "
-            "pagar con tarjeta o transferencia porque no conoces Nequi."
-        ),
-    },
-    {
-        "whatsapp_user_id": "573001110006",
-        "display_name": "Felipe Morales",
-        "persona": (
-            "Tienes 30 años, vives en Lima, Perú. Llevas semanas con ataques de ansiedad. "
-            "Comportamiento: en tu primer mensaje da todo de una — tu nombre, que quieres "
-            "una cita virtual, que estás en Lima, y tu motivo. Eres directo."
-        ),
-    },
-    {
-        "whatsapp_user_id": "573001110007",
-        "display_name": "Isabella Chen",
-        "persona": (
-            "Tienes 33 años, vives en Ciudad de México. Tu pareja y tú tienen muchos problemas "
-            "y quieren terapia de pareja (esto NO lo trata la doctora). "
-            "Comportamiento: coopera normalmente. Si te dicen que no tratan tu caso, "
-            "pregunta si pueden recomendar a alguien."
-        ),
-    },
-]
+# Las personas viven en `scripts/personas.py` (anotadas con capabilities). El
+# pool inicial está VACÍO por diseño — el skill `/persona-from-combo` (Fase 2
+# del plan eval) lo va poblando a medida que los shapes lo demanden.
+#
+# Mientras el pool esté vacío, `--profile` aborta con mensaje claro. El runner
+# mantiene la flag para retro-compat: cuando haya personas, vuelve a funcionar
+# sin cambios.
+# ---------------------------------------------------------------------------
+
+
+def _persona_to_dict(persona: personas_module.Persona) -> dict[str, str]:
+    """Bridge: convierte una Persona dataclass al dict que espera el resto
+    del runner. Mantiene la API interna estable hasta que migremos
+    completamente a Persona en el refactor de Fase 4.
+    """
+    return {
+        "whatsapp_user_id": persona.whatsapp_user_id,
+        "display_name": persona.display_name,
+        "persona": persona.persona_text,
+    }
+
+
+PATIENTS: list[dict[str, str]] = (
+    []
+    if EVAL_MODE
+    else [_persona_to_dict(p) for p in personas_module.get_personas_by_profile(PROFILE_TYPE)]
+)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -216,6 +261,7 @@ async def _generate_patient_message(
     display_name: str,
     persona: str,
     conversation_history: list[dict[str, str]],
+    practice_type: str = "consultorio de psicologia",
 ) -> str:
     """Genera el siguiente mensaje del paciente usando Gemini.
 
@@ -229,6 +275,7 @@ async def _generate_patient_message(
         persona=persona,
         patient_email=PATIENT_EMAIL,
         today_human=today_human,
+        practice_type=practice_type,
     )
 
     # Mapear historial al formato Gemini:
@@ -450,7 +497,7 @@ async def _get_messages(
 
 
 # ---------------------------------------------------------------------------
-# Setup: login + phone_number_id
+# Setup: login + phone_number_id (modo legacy)
 # ---------------------------------------------------------------------------
 async def _setup(client: httpx.AsyncClient) -> tuple[str, str]:
     """Login y obtener phone_number_id. Retorna (access_token, phone_number_id)."""
@@ -483,6 +530,9 @@ async def _setup(client: httpx.AsyncClient) -> tuple[str, str]:
 # Polling: estado del scheduling request
 # ---------------------------------------------------------------------------
 _TERMINAL_STATUSES = {"SESSION_CLOSED", "CANCELLED", "CONSULTATION_REJECTED", "HUMAN_HANDOFF"}
+# Estados near-terminal: el flujo cumplio su contrato. Si el bot deja de
+# responder porque ya cerro logicamente, no es un fail real — terminamos OK.
+_NEAR_TERMINAL_STATUSES = {"BOOKED"}
 _WAIT_FOR_OWNER_STATUSES = {"AWAITING_CONSULTATION_REVIEW", "AWAITING_PAYMENT_CONFIRMATION"}
 
 
@@ -659,6 +709,9 @@ async def _act_as_owner(
     logger.warning("[%s] Owner-bot: estado %s no manejado", tag, status)
 
 
+_OWNER_ACTION_TIMEOUT_SECONDS = 180.0
+
+
 async def _wait_for_owner_action(
     client: httpx.AsyncClient,
     access_token: str,
@@ -666,12 +719,20 @@ async def _wait_for_owner_action(
     tag: str,
     current_status: str,
 ) -> str:
-    """Actua como el profesional segun el estado, luego polea hasta que cambie."""
+    """Actua como el profesional segun el estado, luego polea hasta que cambie.
+
+    Si el owner-bot falla (HTTP error) o el status no cambia tras
+    `_OWNER_ACTION_TIMEOUT_SECONDS`, raisea RuntimeError. Esto evita loops
+    infinitos cuando el backend rechaza la accion (ej. tenants eval donde
+    Calendar no esta conectado y el endpoint que llamamos no skipea).
+    """
     request = await _get_scheduling_request(client, access_token, whatsapp_user_id)
+    owner_action_failed = False
     if request is not None and request.get("status") == current_status:
         try:
             await _act_as_owner(client, access_token, request, tag)
         except httpx.HTTPStatusError as exc:
+            owner_action_failed = True
             logger.warning(
                 "[%s] Owner-bot fallo (%s): %s",
                 tag,
@@ -679,8 +740,14 @@ async def _wait_for_owner_action(
                 exc.response.text[:200],
             )
 
+    if owner_action_failed:
+        raise RuntimeError(
+            f"[{tag}] Owner-bot rechazado por backend (status={current_status}); "
+            "abortando conversacion para no quedar en loop infinito."
+        )
+
     elapsed = 0.0
-    while True:
+    while elapsed < _OWNER_ACTION_TIMEOUT_SECONDS:
         status = await _get_scheduling_status(client, access_token, whatsapp_user_id)
         if status is not None and status != current_status:
             logger.info("[%s] Status cambio a %s tras %.0fs", tag, status, elapsed)
@@ -690,6 +757,11 @@ async def _wait_for_owner_action(
         elapsed += POLL_INTERVAL
         if int(elapsed) % 30 == 0:
             logger.info("[%s] Esperando que el bot procese la accion... (%.0fs)", tag, elapsed)
+
+    raise RuntimeError(
+        f"[{tag}] Timeout esperando cambio de status desde {current_status} tras "
+        f"{_OWNER_ACTION_TIMEOUT_SECONDS:.0f}s"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -742,6 +814,7 @@ async def _run_patient(
     phone_number_id: str,
     patient: dict[str, str],
     index: int,
+    practice_type: str = "consultorio de psicologia",
 ) -> float:
     # Generar whatsapp_user_id unico por corrida para crear conversacion limpia
     patient = {**patient, "whatsapp_user_id": f"{patient['whatsapp_user_id']}{RUN_ID}"}
@@ -762,6 +835,7 @@ async def _run_patient(
             display_name=patient["display_name"],
             persona=patient["persona"],
             conversation_history=local_history,
+            practice_type=practice_type,
         )
         if not patient_message:
             logger.warning(
@@ -811,10 +885,10 @@ async def _run_patient(
                     local_history,
                     tag,
                     f"Turno {turn} (post-pending)",
-                    max_wait=60.0,
+                    max_wait=120.0,
                 )
                 if not got_response:
-                    raise RuntimeError(f"AI no respondio tras 60s en turno {turn} (post-pending)")
+                    raise RuntimeError(f"AI no respondio tras 120s en turno {turn} (post-pending)")
             continue
 
         # --- Esperar respuesta del AI desde el backend ---
@@ -826,10 +900,25 @@ async def _run_patient(
                 local_history,
                 tag,
                 f"Turno {turn}",
-                max_wait=60.0,
+                max_wait=120.0,
             )
             if not got_response:
-                raise RuntimeError(f"AI no respondio tras 60s en turno {turn}")
+                # Si el flujo ya esta en near-terminal (ej. BOOKED), el bot puede
+                # estar callado intencionalmente porque el contrato ya se cumplio.
+                # Tratarlo como terminacion exitosa en lugar de timeout.
+                near_terminal_status = await _get_scheduling_status(
+                    client, access_token, patient["whatsapp_user_id"]
+                )
+                if near_terminal_status in _NEAR_TERMINAL_STATUSES:
+                    elapsed = time.monotonic() - start
+                    logger.info(
+                        "[%s] Bot silente con status %s (near-terminal) — flujo completado en %.1fs",
+                        tag,
+                        near_terminal_status,
+                        elapsed,
+                    )
+                    return elapsed
+                raise RuntimeError(f"AI no respondio tras 120s en turno {turn}")
 
         # --- Verificar estado del scheduling request ---
         status = await _get_scheduling_status(client, access_token, patient["whatsapp_user_id"])
@@ -855,12 +944,631 @@ async def _run_patient(
 
 
 # ---------------------------------------------------------------------------
-# Main
+# EVAL MODE — helpers
+# ---------------------------------------------------------------------------
+
+
+async def _apply_shape_agent_profile(
+    client: httpx.AsyncClient,
+    access_token: str,
+    agent_profile: object,
+) -> None:
+    """Aplica el agent_profile del shape al tenant efimero via
+    PUT /v1/agent/professional-profile.
+
+    El shape JSON ya esta en formato compatible con UpdateProfessionalProfileDTO:
+    los campos identity, services, presencial_schedule, virtual_schedule,
+    payment_methods son exactamente los que acepta el endpoint.
+    """
+    # agent_profile viene deserializado como AgentProfile desde el shape JSON.
+    # Lo convertimos a dict (mode="json" para que sea JSON-serializable) y
+    # enviamos directamente. Los campos extra (tenant_id, updated_at) son
+    # ignorados por el endpoint dado que UpdateProfessionalProfileDTO no los declara.
+    profile = typing.cast(agent_profile_entity.AgentProfile, agent_profile)
+    body = profile.model_dump(mode="json")
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = await client.put("/v1/agent/professional-profile", headers=headers, json=body)
+    try:
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "_apply_shape_agent_profile HTTP %s: %s",
+            exc.response.status_code,
+            exc.response.text[:400],
+        )
+        raise
+
+
+async def _pre_seed_patient(
+    client: httpx.AsyncClient,
+    access_token: str,
+    persona: personas_module.Persona,
+    run_id: str,
+) -> None:
+    """Crea o actualiza el Patient para una persona con cap returning_patient.
+
+    El whatsapp_user_id se sufija con el run_id para coincidir con el que
+    _run_patient usa al crear la conversacion. Si el patient ya existe (409),
+    se ignora (idempotente). Otros 4xx (ej. 422 schema mismatch) se loguean
+    pero no abortan el shape — la conversacion igual se ejecuta, simplemente
+    no entra en el branch RETURNING.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    parts = [p for p in persona.display_name.split() if p]
+    first_name = parts[0] if parts else "Test"
+    last_name = parts[-1] if len(parts) > 1 else "Test"
+    payload: dict[str, object] = {
+        "whatsapp_user_id": persona.whatsapp_user_id + run_id,
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": PATIENT_EMAIL,
+        "age": 35,
+        "location": "Cali",
+        "phone": "+57 300 000 0000",
+    }
+    resp = await client.post("/v1/patients", headers=headers, json=payload)
+    if resp.status_code == 409:
+        logger.info("_pre_seed_patient: patient ya existe para %s, continuando", persona.id)
+        return
+    if 400 <= resp.status_code < 500:
+        # Cualquier 4xx (422 validation, 401, 403, etc.) lo logueamos y seguimos.
+        # La persona returning va a fallar el branch RETURNING en runtime,
+        # pero el shape no se interrumpe entero por esto.
+        logger.warning(
+            "_pre_seed_patient HTTP %s para %s: %s — sigo sin pre-seed",
+            resp.status_code,
+            persona.id,
+            resp.text[:200],
+        )
+        return
+    try:
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        # 5xx = error del backend, no del input. Si esto pasa hay algo grave.
+        logger.error(
+            "_pre_seed_patient HTTP %s (server error) para %s: %s",
+            exc.response.status_code,
+            persona.id,
+            exc.response.text[:200],
+        )
+        raise
+
+
+async def _capture_conversation_snapshot(
+    client: httpx.AsyncClient,
+    access_token: str,
+    persona: personas_module.Persona,
+    shape: coverage.Shape,
+    run_id: str,
+    elapsed: float,
+    status: typing.Literal["ok", "fail", "skipped"],
+    error: str | None = None,
+) -> eval_run_entity.EvalRunConversationSnapshot:
+    """Captura el estado final de la conversacion del persona y lo empaqueta
+    como EvalRunConversationSnapshot.
+
+    Aun cuando status='fail', intentamos capturar transcript + scheduling state
+    porque eso da evidencia para debug (que mensajes vio el bot antes de fallar).
+    Si los GETs HTTP fallan (ej. tenant ya borrado, conversation_id no existe),
+    los wraps de try/except dejan los campos vacios sin propagar excepcion.
+    """
+    # Combos que esta persona satisface para este shape.
+    # Cast a list[list[str]] porque EvalRunConversationSnapshot.combos_satisfied
+    # es list[list[str]] (vocabulario abierto en la entity); aca recibimos
+    # list[list[Capability]] (Literal cerrado).
+    combos_satisfied: list[list[str]] = [
+        [str(cap) for cap in combo]
+        for combo in shape.metadata.required_combos
+        if set(combo).issubset(set(persona.capabilities))
+    ]
+
+    whatsapp_user_id_with_run = persona.whatsapp_user_id + run_id
+
+    # --- Buscar conversation_id ---
+    conversation_id: str | None = None
+    try:
+        conversation_id = await _get_conversation_id(
+            client, access_token, whatsapp_user_id_with_run
+        )
+    except httpx.HTTPStatusError as exc:
+        logger.warning("_capture_conversation_snapshot: no pudo obtener conv_id: %s", exc)
+
+    # --- Obtener mensajes del transcript ---
+    transcript: list[eval_run_entity.EvalRunConversationMessage] = []
+    if conversation_id is not None:
+        try:
+            raw_messages = await _get_messages(client, access_token, conversation_id)
+            for msg in raw_messages:
+                direction: typing.Literal["INBOUND", "OUTBOUND"] = (
+                    "INBOUND" if msg["role"] == "patient" else "OUTBOUND"
+                )
+                transcript.append(
+                    eval_run_entity.EvalRunConversationMessage(
+                        direction=direction,
+                        content=msg["content"],
+                        timestamp=datetime.datetime.now(tz=datetime.UTC),
+                    )
+                )
+        except httpx.HTTPStatusError as exc:
+            logger.warning("_capture_conversation_snapshot: no pudo obtener mensajes: %s", exc)
+
+    # --- Buscar scheduling request ---
+    scheduling_request_id: str | None = None
+    final_status: str | None = None
+    effective_status: typing.Literal["ok", "fail", "skipped"] = status
+    try:
+        sr = await _get_scheduling_request(client, access_token, whatsapp_user_id_with_run)
+        if sr is not None:
+            scheduling_request_id = typing.cast(str | None, sr.get("request_id"))
+            final_status = typing.cast(str | None, sr.get("status"))
+            # Si el scheduling request existe pero termino en un estado de fallo, marcar fail
+            if final_status in {"CANCELLED", "CONSULTATION_REJECTED", "HUMAN_HANDOFF"}:
+                effective_status = "fail"
+            elif final_status == "SESSION_CLOSED":
+                effective_status = "ok"
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "_capture_conversation_snapshot: no pudo obtener scheduling request: %s", exc
+        )
+
+    snapshot = eval_run_entity.EvalRunConversationSnapshot(
+        persona_id=persona.id,
+        combos_satisfied=combos_satisfied,
+        status=effective_status,
+        elapsed_seconds=elapsed,
+        conversation_id=conversation_id,
+        scheduling_request_id=scheduling_request_id,
+        final_status=final_status,
+        transcript=transcript,
+        error=error,
+    )
+
+    # Llamar al juez si la conversacion tiene transcript y al menos una cap
+    # declarada para evaluar. Las caps `bot_behavior` son TRANSVERSALES: se
+    # evaluan aunque NO esten en los combos del shape (ej. hides_internal_handoff
+    # aplica a toda conversacion, sin necesidad de combo dedicado). Las caps que
+    # vienen de combos cubren la cobertura del shape; las bot_behavior cubren
+    # propiedades universales del bot.
+    # judge_conversation es sync (Gemini SDK no expone async); usamos
+    # asyncio.to_thread para no bloquear el event loop ~5s por persona.
+    if snapshot.transcript:
+        declared_caps_set: set[str] = {cap for combo in snapshot.combos_satisfied for cap in combo}
+        declared_caps_set |= {
+            cap for cap in persona.capabilities if cap in personas_module.BOT_BEHAVIOR_CAPS
+        }
+        if declared_caps_set:
+            snapshot.judge_verdict = await asyncio.to_thread(
+                llm_judge.judge_conversation,
+                persona_id=persona.id,
+                declared_capabilities=list(declared_caps_set),
+                transcript=snapshot.transcript,
+                gemini_client=_get_gemini_client(),
+            )
+
+    return snapshot
+
+
+def _persist_eval_run(
+    run_id: str,
+    shape: coverage.Shape,
+    conversation_results: list[eval_run_entity.EvalRunConversationSnapshot],
+    started_at: datetime.datetime,
+    finished_at: datetime.datetime,
+    eval_tenant_id: str,
+    skipped: bool = False,
+    uncovered_combos: list[list[str]] | None = None,
+) -> None:
+    """Persiste el reporte del run en Firestore directamente con el SDK.
+
+    Decision de document path: usamos `{run_id}_{shape_name}` en lugar de
+    solo `run_id`. Razon: un run cubre N shapes — con solo run_id el documento
+    se sobreescribiria con merge=True y solo quedaria el ultimo shape.
+    Con el sufijo `_{shape_name}`, cada shape tiene su propio doc, el dashboard
+    puede listar todos los shapes de un run filtrando por prefijo `run_id_`, y
+    el historial es completo y auditable por shape.
+    """
+    doc_run_id = f"{run_id}_{shape.metadata.name}"
+    # Forzar el project del Firestore client cuando este seteado en env
+    # (.secrets/make_credentials_eval.env). Sin esto, el ADC personal
+    # apunta por default al quota_project_id de prod aunque el script este
+    # corriendo contra el backend dev.
+    firestore_project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get(
+        "EVAL_FIRESTORE_PROJECT"
+    )
+    firestore_client = (
+        google_cloud_firestore.Client(project=firestore_project)
+        if firestore_project
+        else google_cloud_firestore.Client()
+    )
+
+    eval_run = eval_run_entity.EvalRun(
+        run_id=run_id,
+        shape_name=shape.metadata.name,
+        started_at=started_at,
+        finished_at=finished_at,
+        total_personas=len(conversation_results),
+        ok=sum(1 for s in conversation_results if s.status == "ok"),
+        fail=sum(1 for s in conversation_results if s.status == "fail"),
+        skipped=skipped,
+        uncovered_combos=uncovered_combos or [],
+        eval_tenant_id=eval_tenant_id,
+    )
+
+    run_doc_path = firestore_paths.eval_run_document(doc_run_id)
+    firestore_client.document(run_doc_path).set(
+        _flatten_nested_arrays(eval_run.model_dump(mode="json"), ["uncovered_combos"]),
+        merge=True,
+    )
+    logger.info("Eval run persistido: %s", run_doc_path)
+
+    for snapshot in conversation_results:
+        conv_doc_path = firestore_paths.eval_run_conversation_document(
+            doc_run_id, snapshot.persona_id
+        )
+        firestore_client.document(conv_doc_path).set(
+            _flatten_nested_arrays(snapshot.model_dump(mode="json"), ["combos_satisfied"]),
+            merge=True,
+        )
+        logger.info("Conversation snapshot persistido: %s", conv_doc_path)
+
+
+def _flatten_nested_arrays(data: dict[str, typing.Any], keys: list[str]) -> dict[str, typing.Any]:
+    """Firestore no permite arrays anidados (list[list[X]]). Aplana cada
+    sublista a un string JSON-encoded para que persista como list[str].
+    El adapter Firestore (lectura) hace la operacion inversa antes de
+    devolver la entity.
+    """
+    out = dict(data)
+    for key in keys:
+        value = out.get(key)
+        if isinstance(value, list):
+            out[key] = [json.dumps(item) if isinstance(item, list) else item for item in value]
+    return out
+
+
+def _persist_skipped_run(
+    run_id: str,
+    shape: coverage.Shape,
+    exc: coverage.CoverageGapError,
+) -> None:
+    """Persiste un eval run marcado como skipped cuando hay un gap de coverage."""
+    now = datetime.datetime.now(tz=datetime.UTC)
+    uncovered: list[list[str]] = [
+        list(combo)
+        for combo in coverage.detect_uncovered_combos(shape, personas_module.ALL_PERSONAS)
+    ]
+    _persist_eval_run(
+        run_id=run_id,
+        shape=shape,
+        conversation_results=[],
+        started_at=now,
+        finished_at=now,
+        eval_tenant_id="",
+        skipped=True,
+        uncovered_combos=uncovered,
+    )
+    logger.warning("Shape %r skipeada por gap de coverage: %s", shape.metadata.name, exc)
+
+
+# ---------------------------------------------------------------------------
+# EVAL MODE — lifecycle por shape
+# ---------------------------------------------------------------------------
+
+
+class _ShapeSummary(typing.TypedDict):
+    """Resumen por shape que usa main_eval() para el reporte final de consola."""
+
+    shape_name: str
+    skipped: bool
+    uncovered_combos: list[list[str]]
+    conversation_results: list[eval_run_entity.EvalRunConversationSnapshot]
+
+
+async def _run_eval_shape(
+    client: httpx.AsyncClient,
+    shape: coverage.Shape,
+    run_id: str,
+    admin_secret: str,
+    eval_api_base: str,
+) -> _ShapeSummary:
+    """Lifecycle completo de evaluacion para un shape:
+    coverage check → tenant efimero → aplicar profile → pre-seed → conversaciones
+    → capturar snapshots → persistir → cleanup.
+
+    Retorna un _ShapeSummary para el reporte final de consola.
+    """
+    shape_name = shape.metadata.name
+
+    # 1. Validar coverage
+    try:
+        coverage.assert_combos_covered(shape, personas_module.ALL_PERSONAS)
+    except coverage.CoverageGapError as exc:
+        _persist_skipped_run(run_id, shape, exc)
+        uncovered: list[list[str]] = [
+            [str(cap) for cap in combo]
+            for combo in coverage.detect_uncovered_combos(shape, personas_module.ALL_PERSONAS)
+        ]
+        return _ShapeSummary(
+            shape_name=shape_name,
+            skipped=True,
+            uncovered_combos=uncovered,
+            conversation_results=[],
+        )
+
+    # 2. Crear tenant efimero — si falla, no abortamos todo el run; persistimos
+    #    skipped y seguimos con el siguiente shape.
+    started_at = datetime.datetime.now(tz=datetime.UTC)
+    create_resp = await client.post(
+        "/v1/dev/eval-tenants",
+        headers={"X-Eval-Admin-Secret": admin_secret},
+        json={"run_id": run_id, "shape_name": shape_name},
+    )
+    try:
+        create_resp.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            "No se pudo crear eval tenant para shape %r: HTTP %s — %s",
+            shape_name,
+            exc.response.status_code,
+            exc.response.text[:400],
+        )
+        try:
+            _persist_skipped_run(
+                run_id,
+                shape,
+                coverage.CoverageGapError(
+                    f"create_eval_tenant failed: HTTP {exc.response.status_code}"
+                ),
+            )
+        except Exception:
+            logger.exception("Persistir skipped run fallo")
+        return _ShapeSummary(
+            shape_name=shape_name,
+            skipped=True,
+            uncovered_combos=[],
+            conversation_results=[],
+        )
+
+    eval_tenant: dict[str, str] = create_resp.json()
+    tenant_token: str = eval_tenant["access_token"]
+    phone_number_id: str = eval_tenant["phone_number_id"]
+    tenant_id: str = eval_tenant["tenant_id"]
+
+    conversation_results: list[eval_run_entity.EvalRunConversationSnapshot] = []
+    apply_profile_failed = False
+
+    try:
+        # 3. Aplicar agent_profile del shape al tenant efimero. Si falla, no
+        #    queremos un reporte que pretenda ok=0,fail=0,skipped=False (engañoso).
+        try:
+            await _apply_shape_agent_profile(client, tenant_token, shape.agent_profile)
+        except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+            apply_profile_failed = True
+            logger.error(
+                "[Shape %r] _apply_shape_agent_profile fallo: %s — saltando conversaciones",
+                shape_name,
+                exc,
+            )
+
+        # 4-6. Solo correr conversaciones si el profile se aplico OK.
+        if not apply_profile_failed:
+            personas = coverage.select_personas_for_shape(shape, personas_module.ALL_PERSONAS)
+            logger.info(
+                "Shape %r: %d personas seleccionadas: %s",
+                shape_name,
+                len(personas),
+                [p.id for p in personas],
+            )
+
+            # Pre-seed Patients para personas con returning_patient
+            for persona in personas:
+                if "returning_patient" in persona.capabilities:
+                    await _pre_seed_patient(client, tenant_token, persona, run_id)
+        else:
+            personas = []
+
+        # Correr conversaciones secuencialmente (cada shape es su propio tenant;
+        # no hay valor en paralelizarlas dentro de un mismo tenant efimero dado
+        # que el bot tiene estado compartido por conversacion).
+        for i, persona in enumerate(personas):
+            patient_dict = _persona_to_dict(persona)
+            elapsed = 0.0
+            snap_error: str | None = None
+            snap_status: typing.Literal["ok", "fail", "skipped"] = "ok"
+            shape_identity = shape.agent_profile.identity
+            shape_practice_type = (
+                shape_identity.professional_title
+                if shape_identity is not None and shape_identity.professional_title
+                else "consultorio"
+            )
+            try:
+                elapsed = await _run_patient(
+                    client,
+                    tenant_token,
+                    phone_number_id,
+                    patient_dict,
+                    i,
+                    practice_type=shape_practice_type,
+                )
+            except (RuntimeError, httpx.HTTPStatusError) as exc:
+                snap_error = f"{type(exc).__name__}: {exc}"
+                snap_status = "fail"
+                logger.error(
+                    "[Shape %r / %s] conversacion fallo: %s", shape_name, persona.id, snap_error
+                )
+
+            # 7. Capturar transcript + estado final
+            snapshot = await _capture_conversation_snapshot(
+                client,
+                tenant_token,
+                persona,
+                shape,
+                run_id,
+                elapsed=elapsed,
+                status=snap_status,
+                error=snap_error,
+            )
+            conversation_results.append(snapshot)
+
+    finally:
+        finished_at = datetime.datetime.now(tz=datetime.UTC)
+
+        # 8. Persistir reporte a Firestore. Si falla (network, perms, schema),
+        #    seguimos al cleanup del tenant — no queremos tenants huerfanos
+        #    porque Firestore tuvo un hipo.
+        try:
+            _persist_eval_run(
+                run_id=run_id,
+                shape=shape,
+                conversation_results=conversation_results,
+                started_at=started_at,
+                finished_at=finished_at,
+                eval_tenant_id=tenant_id,
+            )
+        except Exception:
+            logger.exception(
+                "[Shape %r] _persist_eval_run fallo — sigo al cleanup del tenant",
+                shape_name,
+            )
+
+        # 9. Cleanup tenant efimero (salvo --no-cleanup)
+        if not _NO_CLEANUP:
+            try:
+                del_resp = await client.delete(
+                    f"/v1/dev/eval-tenants/{tenant_id}",
+                    headers={"X-Eval-Admin-Secret": admin_secret},
+                )
+                del_resp.raise_for_status()
+                logger.info("Tenant efimero %s eliminado", tenant_id)
+            except httpx.HTTPStatusError as exc:
+                logger.warning(
+                    "No se pudo eliminar tenant efimero %s: HTTP %s — %s",
+                    tenant_id,
+                    exc.response.status_code,
+                    exc.response.text[:200],
+                )
+        else:
+            logger.info("--no-cleanup: tenant efimero %s conservado", tenant_id)
+
+    return _ShapeSummary(
+        shape_name=shape_name,
+        skipped=apply_profile_failed,
+        uncovered_combos=[],
+        conversation_results=conversation_results,
+    )
+
+
+# ---------------------------------------------------------------------------
+# EVAL MODE — main
+# ---------------------------------------------------------------------------
+async def main_eval() -> int:
+    """Punto de entrada del modo eval. Retorna exit code (0=ok, 1=skips)."""
+    eval_api_base = os.environ.get("EVAL_API_BASE", "")
+    eval_admin_secret = os.environ.get("EVAL_ADMIN_SECRET", "")
+    if not eval_api_base:
+        raise SystemExit(
+            "EVAL_API_BASE no esta configurado. Agregalo a .secrets/make_credentials_eval.env."
+        )
+    if not eval_admin_secret:
+        raise SystemExit(
+            "EVAL_ADMIN_SECRET no esta configurado. Agregalo a .secrets/make_credentials_eval.env."
+        )
+    if not PATIENT_EMAIL:
+        raise SystemExit(
+            "PATIENT_EMAIL no esta configurado. Agregalo a .secrets/make_credentials_eval.env."
+        )
+
+    # Cargar shapes
+    shapes = coverage.load_shapes_from_dir(_SHAPES_DIR)
+    if SHAPE_FILTERS:
+        wanted = set(SHAPE_FILTERS)
+        available = {s.metadata.name for s in shapes}
+        missing = wanted - available
+        if missing:
+            raise SystemExit(
+                f"Shape(s) no encontrado(s) en {_SHAPES_DIR}: {sorted(missing)}. "
+                f"Disponibles: {sorted(available)}"
+            )
+        shapes = [s for s in shapes if s.metadata.name in wanted]
+
+    logger.info(
+        "Eval mode: run_id=%s, %d shape(s) a evaluar%s",
+        RUN_ID,
+        len(shapes),
+        f" (filtrado a {SHAPE_FILTERS!r})" if SHAPE_FILTERS else "",
+    )
+
+    total_start = time.monotonic()
+    had_skips = False
+    shape_summaries: list[_ShapeSummary] = []
+
+    async with httpx.AsyncClient(base_url=eval_api_base, timeout=120.0) as client:
+        for shape in shapes:
+            summary = await _run_eval_shape(
+                client,
+                shape,
+                RUN_ID,
+                eval_admin_secret,
+                eval_api_base,
+            )
+            shape_summaries.append(summary)
+            if summary["skipped"]:
+                had_skips = True
+
+    total_elapsed = time.monotonic() - total_start
+    total_min = int(total_elapsed // 60)
+    total_sec = int(total_elapsed % 60)
+
+    # Reporte de consola
+    print()
+    print(f"=== EVAL REPORT (run_id={RUN_ID}) ===")
+    print()
+    for summary in shape_summaries:
+        sname = summary["shape_name"]
+        if summary["skipped"]:
+            missing_str = summary["uncovered_combos"]
+            print(f"{sname:<30}  SKIPPED   combos faltantes: {missing_str}")
+            print("  → SKIPPED   ninguna persona cubre los combos requeridos")
+        else:
+            results = summary["conversation_results"]
+            ok_count = sum(1 for r in results if r.status == "ok")
+            fail_count = sum(1 for r in results if r.status == "fail")
+            shape_status = "OK" if fail_count == 0 else "FAIL"
+            print(f"{sname:<30}  {shape_status:<6}  ok={ok_count} fail={fail_count}")
+            for result in results:
+                fs = result.final_status or "N/A"
+                status_label = "OK" if result.status == "ok" else "FAIL"
+                print(
+                    f"  → {result.persona_id:<28}  {status_label:<4}  "
+                    f"{fs}  ({result.elapsed_seconds:.1f}s)"
+                )
+        print()
+
+    print(
+        f"Pool: {len(personas_module.ALL_PERSONAS)} personas | Tiempo total: {total_min}m {total_sec}s"
+    )
+    if had_skips:
+        print()
+        print("ADVERTENCIA: hubo shapes skipeadas por gaps de coverage. Exit code = 1.")
+
+    return 1 if had_skips else 0
+
+
+# ---------------------------------------------------------------------------
+# Main legacy
 # ---------------------------------------------------------------------------
 async def main() -> None:
     if not PATIENT_EMAIL:
         raise RuntimeError(
             "PATIENT_EMAIL not set. Add it to .secrets/make_credentials.env or export it."
+        )
+    if not PATIENTS:
+        raise RuntimeError(
+            f"No hay personas registradas para el perfil {PROFILE_TYPE!r}. "
+            "El pool de scripts/personas.py está vacío hasta que el skill "
+            "`/persona-from-combo` lo pueble (Fase 3 del plan eval). "
+            "Ejecutá el skill iterativamente sobre los shapes en "
+            "tests/fixtures/profiles/ y reintentá."
         )
     all_patients = PATIENTS[:NUM_PATIENTS]
     batch_size = NUM_PATIENTS
@@ -930,4 +1638,8 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    if EVAL_MODE:
+        exit_code = asyncio.run(main_eval())
+        sys.exit(exit_code)
+    else:
+        asyncio.run(main())

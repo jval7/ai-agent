@@ -65,17 +65,24 @@ def _professional_label(identity: agent_profile_entity.AssistantIdentity) -> str
 
 
 def _render_identity(identity: agent_profile_entity.AssistantIdentity) -> str:
+    """Render <identity> with each field as its own semantic tag.
+
+    Previous shape concatenated everything into a single <assistant_role>
+    string ("Claudia la asistente virtual de WhatsApp de Dra. X (Cali)") which
+    was agrammatical and led the LLM to drop the assistant_name and fall back
+    to a generic "soy tu asistente virtual de la Dra. X" greeting. Splitting
+    each field into its own tag lets the LLM compose the presentation
+    naturally per the style rule (e.g. "soy Claudia, asistente virtual de la
+    Dra. X").
+    """
     parts: list[str] = []
+    if identity.assistant_name:
+        parts.append(f"<assistant_name>{identity.assistant_name}</assistant_name>")
     pro_label = _professional_label(identity)
-    if identity.assistant_name or pro_label or identity.main_city:
-        role_parts: list[str] = []
-        if identity.assistant_name:
-            role_parts.append(identity.assistant_name)
-        if pro_label:
-            role_parts.append(f"la asistente virtual de WhatsApp de {pro_label}")
-        if identity.main_city:
-            role_parts.append(f"({identity.main_city})")
-        parts.append(f"<assistant_role>{' '.join(role_parts)}</assistant_role>")
+    if pro_label:
+        parts.append(f"<professional>{pro_label}</professional>")
+    if identity.main_city:
+        parts.append(f"<main_city>{identity.main_city}</main_city>")
     if identity.tone:
         parts.append(f"<tone>{identity.tone}</tone>")
     if not parts:
@@ -105,6 +112,11 @@ def _render_professional_context(
     if identity is not None and identity.languages:
         langs = ", ".join(identity.languages)
         items.append(f"<item>Idiomas: {langs}.</item>")
+
+    # Timezone from identity — surfaces the IANA zone to the LLM so it can
+    # present appointment times in the correct local zone.
+    if identity is not None and identity.timezone:
+        items.append(f"<item>Zona horaria: {identity.timezone}</item>")
 
     # Schedules
     if presencial_schedule:
@@ -139,6 +151,23 @@ def _render_tariff_option(tariff: agent_profile_entity.TariffOption) -> str:
     return "<tariff>\n" + "\n".join(parts) + "\n</tariff>"
 
 
+_TARGET_PATIENTS_LABELS: dict[tuple[str, ...], str] = {
+    ("NEW", "RETURNING"): "Pacientes nuevos y recurrentes",
+    ("NEW",): "Solo pacientes nuevos (primera consulta)",
+    ("RETURNING",): "Solo pacientes recurrentes (ya tuvieron una cita previa)",
+}
+
+
+def _format_target_patients(target_patients: list[str]) -> str | None:
+    """Return a human-readable Spanish label for the target_patients list,
+    or None if the list is empty / has no usable values.
+    """
+    if not target_patients:
+        return None
+    key = tuple(sorted(target_patients))
+    return _TARGET_PATIENTS_LABELS.get(key)
+
+
 def _render_services(services: list[agent_profile_entity.ServiceOffering]) -> str:
     service_blocks: list[str] = []
     for svc in services:
@@ -150,6 +179,9 @@ def _render_services(services: list[agent_profile_entity.ServiceOffering]) -> st
         if svc.modalities:
             modalities_text = " y ".join(m.capitalize() for m in svc.modalities)
             lines.append(f"<modalities>{modalities_text}</modalities>")
+        target_label = _format_target_patients(list(svc.target_patients))
+        if target_label is not None:
+            lines.append(f"<target_patients>{target_label}</target_patients>")
         if svc.description:
             lines.append(f"<description>{svc.description}</description>")
         if svc.tariffs:

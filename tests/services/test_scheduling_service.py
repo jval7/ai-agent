@@ -11,6 +11,7 @@ import src.adapters.outbound.inmemory.scheduled_reminder_repository_adapter as s
 import src.adapters.outbound.inmemory.scheduling_repository_adapter as scheduling_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.task_scheduler_adapter as task_scheduler_adapter
+import src.adapters.outbound.inmemory.tenant_repository_adapter as tenant_repository_adapter
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.conversation as conversation_entity
@@ -19,6 +20,7 @@ import src.domain.entities.manual_appointment as manual_appointment_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
+import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.domain.official_reminder_templates as official_reminder_templates
 import src.services.dto.google_calendar_dto as google_calendar_dto
@@ -1572,3 +1574,320 @@ def test_select_slot_stays_awaiting_patient_choice_when_payment_timing_is_after_
 
     # Nunca transiciona a AWAITING_PAYMENT_CONFIRMATION.
     assert result.status != "AWAITING_PAYMENT_CONFIRMATION"
+
+
+# ---------------------------------------------------------------------------
+# Fase 4b — eval tenant Calendar skip
+# ---------------------------------------------------------------------------
+
+
+def _build_service_for_eval(
+    id_values: list[str],
+    is_eval: bool,
+) -> tuple[
+    scheduling_service.SchedulingService,
+    scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
+    fake_adapters.FakeGoogleCalendarProvider,
+]:
+    """Build SchedulingService wired with a tenant_repository.
+
+    When ``is_eval=True`` the tenant is seeded with ``is_eval_tenant=True``,
+    so Calendar calls are skipped.  When ``is_eval=False`` the tenant flag is
+    False and the full Calendar path is exercised.
+    """
+    store = in_memory_store.InMemoryStore()
+    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
+        store
+    )
+    scheduling_repository = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
+    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
+        store
+    )
+    tenant_repo = tenant_repository_adapter.InMemoryTenantRepositoryAdapter(store)
+    provider = fake_adapters.FakeGoogleCalendarProvider()
+    clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
+    id_generator = fake_adapters.SequenceIdGenerator(id_values)
+    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
+        google_calendar_connection_repository=calendar_connection_repository,
+        google_calendar_provider=provider,
+        id_generator=id_generator,
+        clock=clock,
+    )
+
+    tenant_repo.save(
+        tenant_entity.Tenant(
+            id="tenant-1",
+            name="Test Tenant",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            is_eval_tenant=is_eval,
+        )
+    )
+    calendar_connection_repository.save(
+        google_calendar_connection_entity.GoogleCalendarConnection(
+            tenant_id="tenant-1",
+            professional_user_id="user-1",
+            status="CONNECTED",
+            calendar_id="primary",
+            timezone="America/Bogota",
+            access_token="access-1",
+            refresh_token="refresh-1",
+            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
+            oauth_state=None,
+            scope="calendar",
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            connected_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    conversation_repository.save_conversation(
+        conversation_entity.Conversation(
+            id="conv-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            started_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            last_message_preview=None,
+            message_ids=[],
+            control_mode="AI",
+        )
+    )
+
+    task_sched = task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
+    builder = _build_event_description_builder(store)
+    svc = scheduling_service.SchedulingService(
+        scheduling_repository=scheduling_repository,
+        conversation_repository=conversation_repository,
+        google_calendar_onboarding_service=google_service,
+        id_generator=id_generator,
+        clock=clock,
+        task_scheduler=task_sched,
+        event_description_builder=builder,
+        tenant_repository=tenant_repo,
+    )
+    return svc, scheduling_repository, provider
+
+
+def test_books_slot_without_calendar_when_tenant_is_eval() -> None:
+    """Eval tenant: slot confirmed, no Calendar adapter calls, calendar_event_id is None."""
+    service, repository, provider = _build_service_for_eval(["req-1"], is_eval=True)
+
+    request = service.submit_consultation_reason_for_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
+            consultation_reason="Ansiedad",
+            appointment_modality="VIRTUAL",
+            patient_location="Bogota",
+        ),
+    )
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "AWAITING_PATIENT_CHOICE"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 10, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 10, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="PROPOSED",
+        )
+    ]
+    repository.save_request(stored)
+
+    result = service.confirm_selected_slot_and_create_event(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
+            request_id=request.request_id,
+            slot_id="slot-1",
+            event_summary="Test Eval Booking",
+        ),
+    )
+
+    assert result.status == "BOOKED"
+    assert result.calendar_event_id is None
+    # No Calendar calls at all (neither conflict check nor create_event).
+    assert provider.list_busy_intervals_call_count == 0
+    assert len(provider.created_event_summaries) == 0
+    # Request persisted correctly.
+    booked = repository.get_request_by_id("tenant-1", request.request_id)
+    assert booked is not None
+    assert booked.status == "BOOKED"
+    assert booked.calendar_event_id is None
+
+
+def test_books_slot_normally_when_tenant_is_not_eval() -> None:
+    """Non-eval tenant: full Calendar path — create_event is called and event_id persisted."""
+    service, repository, provider = _build_service_for_eval(["req-1", "conf-req-1"], is_eval=False)
+
+    request = service.submit_consultation_reason_for_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
+            consultation_reason="Ansiedad",
+            appointment_modality="VIRTUAL",
+            patient_location="Bogota",
+        ),
+    )
+    stored = repository.get_request_by_id("tenant-1", request.request_id)
+    assert stored is not None
+    stored.status = "AWAITING_PATIENT_CHOICE"
+    stored.slots = [
+        scheduling_slot_entity.SchedulingSlot(
+            id="slot-1",
+            start_at=datetime.datetime(2026, 1, 10, 10, 0, tzinfo=datetime.UTC),
+            end_at=datetime.datetime(2026, 1, 10, 11, 0, tzinfo=datetime.UTC),
+            timezone="America/Bogota",
+            status="PROPOSED",
+        )
+    ]
+    repository.save_request(stored)
+
+    result = service.confirm_selected_slot_and_create_event(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        input_dto=scheduling_dto.ConfirmSelectedSlotInputDTO(
+            request_id=request.request_id,
+            slot_id="slot-1",
+            event_summary="Test Normal Booking",
+        ),
+    )
+
+    assert result.status == "BOOKED"
+    assert result.calendar_event_id is not None
+    # Calendar adapter WAS called.
+    assert len(provider.created_event_summaries) == 1
+    assert provider.created_event_summaries[0] == "Test Normal Booking"
+    # Request persisted with event id.
+    booked = repository.get_request_by_id("tenant-1", request.request_id)
+    assert booked is not None
+    assert booked.status == "BOOKED"
+    assert booked.calendar_event_id is not None
+
+
+# ---------------------------------------------------------------------------
+# Fix B1: _resolve_location reads main_city from AgentProfile (not hardcoded)
+# ---------------------------------------------------------------------------
+
+
+def _build_service_with_main_city(
+    main_city: str,
+) -> tuple[
+    scheduling_service.SchedulingService,
+    scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
+]:
+    """Minimal service wired with an AgentProfile that has a specific main_city."""
+    store = in_memory_store.InMemoryStore()
+    conversation_repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(
+        store
+    )
+    scheduling_repo = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    calendar_connection_repository = google_calendar_connection_repository_adapter.InMemoryGoogleCalendarConnectionRepositoryAdapter(
+        store
+    )
+    agent_profile_repo.save(
+        agent_profile_entity.AgentProfile(
+            tenant_id="tenant-1",
+            system_prompt="prompt",
+            identity=agent_profile_entity.AssistantIdentity(main_city=main_city),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    calendar_connection_repository.save(
+        google_calendar_connection_entity.GoogleCalendarConnection(
+            tenant_id="tenant-1",
+            professional_user_id="user-1",
+            status="CONNECTED",
+            calendar_id="primary",
+            timezone="America/Bogota",
+            access_token="access-1",
+            refresh_token="refresh-1",
+            token_expires_at=datetime.datetime(2026, 1, 1, 2, 0, tzinfo=datetime.UTC),
+            oauth_state=None,
+            scope="calendar",
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            connected_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    conversation_repository.save_conversation(
+        conversation_entity.Conversation(
+            id="conv-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            started_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            last_message_preview=None,
+            message_ids=[],
+            control_mode="AI",
+        )
+    )
+    clock = fake_adapters.FixedClock(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC))
+    id_generator = fake_adapters.SequenceIdGenerator(["req-1"])
+    provider = fake_adapters.FakeGoogleCalendarProvider()
+    google_service = google_calendar_onboarding_service.GoogleCalendarOnboardingService(
+        google_calendar_connection_repository=calendar_connection_repository,
+        google_calendar_provider=provider,
+        id_generator=id_generator,
+        clock=clock,
+    )
+    builder = event_description_builder_mod.EventDescriptionBuilder(
+        agent_profile_repository=agent_profile_repo
+    )
+    task_sched = task_scheduler_adapter.InMemoryTaskSchedulerAdapter()
+    svc = scheduling_service.SchedulingService(
+        scheduling_repository=scheduling_repo,
+        conversation_repository=conversation_repository,
+        google_calendar_onboarding_service=google_service,
+        id_generator=id_generator,
+        clock=clock,
+        task_scheduler=task_sched,
+        event_description_builder=builder,
+        agent_profile_repository=agent_profile_repo,
+    )
+    return svc, scheduling_repo
+
+
+def test_resolve_location_presencial_returns_main_city_from_agent_profile() -> None:
+    """Fix B1: PRESENCIAL location must come from AgentProfile.identity.main_city."""
+    svc, repo = _build_service_with_main_city("Medellín")
+
+    result = svc.submit_consultation_reason_for_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
+            consultation_reason="Primera cita",
+            appointment_modality="PRESENCIAL",
+            patient_location=None,
+        ),
+    )
+
+    stored = repo.get_request_by_id("tenant-1", result.request_id)
+    assert stored is not None
+    assert stored.patient_location == "Medellín"
+
+
+def test_resolve_location_presencial_generic_fallback_when_no_profile() -> None:
+    """Fix B1: When AgentProfile has no main_city, fallback is generic 'Presencial'."""
+    svc, repo = _build_service_with_main_city("")
+
+    result = svc.submit_consultation_reason_for_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.SubmitConsultationReasonForReviewToolInputDTO(
+            consultation_reason="Primera cita",
+            appointment_modality="PRESENCIAL",
+            patient_location=None,
+        ),
+    )
+
+    stored = repo.get_request_by_id("tenant-1", result.request_id)
+    assert stored is not None
+    # Empty main_city → generic fallback, not a hardcoded city name
+    assert stored.patient_location == "Presencial"

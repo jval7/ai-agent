@@ -4,6 +4,7 @@ import type * as agentModel from "@domain/models/agent";
 import type * as authModel from "@domain/models/auth";
 import type * as blacklistModel from "@domain/models/blacklist";
 import type * as conversationModel from "@domain/models/conversation";
+import type * as evaluationModel from "@domain/models/evaluation";
 import type * as googleCalendarModel from "@domain/models/google_calendar";
 import type * as manualAppointmentModel from "@domain/models/manual_appointment";
 import type * as onboardingModel from "@domain/models/onboarding";
@@ -348,6 +349,34 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     _kind: whatsappTemplateModel.OfficialReminderKind
   ): Promise<void> {
     return;
+  }
+
+  async listEvalShapes(): Promise<evaluationModel.EvalShape[]> {
+    throw new Error("not used");
+  }
+
+  async listEvalPersonas(): Promise<evaluationModel.EvalPersona[]> {
+    throw new Error("not used");
+  }
+
+  async listEvalPromptVersions(): Promise<evaluationModel.EvalPromptVersion[]> {
+    throw new Error("not used");
+  }
+
+  async listEvalRuns(_limit?: number): Promise<evaluationModel.EvalRunListItem[]> {
+    throw new Error("not used");
+  }
+
+  async getEvalRun(_runDocId: string): Promise<evaluationModel.EvalRunDetail> {
+    throw new Error("not used");
+  }
+
+  async deleteEvalRun(_runId: string): Promise<evaluationModel.EvalDeleteResult> {
+    throw new Error("not used");
+  }
+
+  async listEvalCapabilities(): Promise<evaluationModel.EvalCapabilityDoc[]> {
+    throw new Error("not used");
   }
 }
 

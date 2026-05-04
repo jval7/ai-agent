@@ -3,10 +3,13 @@ import * as reactRouterDomModule from "react-router-dom";
 import * as agendaPageModule from "@adapters/inbound/react/pages/AgendaPage";
 import * as clientsPageModule from "@adapters/inbound/react/pages/ClientsPage";
 import * as configuracionesPageModule from "@adapters/inbound/react/pages/ConfiguracionesPage";
+import * as evaluacionPageModule from "@adapters/inbound/react/pages/EvaluacionPage";
+import * as runDetailPageModule from "@adapters/inbound/react/pages/evaluacion/RunDetailPage";
 import * as finanzasPageModule from "@adapters/inbound/react/pages/FinanzasPage";
 import * as inboxPageModule from "@adapters/inbound/react/pages/InboxPage";
 import * as landingPageModule from "@adapters/inbound/react/pages/LandingPage";
 import * as loginPageModule from "@adapters/inbound/react/pages/LoginPage";
+import * as roadmapPageModule from "@adapters/inbound/react/pages/RoadmapPage";
 import * as recordatoriosPageModule from "@adapters/inbound/react/pages/RecordatoriosPage";
 
 import * as onboardingReadyRouteModule from "./OnboardingReadyRoute";
@@ -106,6 +109,22 @@ export function AppRouter() {
           }
           path="/recordatorios"
         />
+        <reactRouterDomModule.Route
+          element={
+            <protectedRouteModule.ProtectedRoute>
+              <evaluacionPageModule.EvaluacionPage />
+            </protectedRouteModule.ProtectedRoute>
+          }
+          path="/evaluacion"
+        />
+        <reactRouterDomModule.Route
+          element={
+            <protectedRouteModule.ProtectedRoute>
+              <runDetailPageModule.RunDetailPage />
+            </protectedRouteModule.ProtectedRoute>
+          }
+          path="/evaluacion/runs/:runDocId"
+        />
 
         <reactRouterDomModule.Route
           element={
@@ -114,6 +133,14 @@ export function AppRouter() {
             </publicOnlyRouteModule.PublicOnlyRoute>
           }
           path="/"
+        />
+        <reactRouterDomModule.Route
+          element={
+            <publicOnlyRouteModule.PublicOnlyRoute>
+              <roadmapPageModule.RoadmapPage />
+            </publicOnlyRouteModule.PublicOnlyRoute>
+          }
+          path="/roadmap"
         />
         <reactRouterDomModule.Route
           element={<reactRouterDomModule.Navigate replace to="/configuraciones" />}

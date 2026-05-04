@@ -34,7 +34,8 @@ class TestPromptAssemblerOutputParity:
         assert "INSTRUCCIONES RUNTIME (PRIORIDAD ALTA):" in result
         assert "- estado_conversacion: NO_ACTIVE_REQUEST" in result
         assert "- Known patient profile: not found" in result
-        assert "Flujo actual: inicio de agendamiento." in result
+        # New patient flow: explicit "primera vez" branch.
+        assert "paciente NUEVO" in result
         assert "submit_consultation_reason_for_review, set_contact_name" in result
 
     def test_no_active_request_with_patient(self) -> None:
@@ -49,6 +50,11 @@ class TestPromptAssemblerOutputParity:
         assert "- patient_full_name: Maria Garcia" in result
         assert "- patient_email: maria@test.com" in result
         assert "- patient_age: 30" in result
+        # Returning patient flow: NO_ACTIVE_REQUEST instructions branch on
+        # known_patient. The bot should offer follow-up flows (cita de
+        # control, consulta, reprogramar) instead of the new-patient sequence.
+        assert "paciente RECURRENTE" in result
+        assert "Cita de control" in result
 
     def test_awaiting_consultation_details(self) -> None:
         builder = _build_builder()
@@ -94,7 +100,11 @@ class TestPromptAssemblerOutputParity:
         )
         result = builder.build_runtime_system_prompt(ctx, known_patient=None)
         assert "- slot_seleccionado_actual: slot-1" in result
-        assert "Campos faltantes para confirmar:" in result
+        # Avoid asserting on the verb "confirmar" because the state instruction
+        # was deliberately rephrased to "Datos finales faltantes" to keep the
+        # word "confirmar" out of the LLM's attention. See the comment in
+        # state_instructions.py for the rationale (uses_pre_payment_vocabulary).
+        assert "Datos finales faltantes:" in result
         assert "email" in result
         assert "age" in result
 
@@ -108,7 +118,9 @@ class TestPromptAssemblerOutputParity:
             enabled_tool_names=["confirm_selected_slot_and_create_event"],
         )
         result = builder.build_runtime_system_prompt(ctx, known_patient=None)
-        assert "no faltan campos de perfil" in result
+        # State instruction phrase was changed from "no faltan campos de perfil"
+        # to "no faltan datos de perfil" to keep "confirmar" out of the prompt.
+        assert "no faltan datos de perfil" in result
         assert "confirm_selected_slot_and_create_event" in result
 
     def test_awaiting_consultation_review(self) -> None:
@@ -120,7 +132,14 @@ class TestPromptAssemblerOutputParity:
             enabled_tool_names=["handoff_to_human"],
         )
         result = builder.build_runtime_system_prompt(ctx, known_patient=None)
-        assert "esperando revision del profesional" in result
+        # The assembler must emit a state instruction explaining the bot is
+        # waiting on an internal step, but NOT one that the LLM would relay
+        # verbatim to the patient (which used to leak as "ya envie tu motivo
+        # a la doctora para revision"). We assert two things: the bot is
+        # told to pause silently ("dame un momento"), and the explicit
+        # prohibition on revealing internal handoff is present.
+        assert "dame un momento" in result
+        assert "La gestion interna es invisible" in result
 
     def test_awaiting_payment_confirmation(self) -> None:
         builder = _build_builder()

@@ -1,0 +1,52 @@
+{
+  "metadata": {
+    "name": "shape_minimal",
+    "description": "Smoke test: perfil minimo con un servicio simple, sin features especiales. Verifica que el flujo base funciona antes de probar shapes con configuraciones especificas.",
+    "required_combos": [["new_patient"]]
+  },
+  "agent_profile": {
+    "tenant_id": "shape_minimal_tenant",
+    "updated_at": "2026-01-01T00:00:00+00:00",
+    "identity": {
+      "assistant_name": "Asistente",
+      "professional_title": "Dra.",
+      "professional_name": "Test Doctor",
+      "professional_address_term": "la doctora",
+      "main_city": "Cali",
+      "tone": "Profesional y calida.",
+      "languages": ["espanol"]
+    },
+    "services": [
+      {
+        "name": "Consulta inicial",
+        "description": "Sesion de valoracion inicial.",
+        "modalities": ["PRESENCIAL"],
+        "target_patients": ["NEW", "RETURNING"],
+        "tariffs": [
+          {
+            "label": "Sesion",
+            "prices": [{"currency": "COP", "amount": 130000}]
+          }
+        ]
+      }
+    ],
+    "presencial_schedule": [
+      {"weekday_from": "MON", "weekday_to": "FRI", "start_time": "08:00", "end_time": "16:00"}
+    ],
+    "virtual_schedule": [],
+    "payment_methods": [
+      {
+        "currency": "COP",
+        "method_name": "Nequi",
+        "holder": "Test Doctor",
+        "instructions": "300 000 0000",
+        "applies_when": "Colombia"
+      }
+    ],
+    "payment_timing": "BEFORE_SESSION",
+    "office_location": {
+      "address": "Carrera 5 # 3-17, edificio Aqua Oficina 301, Cali",
+      "arrival_instructions": "Al llegar timbra al apto 301 para abrir la puerta."
+    }
+  }
+}

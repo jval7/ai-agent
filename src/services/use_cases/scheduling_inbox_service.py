@@ -9,6 +9,7 @@ import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.llm_provider_port as llm_provider_port
 import src.ports.scheduling_repository_port as scheduling_repository_port
+import src.ports.tenant_repository_port as tenant_repository_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.prompt_builder as prompt_builder
@@ -45,6 +46,7 @@ class SchedulingInboxService:
             agent_profile_repository_port.AgentProfileRepositoryPort | None
         ) = None,
         default_system_prompt: str | None = None,
+        tenant_repository: tenant_repository_port.TenantRepositoryPort | None = None,
     ) -> None:
         self._scheduling_repository = scheduling_repository
         self._scheduling_service = scheduling_service
@@ -57,7 +59,19 @@ class SchedulingInboxService:
         self._llm_provider = llm_provider
         self._agent_profile_repository = agent_profile_repository
         self._default_system_prompt = default_system_prompt
+        self._tenant_repository = tenant_repository
         self._prompt_builder = prompt_builder.RuntimePromptBuilder()
+
+    def _is_eval_tenant(self, tenant_id: str) -> bool:
+        """Mismo patron que SchedulingService — si tenant_repository no esta
+        wired (legacy tests) o el tenant no existe, retorna False (default
+        seguro: comportamiento prod intacto)."""
+        if self._tenant_repository is None:
+            return False
+        tenant = self._tenant_repository.get_by_id(tenant_id)
+        if tenant is None:
+            return False
+        return tenant.is_eval_tenant
 
     def list_requests(
         self,
@@ -231,16 +245,18 @@ class SchedulingInboxService:
                 "scheduling request is not waiting for professional slots"
             )
 
+        is_eval = self._is_eval_tenant(claims.tenant_id)
         valid_slots: list[scheduling_slot_entity.SchedulingSlot] = []
         for slot_input in submit_dto.slots:
             self._validate_slot_duration(slot_input.start_at, slot_input.end_at)
-            has_conflict = self._google_calendar_onboarding_service.has_conflict(
-                tenant_id=claims.tenant_id,
-                start_at=slot_input.start_at,
-                end_at=slot_input.end_at,
-            )
-            if has_conflict:
-                continue
+            if not is_eval:
+                has_conflict = self._google_calendar_onboarding_service.has_conflict(
+                    tenant_id=claims.tenant_id,
+                    start_at=slot_input.start_at,
+                    end_at=slot_input.end_at,
+                )
+                if has_conflict:
+                    continue
             valid_slots.append(
                 scheduling_slot_entity.SchedulingSlot(
                     id=slot_input.slot_id,
@@ -482,6 +498,35 @@ class SchedulingInboxService:
                 f"slot duration must be one of {valid} minutes"
             )
 
+    def _build_payment_pending_fallback(self, tenant_id: str) -> str:
+        """Build a payment-pending fallback message from AgentProfile.payment_methods.
+
+        When payment methods are configured, renders them as a WhatsApp-friendly
+        list so no specific account number is hardcoded in the system.
+        Falls back to a generic instruction when the profile is unavailable or
+        has no payment methods configured.
+        """
+        if self._agent_profile_repository is not None:
+            profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+            if profile is not None and profile.payment_methods:
+                method_lines: list[str] = []
+                for pm in profile.payment_methods:
+                    parts: list[str] = [pm.method_name]
+                    if pm.holder:
+                        parts.append(pm.holder)
+                    if pm.instructions:
+                        parts.append(pm.instructions)
+                    method_lines.append("• " + ": ".join(parts))
+                methods_text = "\n".join(method_lines)
+                return (
+                    "Te recordamos que para continuar con tu cita, debes completar el pago:\n"
+                    f"{methods_text}"
+                )
+        return (
+            "Te recordamos que para continuar con tu cita, debes completar el pago "
+            "según las indicaciones del consultorio."
+        )
+
     def _build_payment_review_message(
         self,
         tenant_id: str,
@@ -506,10 +551,7 @@ class SchedulingInboxService:
                 "• Correo electrónico\n"
                 "• Teléfono"
             )
-        return (
-            "Te recordamos que para continuar con tu cita, debes realizar "
-            "la transferencia al Nequi: 318 732 6409."
-        )
+        return self._build_payment_pending_fallback(tenant_id)
 
     def _generate_payment_review_message_with_llm(
         self,
@@ -557,9 +599,11 @@ class SchedulingInboxService:
                 "• Nombre completo\n• Edad\n• Correo electrónico\n• Teléfono"
             )
         else:
+            payment_hint = self._build_payment_pending_fallback(tenant_id)
             lines.append(
-                "Objetivo del mensaje: recordar amablemente al paciente que debe realizar "
-                "la transferencia al Nequi: 318 732 6409 para continuar con su cita."
+                "Objetivo del mensaje: recordar amablemente al paciente que debe completar "
+                f"el pago para continuar con su cita. Instrucciones de pago configuradas:\n"
+                f"{payment_hint}"
             )
 
         message_prompt = "\n".join(lines)
