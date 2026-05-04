@@ -294,6 +294,24 @@ class WebhookService:
             )
             return
 
+        if not self._is_assistant_enabled(tenant_id):
+            self._mark_event_processed(tenant_id, event.provider_event_id)
+            logger.info(
+                "webhook.assistant_disabled_skip_ai",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.assistant_disabled_skip_ai",
+                        message="customer message persisted while assistant is globally disabled for tenant",
+                        data={
+                            "tenant_id": tenant_id,
+                            "conversation_id": conversation.id,
+                            "provider_event_id": event.provider_event_id,
+                        },
+                    )
+                },
+            )
+            return
+
         lock_holder_id: str | None = None
         if self._conversation_processing_lock is not None:
             lock_holder_id = self._id_generator.new_id()
@@ -628,6 +646,12 @@ class WebhookService:
         if agent_profile is None:
             return 0
         return agent_profile.message_debounce_delay_seconds
+
+    def _is_assistant_enabled(self, tenant_id: str) -> bool:
+        agent_profile = self._agent_profile_repository.get_by_tenant_id(tenant_id)
+        if agent_profile is None:
+            return True
+        return agent_profile.assistant_enabled
 
     def _conversation_has_provider_message_id(
         self,

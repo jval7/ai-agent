@@ -310,6 +310,9 @@ chat-memory-reset:
 	fi
 	@echo "Firestore chat reset endpoint finished. No local JSON snapshot cleanup is required."
 
+resubscribe-waba:
+	@uv run python scripts/resubscribe_waba.py $(ARGS)
+
 static-checks:
 	@uv run ruff check .
 	@uv run ruff format --check .

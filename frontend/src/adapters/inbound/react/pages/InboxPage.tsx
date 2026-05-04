@@ -18,6 +18,7 @@ const blacklistQueryKey = ["blacklist"] as const;
 const patientsQueryKey = ["patients"] as const;
 const schedulingRequestsQueryKey = ["scheduling-requests"] as const;
 const devFeaturesQueryKey = ["dev-features"] as const;
+const agentSettingsQueryKey = ["agent-settings"] as const;
 
 type AppointmentDisplayStatus =
   | "PENDIENTE_REVISION"
@@ -288,6 +289,36 @@ export function InboxPage() {
     }
   });
 
+  const agentSettingsQuery = reactQueryModule.useQuery({
+    queryKey: agentSettingsQueryKey,
+    queryFn: () => appContainer.agentUseCase.getAgentSettings()
+  });
+
+  const assistantEnabledMutation = reactQueryModule.useMutation({
+    mutationFn: (assistantEnabled: boolean) => {
+      const fresh = agentSettingsQuery.data;
+      if (fresh === undefined) {
+        throw new Error("Agent settings not loaded yet");
+      }
+      return appContainer.agentUseCase.updateAgentSettings({
+        messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+        assistantEnabled,
+        appointmentReminderEnabled: fresh.appointmentReminderEnabled,
+        appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore,
+        appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
+        appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName,
+        paymentDetailsText: fresh.paymentDetailsText,
+        officeLocation: fresh.officeLocation,
+        paymentTiming: fresh.paymentTiming
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: agentSettingsQueryKey });
+    }
+  });
+
+  const assistantEnabled = agentSettingsQuery.data?.assistantEnabled ?? true;
+
   const addBlacklistMutation = reactQueryModule.useMutation({
     mutationFn: (whatsappUserId: string) => appContainer.blacklistUseCase.add(whatsappUserId),
     onSuccess: async () => {
@@ -530,6 +561,44 @@ export function InboxPage() {
 
   return (
     <appShellModule.AppShell>
+      <div
+        className={[
+          "mb-3 flex items-center justify-between rounded-xl border px-4 py-3 shadow-sm",
+          assistantEnabled ? "border-emerald-200 bg-emerald-50" : "border-amber-300 bg-amber-50"
+        ].join(" ")}
+      >
+        <div className="min-w-0 flex-1">
+          <p
+            className={[
+              "text-sm font-semibold",
+              assistantEnabled ? "text-emerald-900" : "text-amber-900"
+            ].join(" ")}
+          >
+            Asistente: {assistantEnabled ? "Activado" : "Apagado"}
+          </p>
+          <p
+            className={["text-xs", assistantEnabled ? "text-emerald-700" : "text-amber-800"].join(
+              " "
+            )}
+          >
+            {assistantEnabled
+              ? "Responde automáticamente todas las conversaciones."
+              : "No responderá ninguna conversación. Los mensajes entrantes se guardan igual."}
+          </p>
+        </div>
+        <radixSwitchModule.Root
+          aria-label="Activar o apagar el asistente para todas las conversaciones"
+          checked={assistantEnabled}
+          className="relative h-6 w-11 rounded-full bg-slate-300 data-[state=checked]:bg-brand-teal disabled:opacity-60"
+          disabled={agentSettingsQuery.data === undefined || assistantEnabledMutation.isPending}
+          onCheckedChange={(checked) => {
+            assistantEnabledMutation.mutate(checked);
+          }}
+        >
+          <radixSwitchModule.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white transition-transform data-[state=checked]:translate-x-5" />
+        </radixSwitchModule.Root>
+      </div>
+
       {/* ===== MOBILE: WhatsApp-style flow ===== */}
       <div className="lg:hidden">
         {inboxMobileStep === "LIST" ? (

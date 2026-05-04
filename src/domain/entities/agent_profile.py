@@ -163,6 +163,7 @@ class ProfessionalContext(pydantic.BaseModel):
 class AgentProfile(pydantic.BaseModel):
     tenant_id: str
     system_prompt: str = ""
+    assistant_enabled: bool = True
     message_debounce_delay_seconds: int = 0
     appointment_reminder_enabled: bool = False
     appointment_reminder_days_before: int | None = None

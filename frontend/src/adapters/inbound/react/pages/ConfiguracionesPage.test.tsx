@@ -75,6 +75,7 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
       getAgentSettings: vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
         messageDebounceDelaySeconds: 5,
+        assistantEnabled: true,
         appointmentReminderEnabled: false,
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
@@ -86,6 +87,7 @@ function buildContainer(overrides: Record<string, unknown> = {}) {
       updateAgentSettings: vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
         messageDebounceDelaySeconds: 5,
+        assistantEnabled: true,
         appointmentReminderEnabled: false,
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
@@ -271,6 +273,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
           getAgentSettings: vitestModule.vi.fn(async () => ({
             tenantId: "tenant-1",
             messageDebounceDelaySeconds: 5,
+            assistantEnabled: true,
             appointmentReminderEnabled: false,
             appointmentReminderDaysBefore: null,
             appointmentReminderAttendanceTemplateName: null,
@@ -325,6 +328,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
       const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
         messageDebounceDelaySeconds: 5,
+        assistantEnabled: true,
         appointmentReminderEnabled: false,
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
@@ -345,6 +349,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
           getAgentSettings: vitestModule.vi.fn(async () => ({
             tenantId: "tenant-1",
             messageDebounceDelaySeconds: 5,
+            assistantEnabled: true,
             appointmentReminderEnabled: false,
             appointmentReminderDaysBefore: null,
             appointmentReminderAttendanceTemplateName: null,
@@ -413,6 +418,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
       const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
         messageDebounceDelaySeconds: 5,
+        assistantEnabled: true,
         appointmentReminderEnabled: false,
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
@@ -431,6 +437,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
           getAgentSettings: vitestModule.vi.fn(async () => ({
             tenantId: "tenant-1",
             messageDebounceDelaySeconds: 5,
+            assistantEnabled: true,
             appointmentReminderEnabled: false,
             appointmentReminderDaysBefore: null,
             appointmentReminderAttendanceTemplateName: null,
@@ -488,6 +495,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
       const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
         messageDebounceDelaySeconds: 5,
+        assistantEnabled: true,
         appointmentReminderEnabled: false,
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
@@ -503,6 +511,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
           getAgentSettings: vitestModule.vi.fn(async () => ({
             tenantId: "tenant-1",
             messageDebounceDelaySeconds: 5,
+            assistantEnabled: true,
             appointmentReminderEnabled: false,
             appointmentReminderDaysBefore: null,
             appointmentReminderAttendanceTemplateName: null,
@@ -550,6 +559,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
     const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
       tenantId: "tenant-1",
       messageDebounceDelaySeconds: 5,
+      assistantEnabled: true,
       appointmentReminderEnabled: false,
       appointmentReminderDaysBefore: null,
       appointmentReminderAttendanceTemplateName: null,
@@ -568,6 +578,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
         getAgentSettings: vitestModule.vi.fn(async () => ({
           tenantId: "tenant-1",
           messageDebounceDelaySeconds: 5,
+          assistantEnabled: true,
           appointmentReminderEnabled: false,
           appointmentReminderDaysBefore: null,
           appointmentReminderAttendanceTemplateName: null,
@@ -614,6 +625,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
       const updateAgentSettingsMock = vitestModule.vi.fn(async () => ({
         tenantId: "tenant-1",
         messageDebounceDelaySeconds: 5,
+        assistantEnabled: true,
         appointmentReminderEnabled: false,
         appointmentReminderDaysBefore: null,
         appointmentReminderAttendanceTemplateName: null,
@@ -629,6 +641,7 @@ vitestModule.describe("ConfiguracionesPage", () => {
           getAgentSettings: vitestModule.vi.fn(async () => ({
             tenantId: "tenant-1",
             messageDebounceDelaySeconds: 5,
+            assistantEnabled: true,
             appointmentReminderEnabled: false,
             appointmentReminderDaysBefore: null,
             appointmentReminderAttendanceTemplateName: null,

@@ -109,6 +109,7 @@ class OfficeLocationDTO(pydantic.BaseModel):
 
 class UpdateAgentSettingsDTO(pydantic.BaseModel):
     message_debounce_delay_seconds: int
+    assistant_enabled: bool = True
     appointment_reminder_enabled: bool = False
     appointment_reminder_days_before: int | None = None
     appointment_reminder_attendance_template_name: str | None = None
@@ -148,6 +149,7 @@ class UpdateAgentSettingsDTO(pydantic.BaseModel):
 class AgentSettingsResponseDTO(pydantic.BaseModel):
     tenant_id: str
     message_debounce_delay_seconds: int
+    assistant_enabled: bool
     appointment_reminder_enabled: bool
     appointment_reminder_days_before: int | None
     appointment_reminder_attendance_template_name: str | None

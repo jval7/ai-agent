@@ -390,6 +390,7 @@ export function ConfiguracionesPage() {
       const fresh = await appContainer.agentUseCase.getAgentSettings();
       return appContainer.agentUseCase.updateAgentSettings({
         messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+        assistantEnabled: fresh.assistantEnabled,
         appointmentReminderEnabled: true,
         appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore ?? 1,
         appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
@@ -420,6 +421,7 @@ export function ConfiguracionesPage() {
       const fresh = await appContainer.agentUseCase.getAgentSettings();
       return appContainer.agentUseCase.updateAgentSettings({
         messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+        assistantEnabled: fresh.assistantEnabled,
         appointmentReminderEnabled: false,
         appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore,
         appointmentReminderAttendanceTemplateName: null,
@@ -441,6 +443,7 @@ export function ConfiguracionesPage() {
     mutationFn: () =>
       appContainer.agentUseCase.updateAgentSettings({
         messageDebounceDelaySeconds: debounceDelay,
+        assistantEnabled: settingsQuery.data?.assistantEnabled ?? true,
         appointmentReminderEnabled: isReminderActive,
         appointmentReminderDaysBefore: isReminderActive ? reminderDaysBefore : null,
         appointmentReminderAttendanceTemplateName:
@@ -475,6 +478,7 @@ export function ConfiguracionesPage() {
     mutationFn: () =>
       appContainer.agentUseCase.updateAgentSettings({
         messageDebounceDelaySeconds: settingsQuery.data?.messageDebounceDelaySeconds ?? 0,
+        assistantEnabled: settingsQuery.data?.assistantEnabled ?? true,
         appointmentReminderEnabled: settingsQuery.data?.appointmentReminderEnabled ?? false,
         appointmentReminderDaysBefore: settingsQuery.data?.appointmentReminderDaysBefore ?? null,
         appointmentReminderAttendanceTemplateName:
@@ -510,6 +514,7 @@ export function ConfiguracionesPage() {
     mutationFn: (newTiming: PaymentTiming) =>
       appContainer.agentUseCase.updateAgentSettings({
         messageDebounceDelaySeconds: settingsQuery.data?.messageDebounceDelaySeconds ?? 0,
+        assistantEnabled: settingsQuery.data?.assistantEnabled ?? true,
         appointmentReminderEnabled: settingsQuery.data?.appointmentReminderEnabled ?? false,
         appointmentReminderDaysBefore: settingsQuery.data?.appointmentReminderDaysBefore ?? null,
         appointmentReminderAttendanceTemplateName:
