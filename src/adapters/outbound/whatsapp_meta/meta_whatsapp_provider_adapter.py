@@ -80,7 +80,7 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
             url=subscribed_apps_url,
             operation_label="subscribing app to waba",
             headers=headers,
-            body={},
+            body={"subscribed_fields": ["messages", "smb_message_echoes"]},
         )
         self._assert_success_flag(response_payload, "subscribing app to waba")
 

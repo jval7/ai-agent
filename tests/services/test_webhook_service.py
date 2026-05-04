@@ -41,6 +41,7 @@ class WebhookTestContext(typing.NamedTuple):
         processed_webhook_event_repository_adapter.InMemoryProcessedWebhookEventRepositoryAdapter
     )
     blacklist_repository: blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter
+    agent_profile_repository: agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter
 
 
 def build_webhook_service(
@@ -150,6 +151,7 @@ def build_webhook_service(
         conversation_repository=conversation_repository,
         processed_repository=processed_repository,
         blacklist_repository=blacklist_repository,
+        agent_profile_repository=agent_profile_repository,
     )
 
 
@@ -321,6 +323,35 @@ def test_process_payload_customer_message_in_human_mode_only_persists_inbound() 
     assert messages[1].role == "user"
     assert ctx.processed_repository.exists("tenant-1", "evt-professional")
     assert ctx.processed_repository.exists("tenant-1", "evt-customer")
+
+
+def test_process_payload_skips_ai_when_assistant_disabled_globally() -> None:
+    ctx = build_webhook_service(["conversation-1", "in-msg-1"])
+    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    ctx.agent_profile_repository.save(
+        agent_profile_entity.AgentProfile(
+            tenant_id="tenant-1",
+            system_prompt="tenant custom prompt",
+            assistant_enabled=False,
+            updated_at=now_value,
+        )
+    )
+    ctx.provider.events = [build_customer_text_event()]
+
+    ctx.service.process_payload({})
+
+    assert len(ctx.llm_provider.calls) == 0
+    assert len(ctx.provider.sent_messages) == 0
+    conversation = ctx.conversation_repository.get_conversation_by_whatsapp_user(
+        "tenant-1", "wa-user-1"
+    )
+    assert conversation is not None
+    assert conversation.control_mode == "AI"
+    messages = ctx.conversation_repository.list_messages("tenant-1", conversation.id)
+    assert len(messages) == 1
+    assert messages[0].role == "user"
+    assert messages[0].direction == "INBOUND"
+    assert ctx.processed_repository.exists("tenant-1", "evt-1")
 
 
 def test_process_payload_professional_echo_creates_conversation_and_sets_human_mode() -> None:

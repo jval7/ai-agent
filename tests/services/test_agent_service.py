@@ -355,3 +355,72 @@ def test_get_agent_settings_returns_default_payment_timing_when_no_profile() -> 
     result = service.get_agent_settings("tenant-1")
 
     assert result.payment_timing == "BEFORE_SESSION"
+
+
+# ---------------------------------------------------------------------------
+# assistant_enabled tests (global toggle for AI auto-reply)
+# ---------------------------------------------------------------------------
+
+
+def test_get_agent_settings_default_assistant_enabled_is_true() -> None:
+    service = build_agent_settings_service()
+
+    result = service.get_agent_settings("tenant-1")
+
+    assert result.assistant_enabled is True
+
+
+def test_update_agent_settings_assistant_enabled_false_roundtrip() -> None:
+    service = build_agent_settings_service()
+
+    result = service.update_agent_settings(
+        "tenant-1",
+        agent_dto.UpdateAgentSettingsDTO(
+            message_debounce_delay_seconds=0,
+            assistant_enabled=False,
+        ),
+    )
+
+    assert result.assistant_enabled is False
+    fetched = service.get_agent_settings("tenant-1")
+    assert fetched.assistant_enabled is False
+
+
+def test_update_system_prompt_preserves_assistant_enabled() -> None:
+    service = build_agent_service()
+
+    service.update_agent_settings(
+        "tenant-1",
+        agent_dto.UpdateAgentSettingsDTO(
+            message_debounce_delay_seconds=0,
+            assistant_enabled=False,
+        ),
+    )
+    service.update_system_prompt(
+        "tenant-1",
+        agent_dto.UpdateSystemPromptDTO(system_prompt="custom prompt"),
+    )
+
+    fetched = service.get_agent_settings("tenant-1")
+    assert fetched.assistant_enabled is False
+
+
+def test_update_professional_profile_preserves_assistant_enabled() -> None:
+    service = build_agent_service()
+
+    service.update_agent_settings(
+        "tenant-1",
+        agent_dto.UpdateAgentSettingsDTO(
+            message_debounce_delay_seconds=0,
+            assistant_enabled=False,
+        ),
+    )
+    service.update_professional_profile(
+        "tenant-1",
+        agent_dto.UpdateProfessionalProfileDTO(
+            identity=agent_dto.AssistantIdentityDTO(assistant_name="Claudia"),
+        ),
+    )
+
+    fetched = service.get_agent_settings("tenant-1")
+    assert fetched.assistant_enabled is False

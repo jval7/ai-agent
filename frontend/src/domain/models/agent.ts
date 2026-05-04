@@ -88,6 +88,7 @@ export type PaymentTiming = "BEFORE_SESSION" | "AFTER_SESSION";
 export interface AgentSettings {
   tenantId: string;
   messageDebounceDelaySeconds: number;
+  assistantEnabled: boolean;
   appointmentReminderEnabled: boolean;
   appointmentReminderDaysBefore: number | null;
   appointmentReminderAttendanceTemplateName: string | null;
@@ -99,6 +100,7 @@ export interface AgentSettings {
 
 export interface UpdateAgentSettingsInput {
   messageDebounceDelaySeconds: number;
+  assistantEnabled: boolean;
   appointmentReminderEnabled: boolean;
   appointmentReminderDaysBefore: number | null;
   appointmentReminderAttendanceTemplateName: string | null;

@@ -101,6 +101,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     const raw = await this.request<{
       tenant_id: string;
       message_debounce_delay_seconds: number;
+      assistant_enabled: boolean | null | undefined;
       appointment_reminder_enabled: boolean;
       appointment_reminder_days_before: number | null;
       appointment_reminder_attendance_template_name: string | null;
@@ -115,6 +116,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return {
       tenantId: raw.tenant_id,
       messageDebounceDelaySeconds: raw.message_debounce_delay_seconds,
+      assistantEnabled: raw.assistant_enabled ?? true,
       appointmentReminderEnabled: raw.appointment_reminder_enabled,
       appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
       appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
@@ -137,6 +139,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     const raw = await this.request<{
       tenant_id: string;
       message_debounce_delay_seconds: number;
+      assistant_enabled: boolean | null | undefined;
       appointment_reminder_enabled: boolean;
       appointment_reminder_days_before: number | null;
       appointment_reminder_attendance_template_name: string | null;
@@ -152,6 +155,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       authRequired: true,
       body: JSON.stringify({
         message_debounce_delay_seconds: input.messageDebounceDelaySeconds,
+        assistant_enabled: input.assistantEnabled,
         appointment_reminder_enabled: input.appointmentReminderEnabled,
         appointment_reminder_days_before: input.appointmentReminderDaysBefore,
         appointment_reminder_attendance_template_name:
@@ -171,6 +175,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return {
       tenantId: raw.tenant_id,
       messageDebounceDelaySeconds: raw.message_debounce_delay_seconds,
+      assistantEnabled: raw.assistant_enabled ?? true,
       appointmentReminderEnabled: raw.appointment_reminder_enabled,
       appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
       appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
