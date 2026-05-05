@@ -146,6 +146,22 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
         ),
         category="bot_behavior",
     ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="omits_internal_categorization",
+        description=(
+            "El bot NO expone al paciente la metadata interna de filtrado de cohort "
+            "(`internal_filter_audience`)."
+        ),
+        implications=(
+            "El bot tiene en su system prompt un tag `<internal_filter_audience>` por "
+            "servicio con valores `NEW_ONLY`/`RETURNING_ONLY`/`BOTH_NEW_AND_RETURNING` "
+            "para filtrar qué ofrecer. NUNCA debe traducir esos códigos al paciente. "
+            "NO debe decir 'para pacientes nuevos', 'para pacientes recurrentes', "
+            "'para pacientes nuevos o recurrentes' ni cualquier mención de la "
+            "categorización."
+        ),
+        category="bot_behavior",
+    ),
 ]
 
 
