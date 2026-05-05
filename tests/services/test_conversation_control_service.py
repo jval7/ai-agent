@@ -11,6 +11,7 @@ import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as 
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
+import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.domain.entities.whatsapp_user as whatsapp_user_entity
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.conversation_dto as conversation_dto
@@ -26,6 +27,8 @@ def build_service() -> tuple[
     conversation_repository_adapter.InMemoryConversationRepositoryAdapter,
     scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
     patient_repository_adapter.InMemoryPatientRepositoryAdapter,
+    fake_adapters.FakeWhatsappProvider,
+    whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter,
 ]:
     store = in_memory_store.InMemoryStore()
     repository = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(store)
@@ -46,7 +49,14 @@ def build_service() -> tuple[
         id_generator=id_generator,
         clock=clock,
     )
-    return service, repository, scheduling_repository, patient_repo
+    return (
+        service,
+        repository,
+        scheduling_repository,
+        patient_repo,
+        whatsapp_provider,
+        whatsapp_connection_repository,
+    )
 
 
 def build_claims(role: str, tenant_id: str = "tenant-1") -> auth_dto.TokenClaimsDTO:
@@ -61,7 +71,7 @@ def build_claims(role: str, tenant_id: str = "tenant-1") -> auth_dto.TokenClaims
 
 
 def test_update_control_mode_switches_human_and_ai() -> None:
-    service, repository, _, _ = build_service()
+    service, repository, _, _, _, _ = build_service()
     now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     repository.save_conversation(
         conversation_entity.Conversation(
@@ -93,7 +103,7 @@ def test_update_control_mode_switches_human_and_ai() -> None:
 
 
 def test_update_control_mode_rejects_non_professional() -> None:
-    service, repository, _, _ = build_service()
+    service, repository, _, _, _, _ = build_service()
     now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     repository.save_conversation(
         conversation_entity.Conversation(
@@ -117,7 +127,7 @@ def test_update_control_mode_rejects_non_professional() -> None:
 
 
 def test_reset_deletes_conversation_user_patient_and_scheduling_requests() -> None:
-    service, repository, scheduling_repository, patient_repo = build_service()
+    service, repository, scheduling_repository, patient_repo, _, _ = build_service()
     started_at = datetime.datetime(2025, 12, 31, tzinfo=datetime.UTC)
 
     repository.save_whatsapp_user(
@@ -207,7 +217,7 @@ def test_reset_deletes_conversation_user_patient_and_scheduling_requests() -> No
 
 
 def test_reset_messages_rejects_non_professional() -> None:
-    service, repository, _, _ = build_service()
+    service, repository, _, _, _, _ = build_service()
     now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     repository.save_conversation(
         conversation_entity.Conversation(
@@ -230,7 +240,7 @@ def test_reset_messages_rejects_non_professional() -> None:
 
 
 def test_update_control_mode_fails_when_conversation_not_found_or_other_tenant() -> None:
-    service, repository, _, _ = build_service()
+    service, repository, _, _, _, _ = build_service()
     now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     repository.save_conversation(
         conversation_entity.Conversation(
@@ -254,7 +264,7 @@ def test_update_control_mode_fails_when_conversation_not_found_or_other_tenant()
 
 
 def test_reset_messages_fails_when_conversation_not_found_or_other_tenant() -> None:
-    service, repository, _, _ = build_service()
+    service, repository, _, _, _, _ = build_service()
     now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     repository.save_conversation(
         conversation_entity.Conversation(
@@ -279,7 +289,7 @@ def test_reset_messages_fails_when_conversation_not_found_or_other_tenant() -> N
 def test_update_control_mode_logs_control_mode_changed(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    service, repository, _, _ = build_service()
+    service, repository, _, _, _, _ = build_service()
     now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     repository.save_conversation(
         conversation_entity.Conversation(
@@ -307,3 +317,127 @@ def test_update_control_mode_logs_control_mode_changed(
         if isinstance(record.__dict__.get("event_data"), dict)
     ]
     assert "conversation.control_mode_changed" in events
+
+
+# ---------------------------------------------------------------------------
+# send_professional_message
+# ---------------------------------------------------------------------------
+
+
+def _seed_human_conversation(
+    repository: conversation_repository_adapter.InMemoryConversationRepositoryAdapter,
+    *,
+    control_mode: str = "HUMAN",
+) -> None:
+    now_value = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    repository.save_conversation(
+        conversation_entity.Conversation(
+            id="conv-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            started_at=now_value,
+            updated_at=now_value,
+            last_message_preview=None,
+            message_ids=[],
+            control_mode=control_mode,  # type: ignore[arg-type]
+        )
+    )
+
+
+def _seed_connection(
+    connection_repository: whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter,
+    *,
+    access_token: str | None,
+    phone_number_id: str | None,
+) -> None:
+    connection_repository.save(
+        whatsapp_connection_entity.WhatsappConnection(
+            tenant_id="tenant-1",
+            phone_number_id=phone_number_id,
+            business_account_id="business-1",
+            access_token=access_token,
+            status="CONNECTED",
+            embedded_signup_state=None,
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+
+def test_send_professional_message_persists_outbound_and_returns_response() -> None:
+    service, repository, _, _, whatsapp_provider, connection_repo = build_service()
+    _seed_human_conversation(repository, control_mode="HUMAN")
+    _seed_connection(connection_repo, access_token="token-1", phone_number_id="phone-1")
+
+    response = service.send_professional_message(
+        claims=build_claims(role="professional"),
+        conversation_id="conv-1",
+        send_dto=conversation_dto.SendProfessionalMessageDTO(message_text="Hola, ¿cómo estás?"),
+    )
+
+    assert response.role == "human_agent"
+    assert response.content == "Hola, ¿cómo estás?"
+    assert response.conversation_id == "conv-1"
+    assert len(whatsapp_provider.sent_messages) == 1
+    assert whatsapp_provider.sent_messages[0]["whatsapp_user_id"] == "wa-user-1"
+    assert whatsapp_provider.sent_messages[0]["text"] == "Hola, ¿cómo estás?"
+    persisted = repository.list_messages("tenant-1", "conv-1")
+    assert len(persisted) == 1
+    assert persisted[0].role == "human_agent"
+    assert persisted[0].direction == "OUTBOUND"
+
+
+def test_send_professional_message_rejects_non_professional() -> None:
+    service, repository, _, _, whatsapp_provider, connection_repo = build_service()
+    _seed_human_conversation(repository, control_mode="HUMAN")
+    _seed_connection(connection_repo, access_token="token-1", phone_number_id="phone-1")
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.send_professional_message(
+            claims=build_claims(role="member"),
+            conversation_id="conv-1",
+            send_dto=conversation_dto.SendProfessionalMessageDTO(message_text="hola"),
+        )
+
+    assert whatsapp_provider.sent_messages == []
+
+
+def test_send_professional_message_raises_when_conversation_missing() -> None:
+    service, _, _, _, _, connection_repo = build_service()
+    _seed_connection(connection_repo, access_token="token-1", phone_number_id="phone-1")
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        service.send_professional_message(
+            claims=build_claims(role="professional"),
+            conversation_id="conv-missing",
+            send_dto=conversation_dto.SendProfessionalMessageDTO(message_text="hola"),
+        )
+
+
+def test_send_professional_message_requires_human_mode() -> None:
+    service, repository, _, _, whatsapp_provider, connection_repo = build_service()
+    _seed_human_conversation(repository, control_mode="AI")
+    _seed_connection(connection_repo, access_token="token-1", phone_number_id="phone-1")
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.send_professional_message(
+            claims=build_claims(role="professional"),
+            conversation_id="conv-1",
+            send_dto=conversation_dto.SendProfessionalMessageDTO(message_text="hola"),
+        )
+
+    assert whatsapp_provider.sent_messages == []
+
+
+def test_send_professional_message_raises_when_connection_missing_credentials() -> None:
+    service, repository, _, _, whatsapp_provider, connection_repo = build_service()
+    _seed_human_conversation(repository, control_mode="HUMAN")
+    _seed_connection(connection_repo, access_token=None, phone_number_id="phone-1")
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.send_professional_message(
+            claims=build_claims(role="professional"),
+            conversation_id="conv-1",
+            send_dto=conversation_dto.SendProfessionalMessageDTO(message_text="hola"),
+        )
+
+    assert whatsapp_provider.sent_messages == []
