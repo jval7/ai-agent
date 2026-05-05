@@ -482,6 +482,27 @@ async def _get_conversation_id(
     return None
 
 
+async def _get_conversation_control_mode(
+    client: httpx.AsyncClient,
+    access_token: str,
+    whatsapp_user_id: str,
+) -> str | None:
+    """Retorna control_mode (AI / HUMAN) de la conversacion del paciente.
+
+    Cuando el bot ejecuta handoff_to_human, control_mode flippea a HUMAN y el
+    bot deja de responder por diseno. El runner usa esta señal para distinguir
+    handoff temprano (terminacion legitima) de un timeout real.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = await client.get("/v1/conversations", headers=headers)
+    resp.raise_for_status()
+    for conv in resp.json().get("items", []):
+        if conv.get("whatsapp_user_id") == whatsapp_user_id:
+            mode = conv.get("control_mode")
+            return str(mode) if mode is not None else None
+    return None
+
+
 async def _get_messages(
     client: httpx.AsyncClient,
     access_token: str,
@@ -899,6 +920,20 @@ async def _run_patient(
                     max_wait=120.0,
                 )
                 if not got_response:
+                    # Detectar handoff temprano: si el bot ejecuto
+                    # handoff_to_human, control_mode flippeo a HUMAN y queda
+                    # silente por diseno. Es terminacion legitima.
+                    control_mode = await _get_conversation_control_mode(
+                        client, access_token, patient["whatsapp_user_id"]
+                    )
+                    if control_mode == "HUMAN":
+                        elapsed = time.monotonic() - start
+                        logger.info(
+                            "[%s] Bot silente — control_mode=HUMAN (handoff temprano) en %.1fs",
+                            tag,
+                            elapsed,
+                        )
+                        return elapsed
                     raise RuntimeError(f"AI no respondio tras 120s en turno {turn} (post-pending)")
             continue
 
@@ -926,6 +961,21 @@ async def _run_patient(
                         "[%s] Bot silente con status %s (near-terminal) — flujo completado en %.1fs",
                         tag,
                         near_terminal_status,
+                        elapsed,
+                    )
+                    return elapsed
+                # Handoff temprano: el bot ejecuto handoff_to_human ANTES de
+                # crear scheduling_request (ej. paciente pide modalidad
+                # incompatible y el bot honest-rechaza + escala). control_mode
+                # flippea a HUMAN y el bot queda silente por diseno.
+                control_mode = await _get_conversation_control_mode(
+                    client, access_token, patient["whatsapp_user_id"]
+                )
+                if control_mode == "HUMAN":
+                    elapsed = time.monotonic() - start
+                    logger.info(
+                        "[%s] Bot silente — control_mode=HUMAN (handoff temprano) en %.1fs",
+                        tag,
                         elapsed,
                     )
                     return elapsed
@@ -1120,6 +1170,22 @@ async def _capture_conversation_snapshot(
         logger.warning(
             "_capture_conversation_snapshot: no pudo obtener scheduling request: %s", exc
         )
+
+    # Handoff temprano: el bot escalo a humano antes de crear scheduling_request
+    # (ej. paciente pidio modalidad incompatible). Si NO hay sr pero la
+    # conversacion esta en control_mode=HUMAN, fue terminacion legitima por
+    # diseno — reportar EARLY_HANDOFF para distinguir del HUMAN_HANDOFF
+    # post-scheduling.
+    if scheduling_request_id is None and status != "skipped":
+        try:
+            control_mode = await _get_conversation_control_mode(
+                client, access_token, whatsapp_user_id_with_run
+            )
+            if control_mode == "HUMAN":
+                final_status = "EARLY_HANDOFF"
+                effective_status = "ok"
+        except httpx.HTTPStatusError as exc:
+            logger.warning("_capture_conversation_snapshot: no pudo obtener control_mode: %s", exc)
 
     snapshot = eval_run_entity.EvalRunConversationSnapshot(
         persona_id=persona.id,
