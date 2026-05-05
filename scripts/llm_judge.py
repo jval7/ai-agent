@@ -145,6 +145,30 @@ _GLOSSARY: dict[str, str] = {
         "el texto EXACTO del OUTBOUND (no parafrasear, no inventar). "
         "Inferencia comportamental por OUTBOUND."
     ),
+    "respects_service_modalities": (
+        "regla CONCEPTUAL: el bot solo ofrece modalidades (PRESENCIAL / VIRTUAL) "
+        "que estan listadas en `<modalities>` del `<service>` que el paciente "
+        "elige. Si un servicio solo tiene modalidad PRESENCIAL, el bot NO debe "
+        "ofrecer atender VIRTUAL aunque el paciente este en otra ciudad o pais; "
+        "viceversa. El contexto del paciente (residencia, pais) NO autoriza al "
+        "bot a inventar una modalidad que el AgentProfile no soporta. "
+        "El header del user prompt te informa los servicios y sus modalidades "
+        "disponibles ('Shape services and modalities: ...'); usa esa info para "
+        "verificar. "
+        "verified=true si TODOS los OUTBOUND donde el bot menciona modalidad "
+        "(presencial/virtual/online/en consultorio/desde donde te conectes) "
+        "respetan el set de modalidades configurado para el servicio elegido. "
+        "verified=false si algun OUTBOUND ofrece, propone o asume una "
+        "modalidad NO listada en `<modalities>` para ese servicio — citar "
+        "texto exacto del OUTBOUND y mencionar cual es el set de modalidades "
+        "real del servicio. "
+        "EXCEPCION: si el bot le dice al paciente 'este servicio solo se "
+        "atiende presencial, ¿queres venir o prefieres pasar a humano para ver "
+        "alternativas?', eso NO viola la cap — esta comunicando la restriccion "
+        "del servicio, no inventando modalidad. Tampoco viola si pasa a "
+        "handoff_to_human cuando la modalidad no aplica. "
+        "Inferencia comportamental por OUTBOUND."
+    ),
     "quotes_price_on_demand": (
         "regla CONCEPTUAL: el bot NO cotiza precios al paciente sin que algun "
         "INBOUND previo lo haya pedido. La rúbrica mira el ORDEN entre "
@@ -245,6 +269,7 @@ _INFERENTIAL_CAPS = frozenset(
         "omits_obvious_metadata",  # se verifica por ausencia de metadata trivial al presentar servicios
         "skips_payment_when_after_session",  # condicional al shape; se verifica por ausencia de CTA pago en AFTER_SESSION
         "quotes_price_on_demand",  # se verifica por orden INBOUND-pregunta -> OUTBOUND-precio
+        "respects_service_modalities",  # se verifica contra <modalities> del servicio elegido
     }
 )
 
@@ -303,6 +328,15 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   del equipo (ej. "te atiende un asesor humano") NO viola la cap. verified=true si
   NINGUN OUTBOUND comunica gestion interna con la profesional. verified=false ante
   CUALQUIER OUTBOUND con esa semantica — citar texto exacto del OUTBOUND.
+- respects_service_modalities: el bot solo ofrece modalidades (PRESENCIAL/VIRTUAL)
+  listadas en <modalities> del <service> elegido. NO inventa una modalidad que el
+  AgentProfile no soporta aunque el contexto del paciente sugiera otra (ej. paciente
+  en Berlin no autoriza ofrecer VIRTUAL si el servicio es solo PRESENCIAL). El header
+  del user prompt te informa los servicios y modalidades ('Shape services and
+  modalities: ...'). verified=true si todos los OUTBOUND con mencion de modalidad
+  respetan el set configurado. verified=false si bot ofrece/asume modalidad no
+  listada — citar exacto. EXCEPCION: comunicarle al paciente la restriccion ("este
+  servicio solo se atiende presencial, ¿queres venir o pasar a humano?") NO viola.
 - quotes_price_on_demand: el bot NO cotiza precios sin que el paciente los pida.
   Mira el ORDEN INBOUND -> OUTBOUND. verified=true si CADA OUTBOUND con precio
   numérico+currency tiene al menos una de estas: (a) algún INBOUND ANTERIOR
@@ -377,6 +411,12 @@ Reglas:
          la profesional tratante (envio, traspaso, consulta, gestion, revision,
          comparticion), verified=false con cita exacta del texto. Excepcion:
          escalada explicita a un OPERADOR HUMANO del equipo (no la profesional).
+       - respects_service_modalities: verified=true si los OUTBOUND con mencion
+         de modalidad respetan el set listado en <modalities> del servicio
+         elegido (informado en header 'Shape services and modalities'). verified=
+         false si bot ofrece/asume modalidad no listada (ej. VIRTUAL cuando solo
+         hay PRESENCIAL) — citar OUTBOUND exacto. Comunicar la restriccion al
+         paciente NO viola.
        - quotes_price_on_demand: verified=true si cada OUTBOUND con precio
          tiene un INBOUND previo que preguntó precio (cuánto vale/cuesta/cotización),
          o es el mensaje pre-pago oficial (BEFORE_SESSION), o responde sobre el
@@ -460,6 +500,7 @@ def _build_user_prompt(
     declared_capabilities: list[str],
     transcript: list[eval_run_entity.EvalRunConversationMessage],
     shape_payment_timing: str | None,
+    shape_services_modalities: list[tuple[str, list[str]]] | None,
 ) -> str:
     """Construye el mensaje de usuario para el juez."""
     caps_str = ", ".join(declared_capabilities)
@@ -471,6 +512,14 @@ def _build_user_prompt(
     # esta señal para decidir si aplican o si emiten verified=true automatico.
     if shape_payment_timing is not None:
         lines.append(f"Shape payment_timing: {shape_payment_timing}")
+    # Cap respects_service_modalities: el juez compara los OUTBOUND contra
+    # esta lista para detectar si el bot inventa una modalidad no soportada.
+    if shape_services_modalities:
+        services_str = "; ".join(
+            f"{name}: {', '.join(mods) if mods else '(unspecified)'}"
+            for name, mods in shape_services_modalities
+        )
+        lines.append(f"Shape services and modalities: {services_str}")
     lines.extend(
         [
             "",
@@ -504,6 +553,7 @@ def judge_conversation(
     model: str = "gemini-2.5-flash",
     timeout_seconds: float = 30.0,
     shape_payment_timing: str | None = None,
+    shape_services_modalities: list[tuple[str, list[str]]] | None = None,
 ) -> eval_run_entity.JudgeVerdict:
     """Llama Gemini con structured output para verificar capabilities.
 
@@ -513,6 +563,10 @@ def judge_conversation(
 
     `shape_payment_timing` se pasa al user prompt para que caps condicionales
     (ej. skips_payment_when_after_session) sepan cuando aplicar.
+
+    `shape_services_modalities` (lista de (service_name, modalities)) se pasa
+    para que la cap respects_service_modalities pueda contrastar lo que el
+    bot dice vs lo que el AgentProfile soporta.
     """
     judged_at = datetime.datetime.now(tz=datetime.UTC)
 
@@ -531,6 +585,7 @@ def judge_conversation(
         declared_capabilities,
         transcript,
         shape_payment_timing,
+        shape_services_modalities,
     )
 
     try:

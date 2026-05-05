@@ -321,11 +321,11 @@ def test_get_run_maps_verdict_with_error_field() -> None:
 _CAPABILITY_LITERALS: list[str] = list(typing.get_args(personas_module.Capability))
 
 
-def test_list_capabilities_returns_17_items() -> None:
-    """El glossary tiene exactamente 17 capabilities."""
+def test_list_capabilities_returns_18_items() -> None:
+    """El glossary tiene exactamente 18 capabilities."""
     svc, _ = _make_service()
     caps = svc.list_capabilities()
-    assert len(caps) == 17
+    assert len(caps) == 18
 
 
 def test_list_capabilities_covers_all_literal_values() -> None:
@@ -351,7 +351,7 @@ def test_list_capabilities_all_have_required_fields() -> None:
 
 
 def test_list_capabilities_categories_distribution() -> None:
-    """2 location, 2 cohort, 7 behavior, 6 bot_behavior."""
+    """2 location, 2 cohort, 7 behavior, 7 bot_behavior."""
     svc, _ = _make_service()
     caps = svc.list_capabilities()
     by_category: dict[str, int] = {}
@@ -360,4 +360,4 @@ def test_list_capabilities_categories_distribution() -> None:
     assert by_category.get("location") == 2
     assert by_category.get("cohort") == 2
     assert by_category.get("behavior") == 7
-    assert by_category.get("bot_behavior") == 6
+    assert by_category.get("bot_behavior") == 7
