@@ -145,6 +145,17 @@ _GLOSSARY: dict[str, str] = {
         "el texto EXACTO del OUTBOUND (no parafrasear, no inventar). "
         "Inferencia comportamental por OUTBOUND."
     ),
+    "omits_internal_categorization": (
+        "El bot NO expone al paciente la metadata interna del sistema. "
+        "Específicamente, NO debe decir frases como 'para pacientes nuevos', "
+        "'para pacientes recurrentes', 'para pacientes nuevos o recurrentes' "
+        "ni nada que traduzca los codigos internos NEW_ONLY/RETURNING_ONLY/"
+        "BOTH_NEW_AND_RETURNING.\n"
+        "Verifica AUSENCIA de esas frases en cualquier mensaje OUTBOUND del "
+        "bot. Si todos los OUTBOUND están limpios → verified=true. Si "
+        "encuentras una frase que regurgita la categorización → verified=false "
+        "con la cita literal como evidence."
+    ),
 }
 
 # Caps que pueden verificarse por inferencia comportamental (criterio b).
@@ -158,6 +169,7 @@ _INFERENTIAL_CAPS = frozenset(
         "quotes_currency_per_location",  # se verifica por OUTBOUND del bot
         "hides_internal_handoff",  # se verifica por ausencia de frases en OUTBOUND
         "uses_pre_payment_vocabulary",  # se verifica por ausencia de "confirmar" pre-pago
+        "omits_internal_categorization",  # se verifica por ausencia de categorizacion en OUTBOUND
     }
 )
 
@@ -216,6 +228,13 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   del equipo (ej. "te atiende un asesor humano") NO viola la cap. verified=true si
   NINGUN OUTBOUND comunica gestion interna con la profesional. verified=false ante
   CUALQUIER OUTBOUND con esa semantica — citar texto exacto del OUTBOUND.
+- omits_internal_categorization: el bot NO expone al paciente la metadata interna
+  de filtrado de cohort. Verifica AUSENCIA de frases como "para pacientes nuevos",
+  "para pacientes recurrentes", "para pacientes nuevos o recurrentes" o cualquier
+  traduccion de los codigos internos NEW_ONLY/RETURNING_ONLY/BOTH_NEW_AND_RETURNING
+  en los mensajes OUTBOUND. verified=true si todos los OUTBOUND estan limpios de
+  esas frases. verified=false si encuentras alguna — citar la frase EXACTA del
+  OUTBOUND como evidence.
 
 Reglas:
 
@@ -228,7 +247,8 @@ Reglas:
        asks_about_price).
 
    (b) Evidencia COMPORTAMENTAL (solo para caps inferenciales — local_patient,
-       foreign_patient, new_patient, returning_patient, quotes_currency_per_location):
+       foreign_patient, new_patient, returning_patient, quotes_currency_per_location,
+       uses_pre_payment_vocabulary, hides_internal_handoff, omits_internal_categorization):
        el flujo de la conversacion es consistente con la capability, observando como
        el bot trata al paciente, que datos pide o no, en que moneda cotiza, que metodo
        de pago ofrece, o como el paciente actua. Ejemplos:
@@ -253,6 +273,11 @@ Reglas:
          la profesional tratante (envio, traspaso, consulta, gestion, revision,
          comparticion), verified=false con cita exacta del texto. Excepcion:
          escalada explicita a un OPERADOR HUMANO del equipo (no la profesional).
+       - omits_internal_categorization: verified=true si NINGUN OUTBOUND contiene
+         frases como "para pacientes nuevos", "para pacientes recurrentes", "para
+         pacientes nuevos o recurrentes" o cualquier traduccion de los codigos
+         NEW_ONLY/RETURNING_ONLY/BOTH_NEW_AND_RETURNING. verified=false si
+         encuentras alguna — citar la frase EXACTA del OUTBOUND como evidence.
 
 3.5. ANTI-ALUCINACION: el campo evidence DEBE ser una cita TEXTUAL del transcript
      real (copiar el texto exacto de algun mensaje INBOUND u OUTBOUND segun el

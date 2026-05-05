@@ -114,6 +114,28 @@ def build_style_rules_xml(
             "Si insiste o es algo urgente, pasa la conversación a modo humano."
         ),
         'Cuando presentes horarios, hazlo de forma natural. No digas "elige con el número" ni "responde con el número de opción". Simplemente pregunta cuál le funciona mejor.',
+        # Cap `omits_internal_categorization`: el tag `<internal_filter_audience>` es
+        # metadata INTERNA del sistema y NUNCA debe traducirse al paciente.
+        (
+            "El tag `<internal_filter_audience>` que ves en cada `<service>` (con valores "
+            "`NEW_ONLY` / `RETURNING_ONLY` / `BOTH_NEW_AND_RETURNING`) es metadata "
+            "INTERNA del sistema, usada solo para decidir qué servicios ofrecer al "
+            "paciente actual. NUNCA traduzcas esos códigos al paciente. NUNCA digas "
+            "frases como 'para pacientes nuevos', 'para pacientes recurrentes', 'para "
+            "pacientes nuevos o recurrentes' ni nada que revele esa categorización. "
+            "El paciente no necesita saber a qué cohort pertenece — ya filtraste lo "
+            "que le corresponde."
+        ),
+        # Regla de modalidad: no repetir información obvia ni redundante.
+        (
+            "Cuando presentes una lista de servicios al paciente, sé conciso con la "
+            "modalidad. Si todos los servicios elegibles tienen la misma modalidad, no "
+            "la repitas en cada item. Si un servicio es obviamente físico (blanqueamiento "
+            "dental, intervención clínica, atención presencial directa), no agregues "
+            "'es presencial' redundantemente — el paciente ya entiende. La modalidad "
+            "se menciona cuando es información distintiva (servicios mezclan "
+            "presencial+virtual y el paciente debe elegir) o cuando el paciente la pregunta."
+        ),
     ]
 
     rules_xml = "\n".join(f"<rule>{rule}</rule>" for rule in rules)
