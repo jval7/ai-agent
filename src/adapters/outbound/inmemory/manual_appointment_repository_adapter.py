@@ -1,3 +1,5 @@
+import datetime
+
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.domain.entities.manual_appointment as manual_appointment_entity
 import src.ports.manual_appointment_repository_port as manual_appointment_repository_port
@@ -62,6 +64,36 @@ class InMemoryManualAppointmentRepositoryAdapter(
                     continue
                 items.append(appointment.model_copy(deep=True))
             return items
+
+    def count_by_tenant(self, tenant_id: str, status: str | None = None) -> int:
+        with self._store.lock:
+            appointment_ids = self._store.manual_appointment_ids_by_tenant.get(tenant_id, [])
+            count = 0
+            for appointment_id in appointment_ids:
+                appointment = self._store.manual_appointment_by_id.get(appointment_id)
+                if appointment is None:
+                    continue
+                if status is not None and appointment.status != status:
+                    continue
+                count += 1
+            return count
+
+    def sum_paid_revenue_since(self, tenant_id: str, since: datetime.datetime) -> int:
+        with self._store.lock:
+            appointment_ids = self._store.manual_appointment_ids_by_tenant.get(tenant_id, [])
+            total = 0
+            for appointment_id in appointment_ids:
+                appointment = self._store.manual_appointment_by_id.get(appointment_id)
+                if appointment is None:
+                    continue
+                if appointment.payment_status != "PAID":
+                    continue
+                if appointment.payment_updated_at is None or appointment.payment_updated_at < since:
+                    continue
+                if appointment.payment_amount_cop is None:
+                    continue
+                total += appointment.payment_amount_cop
+            return total
 
     def list_by_patient(
         self,

@@ -107,6 +107,27 @@ class FirestoreScheduledReminderRepositoryAdapter(
                 reminders.append(reminder)
         return reminders
 
+    def count_by_tenant(self, tenant_id: str, status: str | None = None) -> int:
+        reminders_collection = firestore_paths.tenant_scheduled_reminders_collection(
+            self._client,
+            tenant_id,
+        )
+        if status is None:
+            query = reminders_collection
+        else:
+            query = reminders_collection.where("status", "==", status)
+        try:
+            count_query = query.count()
+            result = count_query.get()
+            return int(result[0][0].value)
+        except (
+            google_api_exceptions.GoogleAPICallError,
+            google_api_exceptions.RetryError,
+        ) as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to count scheduled reminders from firestore"
+            ) from error
+
     def list_pending_by_source(
         self,
         tenant_id: str,

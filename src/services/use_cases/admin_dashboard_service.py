@@ -40,56 +40,38 @@ class AdminDashboardService:
         professional_name: str | None,
         now: datetime.datetime,
     ) -> admin_dto.TenantSummaryDTO:
-        patients = self._patient_repository.list_by_tenant(tenant_id)
-        conversations = self._conversation_repository.list_conversations(tenant_id)
-        upcoming_appointments = self._manual_appointment_repository.list_by_tenant(
+        patient_count = self._patient_repository.count_by_tenant(tenant_id)
+        conversation_count = self._conversation_repository.count_conversations(tenant_id)
+        upcoming_appointment_count = self._manual_appointment_repository.count_by_tenant(
             tenant_id, status="SCHEDULED"
         )
-        pending_reminders = self._scheduled_reminder_repository.list_by_tenant(
+        pending_reminder_count = self._scheduled_reminder_repository.count_by_tenant(
             tenant_id, status="PENDING"
         )
 
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        active_today = sum(
-            1 for c in conversations if c.updated_at is not None and c.updated_at >= today_start
-        )
+        active_today = self._conversation_repository.count_active_since(tenant_id, today_start)
 
-        revenue_this_month = 0
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        for appt in upcoming_appointments:
-            if (
-                appt.payment_status == "PAID"
-                and appt.payment_updated_at is not None
-                and appt.payment_updated_at >= month_start
-                and appt.payment_amount_cop is not None
-            ):
-                revenue_this_month += appt.payment_amount_cop
+        revenue_this_month = self._manual_appointment_repository.sum_paid_revenue_since(
+            tenant_id, month_start
+        ) + self._scheduling_repository.sum_paid_revenue_since(tenant_id, month_start)
 
-        last_activity: datetime.datetime | None = None
-        for conv in conversations:
-            if conv.updated_at is not None and (
-                last_activity is None or conv.updated_at > last_activity
-            ):
-                last_activity = conv.updated_at
+        last_activity = self._conversation_repository.get_latest_activity(tenant_id)
 
-        users = self._user_repository.list_all()
-        owner_email: str | None = None
-        owner_is_active = False
-        for user in users:
-            if user.tenant_id == tenant_id:
-                owner_email = user.email
-                owner_is_active = user.is_active
-                break
+        owner = self._user_repository.get_first_by_tenant(tenant_id)
+        owner_email: str | None = owner.email if owner is not None else None
+        owner_is_active = owner.is_active if owner is not None else False
 
         return admin_dto.TenantSummaryDTO(
             tenant_id=tenant_id,
             tenant_name=tenant_name,
             professional_name=professional_name,
-            patient_count=len(patients),
-            conversation_count=len(conversations),
+            patient_count=patient_count,
+            conversation_count=conversation_count,
             active_conversations_today=active_today,
-            manual_appointment_count_upcoming=len(upcoming_appointments),
-            pending_reminder_count=len(pending_reminders),
+            manual_appointment_count_upcoming=upcoming_appointment_count,
+            pending_reminder_count=pending_reminder_count,
             total_revenue_cop_this_month=revenue_this_month,
             last_activity_at=last_activity,
             owner_email=owner_email,

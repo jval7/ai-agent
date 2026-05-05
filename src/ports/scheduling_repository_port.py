@@ -1,4 +1,5 @@
 import abc
+import datetime
 
 import src.domain.entities.scheduling_request as scheduling_request_entity
 
@@ -28,4 +29,8 @@ class SchedulingRepositoryPort(abc.ABC):
     def list_requests_by_conversation(
         self, tenant_id: str, conversation_id: str
     ) -> list[scheduling_request_entity.SchedulingRequest]:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def sum_paid_revenue_since(self, tenant_id: str, since: datetime.datetime) -> int:
         raise NotImplementedError

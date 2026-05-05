@@ -1,3 +1,5 @@
+import datetime
+
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.ports.scheduling_repository_port as scheduling_repository_port
@@ -96,6 +98,23 @@ class InMemorySchedulingRepositoryAdapter(scheduling_repository_port.SchedulingR
                     continue
                 result.append(request.model_copy(deep=True))
             return result
+
+    def sum_paid_revenue_since(self, tenant_id: str, since: datetime.datetime) -> int:
+        with self._store.lock:
+            request_ids = self._store.scheduling_request_ids_by_tenant.get(tenant_id, [])
+            total = 0
+            for request_id in request_ids:
+                request = self._store.scheduling_request_by_id.get(request_id)
+                if request is None:
+                    continue
+                if request.payment_status != "PAID":
+                    continue
+                if request.payment_updated_at is None or request.payment_updated_at < since:
+                    continue
+                if request.payment_amount_cop is None:
+                    continue
+                total += request.payment_amount_cop
+            return total
 
     def list_requests_by_conversation(
         self, tenant_id: str, conversation_id: str

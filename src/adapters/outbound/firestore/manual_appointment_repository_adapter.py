@@ -1,3 +1,5 @@
+import datetime
+
 import google.api_core.exceptions as google_api_exceptions
 import google.cloud.firestore as google_cloud_firestore
 
@@ -106,6 +108,50 @@ class FirestoreManualAppointmentRepositoryAdapter(
             if appointment.tenant_id == tenant_id:
                 appointments.append(appointment)
         return appointments
+
+    def count_by_tenant(self, tenant_id: str, status: str | None = None) -> int:
+        appointments_collection = firestore_paths.tenant_manual_appointments_collection(
+            self._client,
+            tenant_id,
+        )
+        if status is None:
+            query = appointments_collection
+        else:
+            query = appointments_collection.where("status", "==", status)
+        try:
+            count_query = query.count()
+            result = count_query.get()
+            return int(result[0][0].value)
+        except (
+            google_api_exceptions.GoogleAPICallError,
+            google_api_exceptions.RetryError,
+        ) as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to count manual appointments from firestore"
+            ) from error
+
+    def sum_paid_revenue_since(self, tenant_id: str, since: datetime.datetime) -> int:
+        appointments_collection = firestore_paths.tenant_manual_appointments_collection(
+            self._client,
+            tenant_id,
+        )
+        query = appointments_collection.where("payment_status", "==", "PAID").where(
+            "payment_updated_at", ">=", since
+        )
+        try:
+            agg_query = query.sum("payment_amount_cop", alias="revenue")
+            result = agg_query.get()
+            value = result[0][0].value
+            if value is None:
+                return 0
+            return int(value)
+        except (
+            google_api_exceptions.GoogleAPICallError,
+            google_api_exceptions.RetryError,
+        ) as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to sum manual appointment revenue from firestore"
+            ) from error
 
     def list_by_patient(
         self,

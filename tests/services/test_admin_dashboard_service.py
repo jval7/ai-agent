@@ -12,6 +12,7 @@ import src.adapters.outbound.inmemory.user_repository_adapter as user_repository
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.manual_appointment as manual_appointment_entity
 import src.domain.entities.patient as patient_entity
+import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.user as user_entity
 import src.services.use_cases.admin_dashboard_service as admin_dashboard_service
@@ -229,6 +230,37 @@ def test_get_global_metrics_aggregates_across_tenants() -> None:
     assert metrics.control_mode_distribution.get("HUMAN", 0) == 1
 
 
+def _make_scheduling_request(
+    tenant_id: str,
+    request_id: str,
+    *,
+    payment_status: typing.Literal["PENDING", "PAID"] = "PENDING",
+    payment_amount_cop: int | None = None,
+    payment_updated_at: datetime.datetime | None = None,
+) -> scheduling_request_entity.SchedulingRequest:
+    return scheduling_request_entity.SchedulingRequest(
+        id=request_id,
+        tenant_id=tenant_id,
+        conversation_id=f"conv-{request_id}",
+        whatsapp_user_id=f"wa-req-{request_id}",
+        request_kind="INITIAL",
+        status="BOOKED",
+        round_number=1,
+        patient_preference_note=None,
+        rejection_summary=None,
+        professional_note=None,
+        slots=[],
+        slot_options_map={},
+        selected_slot_id=None,
+        calendar_event_id=None,
+        payment_status=payment_status,
+        payment_amount_cop=payment_amount_cop,
+        payment_updated_at=payment_updated_at,
+        created_at=_NOW,
+        updated_at=_NOW,
+    )
+
+
 def test_build_tenant_summary_revenue_this_month() -> None:
     store = _build_store()
     tenant_repo = tenant_repository_adapter.InMemoryTenantRepositoryAdapter(store)
@@ -276,3 +308,99 @@ def test_build_tenant_summary_revenue_this_month() -> None:
 
     assert summary is not None
     assert summary.total_revenue_cop_this_month == 150000
+
+
+def test_build_tenant_summary_revenue_includes_scheduling_requests() -> None:
+    store = _build_store()
+    tenant_repo = tenant_repository_adapter.InMemoryTenantRepositoryAdapter(store)
+    tenant_repo.save(_make_tenant("t1", "Mixed Revenue Clinic"))
+
+    appt_repo = manual_appointment_repository_adapter.InMemoryManualAppointmentRepositoryAdapter(
+        store
+    )
+    appt_repo.save(
+        _make_appointment(
+            "t1",
+            "a1",
+            payment_status="PAID",
+            payment_amount_cop=100000,
+            payment_updated_at=_NOW,
+        )
+    )
+
+    sched_repo = scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter(store)
+    sched_repo.save_request(
+        _make_scheduling_request(
+            "t1",
+            "sr1",
+            payment_status="PAID",
+            payment_amount_cop=80000,
+            payment_updated_at=_NOW,
+        )
+    )
+    # Unpaid request should NOT count
+    sched_repo.save_request(
+        _make_scheduling_request(
+            "t1",
+            "sr2",
+            payment_status="PENDING",
+            payment_amount_cop=50000,
+        )
+    )
+
+    service = _build_service(store)
+    summary = service.get_tenant_summary("t1")
+
+    assert summary is not None
+    assert summary.total_revenue_cop_this_month == 180000
+
+
+def test_patient_count_by_tenant() -> None:
+    store = _build_store()
+    patient_repo = patient_repository_adapter.InMemoryPatientRepositoryAdapter(store)
+    patient_repo.save(_make_patient("t1", "p1"))
+    patient_repo.save(_make_patient("t1", "p2"))
+    patient_repo.save(_make_patient("t2", "p3"))
+
+    assert patient_repo.count_by_tenant("t1") == 2
+    assert patient_repo.count_by_tenant("t2") == 1
+    assert patient_repo.count_by_tenant("t99") == 0
+
+
+def test_conversation_count_and_active_since() -> None:
+    store = _build_store()
+    conv_repo = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(store)
+    yesterday = _NOW - datetime.timedelta(days=1)
+    conv_repo.save_conversation(_make_conversation("t1", "c1", updated_at=_NOW))
+    conv_repo.save_conversation(_make_conversation("t1", "c2", updated_at=yesterday))
+    conv_repo.save_conversation(_make_conversation("t2", "c3", updated_at=_NOW))
+
+    assert conv_repo.count_conversations("t1") == 2
+    assert conv_repo.count_conversations("t2") == 1
+    today_start = _NOW.replace(hour=0, minute=0, second=0, microsecond=0)
+    assert conv_repo.count_active_since("t1", today_start) == 1
+    assert conv_repo.get_latest_activity("t1") == _NOW
+    assert conv_repo.get_latest_activity("t99") is None
+
+
+def test_manual_appointment_count_and_sum() -> None:
+    store = _build_store()
+    appt_repo = manual_appointment_repository_adapter.InMemoryManualAppointmentRepositoryAdapter(
+        store
+    )
+    appt_repo.save(
+        _make_appointment(
+            "t1",
+            "a1",
+            status="SCHEDULED",
+            payment_status="PAID",
+            payment_amount_cop=100000,
+            payment_updated_at=_NOW,
+        )
+    )
+    appt_repo.save(_make_appointment("t1", "a2", status="CANCELLED"))
+
+    assert appt_repo.count_by_tenant("t1") == 2
+    assert appt_repo.count_by_tenant("t1", status="SCHEDULED") == 1
+    assert appt_repo.sum_paid_revenue_since("t1", _MONTH_START) == 100000
+    assert appt_repo.sum_paid_revenue_since("t1", _NOW + datetime.timedelta(days=1)) == 0
