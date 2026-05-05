@@ -421,3 +421,248 @@ def test_submit_professional_slots_rejects_non_preset_duration(duration_minutes:
                 professional_note=None,
             ),
         )
+
+
+# ---------------------------------------------------------------------------
+# resolve_consultation_review (REQUEST_MORE_INFO / REJECT)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_consultation_review_request_more_info_sends_followup() -> None:
+    service, repository, whatsapp_provider, _ = build_services()
+
+    response = service.resolve_consultation_review(
+        claims=build_claims(),
+        conversation_id="conv-1",
+        request_id="req-1",
+        input_dto=scheduling_dto.ConsultationReviewDecisionDTO(
+            decision="REQUEST_MORE_INFO",
+            professional_note="dame mas detalle del motivo",
+        ),
+    )
+
+    assert response.status == "AWAITING_CONSULTATION_DETAILS"
+    assert "motivo de consulta" in response.assistant_text.lower()
+    assert len(whatsapp_provider.sent_messages) == 1
+    assert whatsapp_provider.sent_messages[0]["text"] == response.assistant_text
+    saved = repository.get_request_by_id("tenant-1", "req-1")
+    assert saved is not None
+    assert saved.status == "AWAITING_CONSULTATION_DETAILS"
+
+
+def test_resolve_consultation_review_reject_closes_request() -> None:
+    service, repository, whatsapp_provider, _ = build_services()
+
+    response = service.resolve_consultation_review(
+        claims=build_claims(),
+        conversation_id="conv-1",
+        request_id="req-1",
+        input_dto=scheduling_dto.ConsultationReviewDecisionDTO(
+            decision="REJECT",
+            professional_note="fuera de mi especialidad",
+        ),
+    )
+
+    assert response.status == "CONSULTATION_REJECTED"
+    assert "no puedo ayudarte" in response.assistant_text.lower()
+    assert len(whatsapp_provider.sent_messages) == 1
+    saved = repository.get_request_by_id("tenant-1", "req-1")
+    assert saved is not None
+    assert saved.status == "CONSULTATION_REJECTED"
+
+
+def test_resolve_consultation_review_requires_professional_role() -> None:
+    service, _, whatsapp_provider, _ = build_services()
+    non_professional_claims = auth_dto.TokenClaimsDTO(
+        sub="user-2",
+        tenant_id="tenant-1",
+        role="member",
+        exp=0,
+        jti="jti-2",
+        token_kind="access",
+    )
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.resolve_consultation_review(
+            claims=non_professional_claims,
+            conversation_id="conv-1",
+            request_id="req-1",
+            input_dto=scheduling_dto.ConsultationReviewDecisionDTO(
+                decision="REQUEST_MORE_INFO",
+                professional_note="dame mas detalle",
+            ),
+        )
+
+    assert whatsapp_provider.sent_messages == []
+
+
+def test_resolve_consultation_review_raises_when_conversation_missing() -> None:
+    service, repository, _, _ = build_services()
+    # Build an orphan request whose conversation_id is not in the conversation repo.
+    repository.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="req-orphan",
+            tenant_id="tenant-1",
+            conversation_id="conv-orphan",
+            whatsapp_user_id="wa-user-1",
+            request_kind="INITIAL",
+            status="AWAITING_CONSULTATION_REVIEW",
+            round_number=1,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            slots=[],
+            slot_options_map={},
+            selected_slot_id=None,
+            calendar_event_id=None,
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        service.resolve_consultation_review(
+            claims=build_claims(),
+            conversation_id="conv-orphan",
+            request_id="req-orphan",
+            input_dto=scheduling_dto.ConsultationReviewDecisionDTO(
+                decision="REQUEST_MORE_INFO",
+                professional_note="dame mas detalle",
+            ),
+        )
+
+
+# ---------------------------------------------------------------------------
+# resolve_payment_review (APPROVE / SEND_REMINDER)
+# ---------------------------------------------------------------------------
+
+
+def _seed_payment_pending_request(
+    repository: scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
+    *,
+    request_id: str = "req-pay-1",
+) -> None:
+    repository.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id=request_id,
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            request_kind="INITIAL",
+            status="AWAITING_PAYMENT_CONFIRMATION",
+            round_number=1,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            slots=[],
+            slot_options_map={},
+            selected_slot_id=None,
+            calendar_event_id=None,
+            payment_amount_cop=None,
+            payment_status="PENDING",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+
+def test_resolve_payment_review_approve_marks_paid_and_sends_followup() -> None:
+    service, repository, whatsapp_provider, _ = build_services()
+    _seed_payment_pending_request(repository)
+
+    response = service.resolve_payment_review(
+        claims=build_claims(),
+        conversation_id="conv-1",
+        request_id="req-pay-1",
+        input_dto=scheduling_dto.PaymentReviewDecisionDTO(
+            decision="APPROVE",
+            professional_note=None,
+            payment_amount_cop=80000,
+            payment_currency="COP",
+        ),
+    )
+
+    assert response.status == "AWAITING_PATIENT_CHOICE"
+    assert "Pago recibido" in response.assistant_text
+    assert len(whatsapp_provider.sent_messages) == 1
+    saved = repository.get_request_by_id("tenant-1", "req-pay-1")
+    assert saved is not None
+    assert saved.status == "AWAITING_PATIENT_CHOICE"
+    assert saved.payment_status == "PAID"
+    assert saved.payment_amount_cop == 80000
+
+
+def test_resolve_payment_review_send_reminder_keeps_request_pending() -> None:
+    service, repository, whatsapp_provider, _ = build_services()
+    _seed_payment_pending_request(repository)
+
+    response = service.resolve_payment_review(
+        claims=build_claims(),
+        conversation_id="conv-1",
+        request_id="req-pay-1",
+        input_dto=scheduling_dto.PaymentReviewDecisionDTO(
+            decision="SEND_REMINDER",
+            professional_note=None,
+        ),
+    )
+
+    assert response.status == "AWAITING_PAYMENT_CONFIRMATION"
+    assert "completar el pago" in response.assistant_text
+    assert len(whatsapp_provider.sent_messages) == 1
+    saved = repository.get_request_by_id("tenant-1", "req-pay-1")
+    assert saved is not None
+    assert saved.status == "AWAITING_PAYMENT_CONFIRMATION"
+    assert saved.payment_status == "PENDING"
+
+
+def test_resolve_payment_review_requires_professional_role() -> None:
+    service, repository, whatsapp_provider, _ = build_services()
+    _seed_payment_pending_request(repository)
+    non_professional_claims = auth_dto.TokenClaimsDTO(
+        sub="user-2",
+        tenant_id="tenant-1",
+        role="member",
+        exp=0,
+        jti="jti-2",
+        token_kind="access",
+    )
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.resolve_payment_review(
+            claims=non_professional_claims,
+            conversation_id="conv-1",
+            request_id="req-pay-1",
+            input_dto=scheduling_dto.PaymentReviewDecisionDTO(
+                decision="SEND_REMINDER",
+                professional_note=None,
+            ),
+        )
+
+    assert whatsapp_provider.sent_messages == []
+
+
+def test_resolve_consultation_review_raises_when_connection_missing_credentials() -> None:
+    service, _, _, _ = build_services()
+    # Save replaces the existing connection by tenant_id (port semantics).
+    service._whatsapp_connection_repository.save(
+        whatsapp_connection_entity.WhatsappConnection(
+            tenant_id="tenant-1",
+            phone_number_id="phone-1",
+            business_account_id="business-1",
+            access_token=None,
+            status="PENDING",
+            embedded_signup_state=None,
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.resolve_consultation_review(
+            claims=build_claims(),
+            conversation_id="conv-1",
+            request_id="req-1",
+            input_dto=scheduling_dto.ConsultationReviewDecisionDTO(
+                decision="REQUEST_MORE_INFO",
+                professional_note="dame mas detalle",
+            ),
+        )
