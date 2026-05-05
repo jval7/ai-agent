@@ -1136,12 +1136,17 @@ async def _capture_conversation_snapshot(
             cap for cap in persona.capabilities if cap in personas_module.BOT_BEHAVIOR_CAPS
         }
         if declared_caps_set:
+            # Pass shape's payment_timing so conditional caps
+            # (skips_payment_when_after_session) know whether to apply or
+            # short-circuit to verified=true.
+            shape_payment_timing = shape.agent_profile.payment_timing
             snapshot.judge_verdict = await asyncio.to_thread(
                 llm_judge.judge_conversation,
                 persona_id=persona.id,
                 declared_capabilities=list(declared_caps_set),
                 transcript=snapshot.transcript,
                 gemini_client=_get_gemini_client(),
+                shape_payment_timing=shape_payment_timing,
             )
 
     return snapshot

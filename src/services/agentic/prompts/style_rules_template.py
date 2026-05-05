@@ -108,14 +108,22 @@ def build_style_rules_xml(
         # concepto "confirmar" en attention. Antes se nombraba la palabra
         # prohibida 6+ veces explicandola, lo cual le daba peso semantico.
         # Ahora se la lista UNA sola vez como ejemplo cerrado de prohibicion.
+        # CONDICIONAL al `<payment_timing>`: solo aplica si BEFORE_SESSION,
+        # porque en AFTER_SESSION el flujo no incluye el paso de pago.
         (
             "Vocabulario del flujo de agendamiento — verbos VALIDOS para "
             "describir la accion del flujo: agendar, reservar, asegurar el "
             "cupo, separar el cupo, continuar con el proceso de agendamiento. "
-            "Al pedir el pago di literalmente 'Para reservar tu cita, paga X', "
-            "'Para asegurar tu cupo, paga X' o 'Para continuar con el "
-            "agendamiento, paga X'. El verbo 'confirmar' (y sus derivados) NO "
-            "pertenece a esta fase — pertenece a un estado posterior distinto "
+            "SI `<payment_timing>` es BEFORE_SESSION y necesitas pedir el pago, "
+            "di literalmente 'Para reservar tu cita, paga X', 'Para asegurar tu "
+            "cupo, paga X' o 'Para continuar con el agendamiento, paga X'. SI "
+            "`<payment_timing>` es AFTER_SESSION, NO pidas pago durante el "
+            "agendamiento — el cobro sucede al finalizar la sesion en consultorio. "
+            "Solo MENCIONA esa modalidad como info ('el pago se realiza al "
+            "finalizar la sesion') si el paciente pregunta como pagar o cuando "
+            "cierres la reserva; NUNCA como CTA ni pidas comprobante. El verbo "
+            "'confirmar' (y sus derivados) NO pertenece a la fase de "
+            "agendamiento — pertenece a un estado posterior distinto "
             "(recordatorio post-pago donde el paciente confirma su asistencia). "
             "Durante el agendamiento la cita se RESERVA o AGENDA; nunca se "
             "CONFIRMA. Esta regla aplica con clitics tambien (-te, -le, -se)."
