@@ -258,30 +258,43 @@ _GLOSSARY: dict[str, str] = {
         "Inferencia comportamental por OUTBOUND."
     ),
     "omits_obvious_metadata": (
-        "regla CONCEPTUAL: cuando el bot presenta servicios al paciente, OMITE "
-        "metadata cuya respuesta es trivial, redundante o no aporta informacion "
-        "de decision. Especificamente debe OMITIR: "
+        "regla CONCEPTUAL: cuando el bot PRESENTA un servicio o RESPONDE algo no "
+        "relacionado a modalidad/cohort, OMITE metadata trivial. Especificamente "
+        "debe OMITIR: "
         "(a) Modalidad de un servicio cuya `<modalities>` tiene un solo valor — "
         "presentar el servicio sin coletillas como 'es presencial', 'es virtual', "
-        "'se hace en consultorio', 'es en linea'. La modalidad solo se menciona "
-        "cuando el servicio tiene MULTIPLES modalidades y el paciente debe elegir. "
+        "'se hace en consultorio', 'es en linea'. "
         "(b) Etiqueta de cohort cuando el servicio aplica a 'Pacientes nuevos y "
         "recurrentes' (ambos cohorts) — frases como 'para pacientes nuevos o "
-        "recurrentes', 'para nuevos y recurrentes', 'aplica a cualquier paciente' "
-        "no aportan info util. El cohort SOLO se menciona cuando el "
-        "<target_patients> es restrictivo ('Solo pacientes nuevos' o 'Solo "
-        "pacientes recurrentes') Y aplica al paciente actual. "
+        "recurrentes', 'para nuevos y recurrentes', 'aplica a cualquier paciente'. "
+        "El cohort SOLO se menciona cuando el <target_patients> es restrictivo "
+        "('Solo pacientes nuevos' o 'Solo pacientes recurrentes') Y aplica al "
+        "paciente actual. "
         "(c) Aclaraciones autoimplicitas que se siguen logicamente del contexto "
         "('para cualquier persona', 'esta disponible para todos', 'aplica a quien "
         "lo necesite'). "
-        "EXCEPCION: si el paciente preguntó EXPLICITAMENTE por la modalidad o el "
-        "cohort en un INBOUND previo, el bot DEBE responderle — esa respuesta NO "
-        "viola la cap (no es metadata gratuita, es respuesta a una pregunta). "
-        "verified=true si los OUTBOUND donde el bot presenta o menciona servicios "
-        "NO incluyen redundancias (a), (b) o (c) sin pregunta previa del paciente. "
-        "verified=false ante CUALQUIER OUTBOUND con redundancia trivial — citar el "
-        "texto EXACTO. Si la cita evidencia (b) cuando el shape tiene cohort "
-        "restrictivo aplicable, NO es violacion. "
+        "EXCEPCIONES (mencionar la modalidad NO viola la cap en estos casos): "
+        "  (i) MULTI-MODALIDAD: el servicio tiene varias modalidades en "
+        "<modalities> y el paciente debe elegir. "
+        "  (ii) PREGUNTA EXPLICITA: el paciente preguntó por modalidad o cohort "
+        "en un INBOUND previo y el bot responde. "
+        "  (iii) CONFIRMACION DE RESERVA: el bot esta enviando el mensaje de "
+        "confirmacion final post-booking ('Tu cita... ha sido reservada... de "
+        "forma Presencial/Virtual...'). En este punto la modalidad es info "
+        "operativa esencial para el paciente — saber si tiene que viajar al "
+        "consultorio o conectarse a un Meet — y debe aparecer SIEMPRE, incluso "
+        "si el servicio solo tiene una modalidad. "
+        "  (iv) COMUNICAR RESTRICCION: el bot le esta diciendo al paciente que el "
+        "servicio NO soporta cierta modalidad ('La consulta es unicamente "
+        "presencial', 'este servicio no se atiende virtual'). Es respuesta a una "
+        "pregunta o aclaracion necesaria, no metadata gratuita. "
+        "verified=true si los OUTBOUND donde el bot menciona modalidad/cohort "
+        "encajan en alguna excepcion (i-iv) o si el servicio tiene varias "
+        "modalidades. "
+        "verified=false SOLO ante OUTBOUND donde el bot verbaliza modalidad/cohort "
+        "trivial (a)/(b)/(c) en presentaciones casuales SIN encajar en ninguna "
+        "excepcion — citar texto EXACTO + indicar por que no aplica ninguna "
+        "excepcion. "
         "Inferencia comportamental por OUTBOUND aceptable."
     ),
 }
@@ -403,21 +416,27 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   CTA imperativo. verified=true si shape es AFTER_SESSION y NINGUN OUTBOUND
   pre-cierre contiene CTA de pago. verified=false con cita exacta. Si el shape es
   BEFORE_SESSION, la cap NO aplica (verified=true automatico — es no-op).
-- omits_obvious_metadata: cuando el bot presenta servicios, OMITE metadata trivial.
-  Debe OMITIR: (a) modalidad si el servicio tiene una sola modalidad (no decir "es
-  presencial" / "es virtual" / "se hace en consultorio" cuando no hay alternativa);
-  (b) etiqueta de cohort cuando el servicio aplica a "Pacientes nuevos y recurrentes"
-  (no decir "para nuevos o recurrentes", "para cualquier paciente"); (c) aclaraciones
-  autoimplicitas ("para cualquier persona", "aplica a todos"). El bot SI puede
-  mencionar modalidad cuando el servicio soporta varias (presencial+virtual) y el
-  paciente debe elegir; SI puede mencionar cohort cuando es restrictivo ("Solo
-  pacientes nuevos" / "Solo pacientes recurrentes") y aplica al paciente actual.
-  EXCEPCION: si el paciente preguntó EXPLICITAMENTE por modalidad o cohort en un
-  INBOUND previo, responderle NO viola la cap. verified=false ante OUTBOUND donde
-  el bot presenta servicios con redundancia (a)/(b)/(c) sin pregunta previa — citar
-  texto exacto. Ejemplos prohibidos: "Blanqueamiento Dental: para pacientes nuevos
-  o recurrentes. Es presencial.", "Valoracion: aplica a cualquier persona", "Cita
-  de control: es presencial" cuando solo hay modalidad presencial.
+- omits_obvious_metadata: cuando el bot PRESENTA un servicio o RESPONDE algo no
+  relacionado a modalidad/cohort, OMITE metadata trivial. Debe OMITIR: (a) modalidad
+  si el servicio tiene una sola modalidad (no decir "es presencial" / "es virtual" /
+  "se hace en consultorio"); (b) etiqueta de cohort cuando el servicio aplica a
+  "Pacientes nuevos y recurrentes"; (c) aclaraciones autoimplicitas ("para cualquier
+  persona", "aplica a todos"). EXCEPCIONES (mencionar modalidad NO viola la cap):
+  (i) MULTI-MODALIDAD: el servicio tiene varias modalidades y el paciente debe
+  elegir. (ii) PREGUNTA EXPLICITA: el paciente preguntó por modalidad/cohort en un
+  INBOUND previo. (iii) CONFIRMACION DE RESERVA: el bot esta enviando el mensaje de
+  confirmacion final post-booking ("Tu cita... ha sido reservada... de forma
+  Presencial/Virtual..."). En post-booking la modalidad es info operativa esencial
+  (saber si viajar al consultorio o conectarse a Meet) y debe aparecer SIEMPRE
+  aunque el servicio tenga una sola modalidad. (iv) COMUNICAR RESTRICCION: el bot le
+  dice al paciente que el servicio NO soporta cierta modalidad ("La consulta es
+  unicamente presencial"). verified=true si los OUTBOUND con mencion de
+  modalidad/cohort encajan en alguna excepcion. verified=false SOLO ante OUTBOUND
+  con redundancia trivial (a)/(b)/(c) en presentaciones casuales sin encajar en
+  ninguna excepcion — citar texto exacto e indicar por que no aplica ninguna
+  excepcion. Ejemplos prohibidos: "Blanqueamiento Dental: para pacientes nuevos o
+  recurrentes. Es presencial." (presentacion casual), "Valoracion: aplica a
+  cualquier persona", "Cita de control: es presencial" cuando solo hay PRESENCIAL.
 
 Reglas:
 
@@ -480,14 +499,17 @@ Reglas:
          verified=false con cita exacta. Si el header dice BEFORE_SESSION,
          verified=true automatico (no-op para esos shapes).
        - omits_obvious_metadata: verified=true si los OUTBOUND donde el bot
-         presenta servicios NO incluyen metadata trivial (modalidad cuando es
-         unica, cohort cuando es "nuevos y recurrentes", aclaraciones del tipo
-         "para cualquier persona"). verified=false ante OUTBOUND con esas
-         redundancias — citar texto exacto. Si el paciente preguntó la
-         modalidad o el cohort en un INBOUND previo, responderle NO viola la
-         cap. Si el shape tiene cohort restrictivo ("Solo nuevos" / "Solo
-         recurrentes") y el bot lo menciona porque aplica al paciente, NO
-         viola la cap.
+         menciona modalidad/cohort encajan en alguna excepcion legitima:
+         (i) el servicio tiene varias modalidades; (ii) el paciente preguntó
+         por modalidad/cohort en INBOUND previo; (iii) el OUTBOUND es la
+         CONFIRMACION DE RESERVA post-booking ("Tu cita... ha sido reservada...
+         de forma Presencial/Virtual...") — la modalidad es info operativa
+         esencial ahi y debe aparecer SIEMPRE; (iv) el bot esta COMUNICANDO LA
+         RESTRICCION del servicio al paciente ("este servicio es unicamente
+         presencial"). verified=false SOLO ante OUTBOUND donde el bot verbaliza
+         modalidad/cohort en presentaciones casuales sin encajar en ninguna
+         excepcion — citar texto exacto e indicar por que no aplica ninguna
+         excepcion.
 
 3.5. ANTI-ALUCINACION: el campo evidence DEBE ser una cita TEXTUAL del transcript
      real (copiar el texto exacto de algun mensaje INBOUND u OUTBOUND segun el
