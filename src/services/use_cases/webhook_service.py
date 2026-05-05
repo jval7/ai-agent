@@ -701,7 +701,7 @@ class WebhookService:
                 failed_at=self._clock.now(),
                 failure_reason=self._truncate_failure_reason(failure_reason),
             )
-        except Exception:
+        except service_exceptions.ExternalProviderError as error:
             logger.warning(
                 "webhook.event_failed_mark_error",
                 extra={
@@ -711,6 +711,7 @@ class WebhookService:
                         data={
                             "tenant_id": tenant_id,
                             "provider_event_id": provider_event_id,
+                            "error": str(error),
                         },
                     )
                 },
