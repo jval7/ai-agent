@@ -9,6 +9,7 @@ def test_from_secret_json_applies_overrides() -> None:
     settings = settings_module.Settings.from_secret_json(
         raw_app_config_json=json.dumps(
             {
+                "JWT_SECRET": "test-jwt-secret",
                 "META_REDIRECT_URI": "https://new.example.com/callback",
                 "CONTEXT_MESSAGE_LIMIT": 50,
                 "ENABLE_DEV_ENDPOINTS": False,
@@ -43,7 +44,12 @@ def test_from_secret_json_raises_when_json_is_invalid() -> None:
 
 def test_from_secret_json_uses_secret_project_override() -> None:
     settings = settings_module.Settings.from_secret_json(
-        raw_app_config_json=json.dumps({"GOOGLE_CLOUD_PROJECT": "project-from-secret"}),
+        raw_app_config_json=json.dumps(
+            {
+                "JWT_SECRET": "test-jwt-secret",
+                "GOOGLE_CLOUD_PROJECT": "project-from-secret",
+            }
+        ),
         adc_project_id="project-from-adc",
     )
 
@@ -59,10 +65,11 @@ def test_from_secret_json_applies_cors_env_override(monkeypatch: pytest.MonkeyPa
     settings = settings_module.Settings.from_secret_json(
         raw_app_config_json=json.dumps(
             {
+                "JWT_SECRET": "test-jwt-secret",
                 "CORS_ALLOWED_ORIGINS": [
                     "https://app.example.com",
                     "https://admin.example.com",
-                ]
+                ],
             }
         ),
         adc_project_id="project-from-adc",
