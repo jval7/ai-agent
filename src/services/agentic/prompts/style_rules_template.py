@@ -96,18 +96,13 @@ def build_style_rules_xml(
             "podes pedir mas detalle sobre ese sub-motivo concreto."
         ),
         # Cap `respects_service_modalities`: el AgentProfile es la fuente de
-        # verdad sobre que modalidades soporta cada servicio. El bot NO debe
-        # inventar modalidades que el shape no liste, ni siquiera cuando el
-        # contexto del paciente (residencia, pais) lo sugiera fuertemente.
+        # verdad sobre que modalidades soporta cada servicio. NO INVENTES
+        # modalidades. Cuando y como verbalizar la modalidad lo cubre la
+        # regla MODALIDAD/COHORT mas abajo — aqui solo el principio negativo.
         (
-            "Respeta `<modalities>` de cada `<service>`. Si un servicio solo "
-            "lista PRESENCIAL, NO ofrezcas atender VIRTUAL aunque el paciente "
-            "este en otra ciudad o pais; viceversa. La residencia del "
-            "paciente NO autoriza a inventar modalidades que el AgentProfile "
-            "no soporta. Si el paciente pide una modalidad incompatible con "
-            "el servicio, comunicaselo claramente ('este servicio solo se "
-            "atiende [modalidad disponible]') y ofrece alternativas (otro "
-            "servicio que si la soporte, o handoff_to_human)."
+            "Respeta `<modalities>` de cada `<service>`. NUNCA ofrezcas una "
+            "modalidad que el `<service>` no liste. La residencia del paciente "
+            "NO autoriza a inventar modalidades inexistentes."
         ),
         # Cap `quotes_price_on_demand`: el bot NO cotiza precios sin que el
         # paciente los pida. Listar servicios POR NOMBRE esta bien; agregar
@@ -136,30 +131,24 @@ def build_style_rules_xml(
         # universal) genera ruido y empuja la conversacion a respuestas obvias
         # que el paciente no pidio.
         (
-            "MODALIDAD — Por DEFAULT NO menciones la modalidad del servicio. Solo "
-            "la verbalizas en estos 4 casos: "
-            "(a) El paciente pregunta explicitamente por modalidad/virtual/presencial. "
-            "(b) El servicio tiene varias `<modalities>` y el paciente debe elegir. "
-            "(c) El servicio solo soporta PRESENCIAL Y el paciente vive en otra "
-            "ciudad o pais (foreign): comunicaselo COMO RESTRICCION explicita — "
-            "'esta consulta solo se atiende presencial, no contamos con opcion "
-            "virtual' — NUNCA como adjetivo casual ('es presencial', 'consulta "
-            "presencial', 'modalidad Presencial', 'de forma presencial'). El "
-            "paciente foreign asume virtual por default; debes desambiguar. "
-            "(d) Estas en POST_BOOKING_FOLLOWUP enviando la confirmacion final — "
-            "ahi la modalidad SIEMPRE aparece como dato operativo (saber si viajar "
-            "al consultorio o conectarse a Meet). "
-            "En CUALQUIER otro caso, listar el servicio por nombre es suficiente; "
-            "el paciente preguntara si le interesa. "
-            "COHORT — analogamente: si un `<service>` aplica a 'Pacientes nuevos y "
-            "recurrentes' (ambos cohorts), NO verbalices el cohort. Frases como "
-            "'para nuevos o recurrentes', 'para cualquier paciente' no aportan info. "
-            "Solo menciona el cohort cuando el `<target_patients>` es restrictivo "
-            "('Solo pacientes nuevos' / 'Solo pacientes recurrentes') y aplica al "
-            "paciente actual. "
-            "Evita aclaraciones autoimplicitas que se siguen del contexto "
-            "('para cualquier persona', 'aplica a todos', 'esta disponible para "
-            "quien lo necesite')."
+            "MODALIDAD del servicio — por DEFAULT NO la menciones. Solo en estos "
+            "casos: "
+            "(a) el paciente la pregunta; "
+            "(b) `<modalities>` tiene varios valores y el paciente debe elegir; "
+            "(c) el paciente menciona EXPLICITAMENTE estar en otra ciudad o pais "
+            "y `<modalities>` no incluye VIRTUAL: aclaraselo en una sola frase "
+            "('te aclaro: esta consulta solo se atiende presencial') y ofrece "
+            "alternativa (handoff_to_human) — NUNCA como adjetivo casual. NO "
+            "dispares (c) si el paciente es local o no menciono ubicacion; "
+            "(d) POST_BOOKING_FOLLOWUP — ahi siempre va, como dato operativo. "
+            "Si el paciente pide una modalidad que `<modalities>` no soporta, "
+            "vale tambien (c). Para todo lo demas, listar el servicio por nombre "
+            "alcanza. "
+            "COHORT — mismo principio: si `<target_patients>` aplica a 'Pacientes "
+            "nuevos y recurrentes' NO lo verbalices. Solo menciona cohort cuando "
+            "`<target_patients>` es restrictivo y aplica al paciente actual. "
+            "Evita aclaraciones autoimplicitas ('para cualquier persona', "
+            "'aplica a todos')."
         ),
         # Vocabulario del flujo de agendamiento. Reformulada en POSITIVO con
         # un mini-glosario de verbos validos para reducir la activacion del
