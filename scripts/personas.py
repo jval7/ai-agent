@@ -35,6 +35,7 @@ Capability = typing.Literal[
     "quotes_currency_per_location",  # bot solo cotiza en una moneda según ubicación; pide ubicación si la tarifa tiene varias monedas y no la sabe
     "hides_internal_handoff",  # bot NO le dice al paciente que envía/pasa/gestiona/comenta/comparte algo con el profesional
     "uses_pre_payment_vocabulary",  # bot NO usa "confirmar tu cita" antes del pago; usa "agendar" / "reservar" / "para continuar con el proceso de agendamiento"
+    "omits_obvious_metadata",  # bot NO verbaliza metadata trivial al presentar servicios (modalidad única, cohort universal, aclaraciones autoimplícitas)
 ]
 
 
@@ -51,6 +52,7 @@ BOT_BEHAVIOR_CAPS: frozenset[Capability] = frozenset(
         "quotes_currency_per_location",
         "hides_internal_handoff",
         "uses_pre_payment_vocabulary",
+        "omits_obvious_metadata",
     }
 )
 
@@ -105,6 +107,9 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             # Cap transversal: el bot debe usar vocabulario apropiado para
             # pre-pago — "agendar"/"reservar", NO "confirmar cita".
             "uses_pre_payment_vocabulary",
+            # Cap transversal: el bot omite metadata trivial al presentar
+            # servicios (modalidad unica, cohort universal). Por OUTBOUND.
+            "omits_obvious_metadata",
         ],
     ),
     Persona(
@@ -124,6 +129,7 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             "quotes_currency_per_location",  # ver Diego — assertion del bot
             "hides_internal_handoff",  # transversal — assertion del bot
             "uses_pre_payment_vocabulary",  # transversal — assertion del bot
+            "omits_obvious_metadata",  # transversal — assertion del bot
         ],
     ),
     Persona(
@@ -142,6 +148,7 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             "accepts_first_slot",
             "hides_internal_handoff",  # transversal — assertion del bot
             "uses_pre_payment_vocabulary",  # transversal — assertion del bot
+            "omits_obvious_metadata",  # transversal — assertion del bot
         ],
     ),
 ]

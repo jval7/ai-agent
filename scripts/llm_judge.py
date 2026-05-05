@@ -145,6 +145,33 @@ _GLOSSARY: dict[str, str] = {
         "el texto EXACTO del OUTBOUND (no parafrasear, no inventar). "
         "Inferencia comportamental por OUTBOUND."
     ),
+    "omits_obvious_metadata": (
+        "regla CONCEPTUAL: cuando el bot presenta servicios al paciente, OMITE "
+        "metadata cuya respuesta es trivial, redundante o no aporta informacion "
+        "de decision. Especificamente debe OMITIR: "
+        "(a) Modalidad de un servicio cuya `<modalities>` tiene un solo valor — "
+        "presentar el servicio sin coletillas como 'es presencial', 'es virtual', "
+        "'se hace en consultorio', 'es en linea'. La modalidad solo se menciona "
+        "cuando el servicio tiene MULTIPLES modalidades y el paciente debe elegir. "
+        "(b) Etiqueta de cohort cuando el servicio aplica a 'Pacientes nuevos y "
+        "recurrentes' (ambos cohorts) — frases como 'para pacientes nuevos o "
+        "recurrentes', 'para nuevos y recurrentes', 'aplica a cualquier paciente' "
+        "no aportan info util. El cohort SOLO se menciona cuando el "
+        "<target_patients> es restrictivo ('Solo pacientes nuevos' o 'Solo "
+        "pacientes recurrentes') Y aplica al paciente actual. "
+        "(c) Aclaraciones autoimplicitas que se siguen logicamente del contexto "
+        "('para cualquier persona', 'esta disponible para todos', 'aplica a quien "
+        "lo necesite'). "
+        "EXCEPCION: si el paciente preguntó EXPLICITAMENTE por la modalidad o el "
+        "cohort en un INBOUND previo, el bot DEBE responderle — esa respuesta NO "
+        "viola la cap (no es metadata gratuita, es respuesta a una pregunta). "
+        "verified=true si los OUTBOUND donde el bot presenta o menciona servicios "
+        "NO incluyen redundancias (a), (b) o (c) sin pregunta previa del paciente. "
+        "verified=false ante CUALQUIER OUTBOUND con redundancia trivial — citar el "
+        "texto EXACTO. Si la cita evidencia (b) cuando el shape tiene cohort "
+        "restrictivo aplicable, NO es violacion. "
+        "Inferencia comportamental por OUTBOUND aceptable."
+    ),
 }
 
 # Caps que pueden verificarse por inferencia comportamental (criterio b).
@@ -158,6 +185,7 @@ _INFERENTIAL_CAPS = frozenset(
         "quotes_currency_per_location",  # se verifica por OUTBOUND del bot
         "hides_internal_handoff",  # se verifica por ausencia de frases en OUTBOUND
         "uses_pre_payment_vocabulary",  # se verifica por ausencia de "confirmar" pre-pago
+        "omits_obvious_metadata",  # se verifica por ausencia de metadata trivial al presentar servicios
     }
 )
 
@@ -216,6 +244,21 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   del equipo (ej. "te atiende un asesor humano") NO viola la cap. verified=true si
   NINGUN OUTBOUND comunica gestion interna con la profesional. verified=false ante
   CUALQUIER OUTBOUND con esa semantica — citar texto exacto del OUTBOUND.
+- omits_obvious_metadata: cuando el bot presenta servicios, OMITE metadata trivial.
+  Debe OMITIR: (a) modalidad si el servicio tiene una sola modalidad (no decir "es
+  presencial" / "es virtual" / "se hace en consultorio" cuando no hay alternativa);
+  (b) etiqueta de cohort cuando el servicio aplica a "Pacientes nuevos y recurrentes"
+  (no decir "para nuevos o recurrentes", "para cualquier paciente"); (c) aclaraciones
+  autoimplicitas ("para cualquier persona", "aplica a todos"). El bot SI puede
+  mencionar modalidad cuando el servicio soporta varias (presencial+virtual) y el
+  paciente debe elegir; SI puede mencionar cohort cuando es restrictivo ("Solo
+  pacientes nuevos" / "Solo pacientes recurrentes") y aplica al paciente actual.
+  EXCEPCION: si el paciente preguntó EXPLICITAMENTE por modalidad o cohort en un
+  INBOUND previo, responderle NO viola la cap. verified=false ante OUTBOUND donde
+  el bot presenta servicios con redundancia (a)/(b)/(c) sin pregunta previa — citar
+  texto exacto. Ejemplos prohibidos: "Blanqueamiento Dental: para pacientes nuevos
+  o recurrentes. Es presencial.", "Valoracion: aplica a cualquier persona", "Cita
+  de control: es presencial" cuando solo hay modalidad presencial.
 
 Reglas:
 
@@ -253,6 +296,15 @@ Reglas:
          la profesional tratante (envio, traspaso, consulta, gestion, revision,
          comparticion), verified=false con cita exacta del texto. Excepcion:
          escalada explicita a un OPERADOR HUMANO del equipo (no la profesional).
+       - omits_obvious_metadata: verified=true si los OUTBOUND donde el bot
+         presenta servicios NO incluyen metadata trivial (modalidad cuando es
+         unica, cohort cuando es "nuevos y recurrentes", aclaraciones del tipo
+         "para cualquier persona"). verified=false ante OUTBOUND con esas
+         redundancias — citar texto exacto. Si el paciente preguntó la
+         modalidad o el cohort en un INBOUND previo, responderle NO viola la
+         cap. Si el shape tiene cohort restrictivo ("Solo nuevos" / "Solo
+         recurrentes") y el bot lo menciona porque aplica al paciente, NO
+         viola la cap.
 
 3.5. ANTI-ALUCINACION: el campo evidence DEBE ser una cita TEXTUAL del transcript
      real (copiar el texto exacto de algun mensaje INBOUND u OUTBOUND segun el
