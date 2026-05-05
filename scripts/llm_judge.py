@@ -623,7 +623,7 @@ def judge_conversation(
     declared_capabilities: list[str],
     transcript: list[eval_run_entity.EvalRunConversationMessage],
     gemini_client: genai.Client,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3-flash-preview",
     timeout_seconds: float = 30.0,
     shape_payment_timing: str | None = None,
     shape_services_modalities: list[tuple[str, list[str]]] | None = None,

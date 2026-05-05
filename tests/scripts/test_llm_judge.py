@@ -91,7 +91,7 @@ def test_judge_conversation_returns_verdict_for_simple_case() -> None:
 
     assert verdict.error is None
     assert verdict.overall == "all_verified"
-    assert verdict.judge_model == "gemini-2.5-flash"
+    assert verdict.judge_model == "gemini-3-flash-preview"
     assert len(verdict.verifications) == 1
     assert verdict.verifications[0].capability == "asks_about_price"
     assert verdict.verifications[0].verified is True

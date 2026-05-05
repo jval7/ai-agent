@@ -169,8 +169,8 @@ OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
 OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
 PATIENT_EMAIL = os.environ.get("PATIENT_EMAIL", "")
 
-GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_LOCATION = "us-central1"
+GEMINI_MODEL = "gemini-3-flash-preview"
+GEMINI_LOCATION = "global"
 
 NUM_PATIENTS = 3  # cuantos pacientes simular por batch (modo legacy)
 RUN_ID = uuid.uuid4().hex[:8]  # ID unico por corrida (8 chars para eval; era 6 antes)

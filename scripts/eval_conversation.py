@@ -61,8 +61,8 @@ API_BASE = os.environ.get("API_BASE", "http://localhost:8000")
 OWNER_EMAIL = os.environ.get("OWNER_EMAIL", "")
 OWNER_PASSWORD = os.environ.get("OWNER_PASSWORD", "")
 
-GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_LOCATION = "us-central1"
+GEMINI_MODEL = "gemini-3-flash-preview"
+GEMINI_LOCATION = "global"
 
 # ---------------------------------------------------------------------------
 # Logging
