@@ -116,14 +116,7 @@ class WebhookService:
         for event in events:
             try:
                 self._process_event(event)
-            except service_exceptions.ServiceError as error:
-                self._mark_event_failed_by_phone_number(
-                    phone_number_id=event.phone_number_id,
-                    provider_event_id=event.provider_event_id,
-                    failure_reason=str(error),
-                )
-                raise
-            except ValueError as error:
+            except (service_exceptions.ServiceError, ValueError) as error:
                 self._mark_event_failed_by_phone_number(
                     phone_number_id=event.phone_number_id,
                     provider_event_id=event.provider_event_id,
