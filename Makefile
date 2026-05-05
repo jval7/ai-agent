@@ -429,7 +429,9 @@ deploy-front-upload:
 		echo "Frontend bucket not found. Run make deploy-front-infra first."; \
 		exit 1; \
 	fi; \
-	VITE_API_BASE_URL="$$backend_url" npm --prefix "$(FRONTEND_DIR)" run build; \
+	show_internal_tools="false"; \
+	if [[ "$(ENV)" == "dev" ]]; then show_internal_tools="true"; fi; \
+	VITE_API_BASE_URL="$$backend_url" VITE_SHOW_INTERNAL_TOOLS="$$show_internal_tools" npm --prefix "$(FRONTEND_DIR)" run build; \
 	gcloud storage rsync --recursive --delete-unmatched-destination-objects \
 		"$(FRONTEND_DIR)/dist" \
 		"gs://$$frontend_bucket"; \

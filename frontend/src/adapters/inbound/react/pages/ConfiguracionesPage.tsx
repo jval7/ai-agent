@@ -3,6 +3,7 @@ import * as reactQueryModule from "@tanstack/react-query";
 import * as reactRouterDomModule from "react-router-dom";
 
 import type * as agentModel from "@domain/models/agent";
+import * as envModule from "@infrastructure/config/env";
 
 type PaymentTiming = agentModel.PaymentTiming;
 import * as appContainerContextModule from "@adapters/inbound/react/app/AppContainerContext";
@@ -77,8 +78,8 @@ const SIDEBAR_GROUPS: settingsSidebarModule.SidebarGroup[] = [
       { id: "identidad", label: "Identidad del asistente" },
       { id: "servicios", label: "Servicios y práctica" },
       { id: "medios-pago", label: "Medios de pago" },
-      // Dev-only: read-only preview of the generated XML prompt.
-      ...(import.meta.env.DEV
+      // Internal-only: read-only preview of the generated XML prompt.
+      ...(envModule.envConfig.showInternalTools
         ? [{ id: "prompt-preview", label: "Vista previa del prompt (dev)" }]
         : [])
     ]
@@ -1208,7 +1209,7 @@ export function ConfiguracionesPage() {
       );
     }
 
-    if (activeSection === "prompt-preview" && import.meta.env.DEV) {
+    if (activeSection === "prompt-preview" && envModule.envConfig.showInternalTools) {
       return (
         <div className="max-w-5xl space-y-6">
           <div>
