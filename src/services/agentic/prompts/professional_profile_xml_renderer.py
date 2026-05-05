@@ -105,24 +105,21 @@ def _render_tariff_option(tariff: agent_profile_entity.TariffOption) -> str:
     return "<tariff>\n" + "\n".join(parts) + "\n</tariff>"
 
 
-_TARGET_PATIENTS_CODES: dict[tuple[str, ...], str] = {
-    ("NEW", "RETURNING"): "BOTH_NEW_AND_RETURNING",
-    ("NEW",): "NEW_ONLY",
-    ("RETURNING",): "RETURNING_ONLY",
+_TARGET_PATIENTS_LABELS: dict[tuple[str, ...], str] = {
+    ("NEW", "RETURNING"): "Pacientes nuevos y recurrentes",
+    ("NEW",): "Solo pacientes nuevos (primera consulta)",
+    ("RETURNING",): "Solo pacientes recurrentes (ya tuvieron una cita previa)",
 }
 
 
-def _format_audience_filter_code(target_patients: list[str]) -> str | None:
-    """Return an opaque audience filter code for the target_patients list,
+def _format_target_patients(target_patients: list[str]) -> str | None:
+    """Return a human-readable Spanish label for the target_patients list,
     or None if the list is empty / has no usable values.
-
-    The returned code is intentionally machine-readable (not human-readable
-    Spanish) so the LLM cannot inadvertently regurgitate it to the patient.
     """
     if not target_patients:
         return None
     key = tuple(sorted(target_patients))
-    return _TARGET_PATIENTS_CODES.get(key)
+    return _TARGET_PATIENTS_LABELS.get(key)
 
 
 def _render_services(services: list[agent_profile_entity.ServiceOffering]) -> str:
@@ -136,9 +133,9 @@ def _render_services(services: list[agent_profile_entity.ServiceOffering]) -> st
         if svc.modalities:
             modalities_text = " y ".join(m.capitalize() for m in svc.modalities)
             lines.append(f"<modalities>{modalities_text}</modalities>")
-        audience_code = _format_audience_filter_code(list(svc.target_patients))
-        if audience_code is not None:
-            lines.append(f"<internal_filter_audience>{audience_code}</internal_filter_audience>")
+        target_label = _format_target_patients(list(svc.target_patients))
+        if target_label is not None:
+            lines.append(f"<target_patients>{target_label}</target_patients>")
         if svc.description:
             lines.append(f"<description>{svc.description}</description>")
         if svc.tariffs:

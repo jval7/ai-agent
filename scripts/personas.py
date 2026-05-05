@@ -35,7 +35,6 @@ Capability = typing.Literal[
     "quotes_currency_per_location",  # bot solo cotiza en una moneda según ubicación; pide ubicación si la tarifa tiene varias monedas y no la sabe
     "hides_internal_handoff",  # bot NO le dice al paciente que envía/pasa/gestiona/comenta/comparte algo con el profesional
     "uses_pre_payment_vocabulary",  # bot NO usa "confirmar tu cita" antes del pago; usa "agendar" / "reservar" / "para continuar con el proceso de agendamiento"
-    "omits_internal_categorization",  # bot NO regurgita codigos internos como "para pacientes nuevos" / "para pacientes recurrentes"
 ]
 
 
@@ -52,7 +51,6 @@ BOT_BEHAVIOR_CAPS: frozenset[Capability] = frozenset(
         "quotes_currency_per_location",
         "hides_internal_handoff",
         "uses_pre_payment_vocabulary",
-        "omits_internal_categorization",
     }
 )
 
