@@ -1,6 +1,9 @@
+import datetime
+
 import google.api_core.exceptions as google_api_exceptions
 import google.cloud.firestore as google_cloud_firestore
 
+import src.adapters.outbound.firestore.aggregations as firestore_aggregations
 import src.adapters.outbound.firestore.errors as firestore_errors
 import src.adapters.outbound.firestore.model_mapper as firestore_model_mapper
 import src.adapters.outbound.firestore.paths as firestore_paths
@@ -226,6 +229,68 @@ class FirestoreConversationRepositoryAdapter(
             if conversation.tenant_id == tenant_id:
                 conversations.append(conversation)
         return conversations
+
+    def count_conversations(self, tenant_id: str) -> int:
+        conversations_collection = firestore_paths.tenant_conversations_collection(
+            self._client,
+            tenant_id,
+        )
+        try:
+            count_query = conversations_collection.count()
+            result = count_query.get()
+            return int(firestore_aggregations._extract_aggregation_value(result))
+        except (
+            google_api_exceptions.GoogleAPICallError,
+            google_api_exceptions.RetryError,
+        ) as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to count conversations from firestore"
+            ) from error
+
+    def count_active_since(self, tenant_id: str, since: datetime.datetime) -> int:
+        conversations_collection = firestore_paths.tenant_conversations_collection(
+            self._client,
+            tenant_id,
+        )
+        query = conversations_collection.where("updated_at", ">=", since)
+        try:
+            count_query = query.count()
+            result = count_query.get()
+            return int(firestore_aggregations._extract_aggregation_value(result))
+        except (
+            google_api_exceptions.GoogleAPICallError,
+            google_api_exceptions.RetryError,
+        ) as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to count active conversations from firestore"
+            ) from error
+
+    def get_latest_activity(self, tenant_id: str) -> datetime.datetime | None:
+        conversations_collection = firestore_paths.tenant_conversations_collection(
+            self._client,
+            tenant_id,
+        )
+        query = conversations_collection.order_by(
+            "updated_at", direction=google_cloud_firestore.Query.DESCENDING
+        ).limit(1)
+        try:
+            snapshots = list(query.stream())
+        except (
+            google_api_exceptions.GoogleAPICallError,
+            google_api_exceptions.RetryError,
+        ) as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to get latest conversation activity from firestore"
+            ) from error
+        if not snapshots:
+            return None
+        raw_data = snapshots[0].to_dict()
+        if raw_data is None:
+            return None
+        updated_at_value = raw_data.get("updated_at")
+        if not isinstance(updated_at_value, datetime.datetime):
+            return None
+        return updated_at_value
 
     def save_message(self, message: message_entity.Message) -> None:
         conversation_document = firestore_paths.tenant_conversation_document(

@@ -1056,4 +1056,62 @@ vitestModule.describe("BackendApiAdapter", () => {
       vitestModule.expect(result.isVirtual).toBe(false);
     }
   );
+
+  vitestModule.it("getMe maps user profile from /v1/auth/me", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/auth/me", () =>
+        mswModule.HttpResponse.json({
+          user_id: "user-1",
+          email: "admin@agendachat.com",
+          role: "admin",
+          tenant_id: "tenant-admin"
+        })
+      )
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const profile = await adapter.getMe();
+
+    vitestModule.expect(profile.userId).toBe("user-1");
+    vitestModule.expect(profile.email).toBe("admin@agendachat.com");
+    vitestModule.expect(profile.role).toBe("admin");
+    vitestModule.expect(profile.tenantId).toBe("tenant-admin");
+  });
+
+  vitestModule.it("adminListTenants hits /v1/admin/tenants and maps response", async () => {
+    serverModule.server.use(
+      mswModule.http.get("http://api.test/v1/admin/tenants", () =>
+        mswModule.HttpResponse.json({
+          items: [
+            {
+              tenant_id: "t-1",
+              tenant_name: "Clinica Norte",
+              professional_name: "Dr. Lopez",
+              patient_count: 10,
+              conversation_count: 5,
+              active_conversations_today: 2,
+              manual_appointment_count_upcoming: 3,
+              pending_reminder_count: 1,
+              total_revenue_cop_this_month: 500000,
+              last_activity_at: "2026-05-01T10:00:00Z",
+              owner_email: "lopez@clinica.com",
+              owner_is_active: true
+            }
+          ]
+        })
+      )
+    );
+
+    const tokenSession = new InMemoryTokenSession("access-1", "refresh-1");
+    const adapter = new backendApiAdapterModule.BackendApiAdapter("http://api.test", tokenSession);
+
+    const tenants = await adapter.adminListTenants();
+
+    vitestModule.expect(tenants).toHaveLength(1);
+    vitestModule.expect(tenants[0]?.tenantId).toBe("t-1");
+    vitestModule.expect(tenants[0]?.professionalName).toBe("Dr. Lopez");
+    vitestModule.expect(tenants[0]?.ownerIsActive).toBe(true);
+  });
 });

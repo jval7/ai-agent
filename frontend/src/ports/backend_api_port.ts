@@ -1,3 +1,4 @@
+import type * as adminModel from "@domain/models/admin";
 import type * as agentModel from "@domain/models/agent";
 import type * as authModel from "@domain/models/auth";
 import type * as blacklistModel from "@domain/models/blacklist";
@@ -20,6 +21,8 @@ export interface BackendApiPort {
   acceptInvitation(input: authModel.AcceptInvitationInput): Promise<authModel.AuthTokens>;
   requestPasswordReset(input: authModel.RequestPasswordResetInput): Promise<void>;
   confirmPasswordReset(input: authModel.ConfirmPasswordResetInput): Promise<void>;
+
+  getMe(): Promise<authModel.UserProfile>;
 
   getSystemPrompt(): Promise<agentModel.SystemPrompt>;
   updateSystemPrompt(systemPrompt: string): Promise<agentModel.SystemPrompt>;
@@ -166,4 +169,142 @@ export interface BackendApiPort {
   getEvalRun(runDocId: string): Promise<evaluationModel.EvalRunDetail>;
   deleteEvalRun(runId: string): Promise<evaluationModel.EvalDeleteResult>;
   listEvalCapabilities(): Promise<evaluationModel.EvalCapabilityDoc[]>;
+
+  adminGetGlobalMetrics(): Promise<adminModel.GlobalMetrics>;
+  adminListTenants(search?: string): Promise<adminModel.TenantSummary[]>;
+  adminGetTenantSummary(tenantId: string): Promise<adminModel.TenantSummary>;
+
+  adminListPatients(
+    tenantId: string,
+    params?: { search?: string }
+  ): Promise<patientModel.Patient[]>;
+  adminGetPatient(tenantId: string, whatsappUserId: string): Promise<patientModel.Patient>;
+  adminCreatePatient(
+    tenantId: string,
+    input: patientModel.CreatePatientInput
+  ): Promise<patientModel.Patient>;
+  adminUpdatePatient(
+    tenantId: string,
+    whatsappUserId: string,
+    input: patientModel.UpdatePatientInput
+  ): Promise<patientModel.Patient>;
+  adminRemovePatient(tenantId: string, whatsappUserId: string): Promise<void>;
+
+  adminListConversations(tenantId: string): Promise<conversationModel.ConversationSummary[]>;
+  adminListConversationMessages(
+    tenantId: string,
+    conversationId: string
+  ): Promise<conversationModel.ConversationMessage[]>;
+  adminUpdateConversationControlMode(
+    tenantId: string,
+    conversationId: string,
+    controlMode: conversationModel.ControlMode
+  ): Promise<conversationModel.ControlMode>;
+  adminSendConversationMessage(
+    tenantId: string,
+    conversationId: string,
+    messageText: string
+  ): Promise<conversationModel.MessageSent>;
+
+  adminListManualAppointments(
+    tenantId: string,
+    status?: manualAppointmentModel.ManualAppointmentStatus
+  ): Promise<manualAppointmentModel.ManualAppointment[]>;
+  adminCreateManualAppointment(
+    tenantId: string,
+    input: manualAppointmentModel.CreateManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment>;
+  adminRescheduleManualAppointment(
+    tenantId: string,
+    appointmentId: string,
+    input: manualAppointmentModel.RescheduleManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment>;
+  adminCancelManualAppointment(
+    tenantId: string,
+    appointmentId: string,
+    input: manualAppointmentModel.CancelManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment>;
+  adminUpdateManualAppointmentPayment(
+    tenantId: string,
+    appointmentId: string,
+    input: manualAppointmentModel.UpdateManualAppointmentPaymentInput
+  ): Promise<manualAppointmentModel.ManualAppointment>;
+  adminChangeManualAppointmentModality(
+    tenantId: string,
+    appointmentId: string,
+    input: manualAppointmentModel.ChangeManualAppointmentModalityInput
+  ): Promise<manualAppointmentModel.ManualAppointment>;
+
+  adminListSchedulingRequests(
+    tenantId: string,
+    status?: schedulingModel.SchedulingRequestStatus
+  ): Promise<schedulingModel.SchedulingRequestSummary[]>;
+
+  adminSubmitProfessionalSlots(
+    tenantId: string,
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.SubmitProfessionalSlotsInput
+  ): Promise<schedulingModel.SubmitProfessionalSlotsResult>;
+  adminResolvePaymentReview(
+    tenantId: string,
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.ResolvePaymentReviewInput
+  ): Promise<schedulingModel.ResolvePaymentReviewResult>;
+  adminRescheduleBookedSlot(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.RescheduleBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary>;
+  adminCancelBookedSlot(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.CancelBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary>;
+  adminUpdateBookedSlotPayment(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.UpdateBookedSlotPaymentInput
+  ): Promise<schedulingModel.SchedulingRequestSummary>;
+  adminChangeBookedSlotModality(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.ChangeBookedSlotModalityInput
+  ): Promise<schedulingModel.SchedulingRequestSummary>;
+  adminCloseSession(tenantId: string, conversationId: string): Promise<{ status: string }>;
+  adminGetGoogleCalendarAvailability(
+    tenantId: string,
+    fromIso: string,
+    toIso: string
+  ): Promise<googleCalendarModel.GoogleCalendarAvailability>;
+  adminResetConversationMessages(tenantId: string, conversationId: string): Promise<void>;
+
+  adminListReminders(
+    tenantId: string,
+    status?: string
+  ): Promise<scheduledReminderModel.ScheduledReminderList>;
+  adminSendReminderNow(tenantId: string, reminderId: string): Promise<void>;
+
+  adminListBlacklist(tenantId: string): Promise<blacklistModel.BlacklistEntry[]>;
+  adminAddBlacklist(
+    tenantId: string,
+    whatsappUserId: string
+  ): Promise<blacklistModel.BlacklistEntry>;
+  adminRemoveBlacklist(tenantId: string, whatsappUserId: string): Promise<void>;
+
+  adminGetSystemPrompt(tenantId: string): Promise<agentModel.SystemPrompt>;
+  adminUpdateSystemPrompt(tenantId: string, systemPrompt: string): Promise<agentModel.SystemPrompt>;
+
+  adminGetAgentSettings(tenantId: string): Promise<agentModel.AgentSettings>;
+  adminUpdateAgentSettings(
+    tenantId: string,
+    input: agentModel.UpdateAgentSettingsInput
+  ): Promise<agentModel.AgentSettings>;
+
+  adminGetProfessionalProfile(tenantId: string): Promise<agentModel.ProfessionalProfile>;
+  adminUpdateProfessionalProfile(
+    tenantId: string,
+    input: agentModel.UpdateProfessionalProfileInput
+  ): Promise<agentModel.ProfessionalProfile>;
 }

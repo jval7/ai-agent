@@ -46,6 +46,16 @@ class InMemoryScheduledReminderRepositoryAdapter(
             )
         return result
 
+    def count_by_tenant(self, tenant_id: str, status: str | None = None) -> int:
+        count = 0
+        for reminder in self._reminders:
+            if reminder.tenant_id != tenant_id:
+                continue
+            if status is not None and reminder.status != status:
+                continue
+            count += 1
+        return count
+
     def list_pending_by_source(
         self,
         tenant_id: str,

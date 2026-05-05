@@ -56,6 +56,7 @@ import src.services.agentic.tool_handlers.set_contact_name_handler as set_contac
 import src.services.agentic.tool_handlers.submit_consultation_reason_handler as submit_consultation_reason_handler
 import src.services.agentic.tool_registry as tool_definition_registry_mod
 import src.services.agentic.workflow_engine as workflow_engine
+import src.services.use_cases.admin_dashboard_service as admin_dashboard_service
 import src.services.use_cases.agent_service as agent_service
 import src.services.use_cases.auth_service as auth_service
 import src.services.use_cases.blacklist_service as blacklist_service
@@ -509,4 +510,13 @@ class AppContainer:
             eval_run_repository=self.eval_run_repository,
             tenant_repository=self.tenant_repository,
             eval_tenant_service=self.eval_tenant_service,
+        )
+        self.admin_dashboard_service = admin_dashboard_service.AdminDashboardService(
+            tenant_repository=self.tenant_repository,
+            user_repository=self.user_repository,
+            patient_repository=self.patient_repository,
+            conversation_repository=self.conversation_repository,
+            manual_appointment_repository=self.manual_appointment_repository,
+            scheduling_repository=self.scheduling_repository,
+            scheduled_reminder_repository=self.scheduled_reminder_repository,
         )

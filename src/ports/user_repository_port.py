@@ -23,3 +23,7 @@ class UserRepositoryPort(abc.ABC):
     @abc.abstractmethod
     def list_all(self) -> list[user_entity.User]:
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def get_first_by_tenant(self, tenant_id: str) -> user_entity.User | None:
+        raise NotImplementedError

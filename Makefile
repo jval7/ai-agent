@@ -149,7 +149,8 @@ create-professional:
 	fi
 	@output=$$(GOOGLE_CLOUD_PROJECT="$(CLI_PROJECT_ID)" uv run python -m src.entrypoints.local.user_admin_cli create-professional \
 		--tenant-name "$(TENANT_NAME)" \
-		--email "$(EMAIL)"); \
+		--email "$(EMAIL)" \
+		$(if $(ROLE),--role "$(ROLE)",)); \
 	echo "$$output"; \
 	if [[ "$(ENV)" == "dev" ]]; then \
 		generated_password=$$(echo "$$output" | grep '^GENERATED_PASSWORD=' | cut -d '=' -f 2-); \
@@ -169,7 +170,8 @@ invite-professional:
 	@GOOGLE_CLOUD_PROJECT="$(CLI_PROJECT_ID)" uv run python -m src.entrypoints.local.user_admin_cli invite-professional \
 		--tenant-name "$(TENANT_NAME)" \
 		--email "$(EMAIL)" \
-		$(if $(PROFESSIONAL_NAME),--professional-name "$(PROFESSIONAL_NAME)",)
+		$(if $(PROFESSIONAL_NAME),--professional-name "$(PROFESSIONAL_NAME)",) \
+		$(if $(ROLE),--role "$(ROLE)",)
 
 reset-password:
 	@if [[ -z "$(EMAIL)" ]]; then \

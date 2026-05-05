@@ -6,6 +6,7 @@ import * as appContainerContextModule from "./AppContainerContext";
 
 export interface AuthContextValue {
   status: authModel.AuthStatus;
+  userProfile: authModel.UserProfile | null;
   login(input: authModel.LoginInput): Promise<void>;
   logout(): Promise<void>;
   acceptInvitation(input: authModel.AcceptInvitationInput): Promise<void>;
@@ -18,16 +19,23 @@ const AuthContext = reactModule.createContext<AuthContextValue | null>(null);
 export function AuthProvider(props: { children: reactModule.ReactNode }) {
   const appContainer = appContainerContextModule.useAppContainer();
   const [status, setStatus] = reactModule.useState<authModel.AuthStatus>("loading");
+  const [userProfile, setUserProfile] = reactModule.useState<authModel.UserProfile | null>(null);
 
   reactModule.useEffect(() => {
     let isMounted = true;
 
     const bootstrap = async () => {
-      const hasSession = await appContainer.authUseCase.bootstrapSession();
+      const profile = await appContainer.authUseCase.bootstrapSession();
       if (!isMounted) {
         return;
       }
-      setStatus(hasSession ? "authenticated" : "anonymous");
+      if (profile !== null) {
+        setUserProfile(profile);
+        setStatus("authenticated");
+      } else {
+        setUserProfile(null);
+        setStatus("anonymous");
+      }
     };
 
     void bootstrap();
@@ -40,16 +48,20 @@ export function AuthProvider(props: { children: reactModule.ReactNode }) {
   const value = reactModule.useMemo<AuthContextValue>(
     () => ({
       status,
+      userProfile,
       login: async (input) => {
-        await appContainer.authUseCase.login(input);
+        const profile = await appContainer.authUseCase.login(input);
+        setUserProfile(profile);
         setStatus("authenticated");
       },
       logout: async () => {
         await appContainer.authUseCase.logout();
+        setUserProfile(null);
         setStatus("anonymous");
       },
       acceptInvitation: async (input) => {
-        await appContainer.authUseCase.acceptInvitation(input);
+        const profile = await appContainer.authUseCase.acceptInvitation(input);
+        setUserProfile(profile);
         setStatus("authenticated");
       },
       requestPasswordReset: async (input) => {
@@ -59,7 +71,7 @@ export function AuthProvider(props: { children: reactModule.ReactNode }) {
         await appContainer.authUseCase.confirmPasswordReset(input);
       }
     }),
-    [appContainer.authUseCase, status]
+    [appContainer.authUseCase, status, userProfile]
   );
 
   return <AuthContext.Provider value={value}>{props.children}</AuthContext.Provider>;

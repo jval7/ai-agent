@@ -10,3 +10,4 @@ class Tenant(pydantic.BaseModel):
     updated_at: datetime.datetime
     professional_name: str | None = None
     is_eval_tenant: bool = False
+    is_admin_tenant: bool = False

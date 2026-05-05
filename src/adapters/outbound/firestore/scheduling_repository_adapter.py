@@ -1,6 +1,9 @@
+import datetime
+
 import google.api_core.exceptions as google_api_exceptions
 import google.cloud.firestore as google_cloud_firestore
 
+import src.adapters.outbound.firestore.aggregations as firestore_aggregations
 import src.adapters.outbound.firestore.errors as firestore_errors
 import src.adapters.outbound.firestore.model_mapper as firestore_model_mapper
 import src.adapters.outbound.firestore.paths as firestore_paths
@@ -119,6 +122,28 @@ class FirestoreSchedulingRepositoryAdapter(scheduling_repository_port.Scheduling
             if request.tenant_id == tenant_id:
                 requests.append(request)
         return requests
+
+    def sum_paid_revenue_since(self, tenant_id: str, since: datetime.datetime) -> int:
+        requests_collection = firestore_paths.tenant_scheduling_requests_collection(
+            self._client,
+            tenant_id,
+        )
+        # SchedulingRequest has payment_status and payment_updated_at fields.
+        # BOOKED status can have payment_status=PAID; SESSION_CLOSED is terminal paid.
+        query = requests_collection.where("payment_status", "==", "PAID").where(
+            "payment_updated_at", ">=", since
+        )
+        try:
+            agg_query = query.sum("payment_amount_cop", alias="revenue")
+            result = agg_query.get()
+            return int(firestore_aggregations._extract_aggregation_value(result))
+        except (
+            google_api_exceptions.GoogleAPICallError,
+            google_api_exceptions.RetryError,
+        ) as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to sum scheduling request revenue from firestore"
+            ) from error
 
     def list_requests_by_conversation(
         self,

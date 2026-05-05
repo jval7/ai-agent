@@ -1,6 +1,7 @@
 import google.api_core.exceptions as google_api_exceptions
 import google.cloud.firestore as google_cloud_firestore
 
+import src.adapters.outbound.firestore.aggregations as firestore_aggregations
 import src.adapters.outbound.firestore.errors as firestore_errors
 import src.adapters.outbound.firestore.model_mapper as firestore_model_mapper
 import src.adapters.outbound.firestore.paths as firestore_paths
@@ -93,6 +94,22 @@ class FirestorePatientRepositoryAdapter(patient_repository_port.PatientRepositor
             if patient.tenant_id == tenant_id:
                 patients.append(patient)
         return patients
+
+    def count_by_tenant(self, tenant_id: str) -> int:
+        patients_collection = firestore_paths.tenant_document(self._client, tenant_id).collection(
+            firestore_paths.PATIENTS_COLLECTION
+        )
+        try:
+            count_query = patients_collection.count()
+            result = count_query.get()
+            return int(firestore_aggregations._extract_aggregation_value(result))
+        except (
+            google_api_exceptions.GoogleAPICallError,
+            google_api_exceptions.RetryError,
+        ) as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to count patients from firestore"
+            ) from error
 
     def delete(self, tenant_id: str, whatsapp_user_id: str) -> None:
         patient_document = firestore_paths.tenant_patient_document(

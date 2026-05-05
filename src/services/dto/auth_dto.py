@@ -51,6 +51,13 @@ class TokenClaimsDTO(pydantic.BaseModel):
     token_kind: str
 
 
+class MeResponseDTO(pydantic.BaseModel):
+    user_id: str
+    email: str
+    role: str
+    tenant_id: str
+
+
 class AcceptInvitationDTO(pydantic.BaseModel):
     token: str
     new_password: str

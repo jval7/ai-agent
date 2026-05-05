@@ -12,40 +12,50 @@ export class AuthUseCase {
     this.tokenSession = tokenSession;
   }
 
-  async bootstrapSession(): Promise<boolean> {
+  async bootstrapSession(): Promise<authModel.UserProfile | null> {
     if (this.tokenSession.getAccessToken() !== null) {
-      return true;
+      return this.getProfile();
     }
 
     const refreshToken = this.tokenSession.getRefreshToken();
     if (refreshToken === null) {
-      return false;
+      return null;
     }
 
     try {
       const tokens = await this.api.refresh(refreshToken);
       this.persistTokens(tokens);
-      return true;
+      return this.getProfile();
     } catch (error: unknown) {
       if (error instanceof apiErrorModule.ApiError && error.statusCode === 401) {
         this.tokenSession.clearAll();
-        return false;
+        return null;
       }
       if (error instanceof TypeError) {
-        return false;
+        return null;
       }
       throw error;
     }
   }
 
-  async login(input: authModel.LoginInput): Promise<void> {
+  async login(input: authModel.LoginInput): Promise<authModel.UserProfile> {
     const tokens = await this.api.login(input);
     this.persistTokens(tokens);
+    const profile = await this.getProfile();
+    if (profile === null) {
+      throw new Error("Failed to fetch user profile after login");
+    }
+    return profile;
   }
 
-  async acceptInvitation(input: authModel.AcceptInvitationInput): Promise<void> {
+  async acceptInvitation(input: authModel.AcceptInvitationInput): Promise<authModel.UserProfile> {
     const tokens = await this.api.acceptInvitation(input);
     this.persistTokens(tokens);
+    const profile = await this.getProfile();
+    if (profile === null) {
+      throw new Error("Failed to fetch user profile after accepting invitation");
+    }
+    return profile;
   }
 
   async requestPasswordReset(input: authModel.RequestPasswordResetInput): Promise<void> {
@@ -69,6 +79,17 @@ export class AuthUseCase {
     }
 
     this.tokenSession.clearAll();
+  }
+
+  async getProfile(): Promise<authModel.UserProfile | null> {
+    try {
+      return await this.api.getMe();
+    } catch (error: unknown) {
+      if (error instanceof apiErrorModule.ApiError || error instanceof TypeError) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   hasActiveSession(): boolean {

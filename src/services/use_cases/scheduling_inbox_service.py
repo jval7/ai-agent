@@ -80,6 +80,33 @@ class SchedulingInboxService:
     ) -> scheduling_dto.SchedulingRequestListResponseDTO:
         return self._scheduling_service.list_requests_by_tenant(tenant_id, status)
 
+    def list_requests_for_tenant(
+        self,
+        tenant_id: str,
+        status: str | None = None,
+    ) -> scheduling_dto.SchedulingRequestListResponseDTO:
+        return self._scheduling_service.list_requests_by_tenant(tenant_id, status)
+
+    def resolve_consultation_review_for_tenant(
+        self,
+        tenant_id: str,
+        actor_user_id: str,
+        conversation_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.ConsultationReviewDecisionDTO,
+    ) -> scheduling_dto.ConsultationReviewDecisionResponseDTO:
+        fake_claims = auth_dto.TokenClaimsDTO(
+            sub=actor_user_id,
+            tenant_id=tenant_id,
+            role=service_constants.ROLE_ADMIN,
+            exp=0,
+            jti="",
+            token_kind="access",
+        )
+        return self._resolve_consultation_review_impl(
+            fake_claims, conversation_id, request_id, input_dto
+        )
+
     def resolve_consultation_review(
         self,
         claims: auth_dto.TokenClaimsDTO,
@@ -88,7 +115,17 @@ class SchedulingInboxService:
         input_dto: scheduling_dto.ConsultationReviewDecisionDTO,
     ) -> scheduling_dto.ConsultationReviewDecisionResponseDTO:
         self._ensure_professional(claims)
+        return self._resolve_consultation_review_impl(
+            claims, conversation_id, request_id, input_dto
+        )
 
+    def _resolve_consultation_review_impl(
+        self,
+        claims: auth_dto.TokenClaimsDTO,
+        conversation_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.ConsultationReviewDecisionDTO,
+    ) -> scheduling_dto.ConsultationReviewDecisionResponseDTO:
         request = self._scheduling_service.resolve_consultation_review(
             tenant_id=claims.tenant_id,
             conversation_id=conversation_id,
@@ -144,6 +181,26 @@ class SchedulingInboxService:
             assistant_text=assistant_text,
         )
 
+    def resolve_payment_review_for_tenant(
+        self,
+        tenant_id: str,
+        actor_user_id: str,
+        conversation_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.PaymentReviewDecisionDTO,
+    ) -> scheduling_dto.PaymentReviewDecisionResponseDTO:
+        fake_claims = auth_dto.TokenClaimsDTO(
+            sub=actor_user_id,
+            tenant_id=tenant_id,
+            role=service_constants.ROLE_ADMIN,
+            exp=0,
+            jti="",
+            token_kind="access",
+        )
+        return self._resolve_payment_review_impl(
+            fake_claims, conversation_id, request_id, input_dto
+        )
+
     def resolve_payment_review(
         self,
         claims: auth_dto.TokenClaimsDTO,
@@ -152,7 +209,15 @@ class SchedulingInboxService:
         input_dto: scheduling_dto.PaymentReviewDecisionDTO,
     ) -> scheduling_dto.PaymentReviewDecisionResponseDTO:
         self._ensure_professional(claims)
+        return self._resolve_payment_review_impl(claims, conversation_id, request_id, input_dto)
 
+    def _resolve_payment_review_impl(
+        self,
+        claims: auth_dto.TokenClaimsDTO,
+        conversation_id: str,
+        request_id: str,
+        input_dto: scheduling_dto.PaymentReviewDecisionDTO,
+    ) -> scheduling_dto.PaymentReviewDecisionResponseDTO:
         request = self._scheduling_service.approve_payment(
             tenant_id=claims.tenant_id,
             conversation_id=conversation_id,
@@ -224,6 +289,26 @@ class SchedulingInboxService:
             assistant_text=assistant_text,
         )
 
+    def submit_professional_slots_for_tenant(
+        self,
+        tenant_id: str,
+        actor_user_id: str,
+        conversation_id: str,
+        request_id: str,
+        submit_dto: scheduling_dto.ProfessionalSubmitSlotsDTO,
+    ) -> scheduling_dto.ProfessionalSubmitSlotsResponseDTO:
+        fake_claims = auth_dto.TokenClaimsDTO(
+            sub=actor_user_id,
+            tenant_id=tenant_id,
+            role=service_constants.ROLE_ADMIN,
+            exp=0,
+            jti="",
+            token_kind="access",
+        )
+        return self._submit_professional_slots_impl(
+            fake_claims, conversation_id, request_id, submit_dto
+        )
+
     def submit_professional_slots(
         self,
         claims: auth_dto.TokenClaimsDTO,
@@ -232,7 +317,15 @@ class SchedulingInboxService:
         submit_dto: scheduling_dto.ProfessionalSubmitSlotsDTO,
     ) -> scheduling_dto.ProfessionalSubmitSlotsResponseDTO:
         self._ensure_professional(claims)
+        return self._submit_professional_slots_impl(claims, conversation_id, request_id, submit_dto)
 
+    def _submit_professional_slots_impl(
+        self,
+        claims: auth_dto.TokenClaimsDTO,
+        conversation_id: str,
+        request_id: str,
+        submit_dto: scheduling_dto.ProfessionalSubmitSlotsDTO,
+    ) -> scheduling_dto.ProfessionalSubmitSlotsResponseDTO:
         request = self._scheduling_repository.get_request_by_id(claims.tenant_id, request_id)
         if request is None:
             raise service_exceptions.EntityNotFoundError("scheduling request not found")

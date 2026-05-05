@@ -1,4 +1,5 @@
 import abc
+import datetime
 
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
@@ -38,6 +39,18 @@ class ConversationRepositoryPort(abc.ABC):
 
     @abc.abstractmethod
     def list_conversations(self, tenant_id: str) -> list[conversation_entity.Conversation]:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def count_conversations(self, tenant_id: str) -> int:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def count_active_since(self, tenant_id: str, since: datetime.datetime) -> int:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def get_latest_activity(self, tenant_id: str) -> datetime.datetime | None:
         raise NotImplementedError
 
     @abc.abstractmethod
