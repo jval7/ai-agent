@@ -116,7 +116,7 @@ export function FinanzasView({ tenantId }: { tenantId?: string }) {
   const allManualAppointments = manualAppointmentsQuery.data ?? [];
   const timezone =
     tenantId !== undefined
-      ? colombiaTimezone
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
       : (googleCalendarConnectionQuery.data?.professionalTimezone ?? "UTC");
 
   const [financeFromDate, setFinanceFromDate] = reactModule.useState<string>("");

@@ -113,3 +113,15 @@ class InMemoryManualAppointmentRepositoryAdapter(
                     continue
                 items.append(appointment.model_copy(deep=True))
             return items
+
+    def get_latest_activity(self, tenant_id: str) -> datetime.datetime | None:
+        with self._store.lock:
+            latest: datetime.datetime | None = None
+            for appointment in self._store.manual_appointment_by_id.values():
+                if appointment.tenant_id != tenant_id:
+                    continue
+                if appointment.updated_at is None:
+                    continue
+                if latest is None or appointment.updated_at > latest:
+                    latest = appointment.updated_at
+            return latest

@@ -41,3 +41,7 @@ class ManualAppointmentRepositoryPort(abc.ABC):
         status: str | None = None,
     ) -> list[manual_appointment_entity.ManualAppointment]:
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def get_latest_activity(self, tenant_id: str) -> datetime.datetime | None:
+        raise NotImplementedError

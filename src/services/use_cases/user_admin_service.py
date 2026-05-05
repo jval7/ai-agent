@@ -173,6 +173,7 @@ class UserAdminService:
         self._agent_profile_repository.save(agent_profile)
 
     def _get_or_create_admin_tenant(self, now_value: datetime.datetime) -> tenant_entity.Tenant:
+        # NOTE: check-then-create is not atomic; assumes serial invocation (CLI/admin local only).
         existing_admin_tenant = self._tenant_repository.get_admin_tenant()
         if existing_admin_tenant is not None:
             return existing_admin_tenant

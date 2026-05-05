@@ -16,10 +16,11 @@ def get_me(
     container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
 ) -> auth_dto.MeResponseDTO:
     user = container.auth_service.get_user_by_id(claims.sub)
-    email = user.email if user is not None else claims.sub
+    if user is None:
+        raise fastapi.HTTPException(status_code=404, detail="user not found")
     return auth_dto.MeResponseDTO(
         user_id=claims.sub,
-        email=email,
+        email=user.email,
         role=claims.role,
         tenant_id=claims.tenant_id,
     )

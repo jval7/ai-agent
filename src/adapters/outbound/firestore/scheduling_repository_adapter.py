@@ -3,6 +3,7 @@ import datetime
 import google.api_core.exceptions as google_api_exceptions
 import google.cloud.firestore as google_cloud_firestore
 
+import src.adapters.outbound.firestore.aggregations as firestore_aggregations
 import src.adapters.outbound.firestore.errors as firestore_errors
 import src.adapters.outbound.firestore.model_mapper as firestore_model_mapper
 import src.adapters.outbound.firestore.paths as firestore_paths
@@ -135,10 +136,7 @@ class FirestoreSchedulingRepositoryAdapter(scheduling_repository_port.Scheduling
         try:
             agg_query = query.sum("payment_amount_cop", alias="revenue")
             result = agg_query.get()
-            value = result[0][0].value
-            if value is None:
-                return 0
-            return int(value)
+            return int(firestore_aggregations._extract_aggregation_value(result))
         except (
             google_api_exceptions.GoogleAPICallError,
             google_api_exceptions.RetryError,

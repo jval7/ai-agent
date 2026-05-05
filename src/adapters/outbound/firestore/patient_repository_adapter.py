@@ -1,6 +1,7 @@
 import google.api_core.exceptions as google_api_exceptions
 import google.cloud.firestore as google_cloud_firestore
 
+import src.adapters.outbound.firestore.aggregations as firestore_aggregations
 import src.adapters.outbound.firestore.errors as firestore_errors
 import src.adapters.outbound.firestore.model_mapper as firestore_model_mapper
 import src.adapters.outbound.firestore.paths as firestore_paths
@@ -101,7 +102,7 @@ class FirestorePatientRepositoryAdapter(patient_repository_port.PatientRepositor
         try:
             count_query = patients_collection.count()
             result = count_query.get()
-            return int(result[0][0].value)
+            return int(firestore_aggregations._extract_aggregation_value(result))
         except (
             google_api_exceptions.GoogleAPICallError,
             google_api_exceptions.RetryError,

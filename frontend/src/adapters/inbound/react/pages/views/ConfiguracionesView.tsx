@@ -155,6 +155,7 @@ function resolveSectionFromParams(params: URLSearchParams, allSectionIds: Set<st
 
 export function ConfiguracionesView({ tenantId }: { tenantId?: string }) {
   const isAdmin = tenantId !== undefined;
+  const tenantIdSafe = tenantId ?? "";
   const appContainer = appContainerContextModule.useAppContainer();
   const navigate = reactRouterDomModule.useNavigate();
   const location = reactRouterDomModule.useLocation();
@@ -361,18 +362,34 @@ export function ConfiguracionesView({ tenantId }: { tenantId?: string }) {
       } catch {
         // PAYMENT es opcional.
       }
-      const fresh = await appContainer.agentUseCase.getAgentSettings();
-      return appContainer.agentUseCase.updateAgentSettings({
-        messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
-        assistantEnabled: fresh.assistantEnabled,
-        appointmentReminderEnabled: true,
-        appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore ?? 1,
-        appointmentReminderAttendanceTemplateName: fresh.appointmentReminderAttendanceTemplateName,
-        appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName,
-        paymentDetailsText: fresh.paymentDetailsText,
-        officeLocation: fresh.officeLocation,
-        paymentTiming: fresh.paymentTiming
-      });
+      const fresh = isAdmin
+        ? await appContainer.api.adminGetAgentSettings(tenantIdSafe)
+        : await appContainer.agentUseCase.getAgentSettings();
+      return isAdmin
+        ? appContainer.api.adminUpdateAgentSettings(tenantIdSafe, {
+            messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+            assistantEnabled: fresh.assistantEnabled,
+            appointmentReminderEnabled: true,
+            appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore ?? 1,
+            appointmentReminderAttendanceTemplateName:
+              fresh.appointmentReminderAttendanceTemplateName,
+            appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName,
+            paymentDetailsText: fresh.paymentDetailsText,
+            officeLocation: fresh.officeLocation,
+            paymentTiming: fresh.paymentTiming
+          })
+        : appContainer.agentUseCase.updateAgentSettings({
+            messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+            assistantEnabled: fresh.assistantEnabled,
+            appointmentReminderEnabled: true,
+            appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore ?? 1,
+            appointmentReminderAttendanceTemplateName:
+              fresh.appointmentReminderAttendanceTemplateName,
+            appointmentReminderPaymentTemplateName: fresh.appointmentReminderPaymentTemplateName,
+            paymentDetailsText: fresh.paymentDetailsText,
+            officeLocation: fresh.officeLocation,
+            paymentTiming: fresh.paymentTiming
+          });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: officialTemplateStatusQueryKey });
@@ -394,18 +411,32 @@ export function ConfiguracionesView({ tenantId }: { tenantId?: string }) {
       } catch {
         // Best-effort.
       }
-      const fresh = await appContainer.agentUseCase.getAgentSettings();
-      return appContainer.agentUseCase.updateAgentSettings({
-        messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
-        assistantEnabled: fresh.assistantEnabled,
-        appointmentReminderEnabled: false,
-        appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore,
-        appointmentReminderAttendanceTemplateName: null,
-        appointmentReminderPaymentTemplateName: null,
-        paymentDetailsText: fresh.paymentDetailsText,
-        officeLocation: fresh.officeLocation,
-        paymentTiming: fresh.paymentTiming
-      });
+      const fresh = isAdmin
+        ? await appContainer.api.adminGetAgentSettings(tenantIdSafe)
+        : await appContainer.agentUseCase.getAgentSettings();
+      return isAdmin
+        ? appContainer.api.adminUpdateAgentSettings(tenantIdSafe, {
+            messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+            assistantEnabled: fresh.assistantEnabled,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            paymentDetailsText: fresh.paymentDetailsText,
+            officeLocation: fresh.officeLocation,
+            paymentTiming: fresh.paymentTiming
+          })
+        : appContainer.agentUseCase.updateAgentSettings({
+            messageDebounceDelaySeconds: fresh.messageDebounceDelaySeconds,
+            assistantEnabled: fresh.assistantEnabled,
+            appointmentReminderEnabled: false,
+            appointmentReminderDaysBefore: fresh.appointmentReminderDaysBefore,
+            appointmentReminderAttendanceTemplateName: null,
+            appointmentReminderPaymentTemplateName: null,
+            paymentDetailsText: fresh.paymentDetailsText,
+            officeLocation: fresh.officeLocation,
+            paymentTiming: fresh.paymentTiming
+          });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: officialTemplateStatusQueryKey });
@@ -418,8 +449,8 @@ export function ConfiguracionesView({ tenantId }: { tenantId?: string }) {
   const isReminderActive = reminderSetupState === "active";
 
   const settingsMutation = reactQueryModule.useMutation({
-    mutationFn: () =>
-      appContainer.agentUseCase.updateAgentSettings({
+    mutationFn: () => {
+      const body = {
         messageDebounceDelaySeconds: debounceDelay,
         assistantEnabled: settingsQuery.data?.assistantEnabled ?? true,
         appointmentReminderEnabled: isReminderActive,
@@ -431,7 +462,11 @@ export function ConfiguracionesView({ tenantId }: { tenantId?: string }) {
         paymentDetailsText: paymentDetailsText.trim() === "" ? null : paymentDetailsText,
         officeLocation: settingsQuery.data?.officeLocation ?? null,
         paymentTiming
-      }),
+      };
+      return isAdmin
+        ? appContainer.api.adminUpdateAgentSettings(tenantIdSafe, body)
+        : appContainer.agentUseCase.updateAgentSettings(body);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: isAdmin ? ["admin", tenantId, "agent-settings"] : ["agent-settings"]
@@ -452,8 +487,8 @@ export function ConfiguracionesView({ tenantId }: { tenantId?: string }) {
   const [officeSuccessMessage, setOfficeSuccessMessage] = reactModule.useState<string | null>(null);
 
   const officeSettingsMutation = reactQueryModule.useMutation({
-    mutationFn: () =>
-      appContainer.agentUseCase.updateAgentSettings({
+    mutationFn: () => {
+      const body = {
         messageDebounceDelaySeconds: settingsQuery.data?.messageDebounceDelaySeconds ?? 0,
         assistantEnabled: settingsQuery.data?.assistantEnabled ?? true,
         appointmentReminderEnabled: settingsQuery.data?.appointmentReminderEnabled ?? false,
@@ -465,7 +500,11 @@ export function ConfiguracionesView({ tenantId }: { tenantId?: string }) {
         paymentDetailsText: settingsQuery.data?.paymentDetailsText ?? null,
         officeLocation: buildOfficeLocationInput(),
         paymentTiming: settingsQuery.data?.paymentTiming ?? "BEFORE_SESSION"
-      }),
+      };
+      return isAdmin
+        ? appContainer.api.adminUpdateAgentSettings(tenantIdSafe, body)
+        : appContainer.agentUseCase.updateAgentSettings(body);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: isAdmin ? ["admin", tenantId, "agent-settings"] : ["agent-settings"]
@@ -487,8 +526,8 @@ export function ConfiguracionesView({ tenantId }: { tenantId?: string }) {
     officeArrivalInstructions.trim() !== savedOfficeArrivalInstructions.trim();
 
   const paymentTimingMutation = reactQueryModule.useMutation({
-    mutationFn: (newTiming: PaymentTiming) =>
-      appContainer.agentUseCase.updateAgentSettings({
+    mutationFn: (newTiming: PaymentTiming) => {
+      const body = {
         messageDebounceDelaySeconds: settingsQuery.data?.messageDebounceDelaySeconds ?? 0,
         assistantEnabled: settingsQuery.data?.assistantEnabled ?? true,
         appointmentReminderEnabled: settingsQuery.data?.appointmentReminderEnabled ?? false,
@@ -500,7 +539,11 @@ export function ConfiguracionesView({ tenantId }: { tenantId?: string }) {
         paymentDetailsText: settingsQuery.data?.paymentDetailsText ?? null,
         officeLocation: settingsQuery.data?.officeLocation ?? null,
         paymentTiming: newTiming
-      }),
+      };
+      return isAdmin
+        ? appContainer.api.adminUpdateAgentSettings(tenantIdSafe, body)
+        : appContainer.agentUseCase.updateAgentSettings(body);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: isAdmin ? ["admin", tenantId, "agent-settings"] : ["agent-settings"]

@@ -57,7 +57,13 @@ class AdminDashboardService:
             tenant_id, month_start
         ) + self._scheduling_repository.sum_paid_revenue_since(tenant_id, month_start)
 
-        last_activity = self._conversation_repository.get_latest_activity(tenant_id)
+        conversation_activity = self._conversation_repository.get_latest_activity(tenant_id)
+        appointment_activity = self._manual_appointment_repository.get_latest_activity(tenant_id)
+        last_activity: datetime.datetime | None
+        if conversation_activity is not None and appointment_activity is not None:
+            last_activity = max(conversation_activity, appointment_activity)
+        else:
+            last_activity = conversation_activity or appointment_activity
 
         owner = self._user_repository.get_first_by_tenant(tenant_id)
         owner_email: str | None = owner.email if owner is not None else None

@@ -300,10 +300,13 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
   }
 
   async sendReminderNow(reminderId: string): Promise<void> {
-    await this.request<{ status: string }>(`/v1/reminders/${reminderId}/send-now`, {
-      method: "POST",
-      authRequired: true
-    });
+    await this.request<{ status: string }>(
+      `/v1/reminders/${encodeURIComponent(reminderId)}/send-now`,
+      {
+        method: "POST",
+        authRequired: true
+      }
+    );
   }
 
   async createEmbeddedSignupSession(
@@ -478,7 +481,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     conversationId: string
   ): Promise<conversationModel.ConversationMessage[]> {
     const payload = await this.request<httpTypes.MessageListApiResponse>(
-      `/v1/conversations/${conversationId}/messages`,
+      `/v1/conversations/${encodeURIComponent(conversationId)}/messages`,
       {
         method: "GET",
         authRequired: true
@@ -500,7 +503,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     controlMode: conversationModel.ControlMode
   ): Promise<conversationModel.ControlMode> {
     const payload = await this.request<httpTypes.ConversationControlModeApiResponse>(
-      `/v1/conversations/${conversationId}/control-mode`,
+      `/v1/conversations/${encodeURIComponent(conversationId)}/control-mode`,
       {
         method: "PUT",
         authRequired: true,
@@ -514,7 +517,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
   }
 
   async resetConversationMessages(conversationId: string): Promise<void> {
-    await this.request<void>(`/v1/conversations/${conversationId}/messages`, {
+    await this.request<void>(`/v1/conversations/${encodeURIComponent(conversationId)}/messages`, {
       method: "DELETE",
       authRequired: true
     });
@@ -525,7 +528,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     messageText: string
   ): Promise<conversationModel.MessageSent> {
     const payload = await this.request<httpTypes.MessageSentApiResponse>(
-      `/v1/conversations/${conversationId}/messages`,
+      `/v1/conversations/${encodeURIComponent(conversationId)}/messages`,
       {
         method: "POST",
         authRequired: true,
@@ -574,7 +577,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
   }
 
   async removeBlacklist(whatsappUserId: string): Promise<void> {
-    await this.request<void>(`/v1/blacklist/${whatsappUserId}`, {
+    await this.request<void>(`/v1/blacklist/${encodeURIComponent(whatsappUserId)}`, {
       method: "DELETE",
       authRequired: true
     });
@@ -592,7 +595,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
 
   async getPatient(whatsappUserId: string): Promise<patientModel.Patient> {
     const payload = await this.request<httpTypes.PatientApiResponse>(
-      `/v1/patients/${whatsappUserId}`,
+      `/v1/patients/${encodeURIComponent(whatsappUserId)}`,
       {
         method: "GET",
         authRequired: true
@@ -624,7 +627,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: patientModel.UpdatePatientInput
   ): Promise<patientModel.Patient> {
     const payload = await this.request<httpTypes.PatientApiResponse>(
-      `/v1/patients/${whatsappUserId}`,
+      `/v1/patients/${encodeURIComponent(whatsappUserId)}`,
       {
         method: "PUT",
         authRequired: true,
@@ -643,7 +646,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
   }
 
   async removePatient(whatsappUserId: string): Promise<void> {
-    await this.request<void>(`/v1/patients/${whatsappUserId}`, {
+    await this.request<void>(`/v1/patients/${encodeURIComponent(whatsappUserId)}`, {
       method: "DELETE",
       authRequired: true
     });
@@ -696,7 +699,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: manualAppointmentModel.RescheduleManualAppointmentInput
   ): Promise<manualAppointmentModel.ManualAppointment> {
     const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
-      `/v1/manual-appointments/${appointmentId}/reschedule`,
+      `/v1/manual-appointments/${encodeURIComponent(appointmentId)}/reschedule`,
       {
         method: "PUT",
         authRequired: true,
@@ -716,7 +719,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: manualAppointmentModel.CancelManualAppointmentInput
   ): Promise<manualAppointmentModel.ManualAppointment> {
     const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
-      `/v1/manual-appointments/${appointmentId}`,
+      `/v1/manual-appointments/${encodeURIComponent(appointmentId)}`,
       {
         method: "DELETE",
         authRequired: true,
@@ -733,7 +736,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: manualAppointmentModel.UpdateManualAppointmentPaymentInput
   ): Promise<manualAppointmentModel.ManualAppointment> {
     const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
-      `/v1/manual-appointments/${appointmentId}/payment`,
+      `/v1/manual-appointments/${encodeURIComponent(appointmentId)}/payment`,
       {
         method: "PUT",
         authRequired: true,
@@ -770,7 +773,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     conversationId: string
   ): Promise<schedulingModel.SchedulingRequestSummary[]> {
     const payload = await this.request<httpTypes.SchedulingRequestListApiResponse>(
-      `/v1/conversations/${conversationId}/scheduling/requests`,
+      `/v1/conversations/${encodeURIComponent(conversationId)}/scheduling/requests`,
       {
         method: "GET",
         authRequired: true
@@ -786,7 +789,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: schedulingModel.SubmitProfessionalSlotsInput
   ): Promise<schedulingModel.SubmitProfessionalSlotsResult> {
     const payload = await this.request<httpTypes.SubmitProfessionalSlotsApiResponse>(
-      `/v1/conversations/${conversationId}/scheduling/requests/${requestId}/professional-slots`,
+      `/v1/conversations/${encodeURIComponent(conversationId)}/scheduling/requests/${encodeURIComponent(requestId)}/professional-slots`,
       {
         method: "POST",
         authRequired: true,
@@ -816,7 +819,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: schedulingModel.ResolveConsultationReviewInput
   ): Promise<schedulingModel.ResolveConsultationReviewResult> {
     const payload = await this.request<httpTypes.ResolveConsultationReviewApiResponse>(
-      `/v1/conversations/${conversationId}/scheduling/requests/${requestId}/consultation-review`,
+      `/v1/conversations/${encodeURIComponent(conversationId)}/scheduling/requests/${encodeURIComponent(requestId)}/consultation-review`,
       {
         method: "POST",
         authRequired: true,
@@ -840,7 +843,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: schedulingModel.ResolvePaymentReviewInput
   ): Promise<schedulingModel.ResolvePaymentReviewResult> {
     const payload = await this.request<httpTypes.ResolvePaymentReviewApiResponse>(
-      `/v1/conversations/${conversationId}/scheduling/requests/${requestId}/payment-review`,
+      `/v1/conversations/${encodeURIComponent(conversationId)}/scheduling/requests/${encodeURIComponent(requestId)}/payment-review`,
       {
         method: "POST",
         authRequired: true,
@@ -865,7 +868,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: schedulingModel.RescheduleBookedSlotInput
   ): Promise<schedulingModel.SchedulingRequestSummary> {
     const payload = await this.request<httpTypes.SchedulingRequestSummaryApiResponse>(
-      `/v1/scheduling-requests/${requestId}/booked-slot/reschedule`,
+      `/v1/scheduling-requests/${encodeURIComponent(requestId)}/booked-slot/reschedule`,
       {
         method: "PUT",
         authRequired: true,
@@ -885,7 +888,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: schedulingModel.CancelBookedSlotInput
   ): Promise<schedulingModel.SchedulingRequestSummary> {
     const payload = await this.request<httpTypes.SchedulingRequestSummaryApiResponse>(
-      `/v1/scheduling-requests/${requestId}/booked-slot`,
+      `/v1/scheduling-requests/${encodeURIComponent(requestId)}/booked-slot`,
       {
         method: "DELETE",
         authRequired: true,
@@ -902,7 +905,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: schedulingModel.UpdateBookedSlotPaymentInput
   ): Promise<schedulingModel.SchedulingRequestSummary> {
     const payload = await this.request<httpTypes.SchedulingRequestSummaryApiResponse>(
-      `/v1/scheduling-requests/${requestId}/booked-slot/payment`,
+      `/v1/scheduling-requests/${encodeURIComponent(requestId)}/booked-slot/payment`,
       {
         method: "PUT",
         authRequired: true,
@@ -922,7 +925,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: schedulingModel.ChangeBookedSlotModalityInput
   ): Promise<schedulingModel.SchedulingRequestSummary> {
     const payload = await this.request<httpTypes.SchedulingRequestSummaryApiResponse>(
-      `/v1/scheduling/${requestId}/change-modality`,
+      `/v1/scheduling/${encodeURIComponent(requestId)}/change-modality`,
       {
         method: "POST",
         authRequired: true,
@@ -939,7 +942,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     input: manualAppointmentModel.ChangeManualAppointmentModalityInput
   ): Promise<manualAppointmentModel.ManualAppointment> {
     const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
-      `/v1/manual-appointments/${appointmentId}/change-modality`,
+      `/v1/manual-appointments/${encodeURIComponent(appointmentId)}/change-modality`,
       {
         method: "POST",
         authRequired: true,
@@ -953,7 +956,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
 
   async closeSession(conversationId: string): Promise<{ status: string }> {
     return this.request<{ status: string }>(
-      `/v1/conversations/${conversationId}/scheduling/close-session`,
+      `/v1/conversations/${encodeURIComponent(conversationId)}/scheduling/close-session`,
       {
         method: "POST",
         authRequired: true
@@ -1038,7 +1041,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
   }
 
   async deleteWhatsappTemplate(name: string): Promise<void> {
-    await this.request<void>(`/v1/whatsapp/templates/${name}`, {
+    await this.request<void>(`/v1/whatsapp/templates/${encodeURIComponent(name)}`, {
       method: "DELETE",
       authRequired: true
     });
@@ -1064,7 +1067,7 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
       name: string;
       meta_status: string;
       rejection_reason: string | null;
-    }>(`/v1/whatsapp/templates/official/${kind}/activate`, {
+    }>(`/v1/whatsapp/templates/official/${encodeURIComponent(kind)}/activate`, {
       method: "POST",
       authRequired: true
     });

@@ -60,7 +60,8 @@ export function AuthProvider(props: { children: reactModule.ReactNode }) {
         setStatus("anonymous");
       },
       acceptInvitation: async (input) => {
-        await appContainer.authUseCase.acceptInvitation(input);
+        const profile = await appContainer.authUseCase.acceptInvitation(input);
+        setUserProfile(profile);
         setStatus("authenticated");
       },
       requestPasswordReset: async (input) => {

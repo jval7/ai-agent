@@ -191,14 +191,19 @@ export function AdminHomePage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border-subtle">
-              {tenantsQuery.isLoading ? (
+              {tenantsQuery.isError ? (
+                <tr>
+                  <td className="px-4 py-6 text-sm text-slate-500" colSpan={8}>
+                    No fue posible cargar los tenants.
+                  </td>
+                </tr>
+              ) : tenantsQuery.isLoading ? (
                 <tr>
                   <td className="px-4 py-6 text-sm text-slate-500" colSpan={8}>
                     Cargando tenants...
                   </td>
                 </tr>
-              ) : null}
-              {!tenantsQuery.isLoading && (tenantsQuery.data?.length ?? 0) === 0 ? (
+              ) : (tenantsQuery.data?.length ?? 0) === 0 ? (
                 <tr>
                   <td className="px-4 py-6 text-sm text-slate-500" colSpan={8}>
                     {debouncedSearch !== ""

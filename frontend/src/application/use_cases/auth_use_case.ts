@@ -48,9 +48,14 @@ export class AuthUseCase {
     return profile;
   }
 
-  async acceptInvitation(input: authModel.AcceptInvitationInput): Promise<void> {
+  async acceptInvitation(input: authModel.AcceptInvitationInput): Promise<authModel.UserProfile> {
     const tokens = await this.api.acceptInvitation(input);
     this.persistTokens(tokens);
+    const profile = await this.getProfile();
+    if (profile === null) {
+      throw new Error("Failed to fetch user profile after accepting invitation");
+    }
+    return profile;
   }
 
   async requestPasswordReset(input: authModel.RequestPasswordResetInput): Promise<void> {

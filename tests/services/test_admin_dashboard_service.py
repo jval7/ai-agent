@@ -404,3 +404,69 @@ def test_manual_appointment_count_and_sum() -> None:
     assert appt_repo.count_by_tenant("t1", status="SCHEDULED") == 1
     assert appt_repo.sum_paid_revenue_since("t1", _MONTH_START) == 100000
     assert appt_repo.sum_paid_revenue_since("t1", _NOW + datetime.timedelta(days=1)) == 0
+
+
+def test_last_activity_at_uses_max_of_conversation_and_appointment() -> None:
+    """last_activity_at should reflect manual appointment activity even without conversations."""
+    store = _build_store()
+    tenant_repo = tenant_repository_adapter.InMemoryTenantRepositoryAdapter(store)
+    tenant_repo.save(_make_tenant("t1", "Activity Clinic"))
+
+    appointment_time = _NOW + datetime.timedelta(hours=2)
+    appt_repo = manual_appointment_repository_adapter.InMemoryManualAppointmentRepositoryAdapter(
+        store
+    )
+    appt_repo.save(
+        _make_appointment(
+            "t1",
+            "a1",
+            status="SCHEDULED",
+        )
+    )
+    # Manually override updated_at to simulate a more recent appointment activity
+    stored = store.manual_appointment_by_id["a1"]
+    stored.updated_at = appointment_time
+
+    service = _build_service(store)
+    summary = service.get_tenant_summary("t1")
+
+    assert summary is not None
+    assert summary.last_activity_at == appointment_time
+
+
+def test_last_activity_at_uses_max_when_both_exist() -> None:
+    """When both conversation and appointment activity exist, the later one wins."""
+    store = _build_store()
+    tenant_repo = tenant_repository_adapter.InMemoryTenantRepositoryAdapter(store)
+    tenant_repo.save(_make_tenant("t1", "MaxActivity Clinic"))
+
+    conv_time = _NOW
+    appt_time = _NOW + datetime.timedelta(hours=5)
+
+    conv_repo = conversation_repository_adapter.InMemoryConversationRepositoryAdapter(store)
+    conv_repo.save_conversation(_make_conversation("t1", "c1", updated_at=conv_time))
+
+    appt_repo = manual_appointment_repository_adapter.InMemoryManualAppointmentRepositoryAdapter(
+        store
+    )
+    appt_repo.save(_make_appointment("t1", "a1", status="SCHEDULED"))
+    stored = store.manual_appointment_by_id["a1"]
+    stored.updated_at = appt_time
+
+    service = _build_service(store)
+    summary = service.get_tenant_summary("t1")
+
+    assert summary is not None
+    assert summary.last_activity_at == appt_time
+
+
+def test_last_activity_at_is_none_when_no_activity() -> None:
+    store = _build_store()
+    tenant_repo = tenant_repository_adapter.InMemoryTenantRepositoryAdapter(store)
+    tenant_repo.save(_make_tenant("t1", "Empty Clinic"))
+
+    service = _build_service(store)
+    summary = service.get_tenant_summary("t1")
+
+    assert summary is not None
+    assert summary.last_activity_at is None
