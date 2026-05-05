@@ -39,6 +39,7 @@ Capability = typing.Literal[
     "skips_payment_when_after_session",  # cuando payment_timing=AFTER_SESSION, bot NO pide pago/comprobante durante el agendamiento
     "quotes_price_on_demand",  # bot NO cotiza precios sin que el paciente los pida (excepto en mensaje pre-pago oficial del flujo de agendamiento)
     "respects_service_modalities",  # bot solo ofrece modalidades listadas en <modalities> del <service>; NO inventa VIRTUAL si el shape solo tiene PRESENCIAL
+    "skips_redundant_motivo_question",  # bot NO pregunta motivo de consulta cuando el servicio elegido es autoexplicativo (blanqueamiento, limpieza, técnica específica); solo cuando es diagnóstico/exploratorio
 ]
 
 
@@ -59,6 +60,7 @@ BOT_BEHAVIOR_CAPS: frozenset[Capability] = frozenset(
         "skips_payment_when_after_session",
         "quotes_price_on_demand",
         "respects_service_modalities",
+        "skips_redundant_motivo_question",
     }
 )
 
@@ -129,6 +131,7 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             # <modalities> del <service>. Diego es local + presencial,
             # comportamiento congruente con los shapes existentes.
             "respects_service_modalities",
+            "skips_redundant_motivo_question",  # transversal — assertion del bot
         ],
     ),
     Persona(
@@ -156,6 +159,7 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             # el servicio no aplica para el paciente, debe ofrecer
             # alternativas o usar handoff — no inventar modalidad.
             "respects_service_modalities",
+            "skips_redundant_motivo_question",  # transversal — assertion del bot
         ],
     ),
     Persona(
@@ -177,7 +181,8 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             "omits_obvious_metadata",  # transversal — assertion del bot
             "skips_payment_when_after_session",  # condicional al shape — no-op fuera de AFTER_SESSION
             "quotes_price_on_demand",  # transversal — assertion del bot
-            "respects_service_modalities",  # transversal — assertion del bot
+            "respects_service_modalities",
+            "skips_redundant_motivo_question",  # transversal — assertion del bot
         ],
     ),
     # Paciente nuevo silencioso: solo dice "Hola" y deja que el bot lleve.
@@ -210,7 +215,8 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             # que se pidan. Ana nunca pregunta -> verified=false si el bot
             # lista precios espontaneamente en el saludo (caso del screenshot).
             "quotes_price_on_demand",
-            "respects_service_modalities",  # transversal — assertion del bot
+            "respects_service_modalities",
+            "skips_redundant_motivo_question",  # transversal — assertion del bot
         ],
     ),
 ]

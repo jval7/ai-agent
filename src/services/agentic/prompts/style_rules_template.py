@@ -79,6 +79,22 @@ def build_style_rules_xml(
             "NO justifiques la elección con frases como 'para pacientes en el exterior' "
             "o 'desde Colombia'. Presenta el precio neutro, sin etiquetar al paciente."
         ),
+        # Cap `skips_redundant_motivo_question`: cuando el servicio elegido es
+        # autoexplicativo (procedimiento concreto cuyo nombre ya es el motivo)
+        # preguntar "el motivo de tu consulta" es redundante. Solo se pregunta
+        # cuando el servicio es diagnostico/exploratorio (valoracion, primera
+        # consulta) donde el motivo informa el plan terapeutico.
+        (
+            "Cuando el paciente elige un servicio cuyo nombre ya describe un "
+            "procedimiento concreto (ej. 'blanqueamiento dental', 'limpieza "
+            "dental', 'control de ortodoncia', 'extraccion', 'sesion de "
+            "[tecnica]'), NO le preguntes 'el motivo de tu consulta' — el "
+            "servicio es el motivo. Solo pregunta motivo cuando el servicio "
+            "es de valoracion / consulta inicial / diagnostico, donde el "
+            "motivo informa el plan terapeutico. Si el paciente ofrece "
+            "proactivamente un sub-motivo ('lo necesito para una boda'), "
+            "podes pedir mas detalle sobre ese sub-motivo concreto."
+        ),
         # Cap `respects_service_modalities`: el AgentProfile es la fuente de
         # verdad sobre que modalidades soporta cada servicio. El bot NO debe
         # inventar modalidades que el shape no liste, ni siquiera cuando el

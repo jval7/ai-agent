@@ -145,6 +145,37 @@ _GLOSSARY: dict[str, str] = {
         "el texto EXACTO del OUTBOUND (no parafrasear, no inventar). "
         "Inferencia comportamental por OUTBOUND."
     ),
+    "skips_redundant_motivo_question": (
+        "regla CONCEPTUAL: el bot solo pregunta el 'motivo de consulta' "
+        "cuando el servicio elegido es DIAGNOSTICO/EXPLORATORIO (palabras "
+        "clave en el nombre o descripcion del servicio: 'valoracion', "
+        "'primera consulta', 'consulta inicial', 'evaluacion', 'diagnostico', "
+        "'cita exploratoria'). En esos casos preguntar motivo es legitimo "
+        "porque el motivo determina el plan terapeutico. "
+        "El bot NO debe preguntar motivo cuando el servicio es "
+        "AUTOEXPLICATIVO (un procedimiento concreto cuyo nombre YA es el "
+        "motivo: 'blanqueamiento dental', 'limpieza dental', 'control de "
+        "ortodoncia', 'extraccion', 'endodoncia', 'brackets', 'sesion de "
+        "[tecnica]', 'tratamiento [especifico]'). Para esos servicios el "
+        "motivo es el servicio mismo y preguntarlo es redundante. "
+        "verified=true si TODOS los OUTBOUND donde el bot pregunta motivo "
+        "ocurren en uno de estos contextos: "
+        "(a) el paciente NO ha elegido un servicio aun y el bot pregunta "
+        "como parte del flujo inicial; "
+        "(b) el servicio elegido es diagnostico (palabras clave de arriba); "
+        "(c) el paciente ya menciono un sub-motivo abierto ('quiero "
+        "blanqueamiento porque tengo una boda') y el bot pide mas detalle. "
+        "verified=false si el bot pregunta motivo despues de que el paciente "
+        "eligio un servicio autoexplicativo y NO hay sub-motivo en juego. "
+        "Caso prototipico de fail (caso del screenshot que motivo la cap): "
+        "paciente dice 'Blanqueamiento' y el bot responde '¿Cual sería el "
+        "motivo de tu consulta para el blanqueamiento dental?'. "
+        "Cita textual obligatoria del OUTBOUND donde el bot pregunta motivo "
+        "+ del INBOUND donde se eligio el servicio. EXCEPCION: si el "
+        "paciente ofrecio el motivo proactivamente, el bot puede acusar "
+        "recibo brevemente pero NO debe re-preguntar. "
+        "Inferencia comportamental por OUTBOUND."
+    ),
     "respects_service_modalities": (
         "regla CONCEPTUAL: el bot solo ofrece modalidades (PRESENCIAL / VIRTUAL) "
         "que estan listadas en `<modalities>` del `<service>` que el paciente "
@@ -270,6 +301,7 @@ _INFERENTIAL_CAPS = frozenset(
         "skips_payment_when_after_session",  # condicional al shape; se verifica por ausencia de CTA pago en AFTER_SESSION
         "quotes_price_on_demand",  # se verifica por orden INBOUND-pregunta -> OUTBOUND-precio
         "respects_service_modalities",  # se verifica contra <modalities> del servicio elegido
+        "skips_redundant_motivo_question",  # heuristica sobre nombre/descripcion del servicio elegido
     }
 )
 
@@ -328,6 +360,18 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   del equipo (ej. "te atiende un asesor humano") NO viola la cap. verified=true si
   NINGUN OUTBOUND comunica gestion interna con la profesional. verified=false ante
   CUALQUIER OUTBOUND con esa semantica — citar texto exacto del OUTBOUND.
+- skips_redundant_motivo_question: el bot solo pregunta el "motivo de consulta"
+  cuando el servicio elegido es DIAGNOSTICO/EXPLORATORIO (palabras clave:
+  "valoracion", "primera consulta", "consulta inicial", "evaluacion",
+  "diagnostico"). NO debe preguntar motivo cuando el servicio es AUTOEXPLICATIVO
+  (un procedimiento concreto cuyo nombre ya es el motivo: "blanqueamiento",
+  "limpieza dental", "control de ortodoncia", "extraccion", "endodoncia",
+  "brackets"). verified=true si los OUTBOUND con pregunta de motivo aplican a
+  servicio diagnostico, o el paciente aun no eligio servicio. verified=false si
+  el bot pregunta motivo despues de que el paciente eligio un servicio
+  autoexplicativo (caso prototipico: paciente "Blanqueamiento" -> bot "¿cual es
+  el motivo?"). Excepcion: sub-motivos abiertos ("blanqueamiento porque tengo
+  una boda") permiten preguntar mas detalle.
 - respects_service_modalities: el bot solo ofrece modalidades (PRESENCIAL/VIRTUAL)
   listadas en <modalities> del <service> elegido. NO inventa una modalidad que el
   AgentProfile no soporta aunque el contexto del paciente sugiera otra (ej. paciente
@@ -411,6 +455,13 @@ Reglas:
          la profesional tratante (envio, traspaso, consulta, gestion, revision,
          comparticion), verified=false con cita exacta del texto. Excepcion:
          escalada explicita a un OPERADOR HUMANO del equipo (no la profesional).
+       - skips_redundant_motivo_question: verified=true si las preguntas de
+         motivo del bot solo aplican a servicios diagnosticos/exploratorios
+         (palabras: "valoracion", "primera consulta", "evaluacion") o al
+         flujo inicial antes de que el paciente eligiera servicio.
+         verified=false si pregunta motivo tras que el paciente eligio un
+         servicio autoexplicativo (blanqueamiento, limpieza, control,
+         extraccion). Citar OUTBOUND exacto.
        - respects_service_modalities: verified=true si los OUTBOUND con mencion
          de modalidad respetan el set listado en <modalities> del servicio
          elegido (informado en header 'Shape services and modalities'). verified=
