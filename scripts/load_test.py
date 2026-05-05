@@ -1469,20 +1469,26 @@ async def _run_eval_shape(
         else:
             personas = []
 
-        # Correr conversaciones secuencialmente (cada shape es su propio tenant;
-        # no hay valor en paralelizarlas dentro de un mismo tenant efimero dado
-        # que el bot tiene estado compartido por conversacion).
-        for i, persona in enumerate(personas):
+        # Correr conversaciones EN PARALELO. Cada persona tiene un
+        # whatsapp_user_id distinto, por lo que el backend trata sus
+        # conversations como independientes. Lanzar N tasks con asyncio.gather
+        # baja el wall-clock del shape de O(N * conv_duration) a
+        # O(max(conv_duration)) — gana ~3x cuando per-combo=3.
+        shape_identity = shape.agent_profile.identity
+        shape_practice_type = (
+            shape_identity.professional_title
+            if shape_identity is not None and shape_identity.professional_title
+            else "consultorio"
+        )
+
+        async def _run_and_snapshot(
+            i: int,
+            persona: personas_module.Persona,
+        ) -> eval_run_entity.EvalRunConversationSnapshot:
             patient_dict = _persona_to_dict(persona)
             elapsed = 0.0
             snap_error: str | None = None
             snap_status: typing.Literal["ok", "fail", "skipped"] = "ok"
-            shape_identity = shape.agent_profile.identity
-            shape_practice_type = (
-                shape_identity.professional_title
-                if shape_identity is not None and shape_identity.professional_title
-                else "consultorio"
-            )
             try:
                 elapsed = await _run_patient(
                     client,
@@ -1496,11 +1502,13 @@ async def _run_eval_shape(
                 snap_error = f"{type(exc).__name__}: {exc}"
                 snap_status = "fail"
                 logger.error(
-                    "[Shape %r / %s] conversacion fallo: %s", shape_name, persona.id, snap_error
+                    "[Shape %r / %s] conversacion fallo: %s",
+                    shape_name,
+                    persona.id,
+                    snap_error,
                 )
 
-            # 7. Capturar transcript + estado final
-            snapshot = await _capture_conversation_snapshot(
+            return await _capture_conversation_snapshot(
                 client,
                 tenant_token,
                 persona,
@@ -1510,7 +1518,12 @@ async def _run_eval_shape(
                 status=snap_status,
                 error=snap_error,
             )
-            conversation_results.append(snapshot)
+
+        if personas:
+            snapshots = await asyncio.gather(
+                *(_run_and_snapshot(i, p) for i, p in enumerate(personas))
+            )
+            conversation_results.extend(snapshots)
 
     finally:
         finished_at = datetime.datetime.now(tz=datetime.UTC)
