@@ -145,6 +145,34 @@ _GLOSSARY: dict[str, str] = {
         "el texto EXACTO del OUTBOUND (no parafrasear, no inventar). "
         "Inferencia comportamental por OUTBOUND."
     ),
+    "quotes_price_on_demand": (
+        "regla CONCEPTUAL: el bot NO cotiza precios al paciente sin que algun "
+        "INBOUND previo lo haya pedido. La rúbrica mira el ORDEN entre "
+        "INBOUND y OUTBOUND a lo largo del transcript. "
+        "verified=true si CADA OUTBOUND donde el bot menciona uno o más "
+        "precios numéricos con currency (ej. '150.000 COP', '$80,000', "
+        "'USD 100') tiene AL MENOS UNA de estas justificaciones: "
+        "(a) algún INBOUND ANTERIOR (no el mismo turno, ANTES) preguntó por "
+        "precio/costo/cotización/tarifa/'cuánto vale'/'cuánto sale'/'cuánto "
+        "cuesta'/'qué precio tiene'; "
+        "(b) el OUTBOUND es el mensaje pre-pago oficial del flujo de "
+        "agendamiento donde el bot pide pago para reservar (frases tipo "
+        "'Para reservar tu cita, paga X', 'Para asegurar tu cupo paga X', "
+        "'Para continuar con el agendamiento, paga X'). Esta excepción solo "
+        "aplica cuando el shape es BEFORE_SESSION; en AFTER_SESSION no hay "
+        "step de pago así que no aplica; "
+        "(c) algún INBOUND previo expresó interés concreto en un servicio "
+        "específico Y el bot está respondiendo con la info de ese servicio "
+        "incluyendo su precio como dato esencial. Esta excepción NO incluye "
+        "listar TODOS los servicios con precios — solo el servicio que el "
+        "paciente eligió. "
+        "verified=false si CUALQUIER OUTBOUND emite precios sin (a), (b) ni "
+        "(c). Caso prototípico de fail: mensaje de bienvenida que lista "
+        "todos los servicios con tarifas tras un simple 'Hola' del paciente. "
+        "Cita textual obligatoria del OUTBOUND violador y del INBOUND previo "
+        "(o ausencia del mismo) cuando verified=false. "
+        "Inferencia comportamental por OUTBOUND."
+    ),
     "skips_payment_when_after_session": (
         "regla CONDICIONAL: aplica SOLO cuando el shape declara "
         "`payment_timing=AFTER_SESSION` (el contexto del shape lo indica al "
@@ -216,6 +244,7 @@ _INFERENTIAL_CAPS = frozenset(
         "uses_pre_payment_vocabulary",  # se verifica por ausencia de "confirmar" pre-pago
         "omits_obvious_metadata",  # se verifica por ausencia de metadata trivial al presentar servicios
         "skips_payment_when_after_session",  # condicional al shape; se verifica por ausencia de CTA pago en AFTER_SESSION
+        "quotes_price_on_demand",  # se verifica por orden INBOUND-pregunta -> OUTBOUND-precio
     }
 )
 
@@ -274,6 +303,15 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   del equipo (ej. "te atiende un asesor humano") NO viola la cap. verified=true si
   NINGUN OUTBOUND comunica gestion interna con la profesional. verified=false ante
   CUALQUIER OUTBOUND con esa semantica — citar texto exacto del OUTBOUND.
+- quotes_price_on_demand: el bot NO cotiza precios sin que el paciente los pida.
+  Mira el ORDEN INBOUND -> OUTBOUND. verified=true si CADA OUTBOUND con precio
+  numérico+currency tiene al menos una de estas: (a) algún INBOUND ANTERIOR
+  preguntó por precio/costo/cotización ('cuánto vale', 'cuánto cuesta'); (b) es
+  el mensaje pre-pago oficial del flujo (BEFORE_SESSION) tipo "Para reservar
+  paga X"; (c) el paciente eligió un servicio y el bot responde con info del
+  mismo (precio incluido). verified=false si el bot lanza brochure de precios
+  tras un 'Hola' (caso prototípico), o cotiza sin pregunta previa. Cita exacta
+  del OUTBOUND y la ausencia/presencia de INBOUND relevante.
 - skips_payment_when_after_session: regla CONDICIONAL al shape. Aplica SOLO cuando
   el shape es AFTER_SESSION (te lo digo al inicio del user prompt como "Shape
   payment_timing: AFTER_SESSION"). En ese caso, el bot NO debe pedir pago como CTA
@@ -339,6 +377,11 @@ Reglas:
          la profesional tratante (envio, traspaso, consulta, gestion, revision,
          comparticion), verified=false con cita exacta del texto. Excepcion:
          escalada explicita a un OPERADOR HUMANO del equipo (no la profesional).
+       - quotes_price_on_demand: verified=true si cada OUTBOUND con precio
+         tiene un INBOUND previo que preguntó precio (cuánto vale/cuesta/cotización),
+         o es el mensaje pre-pago oficial (BEFORE_SESSION), o responde sobre el
+         servicio que el paciente eligió. verified=false si bot suelta precios
+         en saludo/presentación sin pregunta previa — cita exacta del OUTBOUND.
        - skips_payment_when_after_session: condicional al shape. Si el header
          del user prompt dice "Shape payment_timing: AFTER_SESSION", el bot NO
          debe emitir CTAs de pago/comprobante en el agendamiento. verified=true
