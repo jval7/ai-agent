@@ -79,6 +79,20 @@ def build_style_rules_xml(
             "NO justifiques la elección con frases como 'para pacientes en el exterior' "
             "o 'desde Colombia'. Presenta el precio neutro, sin etiquetar al paciente."
         ),
+        # Cap `respects_service_modalities`: el AgentProfile es la fuente de
+        # verdad sobre que modalidades soporta cada servicio. El bot NO debe
+        # inventar modalidades que el shape no liste, ni siquiera cuando el
+        # contexto del paciente (residencia, pais) lo sugiera fuertemente.
+        (
+            "Respeta `<modalities>` de cada `<service>`. Si un servicio solo "
+            "lista PRESENCIAL, NO ofrezcas atender VIRTUAL aunque el paciente "
+            "este en otra ciudad o pais; viceversa. La residencia del "
+            "paciente NO autoriza a inventar modalidades que el AgentProfile "
+            "no soporta. Si el paciente pide una modalidad incompatible con "
+            "el servicio, comunicaselo claramente ('este servicio solo se "
+            "atiende [modalidad disponible]') y ofrece alternativas (otro "
+            "servicio que si la soporte, o handoff_to_human)."
+        ),
         # Cap `quotes_price_on_demand`: el bot NO cotiza precios sin que el
         # paciente los pida. Listar servicios POR NOMBRE esta bien; agregar
         # precios sin pregunta previa es saturar al paciente con info comercial

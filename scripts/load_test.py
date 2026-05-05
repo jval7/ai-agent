@@ -108,6 +108,17 @@ _arg_parser.add_argument(
     action="store_true",
     help="No borrar tenants efimeros al finalizar (para inspeccion manual).",
 )
+_arg_parser.add_argument(
+    "--per-combo",
+    type=int,
+    default=1,
+    help=(
+        "Numero de personas a seleccionar por combo del shape (default 1). "
+        "Subir a 2+ para cubrir variantes de comportamiento (ej. paciente que "
+        "pregunta precio vs paciente que no) cuando varias personas cumplen el "
+        "mismo combo."
+    ),
+)
 _args, _ = _arg_parser.parse_known_args()
 
 # Validaciones de exclusividad mutua
@@ -1140,6 +1151,14 @@ async def _capture_conversation_snapshot(
             # (skips_payment_when_after_session) know whether to apply or
             # short-circuit to verified=true.
             shape_payment_timing = shape.agent_profile.payment_timing
+            # Pass services + modalities so respects_service_modalities can
+            # contrast what the bot offers vs what the AgentProfile supports.
+            # str() on each modality drops the Literal for the judge's
+            # plain-string contract.
+            shape_services_modalities: list[tuple[str, list[str]]] = [
+                (svc.name or "(unnamed)", [str(m) for m in svc.modalities])
+                for svc in shape.agent_profile.services
+            ]
             snapshot.judge_verdict = await asyncio.to_thread(
                 llm_judge.judge_conversation,
                 persona_id=persona.id,
@@ -1147,6 +1166,7 @@ async def _capture_conversation_snapshot(
                 transcript=snapshot.transcript,
                 gemini_client=_get_gemini_client(),
                 shape_payment_timing=shape_payment_timing,
+                shape_services_modalities=shape_services_modalities,
             )
 
     return snapshot
@@ -1356,7 +1376,11 @@ async def _run_eval_shape(
 
         # 4-6. Solo correr conversaciones si el profile se aplico OK.
         if not apply_profile_failed:
-            personas = coverage.select_personas_for_shape(shape, personas_module.ALL_PERSONAS)
+            personas = coverage.select_personas_for_shape(
+                shape,
+                personas_module.ALL_PERSONAS,
+                per_combo=_args.per_combo,
+            )
             logger.info(
                 "Shape %r: %d personas seleccionadas: %s",
                 shape_name,

@@ -147,6 +147,29 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
         category="bot_behavior",
     ),
     eval_dto.EvalCapabilityDocDTO(
+        id="respects_service_modalities",
+        description=(
+            "regla conceptual: el bot solo ofrece modalidades (PRESENCIAL / "
+            "VIRTUAL) que estan listadas en `<modalities>` del `<service>` "
+            "elegido. Si un servicio solo tiene modalidad PRESENCIAL, el bot "
+            "NO debe ofrecer atender VIRTUAL aunque el contexto del paciente "
+            "(residencia en otra ciudad o pais) sugiera lo contrario; "
+            "viceversa. El AgentProfile es la fuente de verdad — el contexto "
+            "del paciente NO autoriza a inventar una modalidad inexistente."
+        ),
+        implications=(
+            "EL BOT debe respetar la configuracion del profesional. Si el "
+            "servicio no soporta la modalidad que el paciente necesita, debe "
+            "comunicarlo claramente y ofrecer alternativas (ej. otro "
+            "servicio que si la soporte, o handoff_to_human). Falla ante "
+            "casos como 'puedes tomar la consulta de forma virtual desde "
+            "Berlin' cuando el shape solo lista PRESENCIAL. La señal viaja "
+            "al juez como 'Shape services and modalities: ...' al inicio "
+            "del user prompt; el runner la inyecta desde el AgentProfile."
+        ),
+        category="bot_behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
         id="quotes_price_on_demand",
         description=(
             "regla conceptual: el bot NO cotiza precios sin que el paciente "
