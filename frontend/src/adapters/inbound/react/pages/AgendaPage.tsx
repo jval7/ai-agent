@@ -2135,6 +2135,15 @@ export function AgendaPage() {
                       expandedBookedAction === "reschedule" ? null : "reschedule"
                     );
                   }}
+                  {...(selectedBookedAppointment.startAt > nowDate
+                    ? {
+                        onChangeModality: () => {
+                          setLocalSubmitErrorMessage(null);
+                          setSubmitSuccessMessage(null);
+                          setExpandedBookedAction("change-modality");
+                        }
+                      }
+                    : {})}
                   onCancel={() => {
                     if (selectedBookedAppointment === null) {
                       return;
@@ -2166,6 +2175,85 @@ export function AgendaPage() {
                   errorMessage={localSubmitErrorMessage ?? submitErrorMessage}
                   successMessage={submitSuccessMessage}
                 />
+
+                {/* Expanded change-modality confirmation */}
+                {expandedBookedAction === "change-modality"
+                  ? (() => {
+                      const currentModality =
+                        selectedBookedAppointment.source === "MANUAL" &&
+                        selectedBookedAppointment.manualAppointment !== null
+                          ? selectedBookedAppointment.manualAppointment.isVirtual
+                            ? "VIRTUAL"
+                            : "PRESENCIAL"
+                          : selectedBookedAppointment.request?.appointmentModality === "PRESENCIAL"
+                            ? "PRESENCIAL"
+                            : "VIRTUAL";
+                      const targetModality: "PRESENCIAL" | "VIRTUAL" =
+                        currentModality === "PRESENCIAL" ? "VIRTUAL" : "PRESENCIAL";
+                      const currentLabel = currentModality === "VIRTUAL" ? "virtual" : "presencial";
+                      const targetLabel = targetModality === "VIRTUAL" ? "virtual" : "presencial";
+                      const formattedDate = luxonModule.DateTime.fromISO(
+                        selectedBookedAppointment.startAt.toISO() ?? "",
+                        { setZone: true }
+                      )
+                        .setZone(timezone)
+                        .setLocale("es")
+                        .toFormat("EEE dd LLL yyyy");
+                      return (
+                        <div className="border-t border-border-subtle px-5 py-4 space-y-4">
+                          <div>
+                            <p className="text-sm font-semibold text-brand-ink">
+                              Cambiar modalidad
+                            </p>
+                            <p className="text-xs text-slate-500 mt-0.5">
+                              {`¿Cambiar la cita de ${selectedBookedAppointment.patientDisplayName} del ${formattedDate} de ${currentLabel} a ${targetLabel}?`}
+                            </p>
+                            <p className="text-xs text-slate-500 mt-1">
+                              Se enviará automáticamente un correo al paciente con los nuevos datos
+                              del evento.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            <button
+                              className="rounded-lg bg-brand-teal px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-teal-hover disabled:cursor-not-allowed disabled:opacity-60"
+                              disabled={changeModalityMutation.isPending}
+                              onClick={() => {
+                                const source = selectedBookedAppointment.source;
+                                const id =
+                                  source === "BOT"
+                                    ? (selectedBookedAppointment.requestId ?? "")
+                                    : (selectedBookedAppointment.manualAppointmentId ?? "");
+                                if (id === "") {
+                                  return;
+                                }
+                                setLocalSubmitErrorMessage(null);
+                                setSubmitSuccessMessage(null);
+                                changeModalityMutation.mutate({
+                                  source,
+                                  id,
+                                  newModality: targetModality
+                                });
+                              }}
+                              type="button"
+                            >
+                              {changeModalityMutation.isPending
+                                ? "Guardando..."
+                                : "Confirmar cambio"}
+                            </button>
+                            <button
+                              className="rounded-lg border border-border-subtle px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-50"
+                              onClick={() => {
+                                setExpandedBookedAction(null);
+                              }}
+                              type="button"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  : null}
 
                 {/* Expanded reschedule form */}
                 {expandedBookedAction === "reschedule" ? (
