@@ -241,27 +241,25 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
     eval_dto.EvalCapabilityDocDTO(
         id="omits_obvious_metadata",
         description=(
-            "cuando el bot presenta servicios al paciente, omite metadata trivial. "
-            "Específicamente: (a) NO menciona la modalidad cuando el servicio tiene "
-            "una sola modalidad disponible (no decir 'es presencial' / 'es virtual' "
-            "si no hay alternativa); (b) NO etiqueta el cohort cuando el servicio "
-            "aplica a 'Pacientes nuevos y recurrentes' (no decir 'para nuevos o "
-            "recurrentes', 'para cualquier paciente'); (c) NO incluye aclaraciones "
-            "autoimplícitas ('para cualquier persona', 'aplica a todos'). El bot SÍ "
-            "menciona modalidad cuando hay opciones reales (presencial+virtual) y SÍ "
-            "menciona cohort cuando es restrictivo ('Solo pacientes nuevos' / 'Solo "
-            "pacientes recurrentes') y aplica al paciente actual."
+            "cuando el bot presenta un servicio o responde algo no relacionado a "
+            "modalidad/cohort, omite metadata trivial. Específicamente: (a) NO "
+            "menciona la modalidad cuando el servicio tiene una sola modalidad; "
+            "(b) NO etiqueta el cohort cuando el servicio aplica a 'Pacientes "
+            "nuevos y recurrentes'; (c) NO incluye aclaraciones autoimplícitas "
+            "('para cualquier persona', 'aplica a todos')."
         ),
         implications=(
-            "EL BOT debe presentar servicios de forma concisa y relevante para la "
-            "decisión del paciente. Falla ante mensajes como 'Blanqueamiento Dental: "
-            "para pacientes nuevos o recurrentes. Es presencial.' (cuando el servicio "
-            "solo es presencial y aplica a ambos cohorts) o 'Valoración: aplica a "
-            "cualquier persona'. Excepción: si el paciente preguntó explícitamente "
-            "por modalidad o cohort en un mensaje previo, responderle es legítimo y "
-            "no viola la cap. La regla razona contra los tags `<modalities>` y "
-            "`<target_patients>` del AgentProfile, así funciona para cualquier "
-            "profesional sin asumir uno en particular."
+            "EL BOT debe presentar servicios de forma concisa. EXCEPCIONES "
+            "(mencionar modalidad NO viola): (i) el servicio tiene varias "
+            "modalidades y el paciente debe elegir; (ii) el paciente preguntó "
+            "explícitamente; (iii) CONFIRMACIÓN DE RESERVA post-booking — la "
+            "modalidad es info operativa esencial (saber si viajar al consultorio "
+            "o conectarse a Meet) y debe aparecer SIEMPRE en el mensaje de "
+            "confirmación final; (iv) el bot está comunicando que el servicio NO "
+            "soporta cierta modalidad. Falla ante 'Blanqueamiento Dental: para "
+            "pacientes nuevos o recurrentes. Es presencial.' en presentación "
+            "casual cuando el servicio solo tiene PRESENCIAL y aplica a ambos "
+            "cohorts."
         ),
         category="bot_behavior",
     ),
