@@ -1212,6 +1212,14 @@ async def _capture_conversation_snapshot(
         declared_caps_set |= {
             cap for cap in persona.capabilities if cap in personas_module.BOT_BEHAVIOR_CAPS
         }
+        # Filter caps whose preconditions the shape does not satisfy, so the
+        # judge does not receive caps that would fail by construction (e.g.
+        # quotes_currency_per_location on a mono-currency shape).
+        declared_caps_set = {
+            cap
+            for cap in declared_caps_set
+            if coverage.cap_applies_to_shape(typing.cast(personas_module.Capability, cap), shape)
+        }
         if declared_caps_set:
             # Pass shape's payment_timing so conditional caps
             # (skips_payment_when_after_session) know whether to apply or

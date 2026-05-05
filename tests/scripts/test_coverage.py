@@ -197,6 +197,24 @@ class TestSelectPersonasForShape:
             coverage.select_personas_for_shape(shape, [], per_combo=0)
 
 
+class TestCapAppliesToShape:
+    def test_cap_without_requirements_applies_to_any_shape(self) -> None:
+        shape = _shape("smoke", [])
+        # Caps without entries in _CAP_SHAPE_REQUIREMENTS apply by default.
+        assert coverage.cap_applies_to_shape("hides_internal_handoff", shape) is True
+        assert coverage.cap_applies_to_shape("omits_obvious_metadata", shape) is True
+
+    def test_quotes_currency_per_location_skipped_for_mono_currency_shape(self) -> None:
+        # shape_minimal: single currency (COP). The cap requires multi-currency
+        # to be evaluable; otherwise it would fail by construction.
+        shape = coverage.load_shape(_FIXTURES_DIR / "shape_minimal.json")
+        assert coverage.cap_applies_to_shape("quotes_currency_per_location", shape) is False
+
+    def test_quotes_currency_per_location_applies_for_multi_currency_shape(self) -> None:
+        shape = coverage.load_shape(_FIXTURES_DIR / "shape_multicurrency.json")
+        assert coverage.cap_applies_to_shape("quotes_currency_per_location", shape) is True
+
+
 class TestLoadShape:
     def test_loads_all_shape_fixtures(self) -> None:
         shapes = coverage.load_shapes_from_dir(_FIXTURES_DIR)
