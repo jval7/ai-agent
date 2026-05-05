@@ -147,6 +147,30 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
         category="bot_behavior",
     ),
     eval_dto.EvalCapabilityDocDTO(
+        id="skips_payment_when_after_session",
+        description=(
+            "regla CONDICIONAL al shape: cuando el AgentProfile declara "
+            "`payment_timing=AFTER_SESSION`, el bot NO solicita pago ni "
+            "comprobante durante el agendamiento. El cobro sucede al finalizar "
+            "la sesión. Frases prohibidas en agendamiento: CTAs imperativos de "
+            "pago ('paga X', 'transfiere a Nequi', 'reserva con un pago de'), "
+            "solicitud de comprobante ('envíame el comprobante', 'manda el "
+            "voucher'). Permitido: respuestas informativas a preguntas del "
+            "paciente sobre cómo se paga ('el pago se hace al finalizar la "
+            "sesión'), recordatorios operativos en POST_BOOKING, o cotizar el "
+            "monto cuando preguntan precio (sin acompañar de CTA imperativo)."
+        ),
+        implications=(
+            "EL BOT debe respetar el modelo de cobro del profesional. Si el "
+            "shape es BEFORE_SESSION (default), la cap no aplica y emite "
+            "verified=true automático. Si es AFTER_SESSION, falla ante CTAs de "
+            "pago o solicitud de comprobante. La señal viaja al juez como "
+            "'Shape payment_timing: AFTER_SESSION' al inicio del user prompt; "
+            "el runner la inyecta desde el AgentProfile del shape."
+        ),
+        category="bot_behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
         id="omits_obvious_metadata",
         description=(
             "cuando el bot presenta servicios al paciente, omite metadata trivial. "

@@ -377,6 +377,16 @@ class AgentService:
             )
         )
 
+        # Preserve payment_timing from base when the DTO does not include it
+        # (frontend form does not send this field — it is owned by the agent
+        # settings tab). The eval runner DOES send it explicitly to set up
+        # AFTER_SESSION shapes; respect that value when present.
+        effective_payment_timing = (
+            update_dto.payment_timing
+            if update_dto.payment_timing is not None
+            else base.payment_timing
+        )
+
         updated_profile = agent_profile_entity.AgentProfile(
             tenant_id=tenant_id,
             system_prompt="",  # will be overwritten below
@@ -396,6 +406,7 @@ class AgentService:
             payment_methods=[
                 _payment_method_dto_to_entity(pm) for pm in update_dto.payment_methods
             ],
+            payment_timing=effective_payment_timing,
             updated_at=now_value,
         )
 

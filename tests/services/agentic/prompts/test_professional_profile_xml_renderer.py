@@ -142,6 +142,22 @@ class TestRendererSectionOmission:
         assert "</professional_context>" not in result
 
 
+class TestRendererPaymentTiming:
+    def test_renders_before_session_label_by_default(self) -> None:
+        result = renderer.render_system_prompt_xml(_empty_profile())
+        assert "<payment_timing>BEFORE_SESSION" in result
+
+    def test_renders_after_session_label_when_set(self) -> None:
+        profile = agent_profile_entity.AgentProfile(
+            tenant_id="t-1",
+            payment_timing="AFTER_SESSION",
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+        result = renderer.render_system_prompt_xml(profile)
+        assert "<payment_timing>AFTER_SESSION" in result
+        assert "se cobra al finalizar la sesion" in result
+
+
 class TestRendererFullProfile:
     def test_full_profile_contains_all_section_tags(self) -> None:
         result = renderer.render_system_prompt_xml(_full_profile())
@@ -149,6 +165,7 @@ class TestRendererFullProfile:
         assert "<professional_context>" in result
         assert "<services>" in result
         assert "<payment_info>" in result
+        assert "<payment_timing>" in result
 
     def test_full_profile_contains_identity_fields(self) -> None:
         result = renderer.render_system_prompt_xml(_full_profile())

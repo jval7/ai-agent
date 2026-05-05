@@ -59,19 +59,20 @@ class ProfessionalProfileResponseDTO(pydantic.BaseModel):
     payment_methods: list[PaymentMethodDTO] = []
 
 
-class UpdateProfessionalProfileDTO(pydantic.BaseModel):
-    identity: AssistantIdentityDTO | None = None
-    professional_context: ProfessionalContextDTO | None = None
-    services: list[ServiceOfferingDTO] = []
-    payment_methods: list[PaymentMethodDTO] = []
-
-
 # ---------------------------------------------------------------------------
 # Legacy system-prompt and settings DTOs
 # ---------------------------------------------------------------------------
 
 
 PaymentTimingLiteral = typing.Literal["BEFORE_SESSION", "AFTER_SESSION"]
+
+
+class UpdateProfessionalProfileDTO(pydantic.BaseModel):
+    identity: AssistantIdentityDTO | None = None
+    professional_context: ProfessionalContextDTO | None = None
+    services: list[ServiceOfferingDTO] = []
+    payment_methods: list[PaymentMethodDTO] = []
+    payment_timing: PaymentTimingLiteral | None = None
 
 
 class UpdateSystemPromptDTO(pydantic.BaseModel):

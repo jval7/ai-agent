@@ -36,6 +36,7 @@ Capability = typing.Literal[
     "hides_internal_handoff",  # bot NO le dice al paciente que envía/pasa/gestiona/comenta/comparte algo con el profesional
     "uses_pre_payment_vocabulary",  # bot NO usa "confirmar tu cita" antes del pago; usa "agendar" / "reservar" / "para continuar con el proceso de agendamiento"
     "omits_obvious_metadata",  # bot NO verbaliza metadata trivial al presentar servicios (modalidad única, cohort universal, aclaraciones autoimplícitas)
+    "skips_payment_when_after_session",  # cuando payment_timing=AFTER_SESSION, bot NO pide pago/comprobante durante el agendamiento
 ]
 
 
@@ -53,6 +54,7 @@ BOT_BEHAVIOR_CAPS: frozenset[Capability] = frozenset(
         "hides_internal_handoff",
         "uses_pre_payment_vocabulary",
         "omits_obvious_metadata",
+        "skips_payment_when_after_session",
     }
 )
 
@@ -110,6 +112,10 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             # Cap transversal: el bot omite metadata trivial al presentar
             # servicios (modalidad unica, cohort universal). Por OUTBOUND.
             "omits_obvious_metadata",
+            # Cap CONDICIONAL al shape: cuando payment_timing=AFTER_SESSION,
+            # el bot NO debe pedir pago ni comprobante en agendamiento.
+            # En shapes BEFORE_SESSION es no-op (verified=true automatico).
+            "skips_payment_when_after_session",
         ],
     ),
     Persona(
@@ -130,6 +136,7 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             "hides_internal_handoff",  # transversal — assertion del bot
             "uses_pre_payment_vocabulary",  # transversal — assertion del bot
             "omits_obvious_metadata",  # transversal — assertion del bot
+            "skips_payment_when_after_session",  # condicional al shape — no-op fuera de AFTER_SESSION
         ],
     ),
     Persona(
@@ -149,6 +156,7 @@ PSICOLOGA_PERSONAS: list[Persona] = [
             "hides_internal_handoff",  # transversal — assertion del bot
             "uses_pre_payment_vocabulary",  # transversal — assertion del bot
             "omits_obvious_metadata",  # transversal — assertion del bot
+            "skips_payment_when_after_session",  # condicional al shape — no-op fuera de AFTER_SESSION
         ],
     ),
 ]

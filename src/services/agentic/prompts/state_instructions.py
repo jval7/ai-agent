@@ -164,6 +164,15 @@ def _instructions_for_state(
         ]
     if runtime_context.state == "AWAITING_PAYMENT_CONFIRMATION":
         return [
+            # Defense-in-depth: this state should not be reached when
+            # <payment_timing> is AFTER_SESSION (the resolver in
+            # scheduling_service skips payment for that timing). If the
+            # resolver ever fails to gate, this guard tells the LLM to step
+            # back instead of asking for a payment that should not exist.
+            "GUARD: si `<payment_timing>` del system prompt es AFTER_SESSION, "
+            "este estado NO deberia activarse — el flujo NO incluye paso de "
+            "pago. Si llegas aca por error, NO pidas dinero ni comprobante; "
+            "responde 'dame un momento' y espera al siguiente turno.",
             # NOTA: el nombre del estado contiene "CONFIRMATION" por persistencia
             # pero las instrucciones visibles al LLM evitan la palabra "confirmar"
             # — el LLM la filtraba al paciente como "para confirmarte/confirmar
