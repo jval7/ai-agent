@@ -215,7 +215,8 @@ class TestPromptAssemblerOutputParity:
         assert "hora Colombia" in result
         assert "- nombre_paciente: Danery" in result
         assert "USA EXACTAMENTE el valor de `fecha_cita`" in result
-        assert "NUNCA inventes ni parafrasees" in result
+        assert "FUENTE UNICA DE VERDAD" in result
+        assert "NO inventes una direccion" in result
 
     def test_post_booking_followup_without_slot_data_warns_against_inventing(self) -> None:
         builder = _build_builder()
