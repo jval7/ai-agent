@@ -12,7 +12,9 @@ import src.services.constants as service_constants
 import src.services.dto.admin_dto as admin_dto
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.conversation_dto as conversation_dto
+import src.services.dto.google_calendar_dto as google_calendar_dto
 import src.services.dto.patient_dto as patient_dto
+import src.services.dto.scheduling_dto as scheduling_dto
 
 _NOW = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 
@@ -334,3 +336,333 @@ def test_get_agent_settings_for_tenant() -> None:
     body = response.json()
     assert body["assistant_enabled"] is True
     container.agent_service.get_agent_settings.assert_called_once_with("t1")
+
+
+# ---------------------------------------------------------------------------
+# Helpers for new endpoint tests
+# ---------------------------------------------------------------------------
+
+
+def _make_scheduling_request_summary(
+    request_id: str = "req-1",
+) -> scheduling_dto.SchedulingRequestSummaryDTO:
+    return scheduling_dto.SchedulingRequestSummaryDTO(
+        request_id=request_id,
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        request_kind="INITIAL",
+        status="BOOKED",
+        round_number=1,
+        patient_preference_note=None,
+        rejection_summary=None,
+        professional_note=None,
+        patient_first_name="Juan",
+        patient_last_name="Perez",
+        patient_age=30,
+        consultation_reason="headache",
+        consultation_details=None,
+        appointment_modality="PRESENCIAL",
+        patient_location=None,
+        slot_options_map={},
+        selected_slot_id="slot-1",
+        calendar_event_id="event-1",
+        payment_amount_cop=50000,
+        payment_currency="COP",
+        payment_method="CASH",
+        payment_status="PENDING",
+        payment_updated_at=None,
+        created_at=_NOW,
+        updated_at=_NOW,
+        slots=[],
+    )
+
+
+def _make_gc_connection_status(
+    tenant_id: str = "t1",
+) -> google_calendar_dto.GoogleCalendarConnectionStatusDTO:
+    return google_calendar_dto.GoogleCalendarConnectionStatusDTO(
+        tenant_id=tenant_id,
+        status="CONNECTED",
+        calendar_id="cal-123",
+        professional_timezone="America/Bogota",
+        connected_at=_NOW,
+    )
+
+
+# ---------------------------------------------------------------------------
+# DELETE conversations/{conversation_id}/messages (reset_messages)
+# ---------------------------------------------------------------------------
+
+
+def test_reset_messages_for_tenant_returns_403_for_professional_role() -> None:
+    client = _make_client(claims=_PROFESSIONAL_CLAIMS)
+    response = client.delete("/v1/admin/tenants/t1/conversations/c1/messages")
+    assert response.status_code == 403
+
+
+def test_reset_messages_for_tenant_returns_204_in_dev_mode() -> None:
+    container = unittest.mock.MagicMock()
+    container.settings.enable_dev_endpoints = True
+    container.conversation_control_service.reset_messages_for_tenant.return_value = None
+
+    client = _make_client(mock_container=container)
+    response = client.delete("/v1/admin/tenants/t1/conversations/c1/messages")
+
+    assert response.status_code == 204
+    container.conversation_control_service.reset_messages_for_tenant.assert_called_once_with(
+        tenant_id="t1",
+        conversation_id="c1",
+    )
+
+
+def test_reset_messages_for_tenant_blocked_outside_dev_mode() -> None:
+    container = unittest.mock.MagicMock()
+    container.settings.enable_dev_endpoints = False
+
+    client = _make_client(mock_container=container)
+    response = client.delete("/v1/admin/tenants/t1/conversations/c1/messages")
+
+    assert response.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# GET scheduling/availability
+# ---------------------------------------------------------------------------
+
+
+def test_get_scheduling_availability_returns_403_for_professional_role() -> None:
+    client = _make_client(claims=_PROFESSIONAL_CLAIMS)
+    response = client.get(
+        "/v1/admin/tenants/t1/scheduling/availability",
+        params={"from": "2026-01-01T08:00:00Z", "to": "2026-01-01T18:00:00Z"},
+    )
+    assert response.status_code == 403
+
+
+def test_get_scheduling_availability_delegates_to_service() -> None:
+    availability = google_calendar_dto.GoogleCalendarAvailabilityResponseDTO(
+        tenant_id="t1",
+        calendar_id="cal-123",
+        timezone="America/Bogota",
+        busy_intervals=[],
+    )
+    container = unittest.mock.MagicMock()
+    container.google_calendar_onboarding_service.get_availability.return_value = availability
+
+    client = _make_client(mock_container=container)
+    response = client.get(
+        "/v1/admin/tenants/t1/scheduling/availability",
+        params={"from": "2026-01-01T08:00:00Z", "to": "2026-01-01T18:00:00Z"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tenant_id"] == "t1"
+    assert body["busy_intervals"] == []
+    container.google_calendar_onboarding_service.get_availability.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# POST conversations/{id}/scheduling/requests/{id}/reschedule
+# ---------------------------------------------------------------------------
+
+
+def test_reschedule_booked_slot_returns_403_for_professional_role() -> None:
+    client = _make_client(claims=_PROFESSIONAL_CLAIMS)
+    response = client.post(
+        "/v1/admin/tenants/t1/conversations/c1/scheduling/requests/req-1/reschedule",
+        json={
+            "start_at": "2026-02-01T10:00:00Z",
+            "end_at": "2026-02-01T11:00:00Z",
+            "timezone": "America/Bogota",
+        },
+    )
+    assert response.status_code == 403
+
+
+def test_reschedule_booked_slot_delegates_to_service() -> None:
+    summary = _make_scheduling_request_summary()
+    container = unittest.mock.MagicMock()
+    container.scheduling_service.reschedule_booked_slot.return_value = summary
+
+    client = _make_client(mock_container=container)
+    response = client.post(
+        "/v1/admin/tenants/t1/conversations/c1/scheduling/requests/req-1/reschedule",
+        json={
+            "start_at": "2026-02-01T10:00:00Z",
+            "end_at": "2026-02-01T11:00:00Z",
+            "timezone": "America/Bogota",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["request_id"] == "req-1"
+    container.scheduling_service.reschedule_booked_slot.assert_called_once()
+    call_kwargs = container.scheduling_service.reschedule_booked_slot.call_args.kwargs
+    assert call_kwargs["tenant_id"] == "t1"
+    assert call_kwargs["request_id"] == "req-1"
+
+
+# ---------------------------------------------------------------------------
+# DELETE conversations/{id}/scheduling/requests/{id}/booked-slot
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_booked_slot_returns_403_for_professional_role() -> None:
+    client = _make_client(claims=_PROFESSIONAL_CLAIMS)
+    response = client.delete(
+        "/v1/admin/tenants/t1/conversations/c1/scheduling/requests/req-1/booked-slot"
+    )
+    assert response.status_code == 403
+
+
+def test_cancel_booked_slot_delegates_to_service() -> None:
+    summary = _make_scheduling_request_summary()
+    container = unittest.mock.MagicMock()
+    container.scheduling_service.cancel_booked_slot.return_value = summary
+
+    client = _make_client(mock_container=container)
+    response = client.delete(
+        "/v1/admin/tenants/t1/conversations/c1/scheduling/requests/req-1/booked-slot"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["request_id"] == "req-1"
+    container.scheduling_service.cancel_booked_slot.assert_called_once()
+    call_kwargs = container.scheduling_service.cancel_booked_slot.call_args.kwargs
+    assert call_kwargs["tenant_id"] == "t1"
+    assert call_kwargs["request_id"] == "req-1"
+
+
+# ---------------------------------------------------------------------------
+# PUT conversations/{id}/scheduling/requests/{id}/booked-payment
+# ---------------------------------------------------------------------------
+
+
+def test_update_booked_payment_returns_403_for_professional_role() -> None:
+    client = _make_client(claims=_PROFESSIONAL_CLAIMS)
+    response = client.put(
+        "/v1/admin/tenants/t1/conversations/c1/scheduling/requests/req-1/booked-payment",
+        json={
+            "payment_amount_cop": 50000,
+            "payment_currency": "COP",
+            "payment_method": "CASH",
+            "payment_status": "PAID",
+        },
+    )
+    assert response.status_code == 403
+
+
+def test_update_booked_payment_delegates_to_service() -> None:
+    summary = _make_scheduling_request_summary()
+    container = unittest.mock.MagicMock()
+    container.scheduling_service.update_booked_payment.return_value = summary
+
+    client = _make_client(mock_container=container)
+    response = client.put(
+        "/v1/admin/tenants/t1/conversations/c1/scheduling/requests/req-1/booked-payment",
+        json={
+            "payment_amount_cop": 50000,
+            "payment_currency": "COP",
+            "payment_method": "CASH",
+            "payment_status": "PAID",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["request_id"] == "req-1"
+    container.scheduling_service.update_booked_payment.assert_called_once()
+    call_kwargs = container.scheduling_service.update_booked_payment.call_args.kwargs
+    assert call_kwargs["tenant_id"] == "t1"
+    assert call_kwargs["request_id"] == "req-1"
+
+
+# ---------------------------------------------------------------------------
+# POST conversations/{id}/scheduling/requests/{id}/change-modality
+# ---------------------------------------------------------------------------
+
+
+def test_change_booked_slot_modality_returns_403_for_professional_role() -> None:
+    client = _make_client(claims=_PROFESSIONAL_CLAIMS)
+    response = client.post(
+        "/v1/admin/tenants/t1/conversations/c1/scheduling/requests/req-1/change-modality",
+        json={"new_modality": "VIRTUAL"},
+    )
+    assert response.status_code == 403
+
+
+def test_change_booked_slot_modality_delegates_to_service() -> None:
+    summary = _make_scheduling_request_summary()
+    container = unittest.mock.MagicMock()
+    container.scheduling_service.change_booked_modality.return_value = summary
+
+    client = _make_client(mock_container=container)
+    response = client.post(
+        "/v1/admin/tenants/t1/conversations/c1/scheduling/requests/req-1/change-modality",
+        json={"new_modality": "VIRTUAL"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["request_id"] == "req-1"
+    container.scheduling_service.change_booked_modality.assert_called_once()
+    call_kwargs = container.scheduling_service.change_booked_modality.call_args.kwargs
+    assert call_kwargs["tenant_id"] == "t1"
+    assert call_kwargs["request_id"] == "req-1"
+
+
+# ---------------------------------------------------------------------------
+# POST conversations/{id}/scheduling/close-session
+# ---------------------------------------------------------------------------
+
+
+def test_close_scheduling_session_returns_403_for_professional_role() -> None:
+    client = _make_client(claims=_PROFESSIONAL_CLAIMS)
+    response = client.post("/v1/admin/tenants/t1/conversations/c1/scheduling/close-session")
+    assert response.status_code == 403
+
+
+def test_close_scheduling_session_delegates_to_service() -> None:
+    container = unittest.mock.MagicMock()
+    container.scheduling_service.close_session.return_value = {"status": "closed"}
+
+    client = _make_client(mock_container=container)
+    response = client.post("/v1/admin/tenants/t1/conversations/c1/scheduling/close-session")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "closed"
+    container.scheduling_service.close_session.assert_called_once_with(
+        tenant_id="t1",
+        conversation_id="c1",
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET google-calendar/connection
+# ---------------------------------------------------------------------------
+
+
+def test_get_google_calendar_connection_returns_403_for_professional_role() -> None:
+    client = _make_client(claims=_PROFESSIONAL_CLAIMS)
+    response = client.get("/v1/admin/tenants/t1/google-calendar/connection")
+    assert response.status_code == 403
+
+
+def test_get_google_calendar_connection_delegates_to_service() -> None:
+    status = _make_gc_connection_status("t1")
+    container = unittest.mock.MagicMock()
+    container.google_calendar_onboarding_service.get_connection_status.return_value = status
+
+    client = _make_client(mock_container=container)
+    response = client.get("/v1/admin/tenants/t1/google-calendar/connection")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["tenant_id"] == "t1"
+    assert body["status"] == "CONNECTED"
+    assert body["calendar_id"] == "cal-123"
+    container.google_calendar_onboarding_service.get_connection_status.assert_called_once_with("t1")

@@ -1817,6 +1817,175 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     };
   }
 
+  async adminSubmitProfessionalSlots(
+    tenantId: string,
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.SubmitProfessionalSlotsInput
+  ): Promise<schedulingModel.SubmitProfessionalSlotsResult> {
+    const payload = await this.request<httpTypes.SubmitProfessionalSlotsApiResponse>(
+      `/v1/admin/tenants/${tenantId}/conversations/${encodeURIComponent(conversationId)}/scheduling/requests/${encodeURIComponent(requestId)}/professional-slots`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          slots: input.slots.map((slot) => ({
+            slot_id: slot.slotId,
+            start_at: slot.startAt,
+            end_at: slot.endAt,
+            timezone: slot.timezone
+          })),
+          professional_note: input.professionalNote
+        } satisfies httpTypes.SubmitProfessionalSlotsApiRequest)
+      }
+    );
+    return {
+      status: payload.status,
+      slotBatchId: payload.slot_batch_id,
+      outboundMessageId: payload.outbound_message_id,
+      assistantText: payload.assistant_text
+    };
+  }
+
+  async adminResolvePaymentReview(
+    tenantId: string,
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.ResolvePaymentReviewInput
+  ): Promise<schedulingModel.ResolvePaymentReviewResult> {
+    const payload = await this.request<httpTypes.ResolvePaymentReviewApiResponse>(
+      `/v1/admin/tenants/${tenantId}/conversations/${encodeURIComponent(conversationId)}/scheduling/requests/${encodeURIComponent(requestId)}/payment-review`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          decision: input.decision,
+          professional_note: input.professionalNote,
+          payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency
+        } satisfies httpTypes.ResolvePaymentReviewApiRequest)
+      }
+    );
+    return {
+      status: payload.status,
+      outboundMessageId: payload.outbound_message_id,
+      assistantText: payload.assistant_text
+    };
+  }
+
+  async adminRescheduleBookedSlot(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.RescheduleBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    const payload = await this.request<httpTypes.SchedulingRequestSummaryApiResponse>(
+      `/v1/admin/tenants/${tenantId}/scheduling-requests/${encodeURIComponent(requestId)}/booked-slot/reschedule`,
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify({
+          start_at: input.startAt,
+          end_at: input.endAt,
+          timezone: input.timezone,
+          event_summary: input.eventSummary
+        } satisfies httpTypes.RescheduleBookedSlotApiRequest)
+      }
+    );
+    return mapSchedulingRequestSummary(payload);
+  }
+
+  async adminCancelBookedSlot(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.CancelBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    const payload = await this.request<httpTypes.SchedulingRequestSummaryApiResponse>(
+      `/v1/admin/tenants/${tenantId}/scheduling-requests/${encodeURIComponent(requestId)}/booked-slot`,
+      {
+        method: "DELETE",
+        authRequired: true,
+        body: JSON.stringify({
+          reason: input.reason
+        } satisfies httpTypes.CancelBookedSlotApiRequest)
+      }
+    );
+    return mapSchedulingRequestSummary(payload);
+  }
+
+  async adminUpdateBookedSlotPayment(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.UpdateBookedSlotPaymentInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    const payload = await this.request<httpTypes.SchedulingRequestSummaryApiResponse>(
+      `/v1/admin/tenants/${tenantId}/scheduling-requests/${encodeURIComponent(requestId)}/booked-slot/payment`,
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify({
+          payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency,
+          payment_method: input.paymentMethod,
+          payment_status: input.paymentStatus
+        } satisfies httpTypes.UpdateBookedSlotPaymentApiRequest)
+      }
+    );
+    return mapSchedulingRequestSummary(payload);
+  }
+
+  async adminChangeBookedSlotModality(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.ChangeBookedSlotModalityInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    const payload = await this.request<httpTypes.SchedulingRequestSummaryApiResponse>(
+      `/v1/admin/tenants/${tenantId}/scheduling/${encodeURIComponent(requestId)}/change-modality`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          new_modality: input.newModality
+        } satisfies httpTypes.ChangeBookedModalityApiRequest)
+      }
+    );
+    return mapSchedulingRequestSummary(payload);
+  }
+
+  async adminCloseSession(tenantId: string, conversationId: string): Promise<{ status: string }> {
+    return this.request<{ status: string }>(
+      `/v1/admin/tenants/${tenantId}/conversations/${encodeURIComponent(conversationId)}/scheduling/close-session`,
+      { method: "POST", authRequired: true }
+    );
+  }
+
+  async adminGetGoogleCalendarAvailability(
+    tenantId: string,
+    fromIso: string,
+    toIso: string
+  ): Promise<googleCalendarModel.GoogleCalendarAvailability> {
+    const queryParams = new URLSearchParams({ from: fromIso, to: toIso });
+    const payload = await this.request<httpTypes.GoogleCalendarAvailabilityApiResponse>(
+      `/v1/admin/tenants/${tenantId}/google-calendar/availability?${queryParams.toString()}`,
+      { method: "GET", authRequired: true }
+    );
+    return {
+      tenantId: payload.tenant_id,
+      calendarId: payload.calendar_id,
+      timezone: payload.timezone,
+      busyIntervals: payload.busy_intervals.map((interval) => ({
+        startAt: interval.start_at,
+        endAt: interval.end_at
+      }))
+    };
+  }
+
+  async adminResetConversationMessages(tenantId: string, conversationId: string): Promise<void> {
+    await this.request<void>(
+      `/v1/admin/tenants/${tenantId}/conversations/${encodeURIComponent(conversationId)}/reset`,
+      { method: "DELETE", authRequired: true }
+    );
+  }
+
   async adminGetProfessionalProfile(tenantId: string): Promise<agentModel.ProfessionalProfile> {
     const raw = await this.request<httpTypes.ProfessionalProfileApiResponse>(
       `/v1/admin/tenants/${tenantId}/professional-profile`,

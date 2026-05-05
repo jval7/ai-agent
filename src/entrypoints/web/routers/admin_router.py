@@ -1,3 +1,4 @@
+import datetime
 import logging
 
 import fastapi
@@ -9,6 +10,7 @@ import src.services.dto.agent_dto as agent_dto
 import src.services.dto.auth_dto as auth_dto
 import src.services.dto.blacklist_dto as blacklist_dto
 import src.services.dto.conversation_dto as conversation_dto
+import src.services.dto.google_calendar_dto as google_calendar_dto
 import src.services.dto.manual_appointment_dto as manual_appointment_dto
 import src.services.dto.patient_dto as patient_dto
 import src.services.dto.scheduled_reminder_dto as scheduled_reminder_dto
@@ -240,6 +242,31 @@ def send_message_for_tenant(
         tenant_id=tenant_id,
         conversation_id=conversation_id,
         send_dto=send_dto,
+    )
+
+
+@router.delete(
+    "/tenants/{tenant_id}/conversations/{conversation_id}/messages",
+    status_code=fastapi.status.HTTP_204_NO_CONTENT,
+    dependencies=[fastapi.Depends(http_dependencies.require_dev_endpoints)],
+)
+def reset_messages_for_tenant(
+    tenant_id: str,
+    conversation_id: str,
+    claims: auth_dto.TokenClaimsDTO = _admin_dep,
+    container: app_container.AppContainer = _container_dep,
+) -> None:
+    admin_audit.info(
+        "admin.conversation.reset_messages",
+        extra={
+            "admin_user_id": claims.sub,
+            "tenant_id": tenant_id,
+            "conversation_id": conversation_id,
+        },
+    )
+    container.conversation_control_service.reset_messages_for_tenant(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
     )
 
 
@@ -495,6 +522,162 @@ def submit_professional_slots_for_tenant(
         conversation_id=conversation_id,
         request_id=request_id,
         submit_dto=submit_dto,
+    )
+
+
+@router.post(
+    "/tenants/{tenant_id}/conversations/{conversation_id}/scheduling/requests/{request_id}/reschedule",
+    response_model=scheduling_dto.SchedulingRequestSummaryDTO,
+)
+def reschedule_booked_slot_for_tenant(
+    tenant_id: str,
+    conversation_id: str,
+    request_id: str,
+    input_dto: scheduling_dto.RescheduleBookedSlotInputDTO,
+    claims: auth_dto.TokenClaimsDTO = _admin_dep,
+    container: app_container.AppContainer = _container_dep,
+) -> scheduling_dto.SchedulingRequestSummaryDTO:
+    admin_audit.info(
+        "admin.scheduling.reschedule_booked_slot",
+        extra={
+            "admin_user_id": claims.sub,
+            "tenant_id": tenant_id,
+            "conversation_id": conversation_id,
+            "request_id": request_id,
+        },
+    )
+    return container.scheduling_service.reschedule_booked_slot(
+        tenant_id=tenant_id,
+        request_id=request_id,
+        input_dto=input_dto,
+    )
+
+
+@router.delete(
+    "/tenants/{tenant_id}/conversations/{conversation_id}/scheduling/requests/{request_id}/booked-slot",
+    response_model=scheduling_dto.SchedulingRequestSummaryDTO,
+)
+def cancel_booked_slot_for_tenant(
+    tenant_id: str,
+    conversation_id: str,
+    request_id: str,
+    input_dto: scheduling_dto.CancelBookedSlotInputDTO | None = fastapi.Body(default=None),
+    claims: auth_dto.TokenClaimsDTO = _admin_dep,
+    container: app_container.AppContainer = _container_dep,
+) -> scheduling_dto.SchedulingRequestSummaryDTO:
+    admin_audit.info(
+        "admin.scheduling.cancel_booked_slot",
+        extra={
+            "admin_user_id": claims.sub,
+            "tenant_id": tenant_id,
+            "conversation_id": conversation_id,
+            "request_id": request_id,
+        },
+    )
+    resolved_input_dto = (
+        input_dto if input_dto is not None else scheduling_dto.CancelBookedSlotInputDTO(reason=None)
+    )
+    return container.scheduling_service.cancel_booked_slot(
+        tenant_id=tenant_id,
+        request_id=request_id,
+        input_dto=resolved_input_dto,
+    )
+
+
+@router.put(
+    "/tenants/{tenant_id}/conversations/{conversation_id}/scheduling/requests/{request_id}/booked-payment",
+    response_model=scheduling_dto.SchedulingRequestSummaryDTO,
+)
+def update_booked_payment_for_tenant(
+    tenant_id: str,
+    conversation_id: str,
+    request_id: str,
+    input_dto: scheduling_dto.UpdateBookedSlotPaymentInputDTO,
+    claims: auth_dto.TokenClaimsDTO = _admin_dep,
+    container: app_container.AppContainer = _container_dep,
+) -> scheduling_dto.SchedulingRequestSummaryDTO:
+    admin_audit.info(
+        "admin.scheduling.update_booked_payment",
+        extra={
+            "admin_user_id": claims.sub,
+            "tenant_id": tenant_id,
+            "conversation_id": conversation_id,
+            "request_id": request_id,
+        },
+    )
+    return container.scheduling_service.update_booked_payment(
+        tenant_id=tenant_id,
+        request_id=request_id,
+        input_dto=input_dto,
+    )
+
+
+@router.post(
+    "/tenants/{tenant_id}/conversations/{conversation_id}/scheduling/requests/{request_id}/change-modality",
+    response_model=scheduling_dto.SchedulingRequestSummaryDTO,
+)
+def change_booked_slot_modality_for_tenant(
+    tenant_id: str,
+    conversation_id: str,
+    request_id: str,
+    input_dto: scheduling_dto.ChangeBookedModalityInputDTO,
+    claims: auth_dto.TokenClaimsDTO = _admin_dep,
+    container: app_container.AppContainer = _container_dep,
+) -> scheduling_dto.SchedulingRequestSummaryDTO:
+    admin_audit.info(
+        "admin.scheduling.change_booked_modality",
+        extra={
+            "admin_user_id": claims.sub,
+            "tenant_id": tenant_id,
+            "conversation_id": conversation_id,
+            "request_id": request_id,
+        },
+    )
+    return container.scheduling_service.change_booked_modality(
+        tenant_id=tenant_id,
+        request_id=request_id,
+        input_dto=input_dto,
+    )
+
+
+@router.post(
+    "/tenants/{tenant_id}/conversations/{conversation_id}/scheduling/close-session",
+)
+def close_scheduling_session_for_tenant(
+    tenant_id: str,
+    conversation_id: str,
+    claims: auth_dto.TokenClaimsDTO = _admin_dep,
+    container: app_container.AppContainer = _container_dep,
+) -> dict[str, str]:
+    admin_audit.info(
+        "admin.scheduling.close_session",
+        extra={
+            "admin_user_id": claims.sub,
+            "tenant_id": tenant_id,
+            "conversation_id": conversation_id,
+        },
+    )
+    return container.scheduling_service.close_session(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+    )
+
+
+@router.get(
+    "/tenants/{tenant_id}/scheduling/availability",
+    response_model=google_calendar_dto.GoogleCalendarAvailabilityResponseDTO,
+)
+def get_scheduling_availability_for_tenant(
+    tenant_id: str,
+    from_at: datetime.datetime = fastapi.Query(alias="from"),
+    to_at: datetime.datetime = fastapi.Query(alias="to"),
+    claims: auth_dto.TokenClaimsDTO = _admin_dep,
+    container: app_container.AppContainer = _container_dep,
+) -> google_calendar_dto.GoogleCalendarAvailabilityResponseDTO:
+    return container.google_calendar_onboarding_service.get_availability(
+        tenant_id=tenant_id,
+        from_at=from_at,
+        to_at=to_at,
     )
 
 
@@ -804,3 +987,20 @@ def update_professional_profile_for_tenant(
         extra={"admin_user_id": claims.sub, "tenant_id": tenant_id},
     )
     return container.agent_service.update_professional_profile(tenant_id, update_dto)
+
+
+# ---------------------------------------------------------------------------
+# Google Calendar
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/tenants/{tenant_id}/google-calendar/connection",
+    response_model=google_calendar_dto.GoogleCalendarConnectionStatusDTO,
+)
+def get_google_calendar_connection_for_tenant(
+    tenant_id: str,
+    claims: auth_dto.TokenClaimsDTO = _admin_dep,
+    container: app_container.AppContainer = _container_dep,
+) -> google_calendar_dto.GoogleCalendarConnectionStatusDTO:
+    return container.google_calendar_onboarding_service.get_connection_status(tenant_id)

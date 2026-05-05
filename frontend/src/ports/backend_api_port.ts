@@ -240,6 +240,46 @@ export interface BackendApiPort {
     status?: schedulingModel.SchedulingRequestStatus
   ): Promise<schedulingModel.SchedulingRequestSummary[]>;
 
+  adminSubmitProfessionalSlots(
+    tenantId: string,
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.SubmitProfessionalSlotsInput
+  ): Promise<schedulingModel.SubmitProfessionalSlotsResult>;
+  adminResolvePaymentReview(
+    tenantId: string,
+    conversationId: string,
+    requestId: string,
+    input: schedulingModel.ResolvePaymentReviewInput
+  ): Promise<schedulingModel.ResolvePaymentReviewResult>;
+  adminRescheduleBookedSlot(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.RescheduleBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary>;
+  adminCancelBookedSlot(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.CancelBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary>;
+  adminUpdateBookedSlotPayment(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.UpdateBookedSlotPaymentInput
+  ): Promise<schedulingModel.SchedulingRequestSummary>;
+  adminChangeBookedSlotModality(
+    tenantId: string,
+    requestId: string,
+    input: schedulingModel.ChangeBookedSlotModalityInput
+  ): Promise<schedulingModel.SchedulingRequestSummary>;
+  adminCloseSession(tenantId: string, conversationId: string): Promise<{ status: string }>;
+  adminGetGoogleCalendarAvailability(
+    tenantId: string,
+    fromIso: string,
+    toIso: string
+  ): Promise<googleCalendarModel.GoogleCalendarAvailability>;
+  adminResetConversationMessages(tenantId: string, conversationId: string): Promise<void>;
+
   adminListReminders(
     tenantId: string,
     status?: string

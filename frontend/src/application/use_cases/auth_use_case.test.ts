@@ -538,6 +538,72 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
     throw new Error("not used");
   }
 
+  async adminSubmitProfessionalSlots(
+    _tenantId: string,
+    _conversationId: string,
+    _requestId: string,
+    _input: schedulingModel.SubmitProfessionalSlotsInput
+  ): Promise<schedulingModel.SubmitProfessionalSlotsResult> {
+    throw new Error("not used");
+  }
+
+  async adminResolvePaymentReview(
+    _tenantId: string,
+    _conversationId: string,
+    _requestId: string,
+    _input: schedulingModel.ResolvePaymentReviewInput
+  ): Promise<schedulingModel.ResolvePaymentReviewResult> {
+    throw new Error("not used");
+  }
+
+  async adminRescheduleBookedSlot(
+    _tenantId: string,
+    _requestId: string,
+    _input: schedulingModel.RescheduleBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    throw new Error("not used");
+  }
+
+  async adminCancelBookedSlot(
+    _tenantId: string,
+    _requestId: string,
+    _input: schedulingModel.CancelBookedSlotInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    throw new Error("not used");
+  }
+
+  async adminUpdateBookedSlotPayment(
+    _tenantId: string,
+    _requestId: string,
+    _input: schedulingModel.UpdateBookedSlotPaymentInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    throw new Error("not used");
+  }
+
+  async adminChangeBookedSlotModality(
+    _tenantId: string,
+    _requestId: string,
+    _input: schedulingModel.ChangeBookedSlotModalityInput
+  ): Promise<schedulingModel.SchedulingRequestSummary> {
+    throw new Error("not used");
+  }
+
+  async adminCloseSession(_tenantId: string, _conversationId: string): Promise<{ status: string }> {
+    throw new Error("not used");
+  }
+
+  async adminGetGoogleCalendarAvailability(
+    _tenantId: string,
+    _fromIso: string,
+    _toIso: string
+  ): Promise<googleCalendarModel.GoogleCalendarAvailability> {
+    throw new Error("not used");
+  }
+
+  async adminResetConversationMessages(_tenantId: string, _conversationId: string): Promise<void> {
+    throw new Error("not used");
+  }
+
   async adminListReminders(
     _tenantId: string,
     _status?: string
