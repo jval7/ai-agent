@@ -147,6 +147,29 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
         category="bot_behavior",
     ),
     eval_dto.EvalCapabilityDocDTO(
+        id="quotes_price_on_demand",
+        description=(
+            "regla conceptual: el bot NO cotiza precios sin que el paciente "
+            "los pida. La rúbrica mira el ORDEN entre INBOUND y OUTBOUND. "
+            "Cada OUTBOUND donde el bot mencione un precio numérico+currency "
+            "debe tener al menos una justificación: (a) un INBOUND anterior "
+            "preguntó por precio/costo/cotización; (b) es el mensaje pre-pago "
+            "oficial donde el bot pide pago para reservar (solo aplica en "
+            "BEFORE_SESSION); (c) el paciente eligió un servicio y el bot "
+            "responde con info del mismo (precio incluido como dato esencial)."
+        ),
+        implications=(
+            "EL BOT debe esperar a que el paciente pregunte antes de cotizar. "
+            "Falla ante el patrón típico: paciente dice solo 'Hola' y el bot "
+            "lanza un brochure con precios de todos los servicios. Listar "
+            "servicios POR NOMBRE (sin tarifas) es válido; agregar precios "
+            "sin pregunta previa, no. Excepción transaccional: cuando el "
+            "flujo BEFORE_SESSION llega al paso de pago, mencionar el monto "
+            "como parte del CTA es legítimo."
+        ),
+        category="bot_behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
         id="skips_payment_when_after_session",
         description=(
             "regla CONDICIONAL al shape: cuando el AgentProfile declara "

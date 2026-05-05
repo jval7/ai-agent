@@ -79,6 +79,26 @@ def build_style_rules_xml(
             "NO justifiques la elección con frases como 'para pacientes en el exterior' "
             "o 'desde Colombia'. Presenta el precio neutro, sin etiquetar al paciente."
         ),
+        # Cap `quotes_price_on_demand`: el bot NO cotiza precios sin que el
+        # paciente los pida. Listar servicios POR NOMBRE esta bien; agregar
+        # precios sin pregunta previa es saturar al paciente con info comercial
+        # que no busco. La excepcion legitima es el mensaje pre-pago oficial
+        # del flujo BEFORE_SESSION (donde el monto es info transaccional, no
+        # marketing).
+        (
+            "No cotices precios sin que el paciente los pida. Los `<tariffs>` "
+            "del AgentProfile son insumo INTERNO para responder cuando el "
+            "paciente pregunte por costo/cotizacion/'cuánto vale', NO una "
+            "lista de marketing para incluir en saludos o presentaciones de "
+            "servicios. Listar los servicios disponibles por nombre esta bien; "
+            "agregar el precio adjunto a cada uno sin que el paciente lo haya "
+            "preguntado, no. UNICA excepcion: cuando el `<payment_timing>` es "
+            "BEFORE_SESSION y el flujo llega al momento de pedir el pago para "
+            "reservar (ej. 'Para reservar tu cita, paga X'), ahi el monto es "
+            "informacion transaccional necesaria. Si el paciente eligio un "
+            "servicio especifico y necesita el precio para decidir, podes "
+            "cotizar solo el de ese servicio — no el catalogo entero."
+        ),
         # Cap `omits_obvious_metadata`: al presentar servicios, omite metadata
         # trivial. Los tags <modalities> y <target_patients> del AgentProfile
         # son insumo de DECISION INTERNA del bot (filtrar, ofrecer), no copy.
