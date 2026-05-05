@@ -2,19 +2,23 @@ import datetime
 
 import pydantic
 
+import src.services.constants as service_constants
+
+ALLOWED_ROLES = (service_constants.ROLE_PROFESSIONAL, service_constants.ROLE_ADMIN)
+
+
+def _validate_role(value: str) -> str:
+    normalized_value = value.strip().lower()
+    if normalized_value not in ALLOWED_ROLES:
+        raise ValueError(f"role must be one of {ALLOWED_ROLES}")
+    return normalized_value
+
 
 class CreateProfessionalDTO(pydantic.BaseModel):
     tenant_name: str
     email: str
     password: str
-
-    @pydantic.field_validator("tenant_name")
-    @classmethod
-    def validate_tenant_name(cls, value: str) -> str:
-        normalized_value = value.strip()
-        if not normalized_value:
-            raise ValueError("tenant_name cannot be empty")
-        return normalized_value
+    role: str = service_constants.ROLE_PROFESSIONAL
 
     @pydantic.field_validator("email")
     @classmethod
@@ -30,6 +34,17 @@ class CreateProfessionalDTO(pydantic.BaseModel):
         if len(value) < 8:
             raise ValueError("password must have at least 8 characters")
         return value
+
+    @pydantic.field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        return _validate_role(value)
+
+    @pydantic.model_validator(mode="after")
+    def validate_tenant_name_required_for_professional(self) -> "CreateProfessionalDTO":
+        if self.role != service_constants.ROLE_ADMIN and not self.tenant_name.strip():
+            raise ValueError("tenant_name cannot be empty for professional role")
+        return self
 
 
 class ResetPasswordDTO(pydantic.BaseModel):
@@ -78,14 +93,7 @@ class InviteProfessionalDTO(pydantic.BaseModel):
     tenant_name: str
     email: str
     professional_name: str | None = None
-
-    @pydantic.field_validator("tenant_name")
-    @classmethod
-    def validate_tenant_name(cls, value: str) -> str:
-        normalized_value = value.strip()
-        if not normalized_value:
-            raise ValueError("tenant_name cannot be empty")
-        return normalized_value
+    role: str = service_constants.ROLE_PROFESSIONAL
 
     @pydantic.field_validator("email")
     @classmethod
@@ -94,3 +102,14 @@ class InviteProfessionalDTO(pydantic.BaseModel):
         if "@" not in normalized_value:
             raise ValueError("email must contain @")
         return normalized_value
+
+    @pydantic.field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        return _validate_role(value)
+
+    @pydantic.model_validator(mode="after")
+    def validate_tenant_name_required_for_professional(self) -> "InviteProfessionalDTO":
+        if self.role != service_constants.ROLE_ADMIN and not self.tenant_name.strip():
+            raise ValueError("tenant_name cannot be empty for professional role")
+        return self

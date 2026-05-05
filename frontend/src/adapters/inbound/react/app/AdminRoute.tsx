@@ -2,7 +2,7 @@ import * as reactRouterDomModule from "react-router-dom";
 
 import * as authContextModule from "./AuthContext";
 
-export function PublicOnlyRoute(props: { children: JSX.Element }) {
+export function AdminRoute(props: { children: JSX.Element }) {
   const auth = authContextModule.useAuth();
 
   if (auth.status === "loading") {
@@ -13,10 +13,11 @@ export function PublicOnlyRoute(props: { children: JSX.Element }) {
     );
   }
 
-  if (auth.status === "authenticated") {
-    if (auth.userProfile?.role === "admin") {
-      return <reactRouterDomModule.Navigate to="/admin" replace />;
-    }
+  if (auth.status === "anonymous") {
+    return <reactRouterDomModule.Navigate to="/login" replace />;
+  }
+
+  if (auth.userProfile?.role !== "admin") {
     return <reactRouterDomModule.Navigate to="/configuraciones" replace />;
   }
 

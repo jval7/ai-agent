@@ -1,5 +1,6 @@
 import * as vitestModule from "vitest";
 
+import type * as adminModel from "@domain/models/admin";
 import type * as agentModel from "@domain/models/agent";
 import type * as authModel from "@domain/models/auth";
 import type * as blacklistModel from "@domain/models/blacklist";
@@ -57,6 +58,13 @@ class InMemoryTokenSession {
   }
 }
 
+const fakeProfile: authModel.UserProfile = {
+  userId: "user-1",
+  email: "owner@acme.com",
+  role: "professional",
+  tenantId: "tenant-1"
+};
+
 class FakeBackendApi implements backendApiPort.BackendApiPort {
   refreshCalls = 0;
 
@@ -87,6 +95,10 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
 
   async logout(_refreshToken: string): Promise<void> {
     return;
+  }
+
+  async getMe(): Promise<authModel.UserProfile> {
+    return fakeProfile;
   }
 
   async getSystemPrompt(): Promise<agentModel.SystemPrompt> {
@@ -404,19 +416,212 @@ class FakeBackendApi implements backendApiPort.BackendApiPort {
   async listEvalCapabilities(): Promise<evaluationModel.EvalCapabilityDoc[]> {
     throw new Error("not used");
   }
+
+  async adminGetGlobalMetrics(): Promise<adminModel.GlobalMetrics> {
+    throw new Error("not used");
+  }
+
+  async adminListTenants(_search?: string): Promise<adminModel.TenantSummary[]> {
+    throw new Error("not used");
+  }
+
+  async adminGetTenantSummary(_tenantId: string): Promise<adminModel.TenantSummary> {
+    throw new Error("not used");
+  }
+
+  async adminListPatients(_tenantId: string): Promise<patientModel.Patient[]> {
+    throw new Error("not used");
+  }
+
+  async adminGetPatient(_tenantId: string, _whatsappUserId: string): Promise<patientModel.Patient> {
+    throw new Error("not used");
+  }
+
+  async adminCreatePatient(
+    _tenantId: string,
+    _input: patientModel.CreatePatientInput
+  ): Promise<patientModel.Patient> {
+    throw new Error("not used");
+  }
+
+  async adminUpdatePatient(
+    _tenantId: string,
+    _whatsappUserId: string,
+    _input: patientModel.UpdatePatientInput
+  ): Promise<patientModel.Patient> {
+    throw new Error("not used");
+  }
+
+  async adminRemovePatient(_tenantId: string, _whatsappUserId: string): Promise<void> {
+    return;
+  }
+
+  async adminListConversations(
+    _tenantId: string
+  ): Promise<conversationModel.ConversationSummary[]> {
+    throw new Error("not used");
+  }
+
+  async adminListConversationMessages(
+    _tenantId: string,
+    _conversationId: string
+  ): Promise<conversationModel.ConversationMessage[]> {
+    throw new Error("not used");
+  }
+
+  async adminUpdateConversationControlMode(
+    _tenantId: string,
+    _conversationId: string,
+    _controlMode: conversationModel.ControlMode
+  ): Promise<conversationModel.ControlMode> {
+    throw new Error("not used");
+  }
+
+  async adminSendConversationMessage(
+    _tenantId: string,
+    _conversationId: string,
+    _messageText: string
+  ): Promise<conversationModel.MessageSent> {
+    throw new Error("not used");
+  }
+
+  async adminListManualAppointments(
+    _tenantId: string,
+    _status?: manualAppointmentModel.ManualAppointmentStatus
+  ): Promise<manualAppointmentModel.ManualAppointment[]> {
+    throw new Error("not used");
+  }
+
+  async adminCreateManualAppointment(
+    _tenantId: string,
+    _input: manualAppointmentModel.CreateManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    throw new Error("not used");
+  }
+
+  async adminRescheduleManualAppointment(
+    _tenantId: string,
+    _appointmentId: string,
+    _input: manualAppointmentModel.RescheduleManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    throw new Error("not used");
+  }
+
+  async adminCancelManualAppointment(
+    _tenantId: string,
+    _appointmentId: string,
+    _input: manualAppointmentModel.CancelManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    throw new Error("not used");
+  }
+
+  async adminUpdateManualAppointmentPayment(
+    _tenantId: string,
+    _appointmentId: string,
+    _input: manualAppointmentModel.UpdateManualAppointmentPaymentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    throw new Error("not used");
+  }
+
+  async adminChangeManualAppointmentModality(
+    _tenantId: string,
+    _appointmentId: string,
+    _input: manualAppointmentModel.ChangeManualAppointmentModalityInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    throw new Error("not used");
+  }
+
+  async adminListSchedulingRequests(
+    _tenantId: string,
+    _status?: schedulingModel.SchedulingRequestStatus
+  ): Promise<schedulingModel.SchedulingRequestSummary[]> {
+    throw new Error("not used");
+  }
+
+  async adminListReminders(
+    _tenantId: string,
+    _status?: string
+  ): Promise<scheduledReminderModel.ScheduledReminderList> {
+    throw new Error("not used");
+  }
+
+  async adminSendReminderNow(_tenantId: string, _reminderId: string): Promise<void> {
+    return;
+  }
+
+  async adminListBlacklist(_tenantId: string): Promise<blacklistModel.BlacklistEntry[]> {
+    throw new Error("not used");
+  }
+
+  async adminAddBlacklist(
+    _tenantId: string,
+    _whatsappUserId: string
+  ): Promise<blacklistModel.BlacklistEntry> {
+    throw new Error("not used");
+  }
+
+  async adminRemoveBlacklist(_tenantId: string, _whatsappUserId: string): Promise<void> {
+    return;
+  }
+
+  async adminGetSystemPrompt(_tenantId: string): Promise<agentModel.SystemPrompt> {
+    throw new Error("not used");
+  }
+
+  async adminUpdateSystemPrompt(
+    _tenantId: string,
+    _systemPrompt: string
+  ): Promise<agentModel.SystemPrompt> {
+    throw new Error("not used");
+  }
+
+  async adminGetAgentSettings(_tenantId: string): Promise<agentModel.AgentSettings> {
+    throw new Error("not used");
+  }
+
+  async adminUpdateAgentSettings(
+    _tenantId: string,
+    _input: agentModel.UpdateAgentSettingsInput
+  ): Promise<agentModel.AgentSettings> {
+    throw new Error("not used");
+  }
+
+  async adminGetProfessionalProfile(_tenantId: string): Promise<agentModel.ProfessionalProfile> {
+    throw new Error("not used");
+  }
+
+  async adminUpdateProfessionalProfile(
+    _tenantId: string,
+    _input: agentModel.UpdateProfessionalProfileInput
+  ): Promise<agentModel.ProfessionalProfile> {
+    throw new Error("not used");
+  }
 }
 
 vitestModule.describe("AuthUseCase", () => {
-  vitestModule.it("bootstraps session from refresh token", async () => {
+  vitestModule.it("bootstraps session from refresh token and returns user profile", async () => {
     const api = new FakeBackendApi();
     const tokenSession = new InMemoryTokenSession(null, "refresh-old");
     const authUseCase = new authUseCaseModule.AuthUseCase(api, tokenSession);
 
-    const hasSession = await authUseCase.bootstrapSession();
+    const profile = await authUseCase.bootstrapSession();
 
-    vitestModule.expect(hasSession).toBe(true);
+    vitestModule.expect(profile).not.toBeNull();
+    vitestModule.expect(profile?.userId).toBe("user-1");
+    vitestModule.expect(profile?.role).toBe("professional");
     vitestModule.expect(api.refreshCalls).toBe(1);
     vitestModule.expect(tokenSession.getAccessToken()).toBe("access-new");
     vitestModule.expect(tokenSession.getRefreshToken()).toBe("refresh-new");
+  });
+
+  vitestModule.it("returns null when no tokens present", async () => {
+    const api = new FakeBackendApi();
+    const tokenSession = new InMemoryTokenSession(null, null);
+    const authUseCase = new authUseCaseModule.AuthUseCase(api, tokenSession);
+
+    const profile = await authUseCase.bootstrapSession();
+
+    vitestModule.expect(profile).toBeNull();
+    vitestModule.expect(api.refreshCalls).toBe(0);
   });
 });

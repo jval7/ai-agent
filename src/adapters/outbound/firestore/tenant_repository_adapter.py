@@ -53,6 +53,54 @@ class FirestoreTenantRepositoryAdapter(tenant_repository_port.TenantRepositoryPo
             tenant_raw_data, tenant_entity.Tenant, "tenant"
         )
 
+    def list_all(self, include_admin: bool = False) -> list[tenant_entity.Tenant]:
+        try:
+            snapshots = list(firestore_paths.tenants_collection(self._client).stream())
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to list tenants from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to list tenants from firestore"
+            ) from error
+
+        tenants: list[tenant_entity.Tenant] = []
+        for snapshot in snapshots:
+            data = snapshot.to_dict()
+            if data is None:
+                continue
+            tenant = firestore_model_mapper.parse_document(data, tenant_entity.Tenant, "tenant")
+            if not include_admin and tenant.is_admin_tenant:
+                continue
+            tenants.append(tenant)
+        return tenants
+
+    def get_admin_tenant(self) -> tenant_entity.Tenant | None:
+        try:
+            snapshots = list(
+                firestore_paths.tenants_collection(self._client)
+                .where("is_admin_tenant", "==", True)
+                .limit(1)
+                .stream()
+            )
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to query admin tenant from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to query admin tenant from firestore"
+            ) from error
+
+        if not snapshots:
+            return None
+
+        data = snapshots[0].to_dict()
+        if data is None:
+            return None
+        return firestore_model_mapper.parse_document(data, tenant_entity.Tenant, "tenant")
+
     def delete_with_data(self, tenant_id: str) -> bool:
         tenant_doc_ref = firestore_paths.tenant_document(self._client, tenant_id)
         try:

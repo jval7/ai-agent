@@ -34,6 +34,14 @@ class ConversationControlService:
         self._id_generator = id_generator
         self._clock = clock
 
+    def update_control_mode_for_tenant(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        update_dto: conversation_dto.UpdateConversationControlModeDTO,
+    ) -> conversation_dto.ConversationControlModeResponseDTO:
+        return self._update_control_mode_impl(tenant_id, conversation_id, update_dto)
+
     def update_control_mode(
         self,
         claims: auth_dto.TokenClaimsDTO,
@@ -41,9 +49,16 @@ class ConversationControlService:
         update_dto: conversation_dto.UpdateConversationControlModeDTO,
     ) -> conversation_dto.ConversationControlModeResponseDTO:
         self._ensure_professional(claims)
+        return self._update_control_mode_impl(claims.tenant_id, conversation_id, update_dto)
 
+    def _update_control_mode_impl(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        update_dto: conversation_dto.UpdateConversationControlModeDTO,
+    ) -> conversation_dto.ConversationControlModeResponseDTO:
         conversation = self._conversation_repository.get_conversation_by_id(
-            claims.tenant_id,
+            tenant_id,
             conversation_id,
         )
         if conversation is None:
@@ -119,6 +134,14 @@ class ConversationControlService:
             },
         )
 
+    def send_professional_message_for_tenant(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        send_dto: conversation_dto.SendProfessionalMessageDTO,
+    ) -> conversation_dto.MessageSentResponseDTO:
+        return self._send_professional_message_impl(tenant_id, conversation_id, send_dto)
+
     def send_professional_message(
         self,
         claims: auth_dto.TokenClaimsDTO,
@@ -126,9 +149,16 @@ class ConversationControlService:
         send_dto: conversation_dto.SendProfessionalMessageDTO,
     ) -> conversation_dto.MessageSentResponseDTO:
         self._ensure_professional(claims)
+        return self._send_professional_message_impl(claims.tenant_id, conversation_id, send_dto)
 
+    def _send_professional_message_impl(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        send_dto: conversation_dto.SendProfessionalMessageDTO,
+    ) -> conversation_dto.MessageSentResponseDTO:
         conversation = self._conversation_repository.get_conversation_by_id(
-            claims.tenant_id,
+            tenant_id,
             conversation_id,
         )
         if conversation is None:
@@ -138,7 +168,7 @@ class ConversationControlService:
                 "conversation must be in HUMAN mode to send messages"
             )
 
-        connection = self._whatsapp_connection_repository.get_by_tenant_id(claims.tenant_id)
+        connection = self._whatsapp_connection_repository.get_by_tenant_id(tenant_id)
         if (
             connection is None
             or connection.access_token is None
@@ -157,7 +187,7 @@ class ConversationControlService:
         outbound_message = message_entity.Message(
             id=self._id_generator.new_id(),
             conversation_id=conversation_id,
-            tenant_id=claims.tenant_id,
+            tenant_id=tenant_id,
             direction="OUTBOUND",
             role="human_agent",
             content=send_dto.message_text,
@@ -179,7 +209,7 @@ class ConversationControlService:
                     event_name="conversation.professional_message_sent",
                     message="professional sent message to patient",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "conversation_id": conversation_id,
                     },
                 )

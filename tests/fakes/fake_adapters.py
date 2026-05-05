@@ -380,3 +380,17 @@ class FakeTenantRepository(tenant_repository_port.TenantRepositoryPort):
             return False
         del self._tenants[tenant_id]
         return True
+
+    def list_all(self, include_admin: bool = False) -> list[tenant_entity.Tenant]:
+        result = []
+        for tenant in self._tenants.values():
+            if not include_admin and tenant.is_admin_tenant:
+                continue
+            result.append(tenant.model_copy(deep=True))
+        return result
+
+    def get_admin_tenant(self) -> tenant_entity.Tenant | None:
+        for tenant in self._tenants.values():
+            if tenant.is_admin_tenant:
+                return tenant.model_copy(deep=True)
+        return None

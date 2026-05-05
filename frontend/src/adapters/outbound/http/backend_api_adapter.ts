@@ -1,3 +1,4 @@
+import type * as adminModel from "@domain/models/admin";
 import type * as agentModel from "@domain/models/agent";
 import type * as authModel from "@domain/models/auth";
 import type * as blacklistModel from "@domain/models/blacklist";
@@ -97,6 +98,21 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
         refresh_token: refreshToken
       })
     });
+  }
+
+  async getMe(): Promise<authModel.UserProfile> {
+    const raw = await this.request<{
+      user_id: string;
+      email: string;
+      role: "professional" | "admin";
+      tenant_id: string;
+    }>("/v1/auth/me", { method: "GET", authRequired: true });
+    return {
+      userId: raw.user_id,
+      email: raw.email,
+      role: raw.role,
+      tenantId: raw.tenant_id
+    };
   }
 
   async getSystemPrompt(): Promise<agentModel.SystemPrompt> {
@@ -1258,6 +1274,571 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     };
   }
 
+  async adminGetGlobalMetrics(): Promise<adminModel.GlobalMetrics> {
+    const raw = await this.request<{
+      tenants_count: number;
+      tenants_active: number;
+      total_patients: number;
+      total_conversations: number;
+      active_conversations_today: number;
+      total_reminders: number;
+      pending_reminders: number;
+      total_revenue_cop_this_month: number;
+      control_mode_distribution: { ai: number; human: number };
+      top_tenants_by_conversations: RawTenantSummary[];
+    }>("/v1/admin/dashboard", { method: "GET", authRequired: true });
+    return {
+      tenantsCount: raw.tenants_count,
+      tenantsActive: raw.tenants_active,
+      totalPatients: raw.total_patients,
+      totalConversations: raw.total_conversations,
+      activeConversationsToday: raw.active_conversations_today,
+      totalReminders: raw.total_reminders,
+      pendingReminders: raw.pending_reminders,
+      totalRevenueCopThisMonth: raw.total_revenue_cop_this_month,
+      controlModeDistribution: raw.control_mode_distribution,
+      topTenantsByConversations: raw.top_tenants_by_conversations.map(mapTenantSummary)
+    };
+  }
+
+  async adminListTenants(search?: string): Promise<adminModel.TenantSummary[]> {
+    const qs =
+      search !== undefined && search.trim() !== "" ? `?search=${encodeURIComponent(search)}` : "";
+    const raw = await this.request<{ items: RawTenantSummary[] }>(`/v1/admin/tenants${qs}`, {
+      method: "GET",
+      authRequired: true
+    });
+    return raw.items.map(mapTenantSummary);
+  }
+
+  async adminGetTenantSummary(tenantId: string): Promise<adminModel.TenantSummary> {
+    const raw = await this.request<RawTenantSummary>(`/v1/admin/tenants/${tenantId}`, {
+      method: "GET",
+      authRequired: true
+    });
+    return mapTenantSummary(raw);
+  }
+
+  async adminListPatients(
+    tenantId: string,
+    params?: { search?: string }
+  ): Promise<patientModel.Patient[]> {
+    const search = params?.search?.trim();
+    const qs = search !== undefined && search !== "" ? `?search=${encodeURIComponent(search)}` : "";
+    const payload = await this.request<httpTypes.PatientListApiResponse>(
+      `/v1/admin/tenants/${tenantId}/patients${qs}`,
+      { method: "GET", authRequired: true }
+    );
+    return payload.items.map(mapPatient);
+  }
+
+  async adminGetPatient(tenantId: string, whatsappUserId: string): Promise<patientModel.Patient> {
+    const payload = await this.request<httpTypes.PatientApiResponse>(
+      `/v1/admin/tenants/${tenantId}/patients/${whatsappUserId}`,
+      { method: "GET", authRequired: true }
+    );
+    return mapPatient(payload);
+  }
+
+  async adminCreatePatient(
+    tenantId: string,
+    input: patientModel.CreatePatientInput
+  ): Promise<patientModel.Patient> {
+    const payload = await this.request<httpTypes.PatientApiResponse>(
+      `/v1/admin/tenants/${tenantId}/patients`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          whatsapp_user_id: input.whatsappUserId,
+          first_name: input.firstName,
+          last_name: input.lastName,
+          email: input.email,
+          age: input.age,
+          location: input.location,
+          phone_prefix: input.phonePrefix,
+          phone: input.phone
+        } satisfies httpTypes.CreatePatientApiRequest)
+      }
+    );
+    return mapPatient(payload);
+  }
+
+  async adminUpdatePatient(
+    tenantId: string,
+    whatsappUserId: string,
+    input: patientModel.UpdatePatientInput
+  ): Promise<patientModel.Patient> {
+    const payload = await this.request<httpTypes.PatientApiResponse>(
+      `/v1/admin/tenants/${tenantId}/patients/${whatsappUserId}`,
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify({
+          first_name: input.firstName,
+          last_name: input.lastName,
+          email: input.email,
+          age: input.age,
+          location: input.location,
+          phone_prefix: input.phonePrefix,
+          phone: input.phone
+        } satisfies httpTypes.UpdatePatientApiRequest)
+      }
+    );
+    return mapPatient(payload);
+  }
+
+  async adminRemovePatient(tenantId: string, whatsappUserId: string): Promise<void> {
+    await this.request<void>(`/v1/admin/tenants/${tenantId}/patients/${whatsappUserId}`, {
+      method: "DELETE",
+      authRequired: true
+    });
+  }
+
+  async adminListConversations(tenantId: string): Promise<conversationModel.ConversationSummary[]> {
+    const payload = await this.request<httpTypes.ConversationListApiResponse>(
+      `/v1/admin/tenants/${tenantId}/conversations`,
+      { method: "GET", authRequired: true }
+    );
+    return payload.items.map((item) => ({
+      conversationId: item.conversation_id,
+      whatsappUserId: item.whatsapp_user_id,
+      contactName: item.contact_name ?? null,
+      lastMessagePreview: item.last_message_preview,
+      updatedAt: item.updated_at,
+      controlMode: item.control_mode,
+      tags: (item.tags ?? []).map((tag) => ({
+        id: tag.id,
+        name: tag.name,
+        slug: tag.slug,
+        color: tag.color,
+        tagType: tag.tag_type
+      }))
+    }));
+  }
+
+  async adminListConversationMessages(
+    tenantId: string,
+    conversationId: string
+  ): Promise<conversationModel.ConversationMessage[]> {
+    const payload = await this.request<httpTypes.MessageListApiResponse>(
+      `/v1/admin/tenants/${tenantId}/conversations/${conversationId}/messages`,
+      { method: "GET", authRequired: true }
+    );
+    return payload.items.map((item) => ({
+      messageId: item.message_id,
+      conversationId: item.conversation_id,
+      role: item.role,
+      direction: item.direction,
+      content: item.content,
+      createdAt: item.created_at
+    }));
+  }
+
+  async adminUpdateConversationControlMode(
+    tenantId: string,
+    conversationId: string,
+    controlMode: conversationModel.ControlMode
+  ): Promise<conversationModel.ControlMode> {
+    const payload = await this.request<httpTypes.ConversationControlModeApiResponse>(
+      `/v1/admin/tenants/${tenantId}/conversations/${conversationId}/control-mode`,
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify({ control_mode: controlMode })
+      }
+    );
+    return payload.control_mode;
+  }
+
+  async adminSendConversationMessage(
+    tenantId: string,
+    conversationId: string,
+    messageText: string
+  ): Promise<conversationModel.MessageSent> {
+    const payload = await this.request<httpTypes.MessageSentApiResponse>(
+      `/v1/admin/tenants/${tenantId}/conversations/${conversationId}/messages`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          message_text: messageText
+        } satisfies httpTypes.SendMessageApiRequest)
+      }
+    );
+    return {
+      messageId: payload.message_id,
+      conversationId: payload.conversation_id,
+      role: payload.role,
+      content: payload.content,
+      createdAt: payload.created_at
+    };
+  }
+
+  async adminListManualAppointments(
+    tenantId: string,
+    status?: manualAppointmentModel.ManualAppointmentStatus
+  ): Promise<manualAppointmentModel.ManualAppointment[]> {
+    const queryParams = new URLSearchParams();
+    if (status !== undefined) {
+      queryParams.set("status", status);
+    }
+    const queryString = queryParams.toString();
+    const path =
+      queryString.length > 0
+        ? `/v1/admin/tenants/${tenantId}/manual-appointments?${queryString}`
+        : `/v1/admin/tenants/${tenantId}/manual-appointments`;
+    const payload = await this.request<httpTypes.ManualAppointmentListApiResponse>(path, {
+      method: "GET",
+      authRequired: true
+    });
+    return payload.items.map(mapManualAppointment);
+  }
+
+  async adminCreateManualAppointment(
+    tenantId: string,
+    input: manualAppointmentModel.CreateManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
+      `/v1/admin/tenants/${tenantId}/manual-appointments`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          patient_whatsapp_user_id: input.patientWhatsappUserId,
+          start_at: input.startAt,
+          end_at: input.endAt,
+          timezone: input.timezone,
+          summary: input.summary,
+          is_virtual: input.isVirtual,
+          payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency,
+          payment_status: input.paymentStatus,
+          payment_method: input.paymentMethod
+        } satisfies httpTypes.CreateManualAppointmentApiRequest)
+      }
+    );
+    return mapManualAppointment(payload);
+  }
+
+  async adminRescheduleManualAppointment(
+    tenantId: string,
+    appointmentId: string,
+    input: manualAppointmentModel.RescheduleManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
+      `/v1/admin/tenants/${tenantId}/manual-appointments/${appointmentId}/reschedule`,
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify({
+          start_at: input.startAt,
+          end_at: input.endAt,
+          timezone: input.timezone,
+          summary: input.summary
+        } satisfies httpTypes.RescheduleManualAppointmentApiRequest)
+      }
+    );
+    return mapManualAppointment(payload);
+  }
+
+  async adminCancelManualAppointment(
+    tenantId: string,
+    appointmentId: string,
+    input: manualAppointmentModel.CancelManualAppointmentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
+      `/v1/admin/tenants/${tenantId}/manual-appointments/${appointmentId}`,
+      {
+        method: "DELETE",
+        authRequired: true,
+        body: JSON.stringify({
+          reason: input.reason
+        } satisfies httpTypes.CancelManualAppointmentApiRequest)
+      }
+    );
+    return mapManualAppointment(payload);
+  }
+
+  async adminUpdateManualAppointmentPayment(
+    tenantId: string,
+    appointmentId: string,
+    input: manualAppointmentModel.UpdateManualAppointmentPaymentInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
+      `/v1/admin/tenants/${tenantId}/manual-appointments/${appointmentId}/payment`,
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify({
+          payment_amount_cop: input.paymentAmountCop,
+          payment_currency: input.paymentCurrency ?? "COP",
+          payment_method: input.paymentMethod,
+          payment_status: input.paymentStatus
+        } satisfies httpTypes.UpdateManualAppointmentPaymentApiRequest)
+      }
+    );
+    return mapManualAppointment(payload);
+  }
+
+  async adminChangeManualAppointmentModality(
+    tenantId: string,
+    appointmentId: string,
+    input: manualAppointmentModel.ChangeManualAppointmentModalityInput
+  ): Promise<manualAppointmentModel.ManualAppointment> {
+    const payload = await this.request<httpTypes.ManualAppointmentApiResponse>(
+      `/v1/admin/tenants/${tenantId}/manual-appointments/${appointmentId}/change-modality`,
+      {
+        method: "POST",
+        authRequired: true,
+        body: JSON.stringify({
+          new_modality: input.newModality
+        } satisfies httpTypes.ChangeManualAppointmentModalityApiRequest)
+      }
+    );
+    return mapManualAppointment(payload);
+  }
+
+  async adminListSchedulingRequests(
+    tenantId: string,
+    status?: schedulingModel.SchedulingRequestStatus
+  ): Promise<schedulingModel.SchedulingRequestSummary[]> {
+    const queryParams = new URLSearchParams();
+    if (status !== undefined) {
+      queryParams.set("status", status);
+    }
+    const queryString = queryParams.toString();
+    const path =
+      queryString.length > 0
+        ? `/v1/admin/tenants/${tenantId}/scheduling-requests?${queryString}`
+        : `/v1/admin/tenants/${tenantId}/scheduling-requests`;
+    const payload = await this.request<httpTypes.SchedulingRequestListApiResponse>(path, {
+      method: "GET",
+      authRequired: true
+    });
+    return payload.items.map(mapSchedulingRequestSummary);
+  }
+
+  async adminListReminders(
+    tenantId: string,
+    status?: string
+  ): Promise<scheduledReminderModel.ScheduledReminderList> {
+    const params = status !== undefined ? `?status=${status}` : "";
+    const raw = await this.request<{
+      items: {
+        reminder_id: string;
+        source_type: string;
+        source_id: string;
+        patient_whatsapp_user_id: string;
+        patient_name: string;
+        appointment_start_at: string;
+        reminder_scheduled_for: string;
+        template_name: string;
+        status: string;
+        failure_reason: string | null;
+        created_at: string;
+      }[];
+    }>(`/v1/admin/tenants/${tenantId}/reminders${params}`, { method: "GET", authRequired: true });
+    return {
+      items: raw.items.map((item) => ({
+        reminderId: item.reminder_id,
+        sourceType: item.source_type as "SCHEDULING_REQUEST" | "MANUAL_APPOINTMENT",
+        sourceId: item.source_id,
+        patientWhatsappUserId: item.patient_whatsapp_user_id,
+        patientName: item.patient_name,
+        appointmentStartAt: item.appointment_start_at,
+        reminderScheduledFor: item.reminder_scheduled_for,
+        templateName: item.template_name,
+        status: item.status as "PENDING" | "SENT" | "FAILED" | "CANCELLED",
+        failureReason: item.failure_reason,
+        createdAt: item.created_at
+      }))
+    };
+  }
+
+  async adminSendReminderNow(tenantId: string, reminderId: string): Promise<void> {
+    await this.request<{ status: string }>(
+      `/v1/admin/tenants/${tenantId}/reminders/${reminderId}/send-now`,
+      { method: "POST", authRequired: true }
+    );
+  }
+
+  async adminListBlacklist(tenantId: string): Promise<blacklistModel.BlacklistEntry[]> {
+    const payload = await this.request<httpTypes.BlacklistListApiResponse>(
+      `/v1/admin/tenants/${tenantId}/blacklist`,
+      { method: "GET", authRequired: true }
+    );
+    return payload.items.map((item) => ({
+      tenantId: item.tenant_id,
+      whatsappUserId: item.whatsapp_user_id,
+      createdAt: item.created_at
+    }));
+  }
+
+  async adminAddBlacklist(
+    tenantId: string,
+    whatsappUserId: string
+  ): Promise<blacklistModel.BlacklistEntry> {
+    const payload = await this.request<httpTypes.BlacklistEntryApiResponse>(
+      `/v1/admin/tenants/${tenantId}/blacklist`,
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify({ whatsapp_user_id: whatsappUserId })
+      }
+    );
+    return {
+      tenantId: payload.tenant_id,
+      whatsappUserId: payload.whatsapp_user_id,
+      createdAt: payload.created_at
+    };
+  }
+
+  async adminRemoveBlacklist(tenantId: string, whatsappUserId: string): Promise<void> {
+    await this.request<void>(`/v1/admin/tenants/${tenantId}/blacklist/${whatsappUserId}`, {
+      method: "DELETE",
+      authRequired: true
+    });
+  }
+
+  async adminGetSystemPrompt(tenantId: string): Promise<agentModel.SystemPrompt> {
+    const payload = await this.request<httpTypes.SystemPromptApiResponse>(
+      `/v1/admin/tenants/${tenantId}/system-prompt`,
+      { method: "GET", authRequired: true }
+    );
+    return { tenantId: payload.tenant_id, systemPrompt: payload.system_prompt };
+  }
+
+  async adminUpdateSystemPrompt(
+    tenantId: string,
+    systemPrompt: string
+  ): Promise<agentModel.SystemPrompt> {
+    const payload = await this.request<httpTypes.SystemPromptApiResponse>(
+      `/v1/admin/tenants/${tenantId}/system-prompt`,
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify({ system_prompt: systemPrompt })
+      }
+    );
+    return { tenantId: payload.tenant_id, systemPrompt: payload.system_prompt };
+  }
+
+  async adminGetAgentSettings(tenantId: string): Promise<agentModel.AgentSettings> {
+    const raw = await this.request<{
+      tenant_id: string;
+      message_debounce_delay_seconds: number;
+      assistant_enabled: boolean | null | undefined;
+      appointment_reminder_enabled: boolean;
+      appointment_reminder_days_before: number | null;
+      appointment_reminder_attendance_template_name: string | null;
+      appointment_reminder_payment_template_name: string | null;
+      payment_details_text: string | null;
+      office_location: { address: string; arrival_instructions: string | null } | null;
+      payment_timing: agentModel.PaymentTiming | null | undefined;
+    }>(`/v1/admin/tenants/${tenantId}/agent-settings`, { method: "GET", authRequired: true });
+    return {
+      tenantId: raw.tenant_id,
+      messageDebounceDelaySeconds: raw.message_debounce_delay_seconds,
+      assistantEnabled: raw.assistant_enabled ?? true,
+      appointmentReminderEnabled: raw.appointment_reminder_enabled,
+      appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
+      appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
+      appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name,
+      paymentDetailsText: raw.payment_details_text,
+      officeLocation:
+        raw.office_location !== null && raw.office_location !== undefined
+          ? {
+              address: raw.office_location.address,
+              arrivalInstructions: raw.office_location.arrival_instructions
+            }
+          : null,
+      paymentTiming: raw.payment_timing ?? "BEFORE_SESSION"
+    };
+  }
+
+  async adminUpdateAgentSettings(
+    tenantId: string,
+    input: agentModel.UpdateAgentSettingsInput
+  ): Promise<agentModel.AgentSettings> {
+    const raw = await this.request<{
+      tenant_id: string;
+      message_debounce_delay_seconds: number;
+      assistant_enabled: boolean | null | undefined;
+      appointment_reminder_enabled: boolean;
+      appointment_reminder_days_before: number | null;
+      appointment_reminder_attendance_template_name: string | null;
+      appointment_reminder_payment_template_name: string | null;
+      payment_details_text: string | null;
+      office_location: { address: string; arrival_instructions: string | null } | null;
+      payment_timing: agentModel.PaymentTiming | null | undefined;
+    }>(`/v1/admin/tenants/${tenantId}/agent-settings`, {
+      method: "PUT",
+      authRequired: true,
+      body: JSON.stringify({
+        message_debounce_delay_seconds: input.messageDebounceDelaySeconds,
+        assistant_enabled: input.assistantEnabled,
+        appointment_reminder_enabled: input.appointmentReminderEnabled,
+        appointment_reminder_days_before: input.appointmentReminderDaysBefore,
+        appointment_reminder_attendance_template_name:
+          input.appointmentReminderAttendanceTemplateName,
+        appointment_reminder_payment_template_name: input.appointmentReminderPaymentTemplateName,
+        payment_details_text: input.paymentDetailsText,
+        office_location:
+          input.officeLocation !== null
+            ? {
+                address: input.officeLocation.address,
+                arrival_instructions: input.officeLocation.arrivalInstructions
+              }
+            : null,
+        payment_timing: input.paymentTiming
+      })
+    });
+    return {
+      tenantId: raw.tenant_id,
+      messageDebounceDelaySeconds: raw.message_debounce_delay_seconds,
+      assistantEnabled: raw.assistant_enabled ?? true,
+      appointmentReminderEnabled: raw.appointment_reminder_enabled,
+      appointmentReminderDaysBefore: raw.appointment_reminder_days_before,
+      appointmentReminderAttendanceTemplateName: raw.appointment_reminder_attendance_template_name,
+      appointmentReminderPaymentTemplateName: raw.appointment_reminder_payment_template_name,
+      paymentDetailsText: raw.payment_details_text,
+      officeLocation:
+        raw.office_location !== null && raw.office_location !== undefined
+          ? {
+              address: raw.office_location.address,
+              arrivalInstructions: raw.office_location.arrival_instructions
+            }
+          : null,
+      paymentTiming: raw.payment_timing ?? "BEFORE_SESSION"
+    };
+  }
+
+  async adminGetProfessionalProfile(tenantId: string): Promise<agentModel.ProfessionalProfile> {
+    const raw = await this.request<httpTypes.ProfessionalProfileApiResponse>(
+      `/v1/admin/tenants/${tenantId}/professional-profile`,
+      { method: "GET", authRequired: true }
+    );
+    return mapProfessionalProfile(raw);
+  }
+
+  async adminUpdateProfessionalProfile(
+    tenantId: string,
+    input: agentModel.UpdateProfessionalProfileInput
+  ): Promise<agentModel.ProfessionalProfile> {
+    const raw = await this.request<httpTypes.ProfessionalProfileApiResponse>(
+      `/v1/admin/tenants/${tenantId}/professional-profile`,
+      {
+        method: "PUT",
+        authRequired: true,
+        body: JSON.stringify(
+          profileInputToApi(input) satisfies httpTypes.UpdateProfessionalProfileApiRequest
+        )
+      }
+    );
+    return mapProfessionalProfile(raw);
+  }
+
   private async request<T>(path: string, options: RequestOptions): Promise<T> {
     const retryOnUnauthorized = options.retryOnUnauthorized ?? true;
     const requestId = options.requestId ?? requestIdModule.createRequestId();
@@ -1647,6 +2228,38 @@ function profileInputToApi(
         : null,
     services: input.services.map(serviceOfferingToApi),
     payment_methods: input.paymentMethods.map(paymentMethodToApi)
+  };
+}
+
+interface RawTenantSummary {
+  tenant_id: string;
+  tenant_name: string;
+  professional_name: string;
+  patient_count: number;
+  conversation_count: number;
+  active_conversations_today: number;
+  manual_appointment_count_upcoming: number;
+  pending_reminder_count: number;
+  total_revenue_cop_this_month: number;
+  last_activity_at: string | null;
+  owner_email: string;
+  owner_is_active: boolean;
+}
+
+function mapTenantSummary(raw: RawTenantSummary): adminModel.TenantSummary {
+  return {
+    tenantId: raw.tenant_id,
+    tenantName: raw.tenant_name,
+    professionalName: raw.professional_name,
+    patientCount: raw.patient_count,
+    conversationCount: raw.conversation_count,
+    activeConversationsToday: raw.active_conversations_today,
+    manualAppointmentCountUpcoming: raw.manual_appointment_count_upcoming,
+    pendingReminderCount: raw.pending_reminder_count,
+    totalRevenueCopThisMonth: raw.total_revenue_cop_this_month,
+    lastActivityAt: raw.last_activity_at,
+    ownerEmail: raw.owner_email,
+    ownerIsActive: raw.owner_is_active
   };
 }
 

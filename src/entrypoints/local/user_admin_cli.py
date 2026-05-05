@@ -35,8 +35,14 @@ def _build_parser() -> argparse.ArgumentParser:
         "create-professional",
         help="Create a new professional (tenant + user + agent profile)",
     )
-    create_parser.add_argument("--tenant-name", required=True)
+    create_parser.add_argument("--tenant-name", required=False, default="")
     create_parser.add_argument("--email", required=True)
+    create_parser.add_argument(
+        "--role",
+        default="professional",
+        choices=["professional", "admin"],
+        help="Role to assign (default: professional). When role=admin, --tenant-name is ignored.",
+    )
 
     reset_parser = subparsers.add_parser(
         "reset-password",
@@ -65,9 +71,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "invite-professional",
         help="Create a professional and send an email invitation to set up their password",
     )
-    invite_parser.add_argument("--tenant-name", required=True)
+    invite_parser.add_argument("--tenant-name", required=False, default="")
     invite_parser.add_argument("--email", required=True)
     invite_parser.add_argument("--professional-name", default=None)
+    invite_parser.add_argument(
+        "--role",
+        default="professional",
+        choices=["professional", "admin"],
+        help="Role to assign (default: professional). When role=admin, --tenant-name is ignored.",
+    )
 
     return parser
 
@@ -245,6 +257,15 @@ def main() -> int:
                 stream=sys.stderr,
                 force=True,
             )
+            role = args.role
+            if role == "admin" and not args.tenant_name:
+                print(
+                    "INFO: --tenant-name ignored for role=admin (admin tenant is singleton)",
+                    file=sys.stderr,
+                )
+            elif role == "professional" and not args.tenant_name:
+                print("ERROR: --tenant-name is required for role=professional", file=sys.stderr)
+                return 1
             service, notifier, settings = _build_service_with_invitation()
             notifier_class = type(notifier).__name__
             print("--- diagnostic ---", file=sys.stderr)
@@ -272,16 +293,19 @@ def main() -> int:
                     tenant_name=args.tenant_name,
                     email=args.email,
                     professional_name=args.professional_name,
+                    role=role,
                 )
             )
             if notifier_class == "ResendEmailNotifierAdapter":
                 print("Invitation sent via Resend.")
+                print(f"  Role:   {role}")
                 print(f"  Tenant: {args.tenant_name}")
                 print(f"  Email:  {args.email}")
                 print("Check Resend dashboard at https://resend.com/emails for delivery status.")
             else:
                 print("WARNING: Logging adapter is active — NO real email was sent.")
                 print(f"  Notifier: {notifier_class}")
+                print(f"  Role:   {role}")
                 print(f"  Tenant: {args.tenant_name}")
                 print(f"  Email:  {args.email}")
                 print("The invitation link was logged above. To send real emails, ensure")
@@ -290,6 +314,15 @@ def main() -> int:
 
         service = _build_service()
         if args.command == "create-professional":
+            role = args.role
+            if role == "admin" and not args.tenant_name:
+                print(
+                    "INFO: --tenant-name ignored for role=admin (admin tenant is singleton)",
+                    file=sys.stderr,
+                )
+            elif role == "professional" and not args.tenant_name:
+                print("ERROR: --tenant-name is required for role=professional", file=sys.stderr)
+                return 1
             alphabet = string.ascii_letters + string.digits
             password = "".join(secrets.choice(alphabet) for _ in range(16))
             service.create_professional(
@@ -297,9 +330,11 @@ def main() -> int:
                     tenant_name=args.tenant_name,
                     email=args.email,
                     password=password,
+                    role=role,
                 )
             )
             print("Professional created successfully.")
+            print(f"  Role:     {role}")
             print(f"  Tenant:   {args.tenant_name}")
             print(f"  Email:    {args.email}")
             print(f"  Password: {password}")

@@ -43,29 +43,34 @@ class UserAdminService:
             raise service_exceptions.InvalidStateError("email is already registered")
 
         now_value = self._clock.now()
-        tenant_id = self._id_generator.new_id()
-        user_id = self._id_generator.new_id()
 
-        tenant = tenant_entity.Tenant(
-            id=tenant_id,
-            name=request.tenant_name,
-            created_at=now_value,
-            updated_at=now_value,
-        )
-        self._tenant_repository.save(tenant)
+        if request.role == service_constants.ROLE_ADMIN:
+            user_id = self._id_generator.new_id()
+            tenant = self._get_or_create_admin_tenant(now_value=now_value)
+        else:
+            tenant_id = self._id_generator.new_id()
+            user_id = self._id_generator.new_id()
+            tenant = tenant_entity.Tenant(
+                id=tenant_id,
+                name=request.tenant_name,
+                created_at=now_value,
+                updated_at=now_value,
+            )
+            self._tenant_repository.save(tenant)
 
         password_hash = self._password_hasher.hash_password(request.password)
         user = user_entity.User(
             id=user_id,
-            tenant_id=tenant_id,
+            tenant_id=tenant.id,
             email=request.email,
             password_hash=password_hash,
-            role=service_constants.DEFAULT_PROFESSIONAL_ROLE,
+            role=request.role,
             is_active=True,
             created_at=now_value,
         )
         self._user_repository.save(user)
-        self._ensure_agent_profile(tenant_id=tenant_id, now_value=now_value)
+        if request.role != service_constants.ROLE_ADMIN:
+            self._ensure_agent_profile(tenant_id=tenant.id, now_value=now_value)
 
     def reset_password(self, request: user_admin_dto.ResetPasswordDTO) -> None:
         user = self._user_repository.get_by_email(request.email)
@@ -82,6 +87,10 @@ class UserAdminService:
         tenant = self._tenant_repository.get_by_id(user.tenant_id)
         if tenant is None:
             raise service_exceptions.EntityNotFoundError("tenant not found")
+        if tenant.is_admin_tenant:
+            raise service_exceptions.InvalidStateError(
+                "cannot delete admin tenant singleton; remove the user record instead"
+            )
         deleted = self._tenant_repository.delete_with_data(user.tenant_id)
         if not deleted:
             raise service_exceptions.EntityNotFoundError("tenant not found")
@@ -120,29 +129,35 @@ class UserAdminService:
             raise service_exceptions.InvalidStateError("email is already registered")
 
         now_value = self._clock.now()
-        tenant_id = self._id_generator.new_id()
-        user_id = self._id_generator.new_id()
 
-        tenant = tenant_entity.Tenant(
-            id=tenant_id,
-            name=request.tenant_name,
-            created_at=now_value,
-            updated_at=now_value,
-        )
-        self._tenant_repository.save(tenant)
+        if request.role == service_constants.ROLE_ADMIN:
+            user_id = self._id_generator.new_id()
+            tenant = self._get_or_create_admin_tenant(now_value=now_value)
+        else:
+            tenant_id = self._id_generator.new_id()
+            user_id = self._id_generator.new_id()
+            tenant = tenant_entity.Tenant(
+                id=tenant_id,
+                name=request.tenant_name,
+                created_at=now_value,
+                updated_at=now_value,
+                professional_name=request.professional_name,
+            )
+            self._tenant_repository.save(tenant)
 
         placeholder_hash = self._password_hasher.hash_password(secrets.token_urlsafe(32))
         user = user_entity.User(
             id=user_id,
-            tenant_id=tenant_id,
+            tenant_id=tenant.id,
             email=request.email,
             password_hash=placeholder_hash,
-            role=service_constants.DEFAULT_PROFESSIONAL_ROLE,
+            role=request.role,
             is_active=False,
             created_at=now_value,
         )
         self._user_repository.save(user)
-        self._ensure_agent_profile(tenant_id=tenant_id, now_value=now_value)
+        if request.role != service_constants.ROLE_ADMIN:
+            self._ensure_agent_profile(tenant_id=tenant.id, now_value=now_value)
 
         self._invitation_service.issue_account_setup_invitation(user=user, tenant=tenant)
 
@@ -156,3 +171,18 @@ class UserAdminService:
             updated_at=now_value,
         )
         self._agent_profile_repository.save(agent_profile)
+
+    def _get_or_create_admin_tenant(self, now_value: datetime.datetime) -> tenant_entity.Tenant:
+        existing_admin_tenant = self._tenant_repository.get_admin_tenant()
+        if existing_admin_tenant is not None:
+            return existing_admin_tenant
+        tenant_id = self._id_generator.new_id()
+        admin_tenant = tenant_entity.Tenant(
+            id=tenant_id,
+            name=service_constants.ADMIN_TENANT_NAME,
+            created_at=now_value,
+            updated_at=now_value,
+            is_admin_tenant=True,
+        )
+        self._tenant_repository.save(admin_tenant)
+        return admin_tenant

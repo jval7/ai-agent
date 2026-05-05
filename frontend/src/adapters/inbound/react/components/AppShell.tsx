@@ -205,8 +205,7 @@ function BeakerIcon() {
   );
 }
 
-// Orden por frecuencia de uso día a día. Configuraciones al final (setup-once).
-const navLinks = [
+const professionalNavLinks = [
   { to: "/agenda", label: "Agenda", Icon: CalendarIcon },
   { to: "/inbox", label: "Conversaciones", Icon: InboxIcon },
   { to: "/clientes", label: "Clientes", Icon: UsersIcon },
@@ -216,8 +215,14 @@ const navLinks = [
   ...(import.meta.env.DEV ? [{ to: "/evaluacion", label: "Evaluación", Icon: BeakerIcon }] : [])
 ];
 
+const adminNavLinks = [
+  { to: "/admin", label: "Inicio", Icon: UsersIcon },
+  { to: "/admin/dashboard", label: "Dashboard", Icon: WalletIcon }
+];
+
 export function AppShell(props: { children: reactModule.ReactNode }) {
   const auth = authContextModule.useAuth();
+  const navLinks = auth.userProfile?.role === "admin" ? adminNavLinks : professionalNavLinks;
   const navigate = reactRouterDomModule.useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = reactModule.useState(false);
   const [isCollapsed, toggleCollapsed] = useSidebarCollapsedModule.useSidebarCollapsed();
