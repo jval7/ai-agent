@@ -147,6 +147,28 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
         category="bot_behavior",
     ),
     eval_dto.EvalCapabilityDocDTO(
+        id="skips_redundant_motivo_question",
+        description=(
+            "regla conceptual: el bot solo pregunta el 'motivo de consulta' "
+            "cuando el servicio elegido es diagnóstico/exploratorio (palabras "
+            "clave: 'valoración', 'primera consulta', 'consulta inicial', "
+            "'evaluación', 'diagnóstico'). NO pregunta motivo cuando el "
+            "servicio es autoexplicativo (procedimiento concreto cuyo nombre "
+            "ya es el motivo: 'blanqueamiento dental', 'limpieza dental', "
+            "'control de ortodoncia', 'extracción', 'endodoncia', 'brackets')."
+        ),
+        implications=(
+            "EL BOT debe distinguir entre servicios diagnósticos (donde el "
+            "motivo informa el plan terapéutico) y autoexplicativos (donde el "
+            "servicio mismo es el motivo). Falla ante el patrón típico: "
+            "paciente dice 'Blanqueamiento' y el bot responde '¿cuál sería "
+            "el motivo de tu consulta para el blanqueamiento dental?'. "
+            "Excepción: si el paciente menciona un sub-motivo abierto ('lo "
+            "necesito para una boda'), el bot puede pedir más detalle."
+        ),
+        category="bot_behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
         id="respects_service_modalities",
         description=(
             "regla conceptual: el bot solo ofrece modalidades (PRESENCIAL / "
