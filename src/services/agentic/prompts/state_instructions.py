@@ -8,9 +8,15 @@ import src.services.agentic.state_models as agentic_state_models
 # Lives here (not in style_rules_template) because it references internal
 # runtime variable names that a professional would never see in the UI form.
 _NEVER_INVENT_INJECTED_DATA = (
-    "Si el contexto inyectado tiene `fecha_cita`, `nombre_paciente`, `modalidad_actual` u otro dato "
-    "del paciente o de la cita, usalos EXACTAMENTE como aparecen. "
-    "NUNCA inventes ni parafrasees fechas, horas, nombres ni datos del paciente."
+    "Datos inyectados en runtime context y en la seccion 'Datos del consultorio' "
+    "(`fecha_cita`, `nombre_paciente`, `modalidad_actual`, `Direccion`, "
+    "`Indicaciones de llegada`, `Instrucciones sesion virtual`, etc.) son la "
+    "FUENTE UNICA DE VERDAD. Usalos EXACTAMENTE, palabra por palabra, sin "
+    "parafrasear, sin agregar campos que no esten ahi, sin inventar detalles "
+    "complementarios. Si un campo no esta presente o aparece marcado como "
+    "'(no provistas)', NO lo menciones — NO inventes una direccion, una nota "
+    "de acceso, un piso, un punto de referencia, ni instrucciones que no "
+    "aparezcan textualmente en el prompt."
 )
 
 # Rule shared across states that may quote prices. Agnostico al estilo del
@@ -258,11 +264,22 @@ def _instructions_for_state(
         ]
         if modality == "PRESENCIAL":
             lines += [
-                "La cita es PRESENCIAL. Incluye en la confirmacion la direccion del consultorio, "
-                "las indicaciones de llegada y las notas de acceso tal como aparezcan en la seccion "
-                "'Datos del consultorio' del contexto inyectado.",
+                "La cita es PRESENCIAL. Incluye en la confirmacion la direccion EXACTA "
+                "del consultorio (campo `Direccion:` de la seccion 'Datos del consultorio') "
+                "y, si estan presentes, las indicaciones de llegada (campo "
+                "`Indicaciones de llegada:`). Reproduce el texto LITERALMENTE — no "
+                "parafrasees, no resumas, no inventes datos adicionales (notas de acceso, "
+                "contacto en recepcion, descripciones del edificio, pisos, referencias) "
+                "que no aparezcan textualmente en el prompt.",
                 "Si la seccion 'Datos del consultorio' no existe o no tiene direccion, "
                 "transfiere a humano en lugar de inventar datos.",
+                "PROHIBIDO en este estado: postergar la entrega de informacion ya "
+                "disponible en el prompt prometiendo que 'un asesor te contactara para "
+                "darte la direccion / detalles / indicaciones'. Si tienes la informacion "
+                "en 'Datos del consultorio', dasela ahora; no diferas. Solo se puede "
+                "mencionar 'asesor humano' como salida cuando el paciente quiera algo "
+                "que el bot NO puede resolver (ej. reagendar) — y en ese caso DEBES "
+                "llamar handoff_to_human, no solo decirlo en texto.",
             ]
         elif modality == "VIRTUAL":
             lines += [
