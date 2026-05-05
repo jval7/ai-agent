@@ -215,8 +215,34 @@ def render_system_prompt_xml(profile: agent_profile_entity.AgentProfile) -> str:
         if rendered:
             sections.append(rendered)
 
+    # Payment timing — surfaces when in the appointment lifecycle the
+    # professional collects payment. The runtime resolver uses the same
+    # field to gate state transitions; rendering it here gives the LLM
+    # explicit visibility so prompt rules can reference it directly.
+    sections.append(_render_payment_timing(profile.payment_timing))
+
     sections.append("</base_system_prompt>")
     return "\n".join(sections)
+
+
+_PAYMENT_TIMING_LABELS: dict[str, str] = {
+    "BEFORE_SESSION": (
+        "BEFORE_SESSION (el pago se cobra durante el agendamiento, antes "
+        "de la cita; el flujo incluye un paso de solicitud de pago y de "
+        "comprobante)"
+    ),
+    "AFTER_SESSION": (
+        "AFTER_SESSION (el pago se cobra al finalizar la sesion, despues "
+        "de la cita; el agendamiento NO incluye paso de pago ni se "
+        "solicita comprobante — la reserva se cierra recolectando los "
+        "datos finales del paciente)"
+    ),
+}
+
+
+def _render_payment_timing(value: str) -> str:
+    label = _PAYMENT_TIMING_LABELS.get(value, value)
+    return f"<payment_timing>{label}</payment_timing>"
 
 
 def _has_structured_data(profile: agent_profile_entity.AgentProfile) -> bool:

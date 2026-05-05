@@ -9,6 +9,12 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["src/shared/testing/setup-tests.ts"],
+    // CI doesn't have .env.local — provide test defaults for VITE env vars
+    // that are read at module load (e.g. envConfig in env.ts).
+    env: {
+      VITE_API_BASE_URL: "http://localhost:8000",
+      VITE_SHOW_INTERNAL_TOOLS: "true"
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],

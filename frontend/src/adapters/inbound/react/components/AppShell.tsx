@@ -3,6 +3,7 @@ import * as reactRouterDomModule from "react-router-dom";
 
 import * as authContextModule from "@adapters/inbound/react/app/AuthContext";
 import * as useSidebarCollapsedModule from "@shared/hooks/useSidebarCollapsed";
+import * as envModule from "@infrastructure/config/env";
 
 function CalendarIcon() {
   return (
@@ -212,7 +213,9 @@ const professionalNavLinks = [
   { to: "/finanzas", label: "Finanzas", Icon: WalletIcon },
   { to: "/recordatorios", label: "Recordatorios", Icon: BellIcon },
   { to: "/configuraciones", label: "Configuraciones", Icon: SettingsIcon },
-  ...(import.meta.env.DEV ? [{ to: "/evaluacion", label: "Evaluación", Icon: BeakerIcon }] : [])
+  ...(envModule.envConfig.showInternalTools
+    ? [{ to: "/evaluacion", label: "Evaluación", Icon: BeakerIcon }]
+    : [])
 ];
 
 const adminNavLinks = [

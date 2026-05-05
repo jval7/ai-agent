@@ -79,19 +79,51 @@ def build_style_rules_xml(
             "NO justifiques la elección con frases como 'para pacientes en el exterior' "
             "o 'desde Colombia'. Presenta el precio neutro, sin etiquetar al paciente."
         ),
+        # Cap `omits_obvious_metadata`: al presentar servicios, omite metadata
+        # trivial. Los tags <modalities> y <target_patients> del AgentProfile
+        # son insumo de DECISION INTERNA del bot (filtrar, ofrecer), no copy.
+        # Verbalizarlos cuando la respuesta es trivial (modalidad unica, cohort
+        # universal) genera ruido y empuja la conversacion a respuestas obvias
+        # que el paciente no pidio.
+        (
+            "Al presentar servicios, omite metadata cuya respuesta es trivial o "
+            "redundante. Especificamente: "
+            "(a) Si un `<service>` tiene `<modalities>` con UN solo valor, presenta "
+            "el servicio sin coletillas como 'es presencial', 'es virtual', 'se hace "
+            "en consultorio'. La modalidad solo se menciona cuando el servicio "
+            "soporta varias y el paciente debe elegir. "
+            "(b) Cuando un `<service>` aplica a 'Pacientes nuevos y recurrentes' "
+            "(ambos cohorts), NO verbalices el cohort — frases como 'para nuevos o "
+            "recurrentes', 'para cualquier paciente' no aportan info. Solo menciona "
+            "el cohort cuando el `<target_patients>` es restrictivo ('Solo pacientes "
+            "nuevos' / 'Solo pacientes recurrentes') y aplica al paciente actual. "
+            "(c) Evita aclaraciones autoimplicitas que se siguen del contexto "
+            "('para cualquier persona', 'aplica a todos', 'esta disponible para "
+            "quien lo necesite'). "
+            "Si el paciente pregunta explicitamente por la modalidad o el cohort, "
+            "respondele — esa respuesta NO es metadata gratuita."
+        ),
         # Vocabulario del flujo de agendamiento. Reformulada en POSITIVO con
         # un mini-glosario de verbos validos para reducir la activacion del
         # concepto "confirmar" en attention. Antes se nombraba la palabra
         # prohibida 6+ veces explicandola, lo cual le daba peso semantico.
         # Ahora se la lista UNA sola vez como ejemplo cerrado de prohibicion.
+        # CONDICIONAL al `<payment_timing>`: solo aplica si BEFORE_SESSION,
+        # porque en AFTER_SESSION el flujo no incluye el paso de pago.
         (
             "Vocabulario del flujo de agendamiento — verbos VALIDOS para "
             "describir la accion del flujo: agendar, reservar, asegurar el "
             "cupo, separar el cupo, continuar con el proceso de agendamiento. "
-            "Al pedir el pago di literalmente 'Para reservar tu cita, paga X', "
-            "'Para asegurar tu cupo, paga X' o 'Para continuar con el "
-            "agendamiento, paga X'. El verbo 'confirmar' (y sus derivados) NO "
-            "pertenece a esta fase — pertenece a un estado posterior distinto "
+            "SI `<payment_timing>` es BEFORE_SESSION y necesitas pedir el pago, "
+            "di literalmente 'Para reservar tu cita, paga X', 'Para asegurar tu "
+            "cupo, paga X' o 'Para continuar con el agendamiento, paga X'. SI "
+            "`<payment_timing>` es AFTER_SESSION, NO pidas pago durante el "
+            "agendamiento — el cobro sucede al finalizar la sesion en consultorio. "
+            "Solo MENCIONA esa modalidad como info ('el pago se realiza al "
+            "finalizar la sesion') si el paciente pregunta como pagar o cuando "
+            "cierres la reserva; NUNCA como CTA ni pidas comprobante. El verbo "
+            "'confirmar' (y sus derivados) NO pertenece a la fase de "
+            "agendamiento — pertenece a un estado posterior distinto "
             "(recordatorio post-pago donde el paciente confirma su asistencia). "
             "Durante el agendamiento la cita se RESERVA o AGENDA; nunca se "
             "CONFIRMA. Esta regla aplica con clitics tambien (-te, -le, -se)."

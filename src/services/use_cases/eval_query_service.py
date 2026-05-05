@@ -146,6 +146,57 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
         ),
         category="bot_behavior",
     ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="skips_payment_when_after_session",
+        description=(
+            "regla CONDICIONAL al shape: cuando el AgentProfile declara "
+            "`payment_timing=AFTER_SESSION`, el bot NO solicita pago ni "
+            "comprobante durante el agendamiento. El cobro sucede al finalizar "
+            "la sesión. Frases prohibidas en agendamiento: CTAs imperativos de "
+            "pago ('paga X', 'transfiere a Nequi', 'reserva con un pago de'), "
+            "solicitud de comprobante ('envíame el comprobante', 'manda el "
+            "voucher'). Permitido: respuestas informativas a preguntas del "
+            "paciente sobre cómo se paga ('el pago se hace al finalizar la "
+            "sesión'), recordatorios operativos en POST_BOOKING, o cotizar el "
+            "monto cuando preguntan precio (sin acompañar de CTA imperativo)."
+        ),
+        implications=(
+            "EL BOT debe respetar el modelo de cobro del profesional. Si el "
+            "shape es BEFORE_SESSION (default), la cap no aplica y emite "
+            "verified=true automático. Si es AFTER_SESSION, falla ante CTAs de "
+            "pago o solicitud de comprobante. La señal viaja al juez como "
+            "'Shape payment_timing: AFTER_SESSION' al inicio del user prompt; "
+            "el runner la inyecta desde el AgentProfile del shape."
+        ),
+        category="bot_behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="omits_obvious_metadata",
+        description=(
+            "cuando el bot presenta servicios al paciente, omite metadata trivial. "
+            "Específicamente: (a) NO menciona la modalidad cuando el servicio tiene "
+            "una sola modalidad disponible (no decir 'es presencial' / 'es virtual' "
+            "si no hay alternativa); (b) NO etiqueta el cohort cuando el servicio "
+            "aplica a 'Pacientes nuevos y recurrentes' (no decir 'para nuevos o "
+            "recurrentes', 'para cualquier paciente'); (c) NO incluye aclaraciones "
+            "autoimplícitas ('para cualquier persona', 'aplica a todos'). El bot SÍ "
+            "menciona modalidad cuando hay opciones reales (presencial+virtual) y SÍ "
+            "menciona cohort cuando es restrictivo ('Solo pacientes nuevos' / 'Solo "
+            "pacientes recurrentes') y aplica al paciente actual."
+        ),
+        implications=(
+            "EL BOT debe presentar servicios de forma concisa y relevante para la "
+            "decisión del paciente. Falla ante mensajes como 'Blanqueamiento Dental: "
+            "para pacientes nuevos o recurrentes. Es presencial.' (cuando el servicio "
+            "solo es presencial y aplica a ambos cohorts) o 'Valoración: aplica a "
+            "cualquier persona'. Excepción: si el paciente preguntó explícitamente "
+            "por modalidad o cohort en un mensaje previo, responderle es legítimo y "
+            "no viola la cap. La regla razona contra los tags `<modalities>` y "
+            "`<target_patients>` del AgentProfile, así funciona para cualquier "
+            "profesional sin asumir uno en particular."
+        ),
+        category="bot_behavior",
+    ),
 ]
 
 
