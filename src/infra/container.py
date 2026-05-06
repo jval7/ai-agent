@@ -83,7 +83,7 @@ import src.services.use_cases.webhook_service as webhook_service
 import src.services.use_cases.whatsapp_onboarding_service as whatsapp_onboarding_service
 import src.services.use_cases.whatsapp_template_service as whatsapp_template_service
 
-_logger = app_logs.get_logger(__name__)
+logger = app_logs.get_logger(__name__)
 
 
 class AppContainer:
@@ -532,7 +532,7 @@ class AppContainer:
             degraded_modes.append("whatsapp_outbound=noop (WHATSAPP_OUTBOUND_NOOP=true)")
         if not degraded_modes:
             return
-        _logger.warning(
+        logger.warning(
             "container.degraded_runtime_modes",
             extra={
                 "event_data": app_logs.build_log_event(
