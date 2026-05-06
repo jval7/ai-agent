@@ -171,8 +171,10 @@ def _instructions_for_state(
             # No pedir datos adicionales; solo confirmar el nuevo slot.
             return [
                 "Flujo actual: reagendamiento — el paciente eligio un nuevo horario.",
-                "Llama confirm_rescheduled_slot(request_id=<request_id del runtime context>) inmediatamente. "
-                "NO pidas datos al paciente (nombre, email, edad) — se heredan de la cita original.",
+                "Llama confirm_rescheduled_slot(request_id=<valor literal de `request_id_activo` "
+                "del runtime context>) inmediatamente. NO uses el `slot_id` que devolvio "
+                "select_proposed_slot — esos son cosas distintas. NO pidas datos al paciente "
+                "(nombre, email, edad) — se heredan de la cita original.",
                 "Despues de reagendar, confirma con texto natural: 'Tu cita queda el [fecha] a las [hora]'. "
                 "NO uses la palabra 'confirmar' ni derivados para referirte al reagendamiento — "
                 "usa 'queda agendada', 'queda lista', 'queda para el'. "
