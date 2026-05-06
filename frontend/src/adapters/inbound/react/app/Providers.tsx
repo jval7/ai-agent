@@ -11,7 +11,7 @@ const queryClient = new reactQueryModule.QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      refetchOnWindowFocus: false,
+      refetchOnWindowFocus: true,
       refetchOnMount: "always"
     }
   }
