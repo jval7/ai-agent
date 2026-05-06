@@ -2,10 +2,10 @@ import re
 import time
 import typing
 
+import src.adapters.outbound.noop_tracer_adapter as noop_tracer_adapter
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
-import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.agent_workflow_port as agent_workflow_port
@@ -16,6 +16,7 @@ import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.patient_repository_port as patient_repository_port
 import src.ports.processed_webhook_event_repository_port as processed_webhook_event_repository_port
+import src.ports.tracer_port as tracer_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
@@ -54,7 +55,7 @@ class WebhookService:
         tool_calling_orchestrator: tool_calling_orchestrator_mod.ToolCallingOrchestrator,
         runtime_context_resolver: runtime_context_resolver_mod.RuntimeContextResolver,
         message_sender: conversation_message_sender_mod.ConversationMessageSender,
-        tracer: langsmith_tracer.LangsmithTracer | None = None,
+        tracer: tracer_port.TracerPort | None = None,
         sleep_seconds: typing.Callable[[float], None] | None = None,
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
         runtime_prompt_builder: prompt_builder.RuntimePromptBuilder | None = None,
@@ -83,8 +84,9 @@ class WebhookService:
             self._prompt_builder = prompt_builder.RuntimePromptBuilder()
         else:
             self._prompt_builder = runtime_prompt_builder
+        self._tracer: tracer_port.TracerPort
         if tracer is None:
-            self._tracer = langsmith_tracer.LangsmithTracer()
+            self._tracer = noop_tracer_adapter.NoopTracerAdapter()
         else:
             self._tracer = tracer
         self._max_debounce_reprocess_iterations = 3
