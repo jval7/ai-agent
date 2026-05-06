@@ -68,11 +68,17 @@ NO invocar para runs sin fails — no hay nada util que reportar.
 - Opcional: lista de shape_names para focalizar (default: todos los shapes del run).
 - Opcional: `eval_api_base` (default: leer de `.secrets/make_credentials_eval.env`).
 
+> **Nota sobre `.secrets/make_credentials_eval.env`:** el directorio `.secrets/` esta en `.gitignore`, por lo que no existe en clones limpios ni en worktrees recien creados. Si el archivo falta:
+> 1. Pedir al usuario que lo provea (es la fuente canonica usada por `make eval`; ver la seccion "Eval framework" del Makefile).
+> 2. Si no lo tiene a mano, aceptar que pase `eval_api_base` como argumento explicito.
+> 3. Como ultimo fallback, intentar la URL del backend dev publicada en `.github/workflows/deploy-main.yml` u outputs de Terraform; documentar la inferencia y validar con un `GET /v1/eval/runs?limit=1` antes de continuar.
+> 4. Si ninguna opcion sirve, abortar con instruccion clara para que el dev cree el archivo o pase `eval_api_base`.
+
 ## Workflow
 
 ### 1. Cargar datos del run via HTTP
 
-Usar `Bash` con `curl` al backend dev. La URL base esta en `.secrets/make_credentials_eval.env` (variable `EVAL_API_BASE`).
+Usar `Bash` con `curl` al backend dev. La URL base esta en `.secrets/make_credentials_eval.env` (variable `EVAL_API_BASE`); si el archivo no existe ver el fallback documentado en la seccion "Input".
 
 Endpoints relevantes (todos GET, sin auth en dev por config actual):
 - `GET /v1/eval/runs?limit=50` — listar runs y filtrar por `run_id` matchando prefix del `run_doc_id`.
