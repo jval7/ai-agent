@@ -10,6 +10,7 @@ import src.adapters.outbound.firestore.client_factory as firestore_client_factor
 import src.adapters.outbound.firestore.conversation_processing_lock_adapter as conversation_processing_lock_adapter
 import src.adapters.outbound.firestore.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.firestore.eval_run_repository_adapter as eval_run_repository_adapter
+import src.adapters.outbound.firestore.firestore_event_stream_adapter as firestore_event_stream_adapter
 import src.adapters.outbound.firestore.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.firestore.invitation_token_repository_adapter as invitation_token_repository_adapter
 import src.adapters.outbound.firestore.manual_appointment_repository_adapter as manual_appointment_repository_adapter
@@ -486,8 +487,13 @@ class AppContainer:
             whatsapp_onboarding_service=self.whatsapp_onboarding_service,
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
         )
+        self.firestore_event_stream_adapter = (
+            firestore_event_stream_adapter.FirestoreEventStreamAdapter(
+                firestore_client=self.firestore_client,
+            )
+        )
         self.event_stream_service = event_stream_service.EventStreamService(
-            firestore_client=self.firestore_client,
+            event_stream=self.firestore_event_stream_adapter,
         )
         self.patient_query_service = patient_query_service.PatientQueryService(
             patient_repository=self.patient_repository,
