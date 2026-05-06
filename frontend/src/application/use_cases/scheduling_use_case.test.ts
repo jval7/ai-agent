@@ -13,7 +13,6 @@ vitestModule.describe("SchedulingUseCase", () => {
       whatsappUserId: "wa-1",
       requestKind: "INITIAL",
       status: "AWAITING_CONSULTATION_REVIEW",
-      audienceType: null,
       roundNumber: 1,
       patientPreferenceNote: "prefiere tarde",
       rejectionSummary: null,

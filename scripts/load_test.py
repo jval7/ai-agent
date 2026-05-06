@@ -1617,18 +1617,25 @@ async def main_eval() -> int:
     had_skips = False
     shape_summaries: list[_ShapeSummary] = []
 
+    # Run shapes in parallel. Each shape spins up its own ephemeral tenant
+    # (independent backend state) and the httpx.AsyncClient pool handles the
+    # concurrent HTTP traffic. Wall-clock drops to O(max(shape_duration))
+    # instead of O(sum), typically ~3-4x speedup for the 4-shape full run.
     async with httpx.AsyncClient(base_url=eval_api_base, timeout=120.0) as client:
-        for shape in shapes:
-            summary = await _run_eval_shape(
-                client,
-                shape,
-                RUN_ID,
-                eval_admin_secret,
-                eval_api_base,
+        shape_results = await asyncio.gather(
+            *(
+                _run_eval_shape(
+                    client,
+                    shape,
+                    RUN_ID,
+                    eval_admin_secret,
+                    eval_api_base,
+                )
+                for shape in shapes
             )
-            shape_summaries.append(summary)
-            if summary["skipped"]:
-                had_skips = True
+        )
+        shape_summaries.extend(shape_results)
+        had_skips = any(s["skipped"] for s in shape_results)
 
     total_elapsed = time.monotonic() - total_start
     total_min = int(total_elapsed // 60)
