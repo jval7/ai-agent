@@ -17,6 +17,7 @@ class RuntimePromptContext(pydantic.BaseModel):
     ]
     request_id: str | None = None
     request_status: str | None = None
+    request_kind: typing.Literal["INITIAL", "RETRY", "RESCHEDULE"] | None = None
     professional_note: str | None = None
     appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] | None = None
     patient_location: str | None = None

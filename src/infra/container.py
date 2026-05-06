@@ -46,6 +46,7 @@ import src.services.agentic.tool_calling_orchestrator as tool_calling_orchestrat
 import src.services.agentic.tool_handlers.cancel_request_handler as cancel_request_handler
 import src.services.agentic.tool_handlers.close_session_handler as close_session_handler
 import src.services.agentic.tool_handlers.confirm_attendance_received_handler as confirm_attendance_received_handler
+import src.services.agentic.tool_handlers.confirm_rescheduled_slot_handler as confirm_rescheduled_slot_handler
 import src.services.agentic.tool_handlers.confirm_slot_handler as confirm_slot_handler
 import src.services.agentic.tool_handlers.handoff_handler as handoff_handler
 import src.services.agentic.tool_handlers.patient_profile_resolver as patient_profile_resolver
@@ -54,6 +55,7 @@ import src.services.agentic.tool_handlers.reject_proposed_slots_handler as rejec
 import src.services.agentic.tool_handlers.select_proposed_slot_handler as select_proposed_slot_handler
 import src.services.agentic.tool_handlers.set_contact_name_handler as set_contact_name_handler
 import src.services.agentic.tool_handlers.submit_consultation_reason_handler as submit_consultation_reason_handler
+import src.services.agentic.tool_handlers.submit_reschedule_for_review_handler as submit_reschedule_for_review_handler
 import src.services.agentic.tool_registry as tool_definition_registry_mod
 import src.services.agentic.workflow_engine as workflow_engine
 import src.services.use_cases.admin_dashboard_service as admin_dashboard_service
@@ -404,6 +406,12 @@ class AppContainer:
                     scheduling_svc=self.scheduling_service,
                 ),
                 reject_proposed_slots_handler.RejectProposedSlotsHandler(
+                    scheduling_svc=self.scheduling_service,
+                ),
+                submit_reschedule_for_review_handler.SubmitRescheduleForReviewHandler(
+                    scheduling_svc=self.scheduling_service,
+                ),
+                confirm_rescheduled_slot_handler.ConfirmRescheduledSlotHandler(
                     scheduling_svc=self.scheduling_service,
                 ),
             ],
