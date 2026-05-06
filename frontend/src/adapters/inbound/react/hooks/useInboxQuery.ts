@@ -49,7 +49,7 @@ export function useConversationsQuery(tenantId?: string) {
       tenantId !== undefined
         ? appContainer.api.adminListConversations(tenantId)
         : appContainer.conversationUseCase.listConversations(),
-    refetchInterval: 60_000
+    refetchInterval: 5_000
   });
 }
 
@@ -69,7 +69,7 @@ export function useConversationMessagesQuery(
       tenantId !== undefined
         ? appContainer.api.adminListConversationMessages(tenantId, selectedConversationId ?? "")
         : appContainer.conversationUseCase.listMessages(selectedConversationId ?? ""),
-    refetchInterval: 60_000
+    refetchInterval: 5_000
   });
 }
 
