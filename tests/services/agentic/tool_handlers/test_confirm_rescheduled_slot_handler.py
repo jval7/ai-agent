@@ -181,7 +181,7 @@ def _make_context() -> tool_handler_base.ToolExecutionContext:
     )
 
 
-def test_handler_moves_calendar_event_and_closes_reschedule_sr() -> None:
+def test_handler_moves_calendar_event_and_promotes_child_to_booked() -> None:
     handler, scheduling_repo, provider = _build_handler()
     _seed_booked_and_reschedule_requests(scheduling_repo)
 
@@ -192,18 +192,27 @@ def test_handler_moves_calendar_event_and_closes_reschedule_sr() -> None:
     )
     result = handler.execute(_make_context(), function_call)
 
-    # Returns the original (rescheduled) request.
-    assert result["request_id"] == "original-req-1"
+    # The RESCHEDULE child now owns the appointment so the conversation lands
+    # in POST_BOOKING_FOLLOWUP.
+    assert result["request_id"] == "reschedule-req-1"
     assert result["status"] == "BOOKED"
 
     # Calendar must have been updated.
     assert len(provider.updated_events) == 1
     assert provider.updated_events[0].start_at == NEW_START
 
-    # RESCHEDULE SR must be closed.
+    # RESCHEDULE child becomes BOOKED with the calendar event ownership.
     reschedule = scheduling_repo.get_request_by_id("tenant-1", "reschedule-req-1")
     assert reschedule is not None
-    assert reschedule.status == "SESSION_CLOSED"
+    assert reschedule.status == "BOOKED"
+    assert reschedule.calendar_event_id is not None
+
+    # Original SR is closed and detached from the calendar event so the
+    # agenda renders only one appointment.
+    original = scheduling_repo.get_request_by_id("tenant-1", "original-req-1")
+    assert original is not None
+    assert original.status == "SESSION_CLOSED"
+    assert original.calendar_event_id is None
 
 
 def test_handler_returns_error_when_no_slot_selected() -> None:
