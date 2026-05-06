@@ -195,8 +195,10 @@ def _instructions_for_state(
                 "Cuando no falte ningun dato, llama confirm_selected_slot_and_create_event.",
             ]
         return [
-            "Flujo actual: ya hay slot seleccionado y no faltan datos de perfil.",
-            "Llama confirm_selected_slot_and_create_event para completar la reserva.",
+            "Flujo actual: el slot ya quedo seleccionado y no falta ningun dato del paciente.",
+            "Llama confirm_selected_slot_and_create_event INMEDIATAMENTE. NO pidas nombre, "
+            "correo, telefono ni edad — todos esos datos ya estan en 'Known patient profile' "
+            "o en el request. Pasa los args vacios y el backend reutiliza el perfil.",
         ]
     if runtime_context.state == "AWAITING_CONSULTATION_REVIEW":
         return [

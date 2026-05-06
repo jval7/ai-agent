@@ -234,8 +234,7 @@ _PAYMENT_TIMING_LABELS: dict[str, str] = {
     "AFTER_SESSION": (
         "AFTER_SESSION (el pago se cobra al finalizar la sesion, despues "
         "de la cita; el agendamiento NO incluye paso de pago ni se "
-        "solicita comprobante — la reserva se cierra recolectando los "
-        "datos finales del paciente)"
+        "solicita comprobante)"
     ),
 }
 
