@@ -93,6 +93,7 @@ class SelectProposedSlotHandler(base.ToolHandler):
 
         return {
             "status": "SLOT_SELECTED",
+            "request_id": active_request.request_id,
             "slot_id": slot_id,
             "next_step": "inform_patient_about_payment",
         }

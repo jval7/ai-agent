@@ -101,6 +101,7 @@ class ToolHandlerRegistry:
                                 "tenant_id": context.tenant_id,
                                 "conversation_id": context.conversation_id,
                                 "function_name": function_call.name,
+                                "function_args": _sanitize_trace_object(function_call.args),
                                 "error_message": str(error),
                             },
                         )
