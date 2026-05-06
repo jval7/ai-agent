@@ -30,6 +30,15 @@ def enabled_tools_for_state(state: str) -> list[str]:
             "handoff_to_human",
             "cancel_active_scheduling_request",
         ]
+    if state == "AWAITING_CONSULTATION_REVIEW":
+        # While the request waits for the professional to review the reason
+        # (or to propose new slots in a reschedule), the bot must not cancel
+        # the request on its own. cancel_active_scheduling_request is removed
+        # from the toolset so the LLM cannot misread acks like "vale gracias"
+        # as a cancel intent. Only handoff stays as an escape hatch.
+        return [
+            "handoff_to_human",
+        ]
     if state == "AWAITING_PATIENT_CHOICE":
         return [
             "select_proposed_slot",

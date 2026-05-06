@@ -161,6 +161,22 @@ class ToolCallingOrchestrator:
                                 early_return=True,
                                 iterations_used=iteration_index + 1,
                             )
+                        if (
+                            function_call.name == "submit_reschedule_for_review"
+                            and function_response_payload.get("status")
+                            == "AWAITING_CONSULTATION_REVIEW"
+                        ):
+                            trace_run.set_outputs(
+                                {
+                                    "outcome": "submit_reschedule_ack",
+                                    "iteration": iteration_index + 1,
+                                }
+                            )
+                            return OrchestratorResult(
+                                response_text=_RESCHEDULE_REVIEW_ACK_MESSAGE,
+                                early_return=True,
+                                iterations_used=iteration_index + 1,
+                            )
                         if function_call.name == "confirm_selected_slot_and_create_event":
                             current_known_patient = self._patient_repository.get_by_whatsapp_user(
                                 tenant_id=tool_execution_context.tenant_id,
@@ -232,4 +248,8 @@ class ToolCallingOrchestrator:
 
 _REASON_REVIEW_ACK_MESSAGE = (
     "Gracias por compartir la información. Dame un momento y te ayudo a continuar."
+)
+
+_RESCHEDULE_REVIEW_ACK_MESSAGE = (
+    "Dame un momento y te comparto las opciones de horario para reagendar."
 )
