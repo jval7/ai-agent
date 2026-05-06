@@ -11,11 +11,11 @@ import src.adapters.outbound.inmemory.patient_repository_adapter as patient_repo
 import src.adapters.outbound.inmemory.processed_webhook_event_repository_adapter as processed_webhook_event_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
+import src.adapters.outbound.noop_tracer_adapter as noop_tracer_adapter
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.blacklist_entry as blacklist_entry_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
-import src.infra.langsmith_tracer as langsmith_tracer
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
 import src.services.agentic.prompt_builder as prompt_builder_mod
 import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
@@ -97,7 +97,7 @@ def build_webhook_service(
     id_generator = fake_adapters.SequenceIdGenerator(id_values)
     clock = fake_adapters.FixedClock(now_value)
 
-    tracer = langsmith_tracer.LangsmithTracer(enabled=False)
+    tracer = noop_tracer_adapter.NoopTracerAdapter()
     tool_def_registry = tool_definition_registry_mod.ToolDefinitionRegistry()
     handler_registry = tool_handler_registry_mod.ToolHandlerRegistry(
         handlers=[
