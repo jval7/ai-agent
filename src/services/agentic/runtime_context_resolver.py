@@ -19,6 +19,7 @@ def enabled_tools_for_state(state: str) -> list[str]:
     if state == "NO_ACTIVE_REQUEST":
         return [
             "submit_consultation_reason_for_review",
+            "submit_reschedule_for_review",
             "close_session",
             "handoff_to_human",
             "cancel_active_scheduling_request",
@@ -44,7 +45,6 @@ def enabled_tools_for_state(state: str) -> list[str]:
     if state == "AWAITING_ATTENDANCE_CONFIRMATION":
         return [
             "confirm_attendance_received",
-            "submit_reschedule_for_review",
             "handoff_to_human",
         ]
     if state == "COLLECTING_CONFIRMATION_DATA":
@@ -57,7 +57,6 @@ def enabled_tools_for_state(state: str) -> list[str]:
     if state == "POST_BOOKING_FOLLOWUP":
         return [
             "close_session",
-            "submit_reschedule_for_review",
             "handoff_to_human",
         ]
     return ["handoff_to_human", "cancel_active_scheduling_request"]
@@ -83,8 +82,18 @@ class RuntimeContextResolver:
             conversation_id=conversation_id,
         )
         if latest_open_request is None:
+            # No SR open in this conversation. Look for a previously BOOKED or
+            # already SESSION_CLOSED appointment in the same conversation so the
+            # bot can offer the reschedule flow when the patient comes back to
+            # ask for a change. Returns None when there is no prior appointment
+            # (e.g. brand-new conversations).
+            last_booked_request_id = self._find_last_booked_request_id(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+            )
             return RuntimePromptContext(
                 state="NO_ACTIVE_REQUEST",
+                last_booked_request_id=last_booked_request_id,
                 enabled_tool_names=self._enabled_tools_for_state("NO_ACTIVE_REQUEST"),
             )
 
@@ -229,6 +238,38 @@ class RuntimeContextResolver:
             ):
                 return request
         return None
+
+    def _find_last_booked_request_id(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+    ) -> str | None:
+        """Returns the request_id of the most recent BOOKED or SESSION_CLOSED
+        scheduling request in this conversation, or None if there is no prior
+        appointment.
+
+        Used in NO_ACTIVE_REQUEST to surface a previously booked appointment so
+        the bot can offer the reschedule flow when the patient comes back.
+        Initial-flow requests in non-terminal states are returned by
+        _find_latest_open_scheduling_request and handled separately.
+        """
+        if self._scheduling_svc is None:
+            return None
+
+        request_list = self._scheduling_svc.list_requests_by_conversation(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+        )
+        # Items are returned newest-first; pick the first BOOKED, fall back to
+        # SESSION_CLOSED so the bot can still anchor a reschedule on a closed
+        # successful flow.
+        latest_session_closed: str | None = None
+        for request in request_list.items:
+            if request.status == "BOOKED":
+                return request.request_id
+            if request.status == "SESSION_CLOSED" and latest_session_closed is None:
+                latest_session_closed = request.request_id
+        return latest_session_closed
 
     def _find_slot(
         self,

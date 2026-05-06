@@ -64,8 +64,7 @@ def _instructions_for_state(
                 "  (a) Cita de control / seguimiento — agendar una nueva cita.\n"
                 "  (b) Una consulta sobre su tratamiento o cuidados — responde con la "
                 "informacion disponible; si no puedes, ofrece pasar a humano.\n"
-                "  (c) Reprogramar o cancelar una cita previa — usa handoff_to_human "
-                "(el bot no gestiona cambios de citas pasadas).",
+                "  (c) Reagendar o cancelar una cita previa — ver reglas abajo.",
                 "Si el paciente quiere agendar (caso a):\n"
                 "  - SOLO ofrece servicios marcados con `<target_patients>` que incluya "
                 "'recurrentes' (Pacientes nuevos y recurrentes O Solo pacientes recurrentes). "
@@ -88,8 +87,13 @@ def _instructions_for_state(
                 "del system prompt (precios, horarios, datos de pago, etc.). NO llames "
                 "submit_consultation_reason_for_review si solo es una consulta.",
                 _QUOTE_CURRENCY_PER_LOCATION,
-                "Si pide reprogramar/cancelar una cita previa (caso c), usa handoff_to_human "
-                "directamente — no intentes gestionar el cambio.",
+                "Si pide reagendar o no puede asistir / intencion ambigua sobre la cita "
+                "(caso c): primero confirma intent — preguntale '¿Queres reagendar? Para "
+                "cancelar te paso con un asesor.' Si confirma REAGENDAR y existe "
+                "`last_booked_request_id` en el runtime context, di 'Dame un momento' y "
+                "llama submit_reschedule_for_review(original_request_id=<last_booked_request_id>). "
+                "Si confirma CANCELAR usa handoff_to_human. Si NO existe last_booked_request_id "
+                "(no hay cita previa en esta conversacion) usa handoff_to_human directamente.",
                 "No llames confirm_selected_slot_and_create_event en este estado.",
             ]
 
@@ -254,13 +258,8 @@ def _instructions_for_state(
             "Puedes responder preguntas generales del paciente: informacion del consultorio, "
             "horarios, direccion, preparacion para la cita u otros datos generales.",
             _NEVER_INVENT_INJECTED_DATA,
-            "Si el paciente dice que no puede asistir o expresa intenciones ambiguas sobre la cita, "
-            "preguntale: '¿Queres reagendar? Si necesitas cancelar te paso con un asesor humano.' "
-            "NO asumas que quiere cancelar; espera su respuesta.",
-            "Si el paciente confirma que quiere REAGENDAR: di 'Dame un momento' y llama "
-            "submit_reschedule_for_review(original_request_id=<request_id del runtime context>). "
-            "NO menciones que estas enviando o consultando nada a nadie.",
-            "Si el paciente quiere CANCELAR explicitamente: usa handoff_to_human.",
+            "Si el paciente dice que NO puede asistir o pide reagendar/cancelar su cita, "
+            "usa handoff_to_human — el bot no gestiona cambios de citas ya reservadas en este estado.",
             "No solicites confirmacion de nuevo si el paciente ya respondio.",
             "No avances ningun flujo de agendamiento en este estado.",
         ]
@@ -308,12 +307,8 @@ def _instructions_for_state(
         lines += [
             "Menciona que el paciente tambien recibe una invitacion de Google Calendar al correo registrado.",
             "Para mensajes siguientes, responde preguntas generales del paciente usando los datos del contexto.",
-            "NO inicies un nuevo proceso de agendamiento. Si el paciente quiere agendar otra cita diferente, "
-            "usa handoff_to_human.",
-            "Si el paciente pide REAGENDAR la cita actual: confirma su intencion preguntando "
-            "'¿Queres reagendar? Para cancelar te paso con un asesor.' Si confirma que quiere reagendar, "
-            "di 'Dame un momento' y llama submit_reschedule_for_review(original_request_id=<request_id del runtime context>). "
-            "NO digas que envias algo ni que consultas a nadie. Si quiere CANCELAR, usa handoff_to_human.",
+            "NO inicies un nuevo proceso de agendamiento. Si el paciente quiere agendar otra cita, "
+            "reagendar la actual o cancelar, usa handoff_to_human.",
             "Cuando el paciente se despida o confirme que no necesita nada mas, "
             "DEBES llamar close_session obligatoriamente. Reconoce como senales de cierre: "
             "agradecimientos finales ('gracias', 'muchas gracias'); "

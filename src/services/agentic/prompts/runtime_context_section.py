@@ -54,6 +54,8 @@ class RuntimeContextSection(prompt_section.PromptSection):
         ]
         if runtime_context.request_id is not None:
             lines.append(f"- request_id_activo: {runtime_context.request_id}")
+        if runtime_context.last_booked_request_id is not None:
+            lines.append(f"- last_booked_request_id: {runtime_context.last_booked_request_id}")
         if runtime_context.request_status is not None:
             lines.append(
                 f"- request_status_activo: {_llm_visible_state_name(runtime_context.request_status)}"
