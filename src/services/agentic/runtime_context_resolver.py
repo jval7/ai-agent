@@ -45,6 +45,7 @@ def enabled_tools_for_state(state: str) -> list[str]:
     if state == "AWAITING_ATTENDANCE_CONFIRMATION":
         return [
             "confirm_attendance_received",
+            "submit_reschedule_for_review",
             "handoff_to_human",
         ]
     if state == "COLLECTING_CONFIRMATION_DATA":
