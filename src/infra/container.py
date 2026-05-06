@@ -25,6 +25,7 @@ import src.adapters.outbound.firestore.tenant_repository_adapter as tenant_repos
 import src.adapters.outbound.firestore.user_repository_adapter as user_repository_adapter
 import src.adapters.outbound.firestore.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.adapters.outbound.google_calendar.google_calendar_provider_adapter as google_calendar_provider_adapter
+import src.adapters.outbound.langsmith.langsmith_tracer_adapter as langsmith_tracer_adapter
 import src.adapters.outbound.llm_gemini.gemini_llm_provider_adapter as gemini_llm_provider_adapter
 import src.adapters.outbound.noop_task_scheduler_adapter as noop_task_scheduler_adapter
 import src.adapters.outbound.noop_whatsapp_send_adapter as noop_whatsapp_send_adapter
@@ -32,7 +33,6 @@ import src.adapters.outbound.secret_manager.app_config_secret_loader_adapter as 
 import src.adapters.outbound.security.jwt_provider_adapter as jwt_provider_adapter
 import src.adapters.outbound.security.password_hasher_adapter as password_hasher_adapter
 import src.adapters.outbound.whatsapp_meta.meta_whatsapp_provider_adapter as meta_whatsapp_provider_adapter
-import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.logs as app_logs
 import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
@@ -199,7 +199,7 @@ class AppContainer:
                 settings=self.settings,
             )
         )
-        self.langsmith_tracer = langsmith_tracer.LangsmithTracer(
+        self.tracer = langsmith_tracer_adapter.LangsmithTracerAdapter(
             enabled=self.settings.langsmith_tracing_enabled,
             project_name=self.settings.langsmith_project,
             api_key=self.settings.langsmith_api_key,
@@ -213,7 +213,7 @@ class AppContainer:
             location=self.settings.gemini_location,
             model=self.settings.gemini_model,
             max_output_tokens=self.settings.gemini_max_output_tokens,
-            tracer=self.langsmith_tracer,
+            tracer=self.tracer,
         )
         self.agent_workflow_engine = workflow_engine.LangGraphAgentWorkflowEngine()
 
@@ -414,7 +414,7 @@ class AppContainer:
                     scheduling_svc=self.scheduling_service,
                 ),
             ],
-            tracer=self.langsmith_tracer,
+            tracer=self.tracer,
         )
 
         self.tool_definition_registry = tool_definition_registry_mod.ToolDefinitionRegistry()
@@ -439,7 +439,7 @@ class AppContainer:
             prompt_builder_instance=self.prompt_builder,
             tool_definition_registry=self.tool_definition_registry,
             patient_repository=self.patient_repository,
-            tracer=self.langsmith_tracer,
+            tracer=self.tracer,
         )
 
         self.webhook_service = webhook_service.WebhookService(
@@ -455,7 +455,7 @@ class AppContainer:
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
             context_message_limit=self.settings.conversation_context_messages,
-            tracer=self.langsmith_tracer,
+            tracer=self.tracer,
             agent_workflow=self.agent_workflow_engine,
             professional_silent_guard=self.professional_silent_guard,
             tool_calling_orchestrator=self.tool_calling_orchestrator,
