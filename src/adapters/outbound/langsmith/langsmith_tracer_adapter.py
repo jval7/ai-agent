@@ -1,3 +1,10 @@
+"""LangSmith implementation of TracerPort.
+
+Mirrors the previous src/infra/langsmith_tracer.py implementation, now placed
+under adapters/outbound to respect the hexagonal boundary: services depend on
+the port, not on a concrete tracing library.
+"""
+
 import contextlib
 import typing
 
@@ -5,11 +12,12 @@ import langsmith.client as langsmith_client
 import langsmith.run_helpers as langsmith_run_helpers
 
 import src.infra.logs as app_logs
+import src.ports.tracer_port as tracer_port
 
 logger = app_logs.get_logger(__name__)
 
 
-class LangsmithTraceRun:
+class LangsmithTraceRun(tracer_port.TraceRun):
     def __init__(self, run_tree: typing.Any | None) -> None:
         self._run_tree = run_tree
         self._ended = False
@@ -38,7 +46,7 @@ class LangsmithTraceRun:
         self._ended = True
 
 
-class LangsmithTracer:
+class LangsmithTracerAdapter(tracer_port.TracerPort):
     def __init__(
         self,
         *,
@@ -93,7 +101,7 @@ class LangsmithTracer:
         inputs: typing.Mapping[str, object] | None = None,
         metadata: typing.Mapping[str, object] | None = None,
         tags: list[str] | None = None,
-    ) -> typing.Generator[LangsmithTraceRun, None, None]:
+    ) -> typing.Generator[tracer_port.TraceRun, None, None]:
         if not self.is_enabled():
             yield LangsmithTraceRun(None)
             return

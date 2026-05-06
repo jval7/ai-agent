@@ -9,8 +9,8 @@ import httpx
 import tenacity
 from google import genai
 
-import src.infra.langsmith_tracer as langsmith_tracer
 import src.ports.llm_provider_port as llm_provider_port
+import src.ports.tracer_port as tracer_port
 import src.services.dto.llm_dto as llm_dto
 import src.services.exceptions as service_exceptions
 
@@ -44,17 +44,14 @@ class GeminiLlmProviderAdapter(llm_provider_port.LlmProviderPort):
         location: str,
         model: str,
         max_output_tokens: int,
-        tracer: langsmith_tracer.LangsmithTracer | None = None,
+        tracer: tracer_port.TracerPort,
     ) -> None:
         self._project_id = project_id
         self._location = location
         self._model = model
         self._max_output_tokens = max_output_tokens
         self._client: genai.Client | None = None
-        if tracer is None:
-            self._tracer = langsmith_tracer.LangsmithTracer()
-        else:
-            self._tracer = tracer
+        self._tracer = tracer
 
     def generate_reply(self, prompt_input: llm_dto.GenerateReplyInputDTO) -> llm_dto.AgentReplyDTO:
         trace_inputs: dict[str, object] = {

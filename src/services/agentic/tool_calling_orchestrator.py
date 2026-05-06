@@ -4,10 +4,10 @@ import pydantic
 
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.patient as patient_entity
-import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.logs as app_logs
 import src.ports.llm_provider_port as llm_provider_port
 import src.ports.patient_repository_port as patient_repository_port
+import src.ports.tracer_port as tracer_port
 import src.services.agentic.prompt_builder as prompt_builder
 import src.services.agentic.state_models as agentic_state_models
 import src.services.agentic.tool_handlers.base as tool_handler_base
@@ -39,7 +39,7 @@ class ToolCallingOrchestrator:
         prompt_builder_instance: prompt_builder.RuntimePromptBuilder,
         tool_definition_registry: tool_registry.ToolDefinitionRegistry,
         patient_repository: patient_repository_port.PatientRepositoryPort,
-        tracer: langsmith_tracer.LangsmithTracer,
+        tracer: tracer_port.TracerPort,
         max_iterations: int = 4,
         retry_backoff_seconds: list[float] | None = None,
         sleep_fn: typing.Callable[[float], None] | None = None,
