@@ -227,10 +227,13 @@ class ToolDefinitionRegistry:
             llm_dto.FunctionDeclarationDTO(
                 name="submit_reschedule_for_review",
                 description=(
-                    "Inicia el flujo de REAGENDAMIENTO de una cita ya BOOKED. "
+                    "Inicia el flujo de REAGENDAMIENTO de una cita existente. "
                     "Usa esta tool SOLO cuando el paciente confirma que quiere reagendar "
                     "(NO para cancelar; cancelar va por handoff_to_human). "
-                    "El original_request_id sale del runtime context (request_id de la cita activa). "
+                    "El original_request_id sale del runtime context: usa "
+                    "`last_booked_request_id` si esta disponible (paciente que vuelve), "
+                    "o `request_id_activo` si estas en el flujo de recordatorio "
+                    "(estado AWAITING_ATTENDANCE_CONFIRMATION). "
                     "Esta tool NO mueve la cita todavia; solo abre la solicitud para que el "
                     "profesional proponga horarios alternativos. Despues el paciente elige slot "
                     "(via select_proposed_slot existente) y tu llamas confirm_rescheduled_slot. "

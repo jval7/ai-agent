@@ -258,8 +258,11 @@ def _instructions_for_state(
             "Puedes responder preguntas generales del paciente: informacion del consultorio, "
             "horarios, direccion, preparacion para la cita u otros datos generales.",
             _NEVER_INVENT_INJECTED_DATA,
-            "Si el paciente dice que NO puede asistir o pide reagendar/cancelar su cita, "
-            "usa handoff_to_human — el bot no gestiona cambios de citas ya reservadas en este estado.",
+            "Si el paciente dice que NO puede asistir / pide reagendar/cancelar / intencion ambigua "
+            "sobre la cita: primero confirma intent — preguntale '¿Queres reagendar? Para cancelar "
+            "te paso con un asesor.' Si confirma REAGENDAR di 'Dame un momento' y llama "
+            "submit_reschedule_for_review(original_request_id=<request_id_activo del runtime context>). "
+            "Si confirma CANCELAR usa handoff_to_human.",
             "No solicites confirmacion de nuevo si el paciente ya respondio.",
             "No avances ningun flujo de agendamiento en este estado.",
         ]
