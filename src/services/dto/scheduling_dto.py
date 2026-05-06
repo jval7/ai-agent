@@ -199,3 +199,12 @@ class UpdateBookedSlotPaymentInputDTO(pydantic.BaseModel):
 
 class ChangeBookedModalityInputDTO(pydantic.BaseModel):
     new_modality: typing.Literal["PRESENCIAL", "VIRTUAL"]
+
+
+class SubmitRescheduleForReviewToolInputDTO(pydantic.BaseModel):
+    original_request_id: str
+    reason: str | None = None
+
+
+class ConfirmRescheduledSlotInputDTO(pydantic.BaseModel):
+    request_id: str  # del SR de RESCHEDULE (NO del original)

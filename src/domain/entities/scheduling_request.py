@@ -11,7 +11,7 @@ class SchedulingRequest(pydantic.BaseModel):
     tenant_id: str
     conversation_id: str
     whatsapp_user_id: str
-    request_kind: typing.Literal["INITIAL", "RETRY"]
+    request_kind: typing.Literal["INITIAL", "RETRY", "RESCHEDULE"]
     status: typing.Literal[
         "AWAITING_CONSULTATION_REVIEW",
         "AWAITING_CONSULTATION_DETAILS",

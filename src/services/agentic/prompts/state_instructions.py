@@ -162,6 +162,18 @@ def _instructions_for_state(
         # con un concepto que termina filtrandose al paciente como "confirmar
         # tu cita / asistencia" pre-pago. Vocabulario interno aqui: "finalizar
         # el agendamiento", "datos finales".
+        if runtime_context.request_kind == "RESCHEDULE":
+            # Reagendamiento: los datos del paciente se heredan del original.
+            # No pedir datos adicionales; solo confirmar el nuevo slot.
+            return [
+                "Flujo actual: reagendamiento — el paciente eligio un nuevo horario.",
+                "Llama confirm_rescheduled_slot(request_id=<request_id del runtime context>) inmediatamente. "
+                "NO pidas datos al paciente (nombre, email, edad) — se heredan de la cita original.",
+                "Despues de reagendar, confirma con texto natural: 'Tu cita queda el [fecha] a las [hora]'. "
+                "NO uses la palabra 'confirmar' ni derivados para referirte al reagendamiento — "
+                "usa 'queda agendada', 'queda lista', 'queda para el'. "
+                "NO menciones modalidad a menos que el paciente lo pregunte.",
+            ]
         if runtime_context.missing_confirmation_fields:
             missing_fields_bullet = "\n• ".join(runtime_context.missing_confirmation_fields)
             return [
@@ -242,8 +254,13 @@ def _instructions_for_state(
             "Puedes responder preguntas generales del paciente: informacion del consultorio, "
             "horarios, direccion, preparacion para la cita u otros datos generales.",
             _NEVER_INVENT_INJECTED_DATA,
-            "Si el paciente dice que NO puede asistir o pide reagendar/cancelar su cita, "
-            "usa handoff_to_human — el bot no gestiona cambios de citas ya reservadas.",
+            "Si el paciente dice que no puede asistir o expresa intenciones ambiguas sobre la cita, "
+            "preguntale: '¿Queres reagendar? Si necesitas cancelar te paso con un asesor humano.' "
+            "NO asumas que quiere cancelar; espera su respuesta.",
+            "Si el paciente confirma que quiere REAGENDAR: di 'Dame un momento' y llama "
+            "submit_reschedule_for_review(original_request_id=<request_id del runtime context>). "
+            "NO menciones que estas enviando o consultando nada a nadie.",
+            "Si el paciente quiere CANCELAR explicitamente: usa handoff_to_human.",
             "No solicites confirmacion de nuevo si el paciente ya respondio.",
             "No avances ningun flujo de agendamiento en este estado.",
         ]
@@ -291,8 +308,12 @@ def _instructions_for_state(
         lines += [
             "Menciona que el paciente tambien recibe una invitacion de Google Calendar al correo registrado.",
             "Para mensajes siguientes, responde preguntas generales del paciente usando los datos del contexto.",
-            "NO inicies un nuevo proceso de agendamiento. Si el paciente quiere agendar otra cita, "
+            "NO inicies un nuevo proceso de agendamiento. Si el paciente quiere agendar otra cita diferente, "
             "usa handoff_to_human.",
+            "Si el paciente pide REAGENDAR la cita actual: confirma su intencion preguntando "
+            "'¿Queres reagendar? Para cancelar te paso con un asesor.' Si confirma que quiere reagendar, "
+            "di 'Dame un momento' y llama submit_reschedule_for_review(original_request_id=<request_id del runtime context>). "
+            "NO digas que envias algo ni que consultas a nadie. Si quiere CANCELAR, usa handoff_to_human.",
             "Cuando el paciente se despida o confirme que no necesita nada mas, "
             "DEBES llamar close_session obligatoriamente. Reconoce como senales de cierre: "
             "agradecimientos finales ('gracias', 'muchas gracias'); "

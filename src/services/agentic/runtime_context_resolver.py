@@ -1,3 +1,5 @@
+import typing
+
 import src.domain.entities.patient as patient_entity
 import src.ports.conversation_repository_port as conversation_repository_port
 import src.services.agentic.state_models as agentic_state_models
@@ -42,17 +44,20 @@ def enabled_tools_for_state(state: str) -> list[str]:
     if state == "AWAITING_ATTENDANCE_CONFIRMATION":
         return [
             "confirm_attendance_received",
+            "submit_reschedule_for_review",
             "handoff_to_human",
         ]
     if state == "COLLECTING_CONFIRMATION_DATA":
         return [
             "confirm_selected_slot_and_create_event",
+            "confirm_rescheduled_slot",
             "handoff_to_human",
             "cancel_active_scheduling_request",
         ]
     if state == "POST_BOOKING_FOLLOWUP":
         return [
             "close_session",
+            "submit_reschedule_for_review",
             "handoff_to_human",
         ]
     return ["handoff_to_human", "cancel_active_scheduling_request"]
@@ -98,6 +103,7 @@ class RuntimeContextResolver:
                     state="AWAITING_PATIENT_CHOICE",
                     request_id=latest_open_request.request_id,
                     request_status=request_status,
+                    request_kind=self._to_request_kind(latest_open_request.request_kind),
                     appointment_modality=latest_open_request.appointment_modality,
                     patient_location=latest_open_request.patient_location,
                     patient_preference_note=latest_open_request.patient_preference_note,
@@ -112,6 +118,7 @@ class RuntimeContextResolver:
                 state="COLLECTING_CONFIRMATION_DATA",
                 request_id=latest_open_request.request_id,
                 request_status=request_status,
+                request_kind=self._to_request_kind(latest_open_request.request_kind),
                 appointment_modality=latest_open_request.appointment_modality,
                 patient_location=latest_open_request.patient_location,
                 patient_preference_note=latest_open_request.patient_preference_note,
@@ -150,6 +157,7 @@ class RuntimeContextResolver:
                 state="AWAITING_ATTENDANCE_CONFIRMATION",
                 request_id=latest_open_request.request_id,
                 request_status=request_status,
+                request_kind=self._to_request_kind(latest_open_request.request_kind),
                 appointment_modality=latest_open_request.appointment_modality,
                 appointment_start_at=selected_slot.start_at if selected_slot else None,
                 appointment_end_at=selected_slot.end_at if selected_slot else None,
@@ -184,6 +192,7 @@ class RuntimeContextResolver:
                 state="POST_BOOKING_FOLLOWUP",
                 request_id=latest_open_request.request_id,
                 request_status=request_status,
+                request_kind=self._to_request_kind(latest_open_request.request_kind),
                 appointment_modality=latest_open_request.appointment_modality,
                 patient_location=latest_open_request.patient_location,
                 selected_slot_id=latest_open_request.selected_slot_id,
@@ -252,6 +261,13 @@ class RuntimeContextResolver:
 
     def _enabled_tools_for_state(self, state: str) -> list[str]:
         return enabled_tools_for_state(state)
+
+    def _to_request_kind(
+        self, kind: str
+    ) -> "typing.Literal['INITIAL', 'RETRY', 'RESCHEDULE'] | None":
+        if kind in ("INITIAL", "RETRY", "RESCHEDULE"):
+            return kind  # type: ignore[return-value]
+        return None
 
     def _compute_missing_confirmation_fields(
         self,

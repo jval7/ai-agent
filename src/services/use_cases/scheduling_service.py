@@ -192,6 +192,8 @@ class SchedulingService:
             "ESCALATE_PATIENT_SLOT_REJECTION",
             "CLOSE_SESSION",
             "CHANGE_BOOKED_MODALITY",
+            "SUBMIT_RESCHEDULE_FOR_REVIEW",
+            "CONFIRM_RESCHEDULED_SLOT",
         ],
         payload: object | None,
         apply_transition: typing.Callable[
@@ -471,6 +473,51 @@ class SchedulingService:
             ),
         )
         return typing.cast(dict[str, str], transition_result)
+
+    def submit_reschedule_for_review(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        whatsapp_user_id: str,
+        input_dto: scheduling_dto.SubmitRescheduleForReviewToolInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="SUBMIT_RESCHEDULE_FOR_REVIEW",
+            payload={
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+                "whatsapp_user_id": whatsapp_user_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._submit_reschedule_for_review_impl(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                whatsapp_user_id=whatsapp_user_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
+
+    def confirm_rescheduled_slot(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        input_dto: scheduling_dto.ConfirmRescheduledSlotInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        transition_result = self._run_transition_with_graph(
+            action="CONFIRM_RESCHEDULED_SLOT",
+            payload={
+                "tenant_id": tenant_id,
+                "conversation_id": conversation_id,
+                "input": input_dto,
+            },
+            apply_transition=lambda _: self._confirm_rescheduled_slot_impl(
+                tenant_id=tenant_id,
+                conversation_id=conversation_id,
+                input_dto=input_dto,
+            ),
+        )
+        return typing.cast(scheduling_dto.SchedulingRequestSummaryDTO, transition_result)
 
     def escalate_patient_slot_rejection(
         self,
@@ -1012,7 +1059,7 @@ class SchedulingService:
 
         request.selected_slot_id = selected_slot.id
 
-        if payment_timing == "AFTER_SESSION":
+        if payment_timing == "AFTER_SESSION" or request.request_kind == "RESCHEDULE":
             # AFTER_SESSION: skip the payment step entirely. Keep the request
             # in AWAITING_PATIENT_CHOICE with selected_slot_id set so the
             # runtime resolver derives state=COLLECTING_CONFIRMATION_DATA and
@@ -1021,19 +1068,24 @@ class SchedulingService:
             # with the patient's email (Calendar invite goes out) and
             # persists patient_first_name on the request (so reminders show
             # the real name, not "Paciente").
+            # RESCHEDULE: also skip payment — the appointment was already paid
+            # (or payment is not required again for rescheduling).
             request.updated_at = now_value
             self._scheduling_repository.save_request(request)
             logger.info(
-                "scheduling.slot_selected_after_session",
+                "scheduling.slot_selected_skip_payment",
                 extra={
                     "event_data": app_logs.build_log_event(
-                        event_name="scheduling.slot_selected_after_session",
-                        message="slot selected; AFTER_SESSION skips payment step",
+                        event_name="scheduling.slot_selected_skip_payment",
+                        message="slot selected; payment step skipped (AFTER_SESSION or RESCHEDULE)",
                         data={
                             "tenant_id": tenant_id,
                             "conversation_id": conversation_id,
                             "request_id": request.id,
                             "slot_id": selected_slot.id,
+                            "reason": "RESCHEDULE"
+                            if request.request_kind == "RESCHEDULE"
+                            else "AFTER_SESSION",
                         },
                     )
                 },
@@ -1813,6 +1865,192 @@ class SchedulingService:
             },
         )
         return self._to_summary_dto(request)
+
+    def _submit_reschedule_for_review_impl(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        whatsapp_user_id: str,
+        input_dto: scheduling_dto.SubmitRescheduleForReviewToolInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        # 1. Load and validate the original SR.
+        original_request = self._scheduling_repository.get_request_by_id(
+            tenant_id, input_dto.original_request_id
+        )
+        if original_request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+        if original_request.tenant_id != tenant_id:
+            raise service_exceptions.AuthorizationError(
+                "scheduling request does not belong to tenant"
+            )
+        if original_request.status != "BOOKED":
+            raise service_exceptions.InvalidStateError(
+                "solo se puede reagendar una cita en estado BOOKED"
+            )
+
+        # 2. Verify no active reschedule SR already exists for this original.
+        existing_requests = self._scheduling_repository.list_requests_by_conversation(
+            tenant_id,
+            conversation_id,
+        )
+        for req in existing_requests:
+            if (
+                req.request_kind == "RESCHEDULE"
+                and req.source_appointment_id == input_dto.original_request_id
+                and req.status
+                not in (
+                    "SESSION_CLOSED",
+                    "CANCELLED",
+                    "CONSULTATION_REJECTED",
+                    "HUMAN_HANDOFF",
+                )
+            ):
+                raise service_exceptions.InvalidStateError(
+                    "ya hay un reagendamiento en curso para esta cita"
+                )
+
+        # 3. Create the child RESCHEDULE SR inheriting data from original.
+        now_value = self._clock.now()
+        open_requests = self._scheduling_repository.list_requests_by_conversation(
+            tenant_id,
+            conversation_id,
+        )
+        new_request = scheduling_request_entity.SchedulingRequest(
+            id=self._id_generator.new_id(),
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            whatsapp_user_id=original_request.whatsapp_user_id,
+            request_kind="RESCHEDULE",
+            status="AWAITING_CONSULTATION_REVIEW",
+            round_number=len(open_requests) + 1,
+            patient_preference_note=input_dto.reason,
+            rejection_summary=None,
+            professional_note=None,
+            consultation_reason=original_request.consultation_reason,
+            appointment_modality=original_request.appointment_modality,
+            patient_location=original_request.patient_location,
+            patient_first_name=original_request.patient_first_name,
+            patient_last_name=original_request.patient_last_name,
+            patient_age=original_request.patient_age,
+            slots=[],
+            slot_options_map={},
+            selected_slot_id=None,
+            calendar_event_id=None,
+            source_appointment_id=input_dto.original_request_id,
+            source_appointment_kind="SCHEDULING_REQUEST",
+            payment_status="PAID",
+            created_at=now_value,
+            updated_at=now_value,
+        )
+
+        # 4. Persist.
+        self._scheduling_repository.save_request(new_request)
+
+        # 5. Sync tags.
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=new_request.status,
+        )
+
+        logger.info(
+            "scheduling.reschedule_for_review_submitted",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.reschedule_for_review_submitted",
+                    message="reschedule request created for professional review",
+                    data={
+                        "tenant_id": tenant_id,
+                        "conversation_id": conversation_id,
+                        "new_request_id": new_request.id,
+                        "original_request_id": input_dto.original_request_id,
+                    },
+                )
+            },
+        )
+        return self._to_summary_dto(new_request)
+
+    def _confirm_rescheduled_slot_impl(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        input_dto: scheduling_dto.ConfirmRescheduledSlotInputDTO,
+    ) -> scheduling_dto.SchedulingRequestSummaryDTO:
+        # 1. Load and validate the RESCHEDULE SR.
+        reschedule_request = self._scheduling_repository.get_request_by_id(
+            tenant_id, input_dto.request_id
+        )
+        if reschedule_request is None:
+            raise service_exceptions.EntityNotFoundError("scheduling request not found")
+        if reschedule_request.request_kind != "RESCHEDULE":
+            raise service_exceptions.InvalidStateError(
+                "scheduling request is not a reschedule request"
+            )
+        if reschedule_request.status != "AWAITING_PATIENT_CHOICE":
+            raise service_exceptions.InvalidStateError(
+                "scheduling request is not waiting for patient choice"
+            )
+        if reschedule_request.selected_slot_id is None:
+            raise service_exceptions.InvalidStateError(
+                "no slot selected yet; call select_proposed_slot first"
+            )
+
+        # 2. Find the selected slot in the RESCHEDULE SR.
+        selected_slot: scheduling_slot_entity.SchedulingSlot | None = None
+        for slot in reschedule_request.slots:
+            if slot.id == reschedule_request.selected_slot_id:
+                selected_slot = slot
+                break
+        if selected_slot is None:
+            raise service_exceptions.InvalidStateError(
+                "selected slot not found in reschedule request"
+            )
+
+        # 3. Get the original request ID.
+        original_request_id = reschedule_request.source_appointment_id
+        if original_request_id is None:
+            raise service_exceptions.InvalidStateError(
+                "reschedule request has no source appointment id"
+            )
+
+        # 4. Move the original booked slot via the existing reschedule logic.
+        updated_original_dto = self._reschedule_booked_slot_impl(
+            tenant_id=tenant_id,
+            request_id=original_request_id,
+            input_dto=scheduling_dto.RescheduleBookedSlotInputDTO(
+                start_at=selected_slot.start_at,
+                end_at=selected_slot.end_at,
+                timezone=selected_slot.timezone,
+            ),
+        )
+
+        # 5. Close the RESCHEDULE SR (it fulfilled its purpose).
+        now_value = self._clock.now()
+        reschedule_request.set_status("SESSION_CLOSED", now_value)
+        self._scheduling_repository.save_request(reschedule_request)
+
+        # 6. Sync tags for the reschedule SR.
+        self._sync_tags_after_status_change(
+            tenant_id=tenant_id,
+            conversation_id=conversation_id,
+            new_status=reschedule_request.status,
+        )
+
+        logger.info(
+            "scheduling.rescheduled_slot_confirmed",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="scheduling.rescheduled_slot_confirmed",
+                    message="rescheduled slot confirmed; original appointment moved",
+                    data={
+                        "tenant_id": tenant_id,
+                        "reschedule_request_id": reschedule_request.id,
+                        "original_request_id": original_request_id,
+                    },
+                )
+            },
+        )
+        return updated_original_dto
 
     def _resolve_request_for_consultation_submission(
         self,
