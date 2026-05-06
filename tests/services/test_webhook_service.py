@@ -42,6 +42,9 @@ class WebhookTestContext(typing.NamedTuple):
     )
     blacklist_repository: blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter
     agent_profile_repository: agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter
+    connection_repository: (
+        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter
+    )
 
 
 def build_webhook_service(
@@ -152,6 +155,7 @@ def build_webhook_service(
         processed_repository=processed_repository,
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
+        connection_repository=connection_repository,
     )
 
 
@@ -602,7 +606,7 @@ def test_process_payload_raises_invalid_state_when_connection_missing_token() ->
     # save() upserts by tenant_id — push a CONNECTED record without the
     # access_token so the lookup-by-phone succeeds but the credentials guard
     # fires inside _process_event.
-    ctx.service._whatsapp_connection_repository.save(
+    ctx.connection_repository.save(
         whatsapp_connection_entity.WhatsappConnection(
             tenant_id="tenant-1",
             phone_number_id="phone-1",
