@@ -99,8 +99,7 @@ export function ClientsView({ tenantId }: { tenantId?: string }) {
             <p className="truncate text-sm font-semibold text-brand-ink">
               {patient.firstName} {patient.lastName}
             </p>
-            <p className="mt-1 text-xs text-slate-600">WhatsApp: {patient.whatsappUserId}</p>
-            <p className="text-xs text-slate-600">
+            <p className="mt-1 text-xs text-slate-600">
               Telefono:{" "}
               {patient.phonePrefix !== null && patient.phonePrefix !== ""
                 ? `${patient.phonePrefix} ${patient.phone}`
@@ -129,9 +128,6 @@ export function ClientsView({ tenantId }: { tenantId?: string }) {
             {patientDetailQuery.data.lastName}
           </p>
           <p>
-            <strong>WhatsApp ID:</strong> {patientDetailQuery.data.whatsappUserId}
-          </p>
-          <p>
             <strong>Telefono:</strong>{" "}
             {patientDetailQuery.data.phonePrefix !== null &&
             patientDetailQuery.data.phonePrefix !== ""
@@ -146,9 +142,6 @@ export function ClientsView({ tenantId }: { tenantId?: string }) {
           </p>
           <p>
             <strong>Ubicacion:</strong> {patientDetailQuery.data.location}
-          </p>
-          <p>
-            <strong>Tenant:</strong> {patientDetailQuery.data.tenantId}
           </p>
           <p>
             <strong>Creado:</strong>{" "}
