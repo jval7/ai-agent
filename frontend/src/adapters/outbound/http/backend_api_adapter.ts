@@ -2444,7 +2444,6 @@ function mapSchedulingRequestSummary(
     whatsappUserId: payload.whatsapp_user_id,
     requestKind: payload.request_kind,
     status: payload.status,
-    audienceType: payload.audience_type ?? null,
     roundNumber: payload.round_number,
     patientPreferenceNote: payload.patient_preference_note,
     rejectionSummary: payload.rejection_summary,

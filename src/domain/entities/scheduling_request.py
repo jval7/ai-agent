@@ -24,7 +24,6 @@ class SchedulingRequest(pydantic.BaseModel):
         "SESSION_CLOSED",
         "HUMAN_HANDOFF",
     ]
-    audience_type: typing.Literal["ADULTS", "CHILDREN"] | None = None
     round_number: int
     patient_preference_note: str | None
     rejection_summary: str | None

@@ -98,8 +98,11 @@ def _instructions_for_state(
             "Flujo actual: inicio de agendamiento con un paciente NUEVO "
             "(no esta registrado, primera vez).",
             "Sigue esta secuencia conversacional, agrupando preguntas relacionadas en un mismo mensaje:\n"
-            "  1. Si es el primer mensaje, presentate y pregunta el nombre del paciente.\n"
-            "  2. Presenta los servicios disponibles POR NOMBRE, SIN PRECIOS. SOLO ofrece "
+            "  1. EN EL MISMO MENSAJE de bienvenida: (i) presentate, (ii) pregunta el "
+            "nombre del paciente, y (iii) presenta los servicios disponibles POR NOMBRE, "
+            "SIN PRECIOS. NO partas el saludo en dos turnos (uno solo para el nombre y "
+            "otro para los servicios) — todo va junto en un unico OUTBOUND.\n"
+            "  2. Filtro de servicios al presentar: SOLO ofrece "
             "servicios marcados con `<target_patients>` que incluya 'nuevos' (Pacientes "
             "nuevos y recurrentes O Solo pacientes nuevos). Ignora los servicios marcados "
             "solo para pacientes recurrentes. Los precios se cotizan UNICAMENTE cuando "

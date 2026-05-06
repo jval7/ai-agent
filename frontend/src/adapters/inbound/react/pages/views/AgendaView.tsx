@@ -1205,11 +1205,6 @@ export function AgendaView({ tenantId }: AgendaViewProps) {
                         tone={statusConfig?.tone ?? "neutral"}
                       />
                     </div>
-                    {request.audienceType !== null ? (
-                      <span className="text-xs font-medium text-violet-600">
-                        {request.audienceType === "CHILDREN" ? "Infantil" : "Adulto"}
-                      </span>
-                    ) : null}
                     {request.consultationReason !== null ? (
                       <p className="truncate text-xs text-slate-600">
                         {request.consultationReason}

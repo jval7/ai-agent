@@ -564,8 +564,6 @@ class SchedulingService:
             )
 
         request.consultation_reason = consultation_reason
-        if input_dto.audience_type is not None:
-            request.audience_type = input_dto.audience_type
         if input_dto.appointment_modality is not None:
             request.appointment_modality = input_dto.appointment_modality
             request.patient_location = self._resolve_location(
@@ -2037,7 +2035,6 @@ class SchedulingService:
             whatsapp_user_id=request.whatsapp_user_id,
             request_kind=request.request_kind,
             status=request.status,
-            audience_type=request.audience_type,
             round_number=request.round_number,
             patient_preference_note=request.patient_preference_note,
             rejection_summary=request.rejection_summary,
