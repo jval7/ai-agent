@@ -141,6 +141,7 @@ def build_webhook_service(
         id_generator=id_generator,
         clock=clock,
         context_message_limit=8,
+        tracer=tracer,
         sleep_seconds=sleep_seconds,
         tool_calling_orchestrator=orchestrator,
         runtime_context_resolver=runtime_resolver,

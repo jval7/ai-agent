@@ -251,6 +251,7 @@ def build_tool_calling_context(
         id_generator=id_generator,
         clock=clock,
         context_message_limit=8,
+        tracer=noop_tracer_adapter.NoopTracerAdapter(),
         **service_kwargs,
         **_build_new_components(
             scheduling_use_case,

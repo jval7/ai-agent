@@ -2,7 +2,6 @@ import re
 import time
 import typing
 
-import src.adapters.outbound.noop_tracer_adapter as noop_tracer_adapter
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
@@ -55,7 +54,7 @@ class WebhookService:
         tool_calling_orchestrator: tool_calling_orchestrator_mod.ToolCallingOrchestrator,
         runtime_context_resolver: runtime_context_resolver_mod.RuntimeContextResolver,
         message_sender: conversation_message_sender_mod.ConversationMessageSender,
-        tracer: tracer_port.TracerPort | None = None,
+        tracer: tracer_port.TracerPort,
         sleep_seconds: typing.Callable[[float], None] | None = None,
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
         runtime_prompt_builder: prompt_builder.RuntimePromptBuilder | None = None,
@@ -84,11 +83,7 @@ class WebhookService:
             self._prompt_builder = prompt_builder.RuntimePromptBuilder()
         else:
             self._prompt_builder = runtime_prompt_builder
-        self._tracer: tracer_port.TracerPort
-        if tracer is None:
-            self._tracer = noop_tracer_adapter.NoopTracerAdapter()
-        else:
-            self._tracer = tracer
+        self._tracer = tracer
         self._max_debounce_reprocess_iterations = 3
         self._trace_email_pattern = re.compile(
             r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"
