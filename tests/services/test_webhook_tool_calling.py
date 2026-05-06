@@ -328,6 +328,7 @@ def test_webhook_processes_function_call_and_then_sends_text_reply() -> None:
         "handoff_to_human",
         "cancel_active_scheduling_request",
         "close_session",
+        "submit_reschedule_for_review",
     ]
 
 

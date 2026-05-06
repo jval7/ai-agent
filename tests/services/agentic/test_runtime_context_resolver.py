@@ -488,17 +488,30 @@ def test_resolve_post_booking_followup_includes_appointment_modality_and_locatio
 # ---------------------------------------------------------------------------
 
 
-def test_enabled_tools_includes_submit_reschedule_for_awaiting_attendance() -> None:
+def test_enabled_tools_excludes_submit_reschedule_for_awaiting_attendance() -> None:
+    """Reschedule entry point lives only in NO_ACTIVE_REQUEST. In ATTENDANCE
+    the bot routes both reschedule and cancel to handoff_to_human."""
     tools = runtime_context_resolver_mod.enabled_tools_for_state("AWAITING_ATTENDANCE_CONFIRMATION")
-    assert "submit_reschedule_for_review" in tools
+    assert "submit_reschedule_for_review" not in tools
     assert "confirm_attendance_received" in tools
     assert "handoff_to_human" in tools
 
 
-def test_enabled_tools_includes_submit_reschedule_for_post_booking() -> None:
+def test_enabled_tools_excludes_submit_reschedule_for_post_booking() -> None:
+    """POST_BOOKING_FOLLOWUP routes any reschedule/cancel intent to handoff;
+    the bot-driven reschedule lives only in NO_ACTIVE_REQUEST."""
     tools = runtime_context_resolver_mod.enabled_tools_for_state("POST_BOOKING_FOLLOWUP")
-    assert "submit_reschedule_for_review" in tools
+    assert "submit_reschedule_for_review" not in tools
     assert "close_session" in tools
+    assert "handoff_to_human" in tools
+
+
+def test_enabled_tools_includes_submit_reschedule_for_no_active_request() -> None:
+    """The single bot-driven reschedule entry point is NO_ACTIVE_REQUEST. The
+    state instructions gate the actual call on last_booked_request_id."""
+    tools = runtime_context_resolver_mod.enabled_tools_for_state("NO_ACTIVE_REQUEST")
+    assert "submit_reschedule_for_review" in tools
+    assert "submit_consultation_reason_for_review" in tools
     assert "handoff_to_human" in tools
 
 
