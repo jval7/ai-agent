@@ -107,3 +107,19 @@ class InMemoryTenantRepositoryAdapter(tenant_repository_port.TenantRepositoryPor
 
             self._store.flush()
             return True
+
+    def list_all(self, include_admin: bool = False) -> list[tenant_entity.Tenant]:
+        with self._store.lock:
+            result = []
+            for tenant in self._store.tenants_by_id.values():
+                if not include_admin and tenant.is_admin_tenant:
+                    continue
+                result.append(tenant.model_copy(deep=True))
+            return result
+
+    def get_admin_tenant(self) -> tenant_entity.Tenant | None:
+        with self._store.lock:
+            for tenant in self._store.tenants_by_id.values():
+                if tenant.is_admin_tenant:
+                    return tenant.model_copy(deep=True)
+            return None

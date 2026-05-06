@@ -10,6 +10,22 @@ router = fastapi.APIRouter(prefix="/v1/auth", tags=["auth"])
 _NO_CONTENT = 204
 
 
+@router.get("/me", response_model=auth_dto.MeResponseDTO)
+def get_me(
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(http_dependencies.get_current_claims),
+    container: app_container.AppContainer = fastapi.Depends(http_dependencies.get_container),
+) -> auth_dto.MeResponseDTO:
+    user = container.auth_service.get_user_by_id(claims.sub)
+    if user is None:
+        raise fastapi.HTTPException(status_code=404, detail="user not found")
+    return auth_dto.MeResponseDTO(
+        user_id=claims.sub,
+        email=user.email,
+        role=claims.role,
+        tenant_id=claims.tenant_id,
+    )
+
+
 @router.post("/login", response_model=auth_dto.AuthTokensDTO)
 @rate_limiter.limiter.limit("5/minute")  # type: ignore[misc,unused-ignore]
 def login(

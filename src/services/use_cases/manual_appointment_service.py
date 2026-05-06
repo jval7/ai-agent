@@ -67,11 +67,32 @@ class ManualAppointmentService:
         status: str | None = None,
     ) -> manual_appointment_dto.ManualAppointmentListResponseDTO:
         self._ensure_professional(claims)
-        appointments = self._manual_appointment_repository.list_by_tenant(claims.tenant_id, status)
+        return self._list_appointments_by_tenant(claims.tenant_id, status=status)
+
+    def list_appointments_for_tenant(
+        self,
+        tenant_id: str,
+        status: str | None = None,
+    ) -> manual_appointment_dto.ManualAppointmentListResponseDTO:
+        return self._list_appointments_by_tenant(tenant_id, status=status)
+
+    def _list_appointments_by_tenant(
+        self,
+        tenant_id: str,
+        status: str | None = None,
+    ) -> manual_appointment_dto.ManualAppointmentListResponseDTO:
+        appointments = self._manual_appointment_repository.list_by_tenant(tenant_id, status)
         sorted_appointments = sorted(appointments, key=lambda item: item.start_at)
         return manual_appointment_dto.ManualAppointmentListResponseDTO(
             items=[self._to_dto(item) for item in sorted_appointments]
         )
+
+    def create_appointment_for_tenant(
+        self,
+        tenant_id: str,
+        create_dto: manual_appointment_dto.CreateManualAppointmentDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
+        return self._create_appointment_impl(tenant_id, create_dto)
 
     def create_appointment(
         self,
@@ -79,9 +100,15 @@ class ManualAppointmentService:
         create_dto: manual_appointment_dto.CreateManualAppointmentDTO,
     ) -> manual_appointment_dto.ManualAppointmentDTO:
         self._ensure_professional(claims)
+        return self._create_appointment_impl(claims.tenant_id, create_dto)
 
+    def _create_appointment_impl(
+        self,
+        tenant_id: str,
+        create_dto: manual_appointment_dto.CreateManualAppointmentDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
         patient = self._patient_repository.get_by_whatsapp_user(
-            claims.tenant_id,
+            tenant_id,
             create_dto.patient_whatsapp_user_id,
         )
         if patient is None:
@@ -89,21 +116,21 @@ class ManualAppointmentService:
 
         summary = self._resolve_summary(create_dto.summary, patient)
         event_title = self._build_event_title(
-            tenant_id=claims.tenant_id,
+            tenant_id=tenant_id,
             patient=patient,
         )
         appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] = (
             "VIRTUAL" if create_dto.is_virtual else "PRESENCIAL"
         )
         event_description_result = self._event_description_builder.build(
-            tenant_id=claims.tenant_id,
+            tenant_id=tenant_id,
             modality=appointment_modality,
             payment_status=create_dto.payment_status,
         )
         event_description = event_description_result.description
         event_location = event_description_result.location
         event = self._google_calendar_onboarding_service.create_event(
-            tenant_id=claims.tenant_id,
+            tenant_id=tenant_id,
             start_at=create_dto.start_at,
             end_at=create_dto.end_at,
             summary=event_title,
@@ -116,7 +143,7 @@ class ManualAppointmentService:
         payment_updated_at = now_value if create_dto.payment_status == "PAID" else None
         appointment = manual_appointment_entity.ManualAppointment(
             id=self._id_generator.new_id(),
-            tenant_id=claims.tenant_id,
+            tenant_id=tenant_id,
             patient_whatsapp_user_id=patient.whatsapp_user_id,
             status="SCHEDULED",
             calendar_event_id=event.event_id,
@@ -138,7 +165,7 @@ class ManualAppointmentService:
         self._manual_appointment_repository.save(appointment)
         if self._reminder_service is not None:
             self._reminder_service.maybe_schedule_reminder(
-                tenant_id=claims.tenant_id,
+                tenant_id=tenant_id,
                 source_type="MANUAL_APPOINTMENT",
                 source_id=appointment.id,
                 patient_whatsapp_user_id=appointment.patient_whatsapp_user_id,
@@ -155,7 +182,7 @@ class ManualAppointmentService:
                     event_name="manual_appointment.created",
                     message="manual appointment created",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "appointment_id": appointment.id,
                         "patient_whatsapp_user_id": appointment.patient_whatsapp_user_id,
                         "calendar_event_id": appointment.calendar_event_id,
@@ -165,6 +192,14 @@ class ManualAppointmentService:
         )
         return self._to_dto(appointment)
 
+    def reschedule_appointment_for_tenant(
+        self,
+        tenant_id: str,
+        appointment_id: str,
+        input_dto: manual_appointment_dto.RescheduleManualAppointmentDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
+        return self._reschedule_appointment_impl(tenant_id, appointment_id, input_dto)
+
     def reschedule_appointment(
         self,
         claims: auth_dto.TokenClaimsDTO,
@@ -172,9 +207,15 @@ class ManualAppointmentService:
         input_dto: manual_appointment_dto.RescheduleManualAppointmentDTO,
     ) -> manual_appointment_dto.ManualAppointmentDTO:
         self._ensure_professional(claims)
-        appointment = self._manual_appointment_repository.get_by_id(
-            claims.tenant_id, appointment_id
-        )
+        return self._reschedule_appointment_impl(claims.tenant_id, appointment_id, input_dto)
+
+    def _reschedule_appointment_impl(
+        self,
+        tenant_id: str,
+        appointment_id: str,
+        input_dto: manual_appointment_dto.RescheduleManualAppointmentDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
+        appointment = self._manual_appointment_repository.get_by_id(tenant_id, appointment_id)
         if appointment is None:
             raise service_exceptions.EntityNotFoundError("manual appointment not found")
         if appointment.status != "SCHEDULED":
@@ -185,17 +226,17 @@ class ManualAppointmentService:
         summary = self._normalize_text(input_dto.summary)
         resolved_summary = summary if summary is not None else appointment.summary
         reschedule_patient = self._patient_repository.get_by_whatsapp_user(
-            claims.tenant_id, appointment.patient_whatsapp_user_id
+            tenant_id, appointment.patient_whatsapp_user_id
         )
         reschedule_attendee_emails = (
             [reschedule_patient.email] if reschedule_patient is not None else []
         )
         reschedule_event_title = self._build_event_title(
-            tenant_id=claims.tenant_id,
+            tenant_id=tenant_id,
             patient=reschedule_patient,
         )
         updated_event = self._google_calendar_onboarding_service.update_event(
-            tenant_id=claims.tenant_id,
+            tenant_id=tenant_id,
             event_id=appointment.calendar_event_id,
             start_at=input_dto.start_at,
             end_at=input_dto.end_at,
@@ -206,7 +247,7 @@ class ManualAppointmentService:
         )
         if self._reminder_service is not None:
             self._reminder_service.cancel_reminders_for_source(
-                tenant_id=claims.tenant_id,
+                tenant_id=tenant_id,
                 source_type="MANUAL_APPOINTMENT",
                 source_id=appointment.id,
             )
@@ -220,11 +261,11 @@ class ManualAppointmentService:
         self._manual_appointment_repository.save(appointment)
         if self._reminder_service is not None:
             patient = self._patient_repository.get_by_whatsapp_user(
-                claims.tenant_id, appointment.patient_whatsapp_user_id
+                tenant_id, appointment.patient_whatsapp_user_id
             )
             patient_name = patient.first_name if patient is not None else "Paciente"
             self._reminder_service.maybe_schedule_reminder(
-                tenant_id=claims.tenant_id,
+                tenant_id=tenant_id,
                 source_type="MANUAL_APPOINTMENT",
                 source_id=appointment.id,
                 patient_whatsapp_user_id=appointment.patient_whatsapp_user_id,
@@ -241,7 +282,7 @@ class ManualAppointmentService:
                     event_name="manual_appointment.rescheduled",
                     message="manual appointment rescheduled",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "appointment_id": appointment.id,
                         "calendar_event_id": appointment.calendar_event_id,
                     },
@@ -250,17 +291,31 @@ class ManualAppointmentService:
         )
         return self._to_dto(appointment)
 
+    def cancel_appointment_for_tenant(
+        self,
+        tenant_id: str,
+        appointment_id: str,
+        input_dto: manual_appointment_dto.CancelManualAppointmentDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
+        return self._cancel_appointment_impl(tenant_id, appointment_id, input_dto)
+
     def cancel_appointment(
         self,
         claims: auth_dto.TokenClaimsDTO,
         appointment_id: str,
         input_dto: manual_appointment_dto.CancelManualAppointmentDTO,
     ) -> manual_appointment_dto.ManualAppointmentDTO:
-        del input_dto
         self._ensure_professional(claims)
-        appointment = self._manual_appointment_repository.get_by_id(
-            claims.tenant_id, appointment_id
-        )
+        return self._cancel_appointment_impl(claims.tenant_id, appointment_id, input_dto)
+
+    def _cancel_appointment_impl(
+        self,
+        tenant_id: str,
+        appointment_id: str,
+        input_dto: manual_appointment_dto.CancelManualAppointmentDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
+        del input_dto
+        appointment = self._manual_appointment_repository.get_by_id(tenant_id, appointment_id)
         if appointment is None:
             raise service_exceptions.EntityNotFoundError("manual appointment not found")
         if appointment.status == "CANCELLED":
@@ -270,7 +325,7 @@ class ManualAppointmentService:
         if calendar_event_id is not None:
             try:
                 self._google_calendar_onboarding_service.delete_event(
-                    tenant_id=claims.tenant_id,
+                    tenant_id=tenant_id,
                     event_id=calendar_event_id,
                 )
             except service_exceptions.ExternalProviderError as error:
@@ -279,7 +334,7 @@ class ManualAppointmentService:
 
         if self._reminder_service is not None:
             self._reminder_service.cancel_reminders_for_source(
-                tenant_id=claims.tenant_id,
+                tenant_id=tenant_id,
                 source_type="MANUAL_APPOINTMENT",
                 source_id=appointment.id,
             )
@@ -296,13 +351,21 @@ class ManualAppointmentService:
                     event_name="manual_appointment.cancelled",
                     message="manual appointment cancelled",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "appointment_id": appointment.id,
                     },
                 )
             },
         )
         return self._to_dto(appointment)
+
+    def update_payment_for_tenant(
+        self,
+        tenant_id: str,
+        appointment_id: str,
+        input_dto: manual_appointment_dto.UpdateManualAppointmentPaymentDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
+        return self._update_payment_impl(tenant_id, appointment_id, input_dto)
 
     def update_payment(
         self,
@@ -311,9 +374,15 @@ class ManualAppointmentService:
         input_dto: manual_appointment_dto.UpdateManualAppointmentPaymentDTO,
     ) -> manual_appointment_dto.ManualAppointmentDTO:
         self._ensure_professional(claims)
-        appointment = self._manual_appointment_repository.get_by_id(
-            claims.tenant_id, appointment_id
-        )
+        return self._update_payment_impl(claims.tenant_id, appointment_id, input_dto)
+
+    def _update_payment_impl(
+        self,
+        tenant_id: str,
+        appointment_id: str,
+        input_dto: manual_appointment_dto.UpdateManualAppointmentPaymentDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
+        appointment = self._manual_appointment_repository.get_by_id(tenant_id, appointment_id)
         if appointment is None:
             raise service_exceptions.EntityNotFoundError("manual appointment not found")
         if appointment.status != "SCHEDULED":
@@ -336,7 +405,7 @@ class ManualAppointmentService:
         if previous_payment_status == "PENDING" and input_dto.payment_status == "PAID":
             if self._reminder_service is not None:
                 self._reminder_service.swap_template_for_source(
-                    tenant_id=claims.tenant_id,
+                    tenant_id=tenant_id,
                     source_type="MANUAL_APPOINTMENT",
                     source_id=appointment.id,
                     new_kind="ATTENDANCE",
@@ -347,10 +416,10 @@ class ManualAppointmentService:
                 and self._whatsapp_provider is not None
             ):
                 patient = self._patient_repository.get_by_whatsapp_user(
-                    claims.tenant_id, appointment.patient_whatsapp_user_id
+                    tenant_id, appointment.patient_whatsapp_user_id
                 )
                 payment_confirmation_dispatcher.confirm_payment_in_chat_if_open(
-                    tenant_id=claims.tenant_id,
+                    tenant_id=tenant_id,
                     whatsapp_user_id=appointment.patient_whatsapp_user_id,
                     patient_first_name=patient.first_name if patient is not None else None,
                     source_appointment_id=appointment.id,
@@ -370,7 +439,7 @@ class ManualAppointmentService:
                     event_name="manual_appointment.payment_updated",
                     message="manual appointment payment updated",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "appointment_id": appointment.id,
                         "payment_status": appointment.payment_status,
                         "payment_method": appointment.payment_method,
@@ -389,6 +458,14 @@ class ManualAppointmentService:
             return False
         return tenant.is_eval_tenant
 
+    def change_modality_for_tenant(
+        self,
+        tenant_id: str,
+        appointment_id: str,
+        input_dto: manual_appointment_dto.ChangeManualAppointmentModalityInputDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
+        return self._change_modality_impl(tenant_id, appointment_id, input_dto)
+
     def change_modality(
         self,
         claims: auth_dto.TokenClaimsDTO,
@@ -396,9 +473,15 @@ class ManualAppointmentService:
         input_dto: manual_appointment_dto.ChangeManualAppointmentModalityInputDTO,
     ) -> manual_appointment_dto.ManualAppointmentDTO:
         self._ensure_professional(claims)
-        appointment = self._manual_appointment_repository.get_by_id(
-            claims.tenant_id, appointment_id
-        )
+        return self._change_modality_impl(claims.tenant_id, appointment_id, input_dto)
+
+    def _change_modality_impl(
+        self,
+        tenant_id: str,
+        appointment_id: str,
+        input_dto: manual_appointment_dto.ChangeManualAppointmentModalityInputDTO,
+    ) -> manual_appointment_dto.ManualAppointmentDTO:
+        appointment = self._manual_appointment_repository.get_by_id(tenant_id, appointment_id)
         if appointment is None:
             raise service_exceptions.EntityNotFoundError("manual appointment not found")
         if appointment.status != "SCHEDULED":
@@ -416,26 +499,26 @@ class ManualAppointmentService:
         if requested_is_virtual == appointment.is_virtual:
             return self._to_dto(appointment)
 
-        is_eval = self._is_eval_tenant(claims.tenant_id)
+        is_eval = self._is_eval_tenant(tenant_id)
         appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] = input_dto.new_modality
 
         new_meet_url: str | None = None
         if not is_eval and appointment.calendar_event_id is not None:
             patient = self._patient_repository.get_by_whatsapp_user(
-                claims.tenant_id, appointment.patient_whatsapp_user_id
+                tenant_id, appointment.patient_whatsapp_user_id
             )
             attendee_emails = [patient.email] if patient is not None else []
             event_title = self._build_event_title(
-                tenant_id=claims.tenant_id,
+                tenant_id=tenant_id,
                 patient=patient,
             )
             event_description_result = self._event_description_builder.build(
-                tenant_id=claims.tenant_id,
+                tenant_id=tenant_id,
                 modality=appointment_modality,
                 payment_status=appointment.payment_status,
             )
             updated_event = self._google_calendar_onboarding_service.update_event(
-                tenant_id=claims.tenant_id,
+                tenant_id=tenant_id,
                 event_id=appointment.calendar_event_id,
                 start_at=appointment.start_at,
                 end_at=appointment.end_at,
@@ -455,18 +538,18 @@ class ManualAppointmentService:
 
         if self._reminder_service is not None and not is_eval:
             self._reminder_service.cancel_reminders_for_source(
-                tenant_id=claims.tenant_id,
+                tenant_id=tenant_id,
                 source_type="MANUAL_APPOINTMENT",
                 source_id=appointment.id,
             )
             patient_for_reminder = self._patient_repository.get_by_whatsapp_user(
-                claims.tenant_id, appointment.patient_whatsapp_user_id
+                tenant_id, appointment.patient_whatsapp_user_id
             )
             patient_name = (
                 patient_for_reminder.first_name if patient_for_reminder is not None else "Paciente"
             )
             self._reminder_service.maybe_schedule_reminder(
-                tenant_id=claims.tenant_id,
+                tenant_id=tenant_id,
                 source_type="MANUAL_APPOINTMENT",
                 source_id=appointment.id,
                 patient_whatsapp_user_id=appointment.patient_whatsapp_user_id,
@@ -484,7 +567,7 @@ class ManualAppointmentService:
                     event_name="manual_appointment.modality_changed",
                     message="manual appointment modality changed",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "appointment_id": appointment.id,
                         "new_modality": appointment_modality,
                         "calendar_event_id": appointment.calendar_event_id,

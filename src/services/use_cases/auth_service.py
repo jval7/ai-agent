@@ -335,6 +335,9 @@ class AuthService:
             expires_in_seconds=self._access_ttl_seconds,
         )
 
+    def get_user_by_id(self, user_id: str) -> user_entity.User | None:
+        return self._user_repository.get_by_id(user_id)
+
     def _hash_refresh_token(self, refresh_token: str) -> str:
         return hashlib.sha256(refresh_token.encode("utf-8")).hexdigest()
 

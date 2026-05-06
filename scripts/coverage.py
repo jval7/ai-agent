@@ -98,6 +98,39 @@ def assert_combos_covered(shape: Shape, personas: typing.Sequence[personas_modul
         raise CoverageGapError(f"shape={shape.metadata.name!r} uncovered combos: {uncovered}")
 
 
+def _shape_has_multi_currency(shape: Shape) -> bool:
+    """True si algun service del shape tiene una tariff con multiples currencies."""
+    for svc in shape.agent_profile.services:
+        for tariff in svc.tariffs:
+            currencies = {p.currency for p in tariff.prices}
+            if len(currencies) > 1:
+                return True
+    return False
+
+
+# Pre-requisitos de shape para caps `bot_behavior`. Las caps que no aparecen
+# aqui aplican a TODO shape (default). Cuando una cap requiere ciertas
+# condiciones del AgentProfile que el shape no cumple, el runner la filtra
+# antes de pasarla al juez para evitar fails por construccion (ej. Bruno
+# declarando `quotes_currency_per_location` en shape_minimal mono-currency).
+_CAP_SHAPE_REQUIREMENTS: dict[personas_module.Capability, typing.Callable[[Shape], bool]] = {
+    "quotes_currency_per_location": _shape_has_multi_currency,
+}
+
+
+def cap_applies_to_shape(cap: personas_module.Capability, shape: Shape) -> bool:
+    """Returns True si la cap es evaluable contra este shape.
+
+    Default True: caps sin requirements aplican siempre. Las caps que
+    necesitan ciertas condiciones del AgentProfile (ej. multi-currency)
+    devuelven False cuando el shape no las cumple.
+    """
+    requirement = _CAP_SHAPE_REQUIREMENTS.get(cap)
+    if requirement is None:
+        return True
+    return requirement(shape)
+
+
 def select_personas_for_shape(
     shape: Shape,
     personas: typing.Sequence[personas_module.Persona],

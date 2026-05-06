@@ -222,6 +222,25 @@ class FirestoreUserRepositoryAdapter(user_repository_port.UserRepositoryPort):
             ) from error
         return True
 
+    def get_first_by_tenant(self, tenant_id: str) -> user_entity.User | None:
+        users_collection = firestore_paths.tenant_users_collection(self._client, tenant_id)
+        try:
+            snapshots = list(users_collection.limit(1).stream())
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to read user by tenant from firestore"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to read user by tenant from firestore"
+            ) from error
+        if not snapshots:
+            return None
+        user_raw_data = snapshots[0].to_dict()
+        if user_raw_data is None:
+            return None
+        return firestore_model_mapper.parse_document(user_raw_data, user_entity.User, "user")
+
     def list_all(self) -> list[user_entity.User]:
         users_group = self._client.collection_group(_USERS_SUBCOLLECTION_ID)
         try:

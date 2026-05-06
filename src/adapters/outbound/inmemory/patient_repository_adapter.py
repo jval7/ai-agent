@@ -35,6 +35,14 @@ class InMemoryPatientRepositoryAdapter(patient_repository_port.PatientRepository
                 items.append(patient.model_copy(deep=True))
             return items
 
+    def count_by_tenant(self, tenant_id: str) -> int:
+        with self._store.lock:
+            return sum(
+                1
+                for (stored_tenant_id, _) in self._store.patient_by_tenant_and_wa_user
+                if stored_tenant_id == tenant_id
+            )
+
     def delete(self, tenant_id: str, whatsapp_user_id: str) -> None:
         with self._store.lock:
             patient_key = (tenant_id, whatsapp_user_id)

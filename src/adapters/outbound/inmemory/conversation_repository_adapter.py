@@ -1,3 +1,5 @@
+import datetime
+
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
@@ -79,6 +81,34 @@ class InMemoryConversationRepositoryAdapter(
                 if conversation.tenant_id == tenant_id:
                     conversations.append(conversation.model_copy(deep=True))
             return conversations
+
+    def count_conversations(self, tenant_id: str) -> int:
+        with self._store.lock:
+            return sum(
+                1 for conv in self._store.conversation_by_id.values() if conv.tenant_id == tenant_id
+            )
+
+    def count_active_since(self, tenant_id: str, since: datetime.datetime) -> int:
+        with self._store.lock:
+            return sum(
+                1
+                for conv in self._store.conversation_by_id.values()
+                if conv.tenant_id == tenant_id
+                and conv.updated_at is not None
+                and conv.updated_at >= since
+            )
+
+    def get_latest_activity(self, tenant_id: str) -> datetime.datetime | None:
+        with self._store.lock:
+            latest: datetime.datetime | None = None
+            for conv in self._store.conversation_by_id.values():
+                if conv.tenant_id != tenant_id:
+                    continue
+                if conv.updated_at is None:
+                    continue
+                if latest is None or conv.updated_at > latest:
+                    latest = conv.updated_at
+            return latest
 
     def save_message(self, message: message_entity.Message) -> None:
         with self._store.lock:

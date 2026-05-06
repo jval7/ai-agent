@@ -21,6 +21,10 @@ class ScheduledReminderRepositoryPort(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def count_by_tenant(self, tenant_id: str, status: str | None = None) -> int:
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def list_pending_by_source(
         self, tenant_id: str, source_type: str, source_id: str
     ) -> list[scheduled_reminder_entity.ScheduledReminder]:

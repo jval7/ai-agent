@@ -145,6 +145,158 @@ _GLOSSARY: dict[str, str] = {
         "el texto EXACTO del OUTBOUND (no parafrasear, no inventar). "
         "Inferencia comportamental por OUTBOUND."
     ),
+    "skips_redundant_motivo_question": (
+        "regla CONCEPTUAL: el bot solo pregunta el 'motivo de consulta' "
+        "cuando el servicio elegido es DIAGNOSTICO/EXPLORATORIO (palabras "
+        "clave en el nombre o descripcion del servicio: 'valoracion', "
+        "'primera consulta', 'consulta inicial', 'evaluacion', 'diagnostico', "
+        "'cita exploratoria'). En esos casos preguntar motivo es legitimo "
+        "porque el motivo determina el plan terapeutico. "
+        "El bot NO debe preguntar motivo cuando el servicio es "
+        "AUTOEXPLICATIVO (un procedimiento concreto cuyo nombre YA es el "
+        "motivo: 'blanqueamiento dental', 'limpieza dental', 'control de "
+        "ortodoncia', 'extraccion', 'endodoncia', 'brackets', 'sesion de "
+        "[tecnica]', 'tratamiento [especifico]'). Para esos servicios el "
+        "motivo es el servicio mismo y preguntarlo es redundante. "
+        "verified=true si TODOS los OUTBOUND donde el bot pregunta motivo "
+        "ocurren en uno de estos contextos: "
+        "(a) el paciente NO ha elegido un servicio aun y el bot pregunta "
+        "como parte del flujo inicial; "
+        "(b) el servicio elegido es diagnostico (palabras clave de arriba); "
+        "(c) el paciente ya menciono un sub-motivo abierto ('quiero "
+        "blanqueamiento porque tengo una boda') y el bot pide mas detalle. "
+        "verified=false si el bot pregunta motivo despues de que el paciente "
+        "eligio un servicio autoexplicativo y NO hay sub-motivo en juego. "
+        "Caso prototipico de fail (caso del screenshot que motivo la cap): "
+        "paciente dice 'Blanqueamiento' y el bot responde '¿Cual sería el "
+        "motivo de tu consulta para el blanqueamiento dental?'. "
+        "Cita textual obligatoria del OUTBOUND donde el bot pregunta motivo "
+        "+ del INBOUND donde se eligio el servicio. EXCEPCION: si el "
+        "paciente ofrecio el motivo proactivamente, el bot puede acusar "
+        "recibo brevemente pero NO debe re-preguntar. "
+        "Inferencia comportamental por OUTBOUND."
+    ),
+    "respects_service_modalities": (
+        "regla CONCEPTUAL: el bot solo ofrece modalidades (PRESENCIAL / VIRTUAL) "
+        "que estan listadas en `<modalities>` del `<service>` que el paciente "
+        "elige. Si un servicio solo tiene modalidad PRESENCIAL, el bot NO debe "
+        "ofrecer atender VIRTUAL aunque el paciente este en otra ciudad o pais; "
+        "viceversa. El contexto del paciente (residencia, pais) NO autoriza al "
+        "bot a inventar una modalidad que el AgentProfile no soporta. "
+        "El header del user prompt te informa los servicios y sus modalidades "
+        "disponibles ('Shape services and modalities: ...'); usa esa info para "
+        "verificar. "
+        "verified=true si TODOS los OUTBOUND donde el bot menciona modalidad "
+        "(presencial/virtual/online/en consultorio/desde donde te conectes) "
+        "respetan el set de modalidades configurado para el servicio elegido. "
+        "verified=false si algun OUTBOUND ofrece, propone o asume una "
+        "modalidad NO listada en `<modalities>` para ese servicio — citar "
+        "texto exacto del OUTBOUND y mencionar cual es el set de modalidades "
+        "real del servicio. "
+        "EXCEPCION: si el bot le dice al paciente 'este servicio solo se "
+        "atiende presencial, ¿queres venir o prefieres pasar a humano para ver "
+        "alternativas?', eso NO viola la cap — esta comunicando la restriccion "
+        "del servicio, no inventando modalidad. Tampoco viola si pasa a "
+        "handoff_to_human cuando la modalidad no aplica. "
+        "Inferencia comportamental por OUTBOUND."
+    ),
+    "quotes_price_on_demand": (
+        "regla CONCEPTUAL: el bot NO cotiza precios al paciente sin que algun "
+        "INBOUND previo lo haya pedido. La rúbrica mira el ORDEN entre "
+        "INBOUND y OUTBOUND a lo largo del transcript. "
+        "verified=true si CADA OUTBOUND donde el bot menciona uno o más "
+        "precios numéricos con currency (ej. '150.000 COP', '$80,000', "
+        "'USD 100') tiene AL MENOS UNA de estas justificaciones: "
+        "(a) algún INBOUND ANTERIOR (no el mismo turno, ANTES) preguntó por "
+        "precio/costo/cotización/tarifa/'cuánto vale'/'cuánto sale'/'cuánto "
+        "cuesta'/'qué precio tiene'; "
+        "(b) el OUTBOUND es el mensaje pre-pago oficial del flujo de "
+        "agendamiento donde el bot pide pago para reservar (frases tipo "
+        "'Para reservar tu cita, paga X', 'Para asegurar tu cupo paga X', "
+        "'Para continuar con el agendamiento, paga X'). Esta excepción solo "
+        "aplica cuando el shape es BEFORE_SESSION; en AFTER_SESSION no hay "
+        "step de pago así que no aplica; "
+        "(c) algún INBOUND previo expresó interés concreto en un servicio "
+        "específico Y el bot está respondiendo con la info de ese servicio "
+        "incluyendo su precio como dato esencial. Esta excepción NO incluye "
+        "listar TODOS los servicios con precios — solo el servicio que el "
+        "paciente eligió. "
+        "verified=false si CUALQUIER OUTBOUND emite precios sin (a), (b) ni "
+        "(c). Caso prototípico de fail: mensaje de bienvenida que lista "
+        "todos los servicios con tarifas tras un simple 'Hola' del paciente. "
+        "Cita textual obligatoria del OUTBOUND violador y del INBOUND previo "
+        "(o ausencia del mismo) cuando verified=false. "
+        "Inferencia comportamental por OUTBOUND."
+    ),
+    "skips_payment_when_after_session": (
+        "regla CONDICIONAL: aplica SOLO cuando el shape declara "
+        "`payment_timing=AFTER_SESSION` (el contexto del shape lo indica al "
+        "principio del user prompt). En ese caso, el bot NO debe pedir un "
+        "pago como CTA durante el flujo de agendamiento ni solicitar "
+        "comprobante de pago. La conversacion debe llegar al cierre de la "
+        "reserva sin pasar por un step de pago. "
+        "OUTBOUND violadores (lista NO exhaustiva): 'paga X', 'transfiere a "
+        "Nequi', 'envia el dinero', 'abona', 'deposita', 'reserva con un "
+        "pago de X', 'para asegurar tu cupo paga X', 'envíame el "
+        "comprobante', 'manda el voucher', 'necesito el recibo', listar "
+        "metodos de pago como CTA inmediato. "
+        "EXCEPCIONES (NO violan la cap): "
+        "(a) responder a una pregunta directa del paciente sobre como/cuando "
+        "se paga con framing INFORMATIVO (declarativo), ej. 'el pago se "
+        "realiza al finalizar la sesion en consultorio'; "
+        "(b) recordatorios operativos en POST_BOOKING_FOLLOWUP del estilo "
+        "'el pago se cobra al finalizar la sesion'; "
+        "(c) mencionar el monto cuando el paciente pregunta '¿cuanto vale?' "
+        "siempre y cuando NO se acompañe de un CTA imperativo de pago. "
+        "verified=true SI el shape es AFTER_SESSION y NINGUN OUTBOUND "
+        "contiene un CTA de pago/comprobante en el agendamiento. "
+        "verified=false SI el shape es AFTER_SESSION y CUALQUIER OUTBOUND "
+        "pre-cierre contiene un CTA o pide comprobante — citar texto exacto "
+        "del OUTBOUND y el turno. "
+        "Si el shape es BEFORE_SESSION (default), la cap NO aplica — emite "
+        "verified=true automatico (es no-op para esos shapes). "
+        "Inferencia comportamental por OUTBOUND."
+    ),
+    "omits_obvious_metadata": (
+        "regla CONCEPTUAL: cuando el bot PRESENTA un servicio o RESPONDE algo no "
+        "relacionado a modalidad/cohort, OMITE metadata trivial. Especificamente "
+        "debe OMITIR: "
+        "(a) Modalidad de un servicio cuya `<modalities>` tiene un solo valor — "
+        "presentar el servicio sin coletillas como 'es presencial', 'es virtual', "
+        "'se hace en consultorio', 'es en linea'. "
+        "(b) Etiqueta de cohort cuando el servicio aplica a 'Pacientes nuevos y "
+        "recurrentes' (ambos cohorts) — frases como 'para pacientes nuevos o "
+        "recurrentes', 'para nuevos y recurrentes', 'aplica a cualquier paciente'. "
+        "El cohort SOLO se menciona cuando el <target_patients> es restrictivo "
+        "('Solo pacientes nuevos' o 'Solo pacientes recurrentes') Y aplica al "
+        "paciente actual. "
+        "(c) Aclaraciones autoimplicitas que se siguen logicamente del contexto "
+        "('para cualquier persona', 'esta disponible para todos', 'aplica a quien "
+        "lo necesite'). "
+        "EXCEPCIONES (mencionar la modalidad NO viola la cap en estos casos): "
+        "  (i) MULTI-MODALIDAD: el servicio tiene varias modalidades en "
+        "<modalities> y el paciente debe elegir. "
+        "  (ii) PREGUNTA EXPLICITA: el paciente preguntó por modalidad o cohort "
+        "en un INBOUND previo y el bot responde. "
+        "  (iii) CONFIRMACION DE RESERVA: el bot esta enviando el mensaje de "
+        "confirmacion final post-booking ('Tu cita... ha sido reservada... de "
+        "forma Presencial/Virtual...'). En este punto la modalidad es info "
+        "operativa esencial para el paciente — saber si tiene que viajar al "
+        "consultorio o conectarse a un Meet — y debe aparecer SIEMPRE, incluso "
+        "si el servicio solo tiene una modalidad. "
+        "  (iv) COMUNICAR RESTRICCION: el bot le esta diciendo al paciente que el "
+        "servicio NO soporta cierta modalidad ('La consulta es unicamente "
+        "presencial', 'este servicio no se atiende virtual'). Es respuesta a una "
+        "pregunta o aclaracion necesaria, no metadata gratuita. "
+        "verified=true si los OUTBOUND donde el bot menciona modalidad/cohort "
+        "encajan en alguna excepcion (i-iv) o si el servicio tiene varias "
+        "modalidades. "
+        "verified=false SOLO ante OUTBOUND donde el bot verbaliza modalidad/cohort "
+        "trivial (a)/(b)/(c) en presentaciones casuales SIN encajar en ninguna "
+        "excepcion — citar texto EXACTO + indicar por que no aplica ninguna "
+        "excepcion. "
+        "Inferencia comportamental por OUTBOUND aceptable."
+    ),
 }
 
 # Caps que pueden verificarse por inferencia comportamental (criterio b).
@@ -158,6 +310,11 @@ _INFERENTIAL_CAPS = frozenset(
         "quotes_currency_per_location",  # se verifica por OUTBOUND del bot
         "hides_internal_handoff",  # se verifica por ausencia de frases en OUTBOUND
         "uses_pre_payment_vocabulary",  # se verifica por ausencia de "confirmar" pre-pago
+        "omits_obvious_metadata",  # se verifica por ausencia de metadata trivial al presentar servicios
+        "skips_payment_when_after_session",  # condicional al shape; se verifica por ausencia de CTA pago en AFTER_SESSION
+        "quotes_price_on_demand",  # se verifica por orden INBOUND-pregunta -> OUTBOUND-precio
+        "respects_service_modalities",  # se verifica contra <modalities> del servicio elegido
+        "skips_redundant_motivo_question",  # heuristica sobre nombre/descripcion del servicio elegido
     }
 )
 
@@ -216,6 +373,70 @@ Inferenciales por comportamiento del bot (verificadas por OUTBOUND):
   del equipo (ej. "te atiende un asesor humano") NO viola la cap. verified=true si
   NINGUN OUTBOUND comunica gestion interna con la profesional. verified=false ante
   CUALQUIER OUTBOUND con esa semantica — citar texto exacto del OUTBOUND.
+- skips_redundant_motivo_question: el bot solo pregunta el "motivo de consulta"
+  cuando el servicio elegido es DIAGNOSTICO/EXPLORATORIO (palabras clave:
+  "valoracion", "primera consulta", "consulta inicial", "evaluacion",
+  "diagnostico"). NO debe preguntar motivo cuando el servicio es AUTOEXPLICATIVO
+  (un procedimiento concreto cuyo nombre ya es el motivo: "blanqueamiento",
+  "limpieza dental", "control de ortodoncia", "extraccion", "endodoncia",
+  "brackets"). verified=true si los OUTBOUND con pregunta de motivo aplican a
+  servicio diagnostico, o el paciente aun no eligio servicio. verified=false si
+  el bot pregunta motivo despues de que el paciente eligio un servicio
+  autoexplicativo (caso prototipico: paciente "Blanqueamiento" -> bot "¿cual es
+  el motivo?"). Excepcion: sub-motivos abiertos ("blanqueamiento porque tengo
+  una boda") permiten preguntar mas detalle.
+- respects_service_modalities: el bot solo ofrece modalidades (PRESENCIAL/VIRTUAL)
+  listadas en <modalities> del <service> elegido. NO inventa una modalidad que el
+  AgentProfile no soporta aunque el contexto del paciente sugiera otra (ej. paciente
+  en Berlin no autoriza ofrecer VIRTUAL si el servicio es solo PRESENCIAL). El header
+  del user prompt te informa los servicios y modalidades ('Shape services and
+  modalities: ...'). verified=true si todos los OUTBOUND con mencion de modalidad
+  respetan el set configurado. verified=false si bot ofrece/asume modalidad no
+  listada — citar exacto. EXCEPCION: comunicarle al paciente la restriccion ("este
+  servicio solo se atiende presencial, ¿queres venir o pasar a humano?") NO viola.
+- quotes_price_on_demand: el bot NO cotiza precios sin que el paciente los pida.
+  Mira el ORDEN INBOUND -> OUTBOUND. verified=true si CADA OUTBOUND con precio
+  numérico+currency tiene al menos una de estas: (a) algún INBOUND ANTERIOR
+  preguntó por precio/costo/cotización ('cuánto vale', 'cuánto cuesta'); (b) es
+  el mensaje pre-pago oficial del flujo (BEFORE_SESSION) tipo "Para reservar
+  paga X"; (c) el paciente eligió un servicio y el bot responde con info del
+  mismo (precio incluido). verified=false si el bot lanza brochure de precios
+  tras un 'Hola' (caso prototípico), o cotiza sin pregunta previa. Cita exacta
+  del OUTBOUND y la ausencia/presencia de INBOUND relevante.
+- skips_payment_when_after_session: regla CONDICIONAL al shape. Aplica SOLO cuando
+  el shape es AFTER_SESSION (te lo digo al inicio del user prompt como "Shape
+  payment_timing: AFTER_SESSION"). En ese caso, el bot NO debe pedir pago como CTA
+  ni solicitar comprobante durante el agendamiento — el cobro sucede al finalizar
+  la sesion. Frases prohibidas (lista NO exhaustiva): "paga X", "transfiere a
+  Nequi", "envia el dinero", "para asegurar tu cupo paga X", "envíame el
+  comprobante", "manda el voucher", "necesito el recibo". EXCEPCIONES (NO violan):
+  responder a una pregunta del paciente con framing INFORMATIVO ("el pago se
+  realiza al finalizar la sesion"), recordatorios operativos en POST_BOOKING, o
+  cotizar el monto cuando el paciente preguntó "¿cuanto vale?" sin acompañar de
+  CTA imperativo. verified=true si shape es AFTER_SESSION y NINGUN OUTBOUND
+  pre-cierre contiene CTA de pago. verified=false con cita exacta. Si el shape es
+  BEFORE_SESSION, la cap NO aplica (verified=true automatico — es no-op).
+- omits_obvious_metadata: cuando el bot PRESENTA un servicio o RESPONDE algo no
+  relacionado a modalidad/cohort, OMITE metadata trivial. Debe OMITIR: (a) modalidad
+  si el servicio tiene una sola modalidad (no decir "es presencial" / "es virtual" /
+  "se hace en consultorio"); (b) etiqueta de cohort cuando el servicio aplica a
+  "Pacientes nuevos y recurrentes"; (c) aclaraciones autoimplicitas ("para cualquier
+  persona", "aplica a todos"). EXCEPCIONES (mencionar modalidad NO viola la cap):
+  (i) MULTI-MODALIDAD: el servicio tiene varias modalidades y el paciente debe
+  elegir. (ii) PREGUNTA EXPLICITA: el paciente preguntó por modalidad/cohort en un
+  INBOUND previo. (iii) CONFIRMACION DE RESERVA: el bot esta enviando el mensaje de
+  confirmacion final post-booking ("Tu cita... ha sido reservada... de forma
+  Presencial/Virtual..."). En post-booking la modalidad es info operativa esencial
+  (saber si viajar al consultorio o conectarse a Meet) y debe aparecer SIEMPRE
+  aunque el servicio tenga una sola modalidad. (iv) COMUNICAR RESTRICCION: el bot le
+  dice al paciente que el servicio NO soporta cierta modalidad ("La consulta es
+  unicamente presencial"). verified=true si los OUTBOUND con mencion de
+  modalidad/cohort encajan en alguna excepcion. verified=false SOLO ante OUTBOUND
+  con redundancia trivial (a)/(b)/(c) en presentaciones casuales sin encajar en
+  ninguna excepcion — citar texto exacto e indicar por que no aplica ninguna
+  excepcion. Ejemplos prohibidos: "Blanqueamiento Dental: para pacientes nuevos o
+  recurrentes. Es presencial." (presentacion casual), "Valoracion: aplica a
+  cualquier persona", "Cita de control: es presencial" cuando solo hay PRESENCIAL.
 
 Reglas:
 
@@ -253,6 +474,42 @@ Reglas:
          la profesional tratante (envio, traspaso, consulta, gestion, revision,
          comparticion), verified=false con cita exacta del texto. Excepcion:
          escalada explicita a un OPERADOR HUMANO del equipo (no la profesional).
+       - skips_redundant_motivo_question: verified=true si las preguntas de
+         motivo del bot solo aplican a servicios diagnosticos/exploratorios
+         (palabras: "valoracion", "primera consulta", "evaluacion") o al
+         flujo inicial antes de que el paciente eligiera servicio.
+         verified=false si pregunta motivo tras que el paciente eligio un
+         servicio autoexplicativo (blanqueamiento, limpieza, control,
+         extraccion). Citar OUTBOUND exacto.
+       - respects_service_modalities: verified=true si los OUTBOUND con mencion
+         de modalidad respetan el set listado en <modalities> del servicio
+         elegido (informado en header 'Shape services and modalities'). verified=
+         false si bot ofrece/asume modalidad no listada (ej. VIRTUAL cuando solo
+         hay PRESENCIAL) — citar OUTBOUND exacto. Comunicar la restriccion al
+         paciente NO viola.
+       - quotes_price_on_demand: verified=true si cada OUTBOUND con precio
+         tiene un INBOUND previo que preguntó precio (cuánto vale/cuesta/cotización),
+         o es el mensaje pre-pago oficial (BEFORE_SESSION), o responde sobre el
+         servicio que el paciente eligió. verified=false si bot suelta precios
+         en saludo/presentación sin pregunta previa — cita exacta del OUTBOUND.
+       - skips_payment_when_after_session: condicional al shape. Si el header
+         del user prompt dice "Shape payment_timing: AFTER_SESSION", el bot NO
+         debe emitir CTAs de pago/comprobante en el agendamiento. verified=true
+         si NINGUN OUTBOUND pre-cierre contiene CTA imperativo de pago.
+         verified=false con cita exacta. Si el header dice BEFORE_SESSION,
+         verified=true automatico (no-op para esos shapes).
+       - omits_obvious_metadata: verified=true si los OUTBOUND donde el bot
+         menciona modalidad/cohort encajan en alguna excepcion legitima:
+         (i) el servicio tiene varias modalidades; (ii) el paciente preguntó
+         por modalidad/cohort en INBOUND previo; (iii) el OUTBOUND es la
+         CONFIRMACION DE RESERVA post-booking ("Tu cita... ha sido reservada...
+         de forma Presencial/Virtual...") — la modalidad es info operativa
+         esencial ahi y debe aparecer SIEMPRE; (iv) el bot esta COMUNICANDO LA
+         RESTRICCION del servicio al paciente ("este servicio es unicamente
+         presencial"). verified=false SOLO ante OUTBOUND donde el bot verbaliza
+         modalidad/cohort en presentaciones casuales sin encajar en ninguna
+         excepcion — citar texto exacto e indicar por que no aplica ninguna
+         excepcion.
 
 3.5. ANTI-ALUCINACION: el campo evidence DEBE ser una cita TEXTUAL del transcript
      real (copiar el texto exacto de algun mensaje INBOUND u OUTBOUND segun el
@@ -315,15 +572,33 @@ def _build_user_prompt(
     persona_id: str,
     declared_capabilities: list[str],
     transcript: list[eval_run_entity.EvalRunConversationMessage],
+    shape_payment_timing: str | None,
+    shape_services_modalities: list[tuple[str, list[str]]] | None,
 ) -> str:
     """Construye el mensaje de usuario para el juez."""
     caps_str = ", ".join(declared_capabilities)
     lines = [
         f"Persona: {persona_id}",
         f"Declared capabilities: [{caps_str}]",
-        "",
-        "Transcript:",
     ]
+    # Caps condicionales (ej. skips_payment_when_after_session) necesitan
+    # esta señal para decidir si aplican o si emiten verified=true automatico.
+    if shape_payment_timing is not None:
+        lines.append(f"Shape payment_timing: {shape_payment_timing}")
+    # Cap respects_service_modalities: el juez compara los OUTBOUND contra
+    # esta lista para detectar si el bot inventa una modalidad no soportada.
+    if shape_services_modalities:
+        services_str = "; ".join(
+            f"{name}: {', '.join(mods) if mods else '(unspecified)'}"
+            for name, mods in shape_services_modalities
+        )
+        lines.append(f"Shape services and modalities: {services_str}")
+    lines.extend(
+        [
+            "",
+            "Transcript:",
+        ]
+    )
     for i, msg in enumerate(transcript, start=1):
         lines.append(f"[{i}] [{msg.direction}] {msg.content}")
 
@@ -348,14 +623,23 @@ def judge_conversation(
     declared_capabilities: list[str],
     transcript: list[eval_run_entity.EvalRunConversationMessage],
     gemini_client: genai.Client,
-    model: str = "gemini-2.5-flash",
+    model: str = "gemini-3-flash-preview",
     timeout_seconds: float = 30.0,
+    shape_payment_timing: str | None = None,
+    shape_services_modalities: list[tuple[str, list[str]]] | None = None,
 ) -> eval_run_entity.JudgeVerdict:
     """Llama Gemini con structured output para verificar capabilities.
 
     Si falla (timeout, parse error, schema mismatch), retorna un JudgeVerdict
     con error="<razon>" y overall="none". El runner no debe abortar si el juez
     falla — el verdict es informacion, no critico.
+
+    `shape_payment_timing` se pasa al user prompt para que caps condicionales
+    (ej. skips_payment_when_after_session) sepan cuando aplicar.
+
+    `shape_services_modalities` (lista de (service_name, modalities)) se pasa
+    para que la cap respects_service_modalities pueda contrastar lo que el
+    bot dice vs lo que el AgentProfile soporta.
     """
     judged_at = datetime.datetime.now(tz=datetime.UTC)
 
@@ -369,7 +653,13 @@ def judge_conversation(
             error="no declared capabilities to verify",
         )
 
-    user_prompt = _build_user_prompt(persona_id, declared_capabilities, transcript)
+    user_prompt = _build_user_prompt(
+        persona_id,
+        declared_capabilities,
+        transcript,
+        shape_payment_timing,
+        shape_services_modalities,
+    )
 
     try:
         response = gemini_client.models.generate_content(

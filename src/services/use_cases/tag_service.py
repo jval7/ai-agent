@@ -132,21 +132,41 @@ class TagService:
         sorted_tags = sorted(tags, key=lambda item: (item.tag_type, item.name.lower()))
         return tag_dto.TagListResponseDTO(items=[self._to_tag_dto(item) for item in sorted_tags])
 
+    def list_tags_for_tenant(self, tenant_id: str) -> tag_dto.TagListResponseDTO:
+        self.ensure_system_tags(tenant_id)
+        tags = self._tag_repository.list_by_tenant(tenant_id)
+        sorted_tags = sorted(tags, key=lambda item: (item.tag_type, item.name.lower()))
+        return tag_dto.TagListResponseDTO(items=[self._to_tag_dto(item) for item in sorted_tags])
+
     def create_custom_tag(
         self,
         claims: auth_dto.TokenClaimsDTO,
         input_dto: tag_dto.CreateTagDTO,
     ) -> tag_dto.TagDTO:
         self._ensure_professional(claims)
+        return self._create_custom_tag_impl(claims.tenant_id, input_dto)
+
+    def create_custom_tag_for_tenant(
+        self,
+        tenant_id: str,
+        input_dto: tag_dto.CreateTagDTO,
+    ) -> tag_dto.TagDTO:
+        return self._create_custom_tag_impl(tenant_id, input_dto)
+
+    def _create_custom_tag_impl(
+        self,
+        tenant_id: str,
+        input_dto: tag_dto.CreateTagDTO,
+    ) -> tag_dto.TagDTO:
         slug = self._build_custom_slug(input_dto.name)
-        existing_tag = self._tag_repository.get_by_slug(claims.tenant_id, slug)
+        existing_tag = self._tag_repository.get_by_slug(tenant_id, slug)
         if existing_tag is not None:
             raise service_exceptions.InvalidStateError("tag with same name already exists")
 
         now_value = self._clock.now()
         new_tag = tag_entity.Tag(
             id=self._id_generator.new_id(),
-            tenant_id=claims.tenant_id,
+            tenant_id=tenant_id,
             name=input_dto.name,
             slug=slug,
             color=input_dto.color,
@@ -162,7 +182,7 @@ class TagService:
                     event_name="tag.custom_created",
                     message="custom tag created by professional",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "tag_id": new_tag.id,
                         "slug": slug,
                     },
@@ -178,7 +198,23 @@ class TagService:
         input_dto: tag_dto.UpdateTagDTO,
     ) -> tag_dto.TagDTO:
         self._ensure_professional(claims)
-        existing_tag = self._tag_repository.get_by_id(claims.tenant_id, tag_id)
+        return self._update_tag_impl(claims.tenant_id, tag_id, input_dto)
+
+    def update_tag_for_tenant(
+        self,
+        tenant_id: str,
+        tag_id: str,
+        input_dto: tag_dto.UpdateTagDTO,
+    ) -> tag_dto.TagDTO:
+        return self._update_tag_impl(tenant_id, tag_id, input_dto)
+
+    def _update_tag_impl(
+        self,
+        tenant_id: str,
+        tag_id: str,
+        input_dto: tag_dto.UpdateTagDTO,
+    ) -> tag_dto.TagDTO:
+        existing_tag = self._tag_repository.get_by_id(tenant_id, tag_id)
         if existing_tag is None:
             raise service_exceptions.EntityNotFoundError("tag not found")
 
@@ -197,7 +233,7 @@ class TagService:
                 updated_name = input_dto.name
                 new_slug = self._build_custom_slug(input_dto.name)
                 if new_slug != existing_tag.slug:
-                    conflicting_tag = self._tag_repository.get_by_slug(claims.tenant_id, new_slug)
+                    conflicting_tag = self._tag_repository.get_by_slug(tenant_id, new_slug)
                     if conflicting_tag is not None and conflicting_tag.id != existing_tag.id:
                         raise service_exceptions.InvalidStateError(
                             "tag with same name already exists"
@@ -220,9 +256,9 @@ class TagService:
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="tag.updated",
-                    message="tag updated by professional",
+                    message="tag updated",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "tag_id": updated_tag.id,
                         "tag_type": updated_tag.tag_type,
                     },
@@ -233,22 +269,28 @@ class TagService:
 
     def delete_tag(self, claims: auth_dto.TokenClaimsDTO, tag_id: str) -> None:
         self._ensure_professional(claims)
-        existing_tag = self._tag_repository.get_by_id(claims.tenant_id, tag_id)
+        self._delete_tag_impl(claims.tenant_id, tag_id)
+
+    def delete_tag_for_tenant(self, tenant_id: str, tag_id: str) -> None:
+        self._delete_tag_impl(tenant_id, tag_id)
+
+    def _delete_tag_impl(self, tenant_id: str, tag_id: str) -> None:
+        existing_tag = self._tag_repository.get_by_id(tenant_id, tag_id)
         if existing_tag is None:
             raise service_exceptions.EntityNotFoundError("tag not found")
         if existing_tag.tag_type == "SYSTEM":
             raise service_exceptions.InvalidStateError("system tags cannot be deleted")
 
-        self._remove_tag_from_all_conversations(claims.tenant_id, tag_id)
-        self._tag_repository.delete(claims.tenant_id, tag_id)
+        self._remove_tag_from_all_conversations(tenant_id, tag_id)
+        self._tag_repository.delete(tenant_id, tag_id)
         logger.info(
             "tag.deleted",
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="tag.deleted",
-                    message="custom tag deleted by professional",
+                    message="custom tag deleted",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "tag_id": tag_id,
                     },
                 )
@@ -262,12 +304,28 @@ class TagService:
         tag_id: str,
     ) -> None:
         self._ensure_professional(claims)
-        tag = self._tag_repository.get_by_id(claims.tenant_id, tag_id)
+        self._assign_tag_to_conversation_impl(claims.tenant_id, conversation_id, tag_id)
+
+    def assign_tag_to_conversation_for_tenant(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        tag_id: str,
+    ) -> None:
+        self._assign_tag_to_conversation_impl(tenant_id, conversation_id, tag_id)
+
+    def _assign_tag_to_conversation_impl(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        tag_id: str,
+    ) -> None:
+        tag = self._tag_repository.get_by_id(tenant_id, tag_id)
         if tag is None:
             raise service_exceptions.EntityNotFoundError("tag not found")
 
         conversation = self._conversation_repository.get_conversation_by_id(
-            claims.tenant_id, conversation_id
+            tenant_id, conversation_id
         )
         if conversation is None:
             raise service_exceptions.EntityNotFoundError("conversation not found")
@@ -281,7 +339,7 @@ class TagService:
                     event_name="tag.assigned_to_conversation",
                     message="tag assigned to conversation",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "tag_id": tag_id,
                         "conversation_id": conversation_id,
                     },
@@ -296,8 +354,24 @@ class TagService:
         tag_id: str,
     ) -> None:
         self._ensure_professional(claims)
+        self._remove_tag_from_conversation_impl(claims.tenant_id, conversation_id, tag_id)
+
+    def remove_tag_from_conversation_for_tenant(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        tag_id: str,
+    ) -> None:
+        self._remove_tag_from_conversation_impl(tenant_id, conversation_id, tag_id)
+
+    def _remove_tag_from_conversation_impl(
+        self,
+        tenant_id: str,
+        conversation_id: str,
+        tag_id: str,
+    ) -> None:
         conversation = self._conversation_repository.get_conversation_by_id(
-            claims.tenant_id, conversation_id
+            tenant_id, conversation_id
         )
         if conversation is None:
             raise service_exceptions.EntityNotFoundError("conversation not found")
@@ -311,7 +385,7 @@ class TagService:
                     event_name="tag.removed_from_conversation",
                     message="tag removed from conversation",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "tag_id": tag_id,
                         "conversation_id": conversation_id,
                     },

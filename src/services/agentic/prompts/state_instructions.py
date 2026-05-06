@@ -8,9 +8,15 @@ import src.services.agentic.state_models as agentic_state_models
 # Lives here (not in style_rules_template) because it references internal
 # runtime variable names that a professional would never see in the UI form.
 _NEVER_INVENT_INJECTED_DATA = (
-    "Si el contexto inyectado tiene `fecha_cita`, `nombre_paciente`, `modalidad_actual` u otro dato "
-    "del paciente o de la cita, usalos EXACTAMENTE como aparecen. "
-    "NUNCA inventes ni parafrasees fechas, horas, nombres ni datos del paciente."
+    "Datos inyectados en runtime context y en la seccion 'Datos del consultorio' "
+    "(`fecha_cita`, `nombre_paciente`, `modalidad_actual`, `Direccion`, "
+    "`Indicaciones de llegada`, `Instrucciones sesion virtual`, etc.) son la "
+    "FUENTE UNICA DE VERDAD. Usalos EXACTAMENTE, palabra por palabra, sin "
+    "parafrasear, sin agregar campos que no esten ahi, sin inventar detalles "
+    "complementarios. Si un campo no esta presente o aparece marcado como "
+    "'(no provistas)', NO lo menciones — NO inventes una direccion, una nota "
+    "de acceso, un piso, un punto de referencia, ni instrucciones que no "
+    "aparezcan textualmente en el prompt."
 )
 
 # Rule shared across states that may quote prices. Agnostico al estilo del
@@ -64,8 +70,17 @@ def _instructions_for_state(
                 "  - SOLO ofrece servicios marcados con `<target_patients>` que incluya "
                 "'recurrentes' (Pacientes nuevos y recurrentes O Solo pacientes recurrentes). "
                 "Ignora los servicios marcados solo para pacientes nuevos.\n"
-                "  - Pregunta motivo (consultation_reason) y modalidad (si el servicio "
-                "soporta ambas; si soporta una sola, asumela).\n"
+                "  - Presenta servicios POR NOMBRE, SIN PRECIOS. Los precios se cotizan "
+                "solo cuando el paciente pregunta o cuando el flujo llega al paso de "
+                "pago (`<payment_timing>` BEFORE_SESSION).\n"
+                "  - Pregunta motivo (consultation_reason) SOLO si el servicio es "
+                "diagnostico/exploratorio (palabras clave en su nombre/descripcion: "
+                "'valoracion', 'primera consulta', 'evaluacion', 'diagnostico'). Si el "
+                "servicio es autoexplicativo (procedimiento concreto: blanqueamiento, "
+                "limpieza, control, extraccion, etc.) NO preguntes motivo — el servicio es "
+                "el motivo. Pregunta modalidad (si el servicio soporta ambas; si soporta "
+                "una sola, asumela). NO inventes modalidades que el servicio no liste en "
+                "`<modalities>` aunque el contexto del paciente lo sugiera.\n"
                 "  - Si la modalidad es VIRTUAL y no tienes patient_location del paciente "
                 "conocido, preguntala.\n"
                 "  - Cuando tengas los datos, llama submit_consultation_reason_for_review.",
@@ -83,15 +98,31 @@ def _instructions_for_state(
             "Flujo actual: inicio de agendamiento con un paciente NUEVO "
             "(no esta registrado, primera vez).",
             "Sigue esta secuencia conversacional, agrupando preguntas relacionadas en un mismo mensaje:\n"
-            "  1. Si es el primer mensaje, presentate y pregunta el nombre del paciente.\n"
-            "  2. Presenta los servicios disponibles. SOLO ofrece servicios marcados con "
-            "`<target_patients>` que incluya 'nuevos' (Pacientes nuevos y recurrentes O "
-            "Solo pacientes nuevos). Ignora los servicios marcados solo para pacientes "
-            "recurrentes.\n"
-            "  3. Pregunta el motivo (consultation_reason). En el mismo mensaje, pregunta la "
-            "modalidad SOLO si el servicio elegido en el paso 2 soporta ambas (revisa "
-            "`<modalities>` del `<service>` correspondiente). Si el servicio solo soporta una "
-            "modalidad, asume esa automaticamente y no preguntes.\n"
+            "  1. EN EL MISMO MENSAJE de bienvenida: (i) presentate, (ii) pregunta el "
+            "nombre del paciente, y (iii) presenta los servicios disponibles POR NOMBRE, "
+            "SIN PRECIOS. NO partas el saludo en dos turnos (uno solo para el nombre y "
+            "otro para los servicios) — todo va junto en un unico OUTBOUND.\n"
+            "  2. Filtro de servicios al presentar: SOLO ofrece "
+            "servicios marcados con `<target_patients>` que incluya 'nuevos' (Pacientes "
+            "nuevos y recurrentes O Solo pacientes nuevos). Ignora los servicios marcados "
+            "solo para pacientes recurrentes. Los precios se cotizan UNICAMENTE cuando "
+            "el paciente los pregunta o cuando el flujo llega al paso de pago "
+            "(`<payment_timing>` BEFORE_SESSION); NO conviertas el saludo en un brochure "
+            "de tarifas.\n"
+            "  3. Pregunta el motivo (consultation_reason) SOLO si el servicio elegido es "
+            "DIAGNOSTICO/EXPLORATORIO — esto es, si su `<name>` o `<description>` indica que "
+            "es una valoracion, primera consulta, evaluacion o diagnostico (palabras clave: "
+            "'valoracion', 'primera consulta', 'consulta inicial', 'evaluacion', 'diagnostico', "
+            "'cita exploratoria'). En esos casos el motivo informa el plan terapeutico y "
+            "preguntarlo es necesario. Si el servicio elegido es AUTOEXPLICATIVO — su nombre "
+            "ya es un procedimiento concreto (ej. 'blanqueamiento dental', 'limpieza dental', "
+            "'control de ortodoncia', 'extraccion', 'endodoncia', 'brackets', 'sesion de "
+            "[tecnica]') — NO preguntes motivo: el servicio mismo es el motivo. Usa "
+            "consultation_reason='[nombre del servicio]' al llamar la tool. "
+            "Para la modalidad: aplica las reglas MODALIDAD del bloque <style_rules> "
+            "(no las repitas aqui). En particular: solo preguntas modalidad si "
+            "`<modalities>` del servicio tiene varios valores; si tiene uno solo, "
+            "asumelo y NO lo verbalices.\n"
             "  4. Si la modalidad resultante es VIRTUAL, pregunta ciudad o pais desde donde "
             "se conectara. Si es PRESENCIAL, omite este paso.",
             "Datos a recolectar antes de llamar submit_consultation_reason_for_review:\n"
@@ -164,6 +195,15 @@ def _instructions_for_state(
         ]
     if runtime_context.state == "AWAITING_PAYMENT_CONFIRMATION":
         return [
+            # Defense-in-depth: this state should not be reached when
+            # <payment_timing> is AFTER_SESSION (the resolver in
+            # scheduling_service skips payment for that timing). If the
+            # resolver ever fails to gate, this guard tells the LLM to step
+            # back instead of asking for a payment that should not exist.
+            "GUARD: si `<payment_timing>` del system prompt es AFTER_SESSION, "
+            "este estado NO deberia activarse — el flujo NO incluye paso de "
+            "pago. Si llegas aca por error, NO pidas dinero ni comprobante; "
+            "responde 'dame un momento' y espera al siguiente turno.",
             # NOTA: el nombre del estado contiene "CONFIRMATION" por persistencia
             # pero las instrucciones visibles al LLM evitan la palabra "confirmar"
             # — el LLM la filtraba al paciente como "para confirmarte/confirmar
@@ -221,11 +261,22 @@ def _instructions_for_state(
         ]
         if modality == "PRESENCIAL":
             lines += [
-                "La cita es PRESENCIAL. Incluye en la confirmacion la direccion del consultorio, "
-                "las indicaciones de llegada y las notas de acceso tal como aparezcan en la seccion "
-                "'Datos del consultorio' del contexto inyectado.",
+                "La cita es PRESENCIAL. Incluye en la confirmacion la direccion EXACTA "
+                "del consultorio (campo `Direccion:` de la seccion 'Datos del consultorio') "
+                "y, si estan presentes, las indicaciones de llegada (campo "
+                "`Indicaciones de llegada:`). Reproduce el texto LITERALMENTE — no "
+                "parafrasees, no resumas, no inventes datos adicionales (notas de acceso, "
+                "contacto en recepcion, descripciones del edificio, pisos, referencias) "
+                "que no aparezcan textualmente en el prompt.",
                 "Si la seccion 'Datos del consultorio' no existe o no tiene direccion, "
                 "transfiere a humano en lugar de inventar datos.",
+                "PROHIBIDO en este estado: postergar la entrega de informacion ya "
+                "disponible en el prompt prometiendo que 'un asesor te contactara para "
+                "darte la direccion / detalles / indicaciones'. Si tienes la informacion "
+                "en 'Datos del consultorio', dasela ahora; no diferas. Solo se puede "
+                "mencionar 'asesor humano' como salida cuando el paciente quiera algo "
+                "que el bot NO puede resolver (ej. reagendar) — y en ese caso DEBES "
+                "llamar handoff_to_human, no solo decirlo en texto.",
             ]
         elif modality == "VIRTUAL":
             lines += [

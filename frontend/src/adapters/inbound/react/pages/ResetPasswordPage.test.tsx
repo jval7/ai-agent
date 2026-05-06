@@ -38,6 +38,7 @@ function buildAuthContext(
 ): authContextModule.AuthContextValue {
   return {
     status: "anonymous",
+    userProfile: null,
     login: vitestModule.vi.fn(async () => undefined),
     logout: vitestModule.vi.fn(async () => undefined),
     acceptInvitation: vitestModule.vi.fn(async () => undefined),

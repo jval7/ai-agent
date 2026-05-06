@@ -15,9 +15,11 @@ import * as backendApiAdapterModule from "@adapters/outbound/http/backend_api_ad
 import * as backendEventStreamAdapterModule from "@adapters/outbound/http/backend_event_stream_adapter";
 import * as browserTokenSessionAdapterModule from "@adapters/outbound/storage/browser_token_session_adapter";
 import * as envModule from "@infrastructure/config/env";
+import type * as backendApiPort from "@ports/backend_api_port";
 import type * as eventStreamPortModule from "@ports/event_stream_port";
 
 export interface AppContainer {
+  api: backendApiPort.BackendApiPort;
   authUseCase: authUseCaseModule.AuthUseCase;
   onboardingUseCase: onboardingUseCaseModule.OnboardingUseCase;
   whatsappOnboardingUseCase: whatsappOnboardingUseCaseModule.WhatsappOnboardingUseCase;
@@ -42,6 +44,7 @@ export function createAppContainer(): AppContainer {
   );
 
   return {
+    api: backendApi,
     authUseCase: new authUseCaseModule.AuthUseCase(backendApi, tokenSession),
     onboardingUseCase: new onboardingUseCaseModule.OnboardingUseCase(backendApi),
     whatsappOnboardingUseCase: new whatsappOnboardingUseCaseModule.WhatsappOnboardingUseCase(

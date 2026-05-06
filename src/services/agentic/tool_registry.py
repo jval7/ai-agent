@@ -121,10 +121,6 @@ class ToolDefinitionRegistry:
                             "enum": ["PRESENCIAL", "VIRTUAL"],
                         },
                         "patient_location": {"type": "string"},
-                        "audience_type": {
-                            "type": "string",
-                            "enum": ["ADULTS", "CHILDREN"],
-                        },
                     },
                     "required": ["consultation_reason", "appointment_modality"],
                     "additionalProperties": False,

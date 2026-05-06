@@ -5,6 +5,7 @@ import fastapi.security as fastapi_security
 
 import src.infra.container as app_container
 import src.infra.logs as app_logs
+import src.services.constants as service_constants
 import src.services.dto.auth_dto as auth_dto
 import src.services.exceptions as service_exceptions
 
@@ -27,6 +28,14 @@ def get_current_claims(
     access_token = credentials.credentials
     claims = container.auth_service.authenticate_access_token(access_token)
     app_logs.set_authenticated_context(tenant_id=claims.tenant_id, user_id=claims.sub)
+    return claims
+
+
+def require_admin_claims(
+    claims: auth_dto.TokenClaimsDTO = fastapi.Depends(get_current_claims),
+) -> auth_dto.TokenClaimsDTO:
+    if claims.role != service_constants.ROLE_ADMIN:
+        raise fastapi.HTTPException(status_code=403, detail="admin role required")
     return claims
 
 

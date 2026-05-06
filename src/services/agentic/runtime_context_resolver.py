@@ -7,6 +7,57 @@ import src.services.use_cases.scheduling_service as scheduling_service
 RuntimePromptContext = agentic_state_models.RuntimePromptContext
 
 
+def enabled_tools_for_state(state: str) -> list[str]:
+    """Returns the tool whitelist for a given runtime state.
+
+    Module-level function so the prompt lab and other test harnesses can
+    build the same tool set the runtime uses without instantiating the
+    full RuntimeContextResolver.
+    """
+    if state == "NO_ACTIVE_REQUEST":
+        return [
+            "submit_consultation_reason_for_review",
+            "close_session",
+            "handoff_to_human",
+            "cancel_active_scheduling_request",
+        ]
+    if state == "AWAITING_CONSULTATION_DETAILS":
+        return [
+            "submit_consultation_reason_for_review",
+            "handoff_to_human",
+            "cancel_active_scheduling_request",
+        ]
+    if state == "AWAITING_PATIENT_CHOICE":
+        return [
+            "select_proposed_slot",
+            "reject_proposed_slots",
+            "handoff_to_human",
+            "cancel_active_scheduling_request",
+        ]
+    if state == "AWAITING_PAYMENT_CONFIRMATION":
+        return [
+            "handoff_to_human",
+            "cancel_active_scheduling_request",
+        ]
+    if state == "AWAITING_ATTENDANCE_CONFIRMATION":
+        return [
+            "confirm_attendance_received",
+            "handoff_to_human",
+        ]
+    if state == "COLLECTING_CONFIRMATION_DATA":
+        return [
+            "confirm_selected_slot_and_create_event",
+            "handoff_to_human",
+            "cancel_active_scheduling_request",
+        ]
+    if state == "POST_BOOKING_FOLLOWUP":
+        return [
+            "close_session",
+            "handoff_to_human",
+        ]
+    return ["handoff_to_human", "cancel_active_scheduling_request"]
+
+
 class RuntimeContextResolver:
     def __init__(
         self,
@@ -200,48 +251,7 @@ class RuntimeContextResolver:
         return False
 
     def _enabled_tools_for_state(self, state: str) -> list[str]:
-        if state == "NO_ACTIVE_REQUEST":
-            return [
-                "submit_consultation_reason_for_review",
-                "close_session",
-                "handoff_to_human",
-                "cancel_active_scheduling_request",
-            ]
-        if state == "AWAITING_CONSULTATION_DETAILS":
-            return [
-                "submit_consultation_reason_for_review",
-                "handoff_to_human",
-                "cancel_active_scheduling_request",
-            ]
-        if state == "AWAITING_PATIENT_CHOICE":
-            return [
-                "select_proposed_slot",
-                "reject_proposed_slots",
-                "handoff_to_human",
-                "cancel_active_scheduling_request",
-            ]
-        if state == "AWAITING_PAYMENT_CONFIRMATION":
-            return [
-                "handoff_to_human",
-                "cancel_active_scheduling_request",
-            ]
-        if state == "AWAITING_ATTENDANCE_CONFIRMATION":
-            return [
-                "confirm_attendance_received",
-                "handoff_to_human",
-            ]
-        if state == "COLLECTING_CONFIRMATION_DATA":
-            return [
-                "confirm_selected_slot_and_create_event",
-                "handoff_to_human",
-                "cancel_active_scheduling_request",
-            ]
-        if state == "POST_BOOKING_FOLLOWUP":
-            return [
-                "close_session",
-                "handoff_to_human",
-            ]
-        return ["handoff_to_human", "cancel_active_scheduling_request"]
+        return enabled_tools_for_state(state)
 
     def _compute_missing_confirmation_fields(
         self,

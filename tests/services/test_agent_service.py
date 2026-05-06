@@ -342,6 +342,52 @@ def test_get_agent_settings_returns_default_payment_timing_when_no_profile() -> 
     assert result.payment_timing == "BEFORE_SESSION"
 
 
+def test_update_professional_profile_preserves_payment_timing_when_dto_omits_it() -> None:
+    """Frontend submits the structured form WITHOUT payment_timing — the
+    field is owned by the agent settings tab. The professional-profile PUT
+    must NOT silently reset it to BEFORE_SESSION (regression: prior to the
+    fix, AgentProfile was constructed without payment_timing and fell to
+    the default, wiping any AFTER_SESSION configuration on every save).
+    """
+    service = build_agent_settings_service()
+
+    service.update_agent_settings(
+        "tenant-1",
+        agent_dto.UpdateAgentSettingsDTO(
+            message_debounce_delay_seconds=0,
+            payment_timing="AFTER_SESSION",
+        ),
+    )
+
+    service.update_professional_profile(
+        "tenant-1",
+        agent_dto.UpdateProfessionalProfileDTO(
+            identity=agent_dto.AssistantIdentityDTO(assistant_name="Camila"),
+        ),
+    )
+
+    settings = service.get_agent_settings("tenant-1")
+    assert settings.payment_timing == "AFTER_SESSION"
+
+
+def test_update_professional_profile_accepts_explicit_payment_timing() -> None:
+    """The eval runner sends the full AgentProfile body (including
+    payment_timing) to set up shapes. The DTO must accept and persist it.
+    """
+    service = build_agent_settings_service()
+
+    service.update_professional_profile(
+        "tenant-1",
+        agent_dto.UpdateProfessionalProfileDTO(
+            identity=agent_dto.AssistantIdentityDTO(assistant_name="Camila"),
+            payment_timing="AFTER_SESSION",
+        ),
+    )
+
+    settings = service.get_agent_settings("tenant-1")
+    assert settings.payment_timing == "AFTER_SESSION"
+
+
 # ---------------------------------------------------------------------------
 # assistant_enabled tests (global toggle for AI auto-reply)
 # ---------------------------------------------------------------------------
