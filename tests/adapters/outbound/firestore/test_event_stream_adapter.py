@@ -5,8 +5,9 @@ import unittest.mock as mock
 
 import pytest
 
+import src.adapters.outbound.firestore.event_stream_adapter as event_stream_adapter_module
 import src.adapters.outbound.firestore.paths as firestore_paths
-import src.services.use_cases.event_stream_service as event_stream_service_module
+import src.ports.event_stream_port as event_stream_port
 
 
 @dataclasses.dataclass
@@ -72,10 +73,10 @@ def test_subscribe_registers_listeners_and_emits_events_by_type(
 ) -> None:
     fake_client = _FakeFirestoreClient()
     _patch_paths(monkeypatch, fake_client)
-    service = event_stream_service_module.EventStreamService(firestore_client=mock.Mock())
+    adapter = event_stream_adapter_module.FirestoreEventStreamAdapter(client=mock.Mock())
 
-    async def scenario() -> list[event_stream_service_module.StreamEvent]:
-        subscription = service.subscribe(tenant_id="tenant-1")
+    async def scenario() -> list[event_stream_port.StreamEvent]:
+        subscription = adapter.subscribe(tenant_id="tenant-1")
 
         # Bootstrap snapshot (ignored)
         fake_client.conversations.fire([_FakeChange(_FakeDocumentRef("c1"))])
@@ -87,7 +88,7 @@ def test_subscribe_registers_listeners_and_emits_events_by_type(
         fake_client.scheduling_requests.fire([_FakeChange(_FakeDocumentRef("req2"))])
         fake_client.scheduled_reminders.fire([_FakeChange(_FakeDocumentRef("rem2"))])
 
-        collected: list[event_stream_service_module.StreamEvent] = []
+        collected: list[event_stream_port.StreamEvent] = []
         for _ in range(3):
             collected.append(await asyncio.wait_for(subscription.queue.get(), timeout=0.1))
 
@@ -109,10 +110,10 @@ def test_subscribe_registers_listeners_and_emits_events_by_type(
 def test_subscribe_emits_one_event_per_change(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_client = _FakeFirestoreClient()
     _patch_paths(monkeypatch, fake_client)
-    service = event_stream_service_module.EventStreamService(firestore_client=mock.Mock())
+    adapter = event_stream_adapter_module.FirestoreEventStreamAdapter(client=mock.Mock())
 
     async def scenario() -> list[str]:
-        subscription = service.subscribe(tenant_id="tenant-1")
+        subscription = adapter.subscribe(tenant_id="tenant-1")
         try:
             fake_client.conversations.fire([])
             fake_client.conversations.fire(
@@ -138,10 +139,10 @@ def test_subscribe_drops_only_initial_bootstrap_per_collection(
 ) -> None:
     fake_client = _FakeFirestoreClient()
     _patch_paths(monkeypatch, fake_client)
-    service = event_stream_service_module.EventStreamService(firestore_client=mock.Mock())
+    adapter = event_stream_adapter_module.FirestoreEventStreamAdapter(client=mock.Mock())
 
-    async def scenario() -> asyncio.Queue[event_stream_service_module.StreamEvent]:
-        subscription = service.subscribe(tenant_id="t")
+    async def scenario() -> asyncio.Queue[event_stream_port.StreamEvent]:
+        subscription = adapter.subscribe(tenant_id="t")
         try:
             fake_client.conversations.fire([_FakeChange(_FakeDocumentRef("c1"))])
             fake_client.scheduling_requests.fire([_FakeChange(_FakeDocumentRef("r1"))])

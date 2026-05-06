@@ -27,7 +27,7 @@ async def stream_events(
     tenant_id = claims.tenant_id
 
     async def generator() -> typing.AsyncIterator[str]:
-        subscription = container.event_stream_service.subscribe(tenant_id)
+        subscription = container.event_stream.subscribe(tenant_id)
         try:
             yield _format_event("connected", {"tenant_id": tenant_id})
             while True:

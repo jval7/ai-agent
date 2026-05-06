@@ -10,6 +10,7 @@ import src.adapters.outbound.firestore.client_factory as firestore_client_factor
 import src.adapters.outbound.firestore.conversation_processing_lock_adapter as conversation_processing_lock_adapter
 import src.adapters.outbound.firestore.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.firestore.eval_run_repository_adapter as eval_run_repository_adapter
+import src.adapters.outbound.firestore.event_stream_adapter as firestore_event_stream_adapter
 import src.adapters.outbound.firestore.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.firestore.invitation_token_repository_adapter as invitation_token_repository_adapter
 import src.adapters.outbound.firestore.manual_appointment_repository_adapter as manual_appointment_repository_adapter
@@ -68,7 +69,6 @@ import src.services.use_cases.eval_query_service as eval_query_service
 import src.services.use_cases.eval_run_cleanup_service as eval_run_cleanup_service
 import src.services.use_cases.eval_tenant_service as eval_tenant_service
 import src.services.use_cases.event_description_builder as event_description_builder
-import src.services.use_cases.event_stream_service as event_stream_service
 import src.services.use_cases.google_calendar_onboarding_service as google_calendar_onboarding_service
 import src.services.use_cases.invitation_service as invitation_service
 import src.services.use_cases.manual_appointment_service as manual_appointment_service
@@ -488,8 +488,8 @@ class AppContainer:
             whatsapp_onboarding_service=self.whatsapp_onboarding_service,
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
         )
-        self.event_stream_service = event_stream_service.EventStreamService(
-            firestore_client=self.firestore_client,
+        self.event_stream = firestore_event_stream_adapter.FirestoreEventStreamAdapter(
+            client=self.firestore_client,
         )
         self.patient_query_service = patient_query_service.PatientQueryService(
             patient_repository=self.patient_repository,
