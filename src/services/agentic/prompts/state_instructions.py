@@ -87,13 +87,19 @@ def _instructions_for_state(
                 "del system prompt (precios, horarios, datos de pago, etc.). NO llames "
                 "submit_consultation_reason_for_review si solo es una consulta.",
                 _QUOTE_CURRENCY_PER_LOCATION,
-                "Si pide reagendar o no puede asistir / intencion ambigua sobre la cita "
-                "(caso c): primero confirma intent — preguntale '¿Queres reagendar? Para "
-                "cancelar te paso con un asesor.' Si confirma REAGENDAR y existe "
+                "Si el paciente quiere reagendar o cancelar una cita previa (caso c), "
+                "decide segun la claridad del intent:\n"
+                "  • REAGENDAR EXPLICITO ('quiero reagendar', 'me ayudas a reagendar', "
+                "'necesito cambiar la fecha/hora', 'mover la cita') → si existe "
                 "`last_booked_request_id` en el runtime context, di 'Dame un momento' y "
-                "llama submit_reschedule_for_review(original_request_id=<last_booked_request_id>). "
-                "Si confirma CANCELAR usa handoff_to_human. Si NO existe last_booked_request_id "
-                "(no hay cita previa en esta conversacion) usa handoff_to_human directamente.",
+                "llama submit_reschedule_for_review(original_request_id=<last_booked_request_id>) "
+                "directamente, NO vuelvas a preguntar. Si NO existe last_booked_request_id "
+                "(no hay cita previa en esta conversacion) usa handoff_to_human.\n"
+                "  • CANCELAR EXPLICITO ('quiero cancelar', 'cancela mi cita', 'ya no "
+                "quiero ir') → usa handoff_to_human directamente.\n"
+                "  • AMBIGUO ('no puedo asistir', 'no podre ir', 'tengo un imprevisto') → "
+                "preguntale '¿Queres reagendar? Para cancelar te paso con un asesor.' y "
+                "espera respuesta.",
                 "No llames confirm_selected_slot_and_create_event en este estado.",
             ]
 
@@ -260,11 +266,16 @@ def _instructions_for_state(
             "Puedes responder preguntas generales del paciente: informacion del consultorio, "
             "horarios, direccion, preparacion para la cita u otros datos generales.",
             _NEVER_INVENT_INJECTED_DATA,
-            "Si el paciente dice que NO puede asistir / pide reagendar/cancelar / intencion ambigua "
-            "sobre la cita: primero confirma intent — preguntale '¿Queres reagendar? Para cancelar "
-            "te paso con un asesor.' Si confirma REAGENDAR di 'Dame un momento' y llama "
-            "submit_reschedule_for_review(original_request_id=<request_id_activo del runtime context>). "
-            "Si confirma CANCELAR usa handoff_to_human.",
+            "Si el paciente quiere reagendar o cancelar la cita, decide segun la claridad del intent:\n"
+            "  • REAGENDAR EXPLICITO ('quiero reagendar', 'me ayudas a reagendar', 'necesito "
+            "cambiar la fecha/hora', 'mover la cita') → di 'Dame un momento' y llama "
+            "submit_reschedule_for_review(original_request_id=<request_id_activo del runtime context>) "
+            "directamente. NO vuelvas a preguntar.\n"
+            "  • CANCELAR EXPLICITO ('quiero cancelar', 'cancela mi cita', 'ya no quiero ir') "
+            "→ usa handoff_to_human directamente. NO vuelvas a preguntar.\n"
+            "  • AMBIGUO ('no puedo asistir', 'no podre ir', 'tengo un imprevisto', 'tengo "
+            "problema') → preguntale '¿Queres reagendar? Para cancelar te paso con un asesor.' "
+            "y espera respuesta.",
             "No solicites confirmacion de nuevo si el paciente ya respondio.",
             "No avances ningun flujo de agendamiento en este estado.",
         ]
