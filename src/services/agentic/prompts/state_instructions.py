@@ -211,11 +211,21 @@ def _instructions_for_state(
             f"compartio o esta siendo revisado nada por {ref} ni por nadie. "
             "La gestion interna es invisible. Si necesitas pedirle paciencia, "
             'di solo "dame un momento" sin justificar la espera.',
-            "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
-            "horarios, modalidades, direccion del consultorio o informacion general del profesional.",
+            # Acks cortos NO son intent: son solo cortesia. No disparar
+            # handoff ni intentar avanzar el flujo cuando el paciente
+            # responde con un mensaje positivo corto.
+            'Si el paciente responde con un ack corto ("vale", "ok", "gracias", '
+            '"perfecto", "listo", "dale", "bueno"), respondele cortes una sola vez '
+            '(ej. "perfecto, te aviso apenas tengamos las opciones") SIN llamar '
+            "ninguna tool. Si ya respondiste y el paciente vuelve a mandar otro "
+            "ack, no respondas nada.",
+            "Puedes responder preguntas concretas del paciente usando solo la informacion que ya "
+            "tienes: horarios, modalidades, direccion del consultorio o informacion general del "
+            "profesional.",
             "No avances el flujo de agendamiento ni solicites datos adicionales.",
-            "Si el paciente hace una pregunta que va mas alla de lo que puedes responder "
-            "con la informacion disponible, usa handoff_to_human.",
+            "Solo usa handoff_to_human si el paciente pide explicitamente algo que el bot no puede "
+            "resolver y que claramente requiere intervencion humana (ej. queja formal, pregunta "
+            "fuera del alcance del agendamiento). NO uses handoff para mensajes ambiguos ni acks.",
         ]
     if runtime_context.state == "AWAITING_PAYMENT_CONFIRMATION":
         return [
