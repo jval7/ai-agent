@@ -2369,7 +2369,9 @@ def test_select_proposed_slot_skips_payment_when_kind_is_reschedule() -> None:
 
 def test_confirm_rescheduled_slot_moves_calendar_event_and_closes_child() -> None:
     """End-to-end: given a RESCHEDULE SR with a selected slot, confirm_rescheduled_slot
-    calls reschedule on the original (calendar update) and closes the RESCHEDULE SR."""
+    moves the calendar event in place, promotes the RESCHEDULE child to BOOKED (so the
+    conversation lands in POST_BOOKING_FOLLOWUP), and detaches the calendar event from
+    the original SR so the agenda does not render duplicates."""
     service, repository, provider, _ = build_service(["reschedule-req-1"])
     _seed_booked_request(repository)
 
@@ -2417,8 +2419,8 @@ def test_confirm_rescheduled_slot_moves_calendar_event_and_closes_child() -> Non
         ),
     )
 
-    # Result is the original (now rescheduled) request.
-    assert result.request_id == "original-req-1"
+    # The RESCHEDULE child is now the active BOOKED appointment.
+    assert result.request_id == "reschedule-req-1"
     assert result.status == "BOOKED"
 
     # Calendar event must have been updated (update_event called once).
@@ -2426,10 +2428,19 @@ def test_confirm_rescheduled_slot_moves_calendar_event_and_closes_child() -> Non
     assert provider.updated_events[0].start_at == new_start
     assert provider.updated_events[0].end_at == new_end
 
-    # RESCHEDULE SR must be closed.
+    # RESCHEDULE child holds the calendar event and is BOOKED so the resolver
+    # treats the conversation as POST_BOOKING_FOLLOWUP.
     reschedule_sr = repository.get_request_by_id("tenant-1", "reschedule-req-1")
     assert reschedule_sr is not None
-    assert reschedule_sr.status == "SESSION_CLOSED"
+    assert reschedule_sr.status == "BOOKED"
+    assert reschedule_sr.calendar_event_id is not None
+
+    # Original SR keeps history but lost the calendar event reference, so the
+    # agenda calendar does not render two appointments at the same time.
+    original_sr = repository.get_request_by_id("tenant-1", "original-req-1")
+    assert original_sr is not None
+    assert original_sr.calendar_event_id is None
+    assert original_sr.status == "SESSION_CLOSED"
 
 
 def test_confirm_rescheduled_slot_rejects_when_no_slot_selected() -> None:

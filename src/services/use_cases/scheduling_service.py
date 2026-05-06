@@ -2118,37 +2118,137 @@ class SchedulingService:
                 "selected slot not found in reschedule request"
             )
 
-        # 3. Get the original request ID.
-        original_request_id = reschedule_request.source_appointment_id
-        if original_request_id is None:
+        # 3. Get the source appointment id + kind.
+        source_id = reschedule_request.source_appointment_id
+        source_kind = reschedule_request.source_appointment_kind
+        if source_id is None or source_kind is None:
             raise service_exceptions.InvalidStateError(
-                "reschedule request has no source appointment id"
+                "reschedule request has no source appointment reference"
             )
 
-        # 4. Move the original booked slot via the existing reschedule logic.
-        updated_original_dto = self._reschedule_booked_slot_impl(
+        # 4. Resolve the source's calendar_event_id (we keep the same Google
+        #    Calendar event; only its time changes).
+        calendar_event_id: str | None = None
+        source_request: scheduling_request_entity.SchedulingRequest | None = None
+        manual_appt = None
+        if source_kind == "SCHEDULING_REQUEST":
+            source_request = self._scheduling_repository.get_request_by_id(tenant_id, source_id)
+            if source_request is None:
+                raise service_exceptions.EntityNotFoundError("source scheduling request not found")
+            calendar_event_id = source_request.calendar_event_id
+        elif source_kind == "MANUAL_APPOINTMENT":
+            if self._manual_appointment_repository is None:
+                raise service_exceptions.InvalidStateError(
+                    "manual appointment repository not configured"
+                )
+            manual_appt = self._manual_appointment_repository.get_by_id(tenant_id, source_id)
+            if manual_appt is None:
+                raise service_exceptions.EntityNotFoundError("source manual appointment not found")
+            calendar_event_id = manual_appt.calendar_event_id
+        if calendar_event_id is None:
+            raise service_exceptions.InvalidStateError(
+                "source appointment has no calendar event to reschedule"
+            )
+
+        # 5. Update the Google Calendar event in place.
+        attendee_emails: list[str] = []
+        if self._patient_repository is not None:
+            patient = self._patient_repository.get_by_whatsapp_user(
+                tenant_id, reschedule_request.whatsapp_user_id
+            )
+            if patient is not None:
+                attendee_emails = [patient.email]
+        event_summary = self._resolve_booked_event_summary(
+            request=reschedule_request,
+            requested_summary=None,
+        )
+        self._google_calendar_onboarding_service.update_event(
             tenant_id=tenant_id,
-            request_id=original_request_id,
-            input_dto=scheduling_dto.RescheduleBookedSlotInputDTO(
-                start_at=selected_slot.start_at,
-                end_at=selected_slot.end_at,
-                timezone=selected_slot.timezone,
-            ),
+            event_id=calendar_event_id,
+            start_at=selected_slot.start_at,
+            end_at=selected_slot.end_at,
+            timezone=selected_slot.timezone,
+            summary=event_summary,
+            attendee_emails=attendee_emails,
         )
 
-        # 5. Close the RESCHEDULE SR (it fulfilled its purpose). The actual
-        # booking lives on the source SR — clear the child's selected_slot_id
-        # so the agenda calendar does not render it as a separate appointment.
         now_value = self._clock.now()
-        reschedule_request.selected_slot_id = None
-        reschedule_request.set_status("SESSION_CLOSED", now_value)
+
+        # 6. Cancel reminders bound to the old source — the new reminder will
+        #    point at the RESCHEDULE child (now the active booking).
+        if self._reminder_service is not None:
+            self._reminder_service.cancel_reminders_for_source(
+                tenant_id=tenant_id,
+                source_type=source_kind,
+                source_id=source_id,
+            )
+
+        # 7. Detach the calendar event from the old source so the agenda does
+        #    not render it as a duplicate appointment.
+        if source_request is not None:
+            source_request.calendar_event_id = None
+            if source_request.status == "BOOKED":
+                source_request.set_status("SESSION_CLOSED", now_value)
+            else:
+                source_request.updated_at = now_value
+            self._scheduling_repository.save_request(source_request)
+        if manual_appt is not None and self._manual_appointment_repository is not None:
+            manual_appt.status = "CANCELLED"
+            manual_appt.cancelled_at = now_value
+            manual_appt.updated_at = now_value
+            self._manual_appointment_repository.save(manual_appt)
+
+        # 8. Promote the RESCHEDULE child to BOOKED. It now owns the calendar
+        #    event and is the active appointment for this conversation, so the
+        #    resolver will treat the conversation as POST_BOOKING_FOLLOWUP.
+        for slot in reschedule_request.slots:
+            if slot.id == reschedule_request.selected_slot_id:
+                slot.status = "BOOKED"
+                slot.start_at = selected_slot.start_at
+                slot.end_at = selected_slot.end_at
+                break
+        reschedule_request.calendar_event_id = calendar_event_id
+        reschedule_request.set_status("BOOKED", now_value)
         self._scheduling_repository.save_request(reschedule_request)
 
-        # 6. Sync tags for the reschedule SR.
+        # 9. Schedule the next reminder pointing at the new BOOKED SR.
+        if self._reminder_service is not None:
+            self._reminder_service.maybe_schedule_reminder(
+                tenant_id=tenant_id,
+                source_type="SCHEDULING_REQUEST",
+                source_id=reschedule_request.id,
+                patient_whatsapp_user_id=reschedule_request.whatsapp_user_id,
+                patient_name=reschedule_request.patient_first_name or "Paciente",
+                appointment_start_at=selected_slot.start_at,
+                payment_status="PAID",
+                appointment_modality=reschedule_request.appointment_modality,
+            )
+
+        # 10. Close any other open SRs in this conversation (notably the
+        #     reminder pre-position placeholder, which is still in
+        #     AWAITING_ATTENDANCE_CONFIRMATION otherwise).
+        open_statuses = {
+            "AWAITING_CONSULTATION_REVIEW",
+            "AWAITING_CONSULTATION_DETAILS",
+            "AWAITING_PATIENT_CHOICE",
+            "AWAITING_PAYMENT_CONFIRMATION",
+            "AWAITING_ATTENDANCE_CONFIRMATION",
+        }
+        all_requests = self._scheduling_repository.list_requests_by_conversation(
+            tenant_id, conversation_id
+        )
+        for other_request in all_requests:
+            if other_request.id == reschedule_request.id:
+                continue
+            if other_request.status in open_statuses:
+                other_request.set_status("SESSION_CLOSED", now_value)
+                self._scheduling_repository.save_request(other_request)
+
+        # 11. Sync tags to BOOKED.
         self._sync_tags_after_status_change(
             tenant_id=tenant_id,
             conversation_id=conversation_id,
-            new_status=reschedule_request.status,
+            new_status="BOOKED",
         )
 
         logger.info(
@@ -2156,16 +2256,17 @@ class SchedulingService:
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="scheduling.rescheduled_slot_confirmed",
-                    message="rescheduled slot confirmed; original appointment moved",
+                    message="rescheduled slot confirmed; child promoted to BOOKED",
                     data={
                         "tenant_id": tenant_id,
                         "reschedule_request_id": reschedule_request.id,
-                        "original_request_id": original_request_id,
+                        "source_appointment_id": source_id,
+                        "source_appointment_kind": source_kind,
                     },
                 )
             },
         )
-        return updated_original_dto
+        return self._to_summary_dto(reschedule_request)
 
     def _resolve_request_for_consultation_submission(
         self,
