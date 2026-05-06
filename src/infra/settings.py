@@ -109,9 +109,9 @@ class Settings(pydantic.BaseModel):
             google_cloud_project_id=resolved_project_id,
             gemini_location=app_config_overrides.get(
                 "GEMINI_LOCATION",
-                app_config_overrides.get("GOOGLE_CLOUD_LOCATION", "global"),
+                app_config_overrides.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
             ),
-            gemini_model=app_config_overrides.get("GEMINI_MODEL", "gemini-3-flash-preview"),
+            gemini_model=app_config_overrides.get("GEMINI_MODEL", "gemini-2.5-flash"),
             gemini_max_output_tokens=int(
                 app_config_overrides.get("GEMINI_MAX_OUTPUT_TOKENS", "2048")
             ),
