@@ -2136,8 +2136,11 @@ class SchedulingService:
             ),
         )
 
-        # 5. Close the RESCHEDULE SR (it fulfilled its purpose).
+        # 5. Close the RESCHEDULE SR (it fulfilled its purpose). The actual
+        # booking lives on the source SR — clear the child's selected_slot_id
+        # so the agenda calendar does not render it as a separate appointment.
         now_value = self._clock.now()
+        reschedule_request.selected_slot_id = None
         reschedule_request.set_status("SESSION_CLOSED", now_value)
         self._scheduling_repository.save_request(reschedule_request)
 
