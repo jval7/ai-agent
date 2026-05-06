@@ -10,6 +10,7 @@ import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as 
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.domain.official_reminder_templates as official_reminder_templates
+import src.services.dto.whatsapp_template_dto as whatsapp_template_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.reminder_service as reminder_service_module
 import src.services.use_cases.whatsapp_template_service as whatsapp_template_service_module
@@ -318,3 +319,175 @@ def test_delete_template_allows_non_official_template() -> None:
 
     # Should not raise — custom templates not blocked.
     template_svc.delete_template("tenant-1", "my_custom_template")
+
+
+# ---------------------------------------------------------------------------
+# list_templates / create_template / delete_template error paths
+# ---------------------------------------------------------------------------
+
+
+def _save_connection(
+    wa_connection_repo: whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter,
+    *,
+    status: str,
+    access_token: str | None,
+    business_account_id: str | None,
+) -> None:
+    wa_connection_repo.save(
+        whatsapp_connection_entity.WhatsappConnection(
+            tenant_id="tenant-1",
+            phone_number_id="phone-1",
+            business_account_id=business_account_id,
+            access_token=access_token,
+            status=status,  # type: ignore[arg-type]
+            embedded_signup_state=None,
+            updated_at=_NOW,
+        )
+    )
+
+
+def test_list_templates_returns_provider_response_for_connected_tenant() -> None:
+    template_svc, _, _, _, _, _ = _build_context()
+
+    response = template_svc.list_templates("tenant-1")
+
+    assert response.templates == []
+
+
+def test_list_templates_raises_when_connection_not_found() -> None:
+    template_svc, _, _, _, _, _ = _build_context()
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        template_svc.list_templates("tenant-other")
+
+
+def test_list_templates_raises_when_connection_not_connected() -> None:
+    template_svc, _, _, wa_connection_repo, _, _ = _build_context()
+    _save_connection(
+        wa_connection_repo,
+        status="PENDING",
+        access_token="wa-token-1",
+        business_account_id="waba-1",
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        template_svc.list_templates("tenant-1")
+
+
+def test_list_templates_raises_when_credentials_missing() -> None:
+    template_svc, _, _, wa_connection_repo, _, _ = _build_context()
+    _save_connection(
+        wa_connection_repo,
+        status="CONNECTED",
+        access_token=None,
+        business_account_id="waba-1",
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        template_svc.list_templates("tenant-1")
+
+
+def _make_create_request(
+    name: str = "my_template",
+) -> whatsapp_template_dto.CreateTemplateRequestDTO:
+    return whatsapp_template_dto.CreateTemplateRequestDTO(
+        name=name,
+        category="UTILITY",
+        language="es",
+        components=[
+            whatsapp_template_dto.TemplateComponentDTO(
+                type="BODY",
+                text="Hola {{1}}, tu cita es el {{2}}.",
+                example_values=["Ana", "10/05"],
+            ),
+        ],
+    )
+
+
+def test_create_template_delegates_to_provider_and_returns_dto() -> None:
+    template_svc, _, _, _, _, _ = _build_context()
+
+    template = template_svc.create_template("tenant-1", _make_create_request("custom_one"))
+
+    assert template.name == "custom_one"
+    assert template.id == "fake-template-id"
+
+
+def test_create_template_raises_when_connection_not_found() -> None:
+    template_svc, _, _, _, _, _ = _build_context()
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        template_svc.create_template("tenant-other", _make_create_request())
+
+
+def test_create_template_raises_when_connection_not_connected() -> None:
+    template_svc, _, _, wa_connection_repo, _, _ = _build_context()
+    _save_connection(
+        wa_connection_repo,
+        status="PENDING",
+        access_token="wa-token-1",
+        business_account_id="waba-1",
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        template_svc.create_template("tenant-1", _make_create_request())
+
+
+def test_create_template_raises_when_credentials_missing() -> None:
+    template_svc, _, _, wa_connection_repo, _, _ = _build_context()
+    _save_connection(
+        wa_connection_repo,
+        status="CONNECTED",
+        access_token="wa-token-1",
+        business_account_id=None,
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        template_svc.create_template("tenant-1", _make_create_request())
+
+
+def test_delete_template_clears_payment_template_name_when_match() -> None:
+    template_svc, _, agent_profile_repo, _, _, _ = _build_context()
+    _seed_profile(agent_profile_repo, payment_name="my_payment_template")
+
+    template_svc.delete_template("tenant-1", "my_payment_template")
+
+    profile = agent_profile_repo.get_by_tenant_id("tenant-1")
+    assert profile is not None
+    assert profile.appointment_reminder_payment_template_name is None
+
+
+def test_delete_template_raises_when_connection_not_found() -> None:
+    template_svc, _, agent_profile_repo, _, _, _ = _build_context()
+    _seed_profile(agent_profile_repo)
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        template_svc.delete_template("tenant-other", "any_template")
+
+
+def test_delete_template_raises_when_connection_not_connected() -> None:
+    template_svc, _, agent_profile_repo, wa_connection_repo, _, _ = _build_context()
+    _seed_profile(agent_profile_repo)
+    _save_connection(
+        wa_connection_repo,
+        status="PENDING",
+        access_token="wa-token-1",
+        business_account_id="waba-1",
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        template_svc.delete_template("tenant-1", "any_template")
+
+
+def test_delete_template_raises_when_credentials_missing() -> None:
+    template_svc, _, agent_profile_repo, wa_connection_repo, _, _ = _build_context()
+    _seed_profile(agent_profile_repo)
+    _save_connection(
+        wa_connection_repo,
+        status="CONNECTED",
+        access_token=None,
+        business_account_id="waba-1",
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        template_svc.delete_template("tenant-1", "any_template")

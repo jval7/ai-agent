@@ -32,6 +32,7 @@ import src.adapters.outbound.security.jwt_provider_adapter as jwt_provider_adapt
 import src.adapters.outbound.security.password_hasher_adapter as password_hasher_adapter
 import src.adapters.outbound.whatsapp_meta.meta_whatsapp_provider_adapter as meta_whatsapp_provider_adapter
 import src.infra.langsmith_tracer as langsmith_tracer
+import src.infra.logs as app_logs
 import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
 import src.ports.email_notifier_port as email_notifier_port
@@ -84,6 +85,8 @@ import src.services.use_cases.webhook_service as webhook_service
 import src.services.use_cases.whatsapp_onboarding_service as whatsapp_onboarding_service
 import src.services.use_cases.whatsapp_template_service as whatsapp_template_service
 
+logger = app_logs.get_logger(__name__)
+
 
 class AppContainer:
     def __init__(self) -> None:
@@ -97,6 +100,7 @@ class AppContainer:
         )
         if not self.settings.google_cloud_project_id:
             raise ValueError("GOOGLE_CLOUD_PROJECT must be configured")
+        self._log_runtime_modes()
 
         self.clock_adapter = system_adapters.SystemClockAdapter()
         self.id_generator_adapter = system_adapters.UuidIdGeneratorAdapter()
@@ -318,12 +322,6 @@ class AppContainer:
         self.event_description_builder = event_description_builder.EventDescriptionBuilder(
             agent_profile_repository=self.agent_profile_repository,
         )
-        self.event_description_builder = event_description_builder.EventDescriptionBuilder(
-            agent_profile_repository=self.agent_profile_repository,
-        )
-        self.event_description_builder = event_description_builder.EventDescriptionBuilder(
-            agent_profile_repository=self.agent_profile_repository,
-        )
         self.scheduling_service = scheduling_service.SchedulingService(
             scheduling_repository=self.scheduling_repository,
             conversation_repository=self.conversation_repository,
@@ -527,4 +525,28 @@ class AppContainer:
             manual_appointment_repository=self.manual_appointment_repository,
             scheduling_repository=self.scheduling_repository,
             scheduled_reminder_repository=self.scheduled_reminder_repository,
+        )
+
+    def _log_runtime_modes(self) -> None:
+        degraded_modes: list[str] = []
+        if not self.settings.cloud_run_base_url:
+            degraded_modes.append("task_scheduler=noop (CLOUD_RUN_BASE_URL is empty)")
+        if not (self.settings.email_notifier_enabled and self.settings.resend_api_key):
+            degraded_modes.append(
+                "email_notifier=logging "
+                "(EMAIL_NOTIFIER_ENABLED is off or RESEND_API_KEY is missing)"
+            )
+        if self.settings.whatsapp_outbound_noop:
+            degraded_modes.append("whatsapp_outbound=noop (WHATSAPP_OUTBOUND_NOOP=true)")
+        if not degraded_modes:
+            return
+        logger.warning(
+            "container.degraded_runtime_modes",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="container.degraded_runtime_modes",
+                    message="container booted with degraded adapters",
+                    data={"degraded_modes": degraded_modes},
+                )
+            },
         )
