@@ -535,23 +535,23 @@ function Pricing() {
 
         <div className="grid grid-cols-1 items-stretch gap-8 md:grid-cols-3">
           <PricingCardV16
-            copPrice="~ $120.000 COP"
+            copPrice={null}
             ctaAction="login"
             ctaLabel="Empezar"
             description="Para profesionales con volumen moderado de citas."
             features={starterFeatures}
             name="Starter"
-            price="$29 USD"
+            price="$150.000 COP"
           />
           <PricingCardV16
-            copPrice="~ $240.000 COP"
+            copPrice={null}
             ctaAction="login"
             ctaLabel="Empezar Pro"
             description="Para profesionales con agenda llena o colapsada."
             features={proFeatures}
             highlighted
             name="Pro"
-            price="$59 USD"
+            price="$240.000 COP"
           />
           <PricingCardV16
             copPrice={null}
@@ -590,8 +590,8 @@ function ClienteFundadorBanner() {
             </h3>
             <p className="text-base text-slate-600">
               Recibe 15 días gratis. Solo los primeros 30 profesionales obtienen el plan Pro a{" "}
-              <s className="text-gray-400">$59 USD</s> →{" "}
-              <strong className="text-brand-teal">$29 USD</strong> por mes.
+              <s className="text-gray-400">$240.000 COP</s> →{" "}
+              <strong className="text-brand-teal">$120.000 COP</strong> por mes.
             </p>
           </div>
           <reactRouterDomModule.Link
@@ -699,7 +699,7 @@ function Comparator() {
     },
     {
       feature: "Precio plan principal",
-      agendachat: { text: "$59 USD", type: "text" },
+      agendachat: { text: "$240.000 COP", type: "text" },
       wati: { text: "$49 USD+", type: "text" },
       agendapro: { text: "$40 USD+", type: "text" },
       doctoralia: { text: "No público", type: "text" },
