@@ -67,7 +67,10 @@ class CloudTasksSchedulerAdapter(task_scheduler_port.TaskSchedulerPort):
                 },
             )
             return task_name
-        except Exception as exc:
+        except (
+            google.api_core.exceptions.GoogleAPICallError,
+            google.api_core.exceptions.RetryError,
+        ) as exc:
             raise service_exceptions.ExternalProviderError(
                 f"failed to create Cloud Task for auto-close: {exc}"
             ) from exc
@@ -111,7 +114,10 @@ class CloudTasksSchedulerAdapter(task_scheduler_port.TaskSchedulerPort):
                 },
             )
             return task_name
-        except Exception as exc:
+        except (
+            google.api_core.exceptions.GoogleAPICallError,
+            google.api_core.exceptions.RetryError,
+        ) as exc:
             raise service_exceptions.ExternalProviderError(
                 f"failed to create Cloud Task for appointment reminder: {exc}"
             ) from exc
@@ -122,7 +128,10 @@ class CloudTasksSchedulerAdapter(task_scheduler_port.TaskSchedulerPort):
             logger.info("cloud_tasks.task_cancelled", extra={"task_name": task_name})
         except google.api_core.exceptions.NotFound:
             logger.info("cloud_tasks.task_already_executed", extra={"task_name": task_name})
-        except Exception as exc:
+        except (
+            google.api_core.exceptions.GoogleAPICallError,
+            google.api_core.exceptions.RetryError,
+        ) as exc:
             raise service_exceptions.ExternalProviderError(
                 f"failed to cancel Cloud Task: {exc}"
             ) from exc

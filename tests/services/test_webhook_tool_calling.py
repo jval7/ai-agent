@@ -13,6 +13,7 @@ import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.task_scheduler_adapter as inmemory_task_scheduler_adapter
 import src.adapters.outbound.inmemory.tenant_repository_adapter as tenant_repository_adapter
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
+import src.adapters.outbound.noop_tracer_adapter as noop_tracer_adapter
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.google_calendar_connection as google_calendar_connection_entity
@@ -22,7 +23,6 @@ import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.scheduling_slot as scheduling_slot_entity
 import src.domain.entities.tenant as tenant_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
-import src.infra.langsmith_tracer as langsmith_tracer
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
 import src.services.agentic.guards.waiting_professional_silent_guard as professional_silent_guard_mod
 import src.services.agentic.prompt_builder as prompt_builder_mod
@@ -78,7 +78,7 @@ def _build_new_components(
     sleep_fn: typing.Callable[[float], None] | None = None,
 ) -> dict[str, typing.Any]:
     """Builds the new refactored components for WebhookService."""
-    tracer = langsmith_tracer.LangsmithTracer(enabled=False)
+    tracer = noop_tracer_adapter.NoopTracerAdapter()
     tool_def_registry = tool_definition_registry_mod.ToolDefinitionRegistry()
 
     effective_sleep: typing.Callable[[float], None] = (
@@ -253,6 +253,7 @@ def build_tool_calling_context(
         id_generator=id_generator,
         clock=clock,
         context_message_limit=8,
+        tracer=noop_tracer_adapter.NoopTracerAdapter(),
         **service_kwargs,
         **_build_new_components(
             scheduling_use_case,

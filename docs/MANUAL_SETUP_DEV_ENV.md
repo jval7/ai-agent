@@ -1,5 +1,7 @@
 # Setup manual: Ambiente Dev en GCP
 
+<!-- Última revisión: 2026-05-05 por tech-debt-pass — verificá comandos antes de seguir si la fecha es vieja -->
+
 Guia paso a paso para crear el ambiente de desarrollo separado de produccion.
 
 **Produccion**: `ai-agent-calendar-2603011621`

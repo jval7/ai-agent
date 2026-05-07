@@ -750,3 +750,124 @@ def test_change_modality_blocks_cancelled_appointment() -> None:
                 new_modality="PRESENCIAL"
             ),
         )
+
+
+# ---------------------------------------------------------------------------
+# Authorization checks — non-professional callers
+# ---------------------------------------------------------------------------
+
+
+def test_list_appointments_rejects_non_professional() -> None:
+    service, _, _, _ = build_service()
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.list_appointments(claims=build_claims("member"))
+
+
+def test_create_appointment_rejects_non_professional() -> None:
+    service, _, _, _ = build_service()
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.create_appointment(
+            claims=build_claims("member"),
+            create_dto=manual_appointment_dto.CreateManualAppointmentDTO(
+                patient_whatsapp_user_id="wa-1",
+                start_at=datetime.datetime(2026, 1, 12, 10, 0, tzinfo=datetime.UTC),
+                end_at=datetime.datetime(2026, 1, 12, 11, 0, tzinfo=datetime.UTC),
+                timezone="America/Bogota",
+                summary="Consulta",
+                payment_amount_cop=80000,
+                payment_currency="COP",
+                payment_method="CASH",
+                payment_status="PAID",
+                is_virtual=False,
+            ),
+        )
+
+
+def test_reschedule_appointment_rejects_non_professional() -> None:
+    service, _, _, _ = build_service()
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.reschedule_appointment(
+            claims=build_claims("member"),
+            appointment_id="manual-appt-1",
+            input_dto=manual_appointment_dto.RescheduleManualAppointmentDTO(
+                start_at=datetime.datetime(2026, 1, 12, 10, 0, tzinfo=datetime.UTC),
+                end_at=datetime.datetime(2026, 1, 12, 11, 0, tzinfo=datetime.UTC),
+                timezone="America/Bogota",
+                summary=None,
+            ),
+        )
+
+
+def test_cancel_appointment_rejects_non_professional() -> None:
+    service, _, _, _ = build_service()
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.cancel_appointment(
+            claims=build_claims("member"),
+            appointment_id="manual-appt-1",
+            input_dto=manual_appointment_dto.CancelManualAppointmentDTO(reason=None),
+        )
+
+
+def test_update_payment_rejects_non_professional() -> None:
+    service, _, _, _ = build_service()
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.update_payment(
+            claims=build_claims("member"),
+            appointment_id="manual-appt-1",
+            input_dto=manual_appointment_dto.UpdateManualAppointmentPaymentDTO(
+                payment_amount_cop=80000,
+                payment_currency="COP",
+                payment_method="CASH",
+                payment_status="PAID",
+            ),
+        )
+
+
+def test_change_modality_rejects_non_professional() -> None:
+    service, _, _, _ = build_service()
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.change_modality(
+            claims=build_claims("member"),
+            appointment_id="manual-appt-1",
+            input_dto=manual_appointment_dto.ChangeManualAppointmentModalityInputDTO(
+                new_modality="PRESENCIAL"
+            ),
+        )
+
+
+def test_reschedule_appointment_raises_when_appointment_not_found() -> None:
+    service, _, _, _ = build_service()
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        service.reschedule_appointment(
+            claims=build_claims("professional"),
+            appointment_id="ghost-appointment",
+            input_dto=manual_appointment_dto.RescheduleManualAppointmentDTO(
+                start_at=datetime.datetime(2026, 1, 12, 10, 0, tzinfo=datetime.UTC),
+                end_at=datetime.datetime(2026, 1, 12, 11, 0, tzinfo=datetime.UTC),
+                timezone="America/Bogota",
+                summary=None,
+            ),
+        )
+
+
+def test_update_payment_raises_when_appointment_not_found() -> None:
+    service, _, _, _ = build_service()
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        service.update_payment(
+            claims=build_claims("professional"),
+            appointment_id="ghost-appointment",
+            input_dto=manual_appointment_dto.UpdateManualAppointmentPaymentDTO(
+                payment_amount_cop=80000,
+                payment_currency="COP",
+                payment_method="CASH",
+                payment_status="PAID",
+            ),
+        )

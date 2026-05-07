@@ -4,7 +4,7 @@ Backend del agente conversacional WhatsApp multi-tenant para agendamiento de cit
 
 > Nota: el repo, los servicios Cloud Run, los buckets de GCS y los secrets siguen llamándose `ai-agent`/`ai-agent-backend`/`ai-agent-frontend`/etc. para no romper logs históricos, dashboards, alertas e integraciones de IAM/Secret Manager. **Agendachat es la marca pública** (dominio, copy de UI, paquetes); `ai-agent` es la identidad técnica interna.
 
-Meta onboarding and message lifecycle (E2E): `META_BACKEND_E2E_README.md`
+Meta onboarding and message lifecycle (E2E): `docs/archive/META_BACKEND_E2E_README.md`
 
 ## Agent orchestration
 

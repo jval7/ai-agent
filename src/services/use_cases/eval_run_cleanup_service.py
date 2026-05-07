@@ -7,7 +7,6 @@ Borra en orden:
 Si alguna sub-operación falla, se loguea y continúa (best-effort).
 """
 
-import src.adapters.outbound.firestore.errors as firestore_errors
 import src.infra.logs as app_logs
 import src.ports.eval_run_repository_port as eval_run_repository_port
 import src.ports.tenant_repository_port as tenant_repository_port
@@ -46,10 +45,7 @@ class EvalRunCleanupService:
                     if tenant is not None and tenant.is_eval_tenant:
                         self._eval_tenant_service.delete_eval_tenant(tenant_id)
                         tenants_deleted += 1
-                except (
-                    service_exceptions.ServiceError,
-                    firestore_errors.FirestoreRepositoryError,
-                ) as error:
+                except service_exceptions.ServiceError as error:
                     logger.warning(
                         "eval_run_cleanup.tenant_delete.failed",
                         extra={
@@ -69,10 +65,7 @@ class EvalRunCleanupService:
             try:
                 self._eval_run_repository.delete_run(run_doc_id)
                 eval_runs_deleted += 1
-            except (
-                service_exceptions.ServiceError,
-                firestore_errors.FirestoreRepositoryError,
-            ) as error:
+            except service_exceptions.ServiceError as error:
                 logger.warning(
                     "eval_run_cleanup.run_delete.failed",
                     extra={

@@ -5,7 +5,6 @@ import typing
 import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.message as message_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
-import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.logs as app_logs
 import src.ports.agent_profile_repository_port as agent_profile_repository_port
 import src.ports.agent_workflow_port as agent_workflow_port
@@ -16,6 +15,7 @@ import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.patient_repository_port as patient_repository_port
 import src.ports.processed_webhook_event_repository_port as processed_webhook_event_repository_port
+import src.ports.tracer_port as tracer_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
@@ -54,7 +54,7 @@ class WebhookService:
         tool_calling_orchestrator: tool_calling_orchestrator_mod.ToolCallingOrchestrator,
         runtime_context_resolver: runtime_context_resolver_mod.RuntimeContextResolver,
         message_sender: conversation_message_sender_mod.ConversationMessageSender,
-        tracer: langsmith_tracer.LangsmithTracer | None = None,
+        tracer: tracer_port.TracerPort,
         sleep_seconds: typing.Callable[[float], None] | None = None,
         agent_workflow: agent_workflow_port.AgentWorkflowPort | None = None,
         runtime_prompt_builder: prompt_builder.RuntimePromptBuilder | None = None,
@@ -83,10 +83,7 @@ class WebhookService:
             self._prompt_builder = prompt_builder.RuntimePromptBuilder()
         else:
             self._prompt_builder = runtime_prompt_builder
-        if tracer is None:
-            self._tracer = langsmith_tracer.LangsmithTracer()
-        else:
-            self._tracer = tracer
+        self._tracer = tracer
         self._max_debounce_reprocess_iterations = 3
         self._trace_email_pattern = re.compile(
             r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"
@@ -116,14 +113,7 @@ class WebhookService:
         for event in events:
             try:
                 self._process_event(event)
-            except service_exceptions.ServiceError as error:
-                self._mark_event_failed_by_phone_number(
-                    phone_number_id=event.phone_number_id,
-                    provider_event_id=event.provider_event_id,
-                    failure_reason=str(error),
-                )
-                raise
-            except ValueError as error:
+            except (service_exceptions.ServiceError, ValueError) as error:
                 self._mark_event_failed_by_phone_number(
                     phone_number_id=event.phone_number_id,
                     provider_event_id=event.provider_event_id,
@@ -701,7 +691,7 @@ class WebhookService:
                 failed_at=self._clock.now(),
                 failure_reason=self._truncate_failure_reason(failure_reason),
             )
-        except Exception:
+        except service_exceptions.ExternalProviderError as error:
             logger.warning(
                 "webhook.event_failed_mark_error",
                 extra={
@@ -711,6 +701,7 @@ class WebhookService:
                         data={
                             "tenant_id": tenant_id,
                             "provider_event_id": provider_event_id,
+                            "error": str(error),
                         },
                     )
                 },
