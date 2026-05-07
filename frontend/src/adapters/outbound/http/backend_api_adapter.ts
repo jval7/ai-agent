@@ -423,6 +423,9 @@ export class BackendApiAdapter implements backendApiPort.BackendApiPort {
     return {
       whatsappConnected: payload.whatsapp_connected,
       googleCalendarConnected: payload.google_calendar_connected,
+      // Default to `false` so the banner does not flash for old API
+      // builds that have not deployed the field yet.
+      googleCalendarReauthRequired: payload.google_calendar_reauth_required ?? false,
       ready: payload.ready
     };
   }
