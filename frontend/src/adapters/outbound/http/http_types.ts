@@ -423,6 +423,7 @@ export interface ServiceOfferingApiResponse {
   modalities: string[];
   target_patients: string[];
   tariffs: TariffOptionApiResponse[];
+  enabled: boolean;
 }
 
 export interface PaymentMethodApiResponse {

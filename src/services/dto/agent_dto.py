@@ -34,6 +34,7 @@ class ServiceOfferingDTO(pydantic.BaseModel):
     modalities: list[typing.Literal["PRESENCIAL", "VIRTUAL"]] = []
     target_patients: list[typing.Literal["NEW", "RETURNING"]] = ["NEW", "RETURNING"]
     tariffs: list[TariffOptionDTO] = []
+    enabled: bool = True
 
 
 class PaymentMethodDTO(pydantic.BaseModel):

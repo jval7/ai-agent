@@ -197,19 +197,64 @@ export function ServiceOfferingItem(props: ServiceOfferingItemProps) {
     <collapsibleCardModule.CollapsibleCard
       summary={
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-brand-ink">{summaryName}</span>
+          <span
+            className={`text-sm font-semibold ${
+              value.enabled ? "text-brand-ink" : "text-brand-ink/50 line-through"
+            }`}
+          >
+            {summaryName}
+          </span>
           {value.modalities.map((m) => (
             <span
-              className="rounded-full bg-brand-accent-light/60 px-2 py-0.5 text-xs font-semibold text-brand-teal uppercase tracking-wide"
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold uppercase tracking-wide ${
+                value.enabled
+                  ? "bg-brand-accent-light/60 text-brand-teal"
+                  : "bg-slate-200 text-slate-500"
+              }`}
               key={m}
             >
               {modalityLabel(m)}
             </span>
           ))}
+          {!value.enabled ? (
+            <span className="rounded-full bg-slate-300 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-slate-700">
+              Desactivado
+            </span>
+          ) : null}
         </div>
       }
     >
       <div className="space-y-4">
+        <label className="flex items-center justify-between gap-3 rounded-xl bg-surface-low px-3 py-2.5">
+          <span className="text-sm font-medium text-brand-ink">
+            Servicio activo
+            <span className="ml-2 font-normal text-xs text-slate-500">
+              {value.enabled
+                ? "El bot puede ofrecer este servicio a pacientes."
+                : "El bot ignora este servicio. Las citas existentes no se ven afectadas."}
+            </span>
+          </span>
+          <button
+            aria-checked={value.enabled}
+            aria-label="Activar o desactivar servicio"
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              value.enabled ? "bg-brand-teal" : "bg-slate-300"
+            }`}
+            disabled={disabled}
+            onClick={() => {
+              onChange({ ...value, enabled: !value.enabled });
+            }}
+            role="switch"
+            type="button"
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                value.enabled ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </label>
+
         <formFieldModule.FormField htmlFor="" label="Nombre del servicio">
           <input
             className={INPUT_CLASS}
