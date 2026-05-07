@@ -52,16 +52,6 @@ export function Navbar() {
             </a>
             <a
               className="text-sm font-semibold text-slate-600 transition-colors hover:text-brand-teal"
-              href="#comparativa"
-              onClick={(e) => {
-                e.preventDefault();
-                scrollTo("comparativa");
-              }}
-            >
-              Comparativa
-            </a>
-            <a
-              className="text-sm font-semibold text-slate-600 transition-colors hover:text-brand-teal"
               href="#roadmap"
               onClick={(e) => {
                 e.preventDefault();
@@ -607,162 +597,6 @@ function ClienteFundadorBanner() {
 }
 
 // ---------------------------------------------------------------------------
-// Comparativa
-// ---------------------------------------------------------------------------
-
-interface CompareCell {
-  text: string;
-  note?: string;
-  type: "check" | "partial" | "cancel" | "text";
-}
-
-interface CompareRowData {
-  feature: string;
-  agendachat: CompareCell;
-  wati: CompareCell;
-  agendapro: CompareCell;
-  doctoralia: CompareCell;
-  respondio: CompareCell;
-}
-
-function CompareCellContent({ cell }: { cell: CompareCell }) {
-  if (cell.type === "check") {
-    return (
-      <span
-        className="material-symbols-outlined font-bold text-brand-teal"
-        style={{ fontVariationSettings: "'FILL' 1" }}
-      >
-        check_circle
-      </span>
-    );
-  }
-  if (cell.type === "cancel") {
-    return <span className="material-symbols-outlined text-slate-400">cancel</span>;
-  }
-  if (cell.type === "partial") {
-    return (
-      <div className="flex flex-col items-center gap-1">
-        <span className="material-symbols-outlined text-slate-400">error</span>
-        {cell.note && <span className="text-xs text-slate-400">{cell.note}</span>}
-      </div>
-    );
-  }
-  return (
-    <span className="font-bold text-brand-teal">
-      {cell.text}
-      {cell.note && <span className="ml-1 text-xs text-slate-400">{cell.note}</span>}
-    </span>
-  );
-}
-
-function Comparator() {
-  const rows: CompareRowData[] = [
-    {
-      feature: "WhatsApp Business API",
-      agendachat: { text: "", type: "check" },
-      wati: { text: "", type: "check" },
-      agendapro: { text: "", note: "Externo", type: "partial" },
-      doctoralia: { text: "", note: "Solo recordatorios", type: "partial" },
-      respondio: { text: "", type: "check" }
-    },
-    {
-      feature: "IA que agenda sola 24/7",
-      agendachat: { text: "", type: "check" },
-      wati: { text: "", type: "cancel" },
-      agendapro: { text: "", type: "cancel" },
-      doctoralia: { text: "", type: "cancel" },
-      respondio: { text: "", note: "desde $159", type: "partial" }
-    },
-    {
-      feature: "Google Calendar bidireccional",
-      agendachat: { text: "", type: "check" },
-      wati: { text: "", type: "cancel" },
-      agendapro: { text: "", note: "Parcial", type: "partial" },
-      doctoralia: { text: "", type: "cancel" },
-      respondio: { text: "", type: "cancel" }
-    },
-    {
-      feature: "Recordatorios de pago",
-      agendachat: { text: "", type: "check" },
-      wati: { text: "", type: "cancel" },
-      agendapro: { text: "", note: "Parcial", type: "partial" },
-      doctoralia: { text: "", type: "cancel" },
-      respondio: { text: "", type: "cancel" }
-    },
-    {
-      feature: "CRM de pacientes incluido",
-      agendachat: { text: "", type: "check" },
-      wati: { text: "", note: "Básico", type: "partial" },
-      agendapro: { text: "", type: "check" },
-      doctoralia: { text: "", type: "check" },
-      respondio: { text: "", note: "Básico", type: "partial" }
-    },
-    {
-      feature: "Precio plan principal",
-      agendachat: { text: "$59 USD", type: "text" },
-      wati: { text: "$49 USD+", type: "text" },
-      agendapro: { text: "$40 USD+", type: "text" },
-      doctoralia: { text: "No público", type: "text" },
-      respondio: { text: "$79 USD+", type: "text" }
-    }
-  ];
-
-  return (
-    <section className="px-6 py-20" id="comparativa">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-16 text-center">
-          <h2 className="mb-4 font-display text-4xl font-bold text-brand-ink">Por qué elegirnos</h2>
-          <p className="text-base text-slate-500">
-            Somos los únicos especialistas en agendamiento conversacional para salud.
-          </p>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] border-collapse text-left">
-            <thead>
-              <tr className="border-b border-border-subtle">
-                <th className="py-6 font-display text-base font-semibold text-brand-ink">
-                  Característica
-                </th>
-                <th className="rounded-t-xl bg-brand-teal/5 px-6 py-6 text-center font-display text-base font-semibold text-brand-teal">
-                  Agendachat
-                </th>
-                <th className="py-6 text-center text-base font-normal text-gray-400">Wati</th>
-                <th className="py-6 text-center text-base font-normal text-gray-400">Agendapro</th>
-                <th className="py-6 text-center text-base font-normal text-gray-400">Doctoralia</th>
-                <th className="py-6 text-center text-base font-normal text-gray-400">Respond.io</th>
-              </tr>
-            </thead>
-            <tbody className="text-brand-ink">
-              {rows.map((row) => (
-                <tr className="border-b border-border-subtle" key={row.feature}>
-                  <td className="py-6 font-medium">{row.feature}</td>
-                  <td className="bg-brand-teal/5 px-6 py-6 text-center">
-                    <CompareCellContent cell={row.agendachat} />
-                  </td>
-                  <td className="py-6 text-center text-slate-400">
-                    <CompareCellContent cell={row.wati} />
-                  </td>
-                  <td className="py-6 text-center text-slate-400">
-                    <CompareCellContent cell={row.agendapro} />
-                  </td>
-                  <td className="py-6 text-center text-slate-400">
-                    <CompareCellContent cell={row.doctoralia} />
-                  </td>
-                  <td className="py-6 text-center text-slate-400">
-                    <CompareCellContent cell={row.respondio} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Roadmap
 // ---------------------------------------------------------------------------
 
@@ -787,8 +621,13 @@ function RoadmapSection() {
     },
     {
       emoji: "🎯",
-      subtitle: "Detecta leads valiosos antes que otros.",
+      subtitle: "Recupera clientes potenciales automáticamente.",
       title: "Reconocimiento de clientes potenciales"
+    },
+    {
+      emoji: "📋",
+      subtitle: "Historial clínico del paciente al alcance de un mensaje.",
+      title: "Historia clínica"
     },
     {
       emoji: "📊",
@@ -1097,14 +936,6 @@ export function Footer() {
                 Roadmap
               </a>
             </li>
-            <li>
-              <a
-                className="text-sm text-slate-500 transition-colors hover:text-brand-teal"
-                href="#comparativa"
-              >
-                Comparativa
-              </a>
-            </li>
           </ul>
         </div>
 
@@ -1209,7 +1040,6 @@ export function LandingPage() {
         <HowItWorks />
         <Pricing />
         <ClienteFundadorBanner />
-        <Comparator />
         <RoadmapSection />
         <FAQ />
         <LeadForm />
