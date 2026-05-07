@@ -590,6 +590,7 @@ class SchedulingService:
                 gcal_onboarding_service=self._google_calendar_onboarding_service,
                 clock=self._clock,
                 patient_repository=self._patient_repository,
+                manual_appointment_repository=self._manual_appointment_repository,
                 reminder_service=self._reminder_service,
                 tag_service=self._tag_service,
             ),
