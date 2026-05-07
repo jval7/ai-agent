@@ -49,7 +49,8 @@ const FULL_PROFILE: agentModel.ProfessionalProfile = {
           description: null,
           prices: [{ currency: "COP", amount: 130000 }]
         }
-      ]
+      ],
+      enabled: true
     }
   ],
   paymentMethods: [
@@ -243,4 +244,47 @@ vitestModule.describe("ProfessionalProfileForm", () => {
       vitestModule.expect(updateSpy).toHaveBeenCalledTimes(1);
     });
   });
+
+  vitestModule.it(
+    "service activo toggle flips the enabled flag and is sent in payload",
+    async () => {
+      const { updateSpy } = renderForm(FULL_PROFILE);
+      await testingLibraryReactModule.screen.findByRole("button", {
+        name: /Servicios y práctica/i
+      });
+      await expandCard(/Servicios y práctica/i);
+      await expandCard(/Consulta Individual/i);
+
+      // The toggle is a button with role=switch, aria-label "Activar o desactivar servicio".
+      const toggle = await testingLibraryReactModule.screen.findByRole("switch", {
+        name: /Activar o desactivar servicio/i
+      });
+      vitestModule.expect(toggle.getAttribute("aria-checked")).toBe("true");
+
+      await testingLibraryReactModule.act(async () => {
+        testingLibraryReactModule.fireEvent.click(toggle);
+      });
+
+      // After the click the service is disabled visually (toggle aria flips).
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(toggle.getAttribute("aria-checked")).toBe("false");
+      });
+
+      // Save and assert the payload carries enabled=false.
+      await testingLibraryReactModule.act(async () => {
+        testingLibraryReactModule.fireEvent.click(
+          testingLibraryReactModule.screen.getByRole("button", { name: "Guardar" })
+        );
+      });
+      await testingLibraryReactModule.waitFor(() => {
+        vitestModule.expect(updateSpy).toHaveBeenCalledTimes(1);
+      });
+      const firstCall = updateSpy.mock.calls[0];
+      vitestModule.expect(firstCall).toBeDefined();
+      const payload = firstCall![0] as agentModel.ProfessionalProfile;
+      const firstService = payload.services[0];
+      vitestModule.expect(firstService).toBeDefined();
+      vitestModule.expect(firstService!.enabled).toBe(false);
+    }
+  );
 });

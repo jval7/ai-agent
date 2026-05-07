@@ -59,8 +59,17 @@ def _instructions_for_state(
                 "Flujo actual: inicio de conversacion con un paciente RECURRENTE "
                 "(ya tiene historia con el profesional — ver 'Known patient profile' "
                 "en este prompt).",
-                "Saluda al paciente por su nombre (de 'Known patient profile') y pregunta "
-                "para que necesita la conversacion. Tres flujos posibles:\n"
+                "EN EL PRIMER MENSAJE de bienvenida: (i) saluda al paciente por su nombre "
+                "(de 'Known patient profile'), y (ii) presenta los servicios disponibles "
+                "POR NOMBRE, SIN PRECIOS, en una sola lista. Filtrar: SOLO ofrece "
+                "servicios marcados con `<target_patients>` que incluya 'recurrentes' "
+                "(Pacientes nuevos y recurrentes O Solo pacientes recurrentes). Ignora "
+                "los servicios marcados solo para pacientes nuevos. NO partas el saludo "
+                "en dos turnos (uno para saludar y otro para listar servicios) — todo "
+                "junto en un unico OUTBOUND. Si el paciente menciona en ese mismo "
+                "mensaje un intent claro (reagendar, cancelar, o un servicio especifico), "
+                "atiende ese intent en lugar de listar servicios.",
+                "Tres flujos posibles tras la presentacion:\n"
                 "  (a) Cita de control / seguimiento — agendar una nueva cita.\n"
                 "  (b) Una consulta sobre su tratamiento o cuidados — responde con la "
                 "informacion disponible; si no puedes, ofrece pasar a humano.\n"
@@ -87,13 +96,19 @@ def _instructions_for_state(
                 "del system prompt (precios, horarios, datos de pago, etc.). NO llames "
                 "submit_consultation_reason_for_review si solo es una consulta.",
                 _QUOTE_CURRENCY_PER_LOCATION,
-                "Si pide reagendar o no puede asistir / intencion ambigua sobre la cita "
-                "(caso c): primero confirma intent — preguntale '¿Queres reagendar? Para "
-                "cancelar te paso con un asesor.' Si confirma REAGENDAR y existe "
+                "Si el paciente quiere reagendar o cancelar una cita previa (caso c), "
+                "decide segun la claridad del intent:\n"
+                "  • REAGENDAR EXPLICITO ('quiero reagendar', 'me ayudas a reagendar', "
+                "'necesito cambiar la fecha/hora', 'mover la cita') → si existe "
                 "`last_booked_request_id` en el runtime context, di 'Dame un momento' y "
-                "llama submit_reschedule_for_review(original_request_id=<last_booked_request_id>). "
-                "Si confirma CANCELAR usa handoff_to_human. Si NO existe last_booked_request_id "
-                "(no hay cita previa en esta conversacion) usa handoff_to_human directamente.",
+                "llama submit_reschedule_for_review(original_request_id=<last_booked_request_id>) "
+                "directamente, NO vuelvas a preguntar. Si NO existe last_booked_request_id "
+                "(no hay cita previa en esta conversacion) usa handoff_to_human.\n"
+                "  • CANCELAR EXPLICITO ('quiero cancelar', 'cancela mi cita', 'ya no "
+                "quiero ir') → usa handoff_to_human directamente.\n"
+                "  • AMBIGUO ('no puedo asistir', 'no podre ir', 'tengo un imprevisto') → "
+                "preguntale '¿Queres reagendar? Para cancelar te paso con un asesor.' y "
+                "espera respuesta.",
                 "No llames confirm_selected_slot_and_create_event en este estado.",
             ]
 
@@ -171,8 +186,10 @@ def _instructions_for_state(
             # No pedir datos adicionales; solo confirmar el nuevo slot.
             return [
                 "Flujo actual: reagendamiento — el paciente eligio un nuevo horario.",
-                "Llama confirm_rescheduled_slot(request_id=<request_id del runtime context>) inmediatamente. "
-                "NO pidas datos al paciente (nombre, email, edad) — se heredan de la cita original.",
+                "Llama confirm_rescheduled_slot(request_id=<valor literal de `request_id_activo` "
+                "del runtime context>) inmediatamente. NO uses el `slot_id` que devolvio "
+                "select_proposed_slot — esos son cosas distintas. NO pidas datos al paciente "
+                "(nombre, email, edad) — se heredan de la cita original.",
                 "Despues de reagendar, confirma con texto natural: 'Tu cita queda el [fecha] a las [hora]'. "
                 "NO uses la palabra 'confirmar' ni derivados para referirte al reagendamiento — "
                 "usa 'queda agendada', 'queda lista', 'queda para el'. "
@@ -187,8 +204,10 @@ def _instructions_for_state(
                 "Cuando no falte ningun dato, llama confirm_selected_slot_and_create_event.",
             ]
         return [
-            "Flujo actual: ya hay slot seleccionado y no faltan datos de perfil.",
-            "Llama confirm_selected_slot_and_create_event para completar la reserva.",
+            "Flujo actual: el slot ya quedo seleccionado y no falta ningun dato del paciente.",
+            "Llama confirm_selected_slot_and_create_event INMEDIATAMENTE. NO pidas nombre, "
+            "correo, telefono ni edad — todos esos datos ya estan en 'Known patient profile' "
+            "o en el request. Pasa los args vacios y el backend reutiliza el perfil.",
         ]
     if runtime_context.state == "AWAITING_CONSULTATION_REVIEW":
         return [
@@ -203,11 +222,22 @@ def _instructions_for_state(
             f"compartio o esta siendo revisado nada por {ref} ni por nadie. "
             "La gestion interna es invisible. Si necesitas pedirle paciencia, "
             'di solo "dame un momento" sin justificar la espera.',
-            "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
-            "horarios, modalidades, direccion del consultorio o informacion general del profesional.",
+            # Acks cortos NO son intent: son solo cortesia. No disparar
+            # handoff ni intentar avanzar el flujo cuando el paciente
+            # responde con un mensaje positivo corto. SIEMPRE devuelve
+            # texto — el orchestrator interpreta una respuesta vacia como
+            # falla de Gemini y dispara el mensaje de fallback.
+            'Si el paciente responde con un ack corto ("vale", "ok", "gracias", '
+            '"perfecto", "listo", "dale", "bueno"), respondele cortes y breve '
+            '(ej. "Con gusto", "Listo, te aviso apenas tengamos las opciones", '
+            '"De nada"). NO llames ninguna tool. NUNCA respondas vacio.',
+            "Puedes responder preguntas concretas del paciente usando solo la informacion que ya "
+            "tienes: horarios, modalidades, direccion del consultorio o informacion general del "
+            "profesional.",
             "No avances el flujo de agendamiento ni solicites datos adicionales.",
-            "Si el paciente hace una pregunta que va mas alla de lo que puedes responder "
-            "con la informacion disponible, usa handoff_to_human.",
+            "Solo usa handoff_to_human si el paciente pide explicitamente algo que el bot no puede "
+            "resolver y que claramente requiere intervencion humana (ej. queja formal, pregunta "
+            "fuera del alcance del agendamiento). NO uses handoff para mensajes ambiguos ni acks.",
         ]
     if runtime_context.state == "AWAITING_PAYMENT_CONFIRMATION":
         return [
@@ -258,11 +288,16 @@ def _instructions_for_state(
             "Puedes responder preguntas generales del paciente: informacion del consultorio, "
             "horarios, direccion, preparacion para la cita u otros datos generales.",
             _NEVER_INVENT_INJECTED_DATA,
-            "Si el paciente dice que NO puede asistir / pide reagendar/cancelar / intencion ambigua "
-            "sobre la cita: primero confirma intent — preguntale '¿Queres reagendar? Para cancelar "
-            "te paso con un asesor.' Si confirma REAGENDAR di 'Dame un momento' y llama "
-            "submit_reschedule_for_review(original_request_id=<request_id_activo del runtime context>). "
-            "Si confirma CANCELAR usa handoff_to_human.",
+            "Si el paciente quiere reagendar o cancelar la cita, decide segun la claridad del intent:\n"
+            "  • REAGENDAR EXPLICITO ('quiero reagendar', 'me ayudas a reagendar', 'necesito "
+            "cambiar la fecha/hora', 'mover la cita') → di 'Dame un momento' y llama "
+            "submit_reschedule_for_review(original_request_id=<request_id_activo del runtime context>) "
+            "directamente. NO vuelvas a preguntar.\n"
+            "  • CANCELAR EXPLICITO ('quiero cancelar', 'cancela mi cita', 'ya no quiero ir') "
+            "→ usa handoff_to_human directamente. NO vuelvas a preguntar.\n"
+            "  • AMBIGUO ('no puedo asistir', 'no podre ir', 'tengo un imprevisto', 'tengo "
+            "problema') → preguntale '¿Queres reagendar? Para cancelar te paso con un asesor.' "
+            "y espera respuesta.",
             "No solicites confirmacion de nuevo si el paciente ya respondio.",
             "No avances ningun flujo de agendamiento en este estado.",
         ]

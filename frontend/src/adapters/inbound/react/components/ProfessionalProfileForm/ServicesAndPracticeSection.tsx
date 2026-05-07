@@ -13,7 +13,8 @@ function newServiceOffering(): agentModel.ServiceOffering {
     description: null,
     modalities: [],
     targetPatients: ["NEW", "RETURNING"],
-    tariffs: []
+    tariffs: [],
+    enabled: true
   };
 }
 

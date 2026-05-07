@@ -41,6 +41,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime as _dt
 import json
 import os
 import pathlib
@@ -49,6 +50,7 @@ import re
 from google import genai
 
 import scripts.coverage as coverage_module
+import src.domain.entities.patient as patient_entity
 import src.services.agentic.prompt_builder as prompt_builder_module
 import src.services.agentic.prompts.professional_profile_xml_renderer as xml_renderer
 import src.services.agentic.runtime_context_resolver as resolver_module
@@ -59,19 +61,43 @@ _GEMINI_MODEL = "gemini-3-flash-preview"
 _GEMINI_LOCATION = "global"
 
 
-def _build_system_prompt(shape: coverage_module.Shape, state: str) -> str:
+def _build_system_prompt(
+    shape: coverage_module.Shape,
+    state: str,
+    known_patient: patient_entity.Patient | None,
+    missing_fields: list[str] | None = None,
+) -> str:
     base = xml_renderer.render_system_prompt_xml(shape.agent_profile)
     builder = prompt_builder_module.RuntimePromptBuilder()
     runtime_ctx = agentic_state_models.RuntimePromptContext(
         state=state,  # type: ignore[arg-type]
         enabled_tool_names=resolver_module.enabled_tools_for_state(state),
+        missing_confirmation_fields=missing_fields if missing_fields is not None else [],
     )
     runtime_prompt = builder.build_runtime_system_prompt(
         runtime_ctx,
-        known_patient=None,
+        known_patient=known_patient,
         agent_profile=shape.agent_profile,
     )
     return builder.compose_base_and_runtime_system_prompt(base, runtime_prompt)
+
+
+def _build_known_patient(value: str | None) -> patient_entity.Patient | None:
+    if value is None:
+        return None
+    payload = json.loads(value)
+    return patient_entity.Patient(
+        tenant_id=payload.get("tenant_id", "lab-tenant"),
+        whatsapp_user_id=payload["whatsapp_user_id"],
+        first_name=payload["first_name"],
+        last_name=payload.get("last_name", ""),
+        email=payload["email"],
+        age=int(payload["age"]),
+        location=payload.get("location", "Colombia"),
+        phone_prefix=payload.get("phone_prefix"),
+        phone=payload.get("phone", payload["whatsapp_user_id"]),
+        created_at=_dt.datetime.now(_dt.UTC),
+    )
 
 
 def _build_contents(
@@ -128,7 +154,9 @@ async def _run(args: argparse.Namespace) -> int:
             return 1
 
     shape = coverage_module.load_shape(shape_path)
-    system_prompt = _build_system_prompt(shape, args.state)
+    known_patient = _build_known_patient(args.known_patient)
+    missing_fields = json.loads(args.missing_fields) if args.missing_fields else None
+    system_prompt = _build_system_prompt(shape, args.state, known_patient, missing_fields)
     contents = _build_contents(history, args.input)
     pattern = re.compile(args.pattern, re.IGNORECASE)
 
@@ -199,6 +227,16 @@ def _parse_args() -> argparse.Namespace:
         "--model", default=_GEMINI_MODEL, help=f"Gemini model (default {_GEMINI_MODEL})"
     )
     parser.add_argument("--show", action="store_true", help="print all replies")
+    parser.add_argument(
+        "--known-patient",
+        default=None,
+        help='JSON describing a known patient: {"whatsapp_user_id":"...", "first_name":"...", "email":"...", "age":33}',
+    )
+    parser.add_argument(
+        "--missing-fields",
+        default=None,
+        help='JSON list of missing confirmation fields, e.g. \'["patient_full_name","patient_email","patient_age","patient_phone"]\'',
+    )
     return parser.parse_args()
 
 

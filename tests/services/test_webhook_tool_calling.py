@@ -59,6 +59,7 @@ class ToolCallingTestContext:
     scheduling_repository: scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter
     conversation_repository: conversation_repository_adapter.InMemoryConversationRepositoryAdapter
     patient_repository: patient_repository_adapter.InMemoryPatientRepositoryAdapter
+    agent_profile_repository: agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter
     id_generator: fake_adapters.SequenceIdGenerator
     clock: fake_adapters.FixedClock
     scheduling_use_case: scheduling_service.SchedulingService
@@ -234,6 +235,7 @@ def build_tool_calling_context(
         clock=clock,
         task_scheduler=task_sched,
         event_description_builder=builder,
+        agent_profile_repository=agent_profile_repo,
     )
 
     service_kwargs: dict[str, typing.Any] = {}
@@ -273,6 +275,7 @@ def build_tool_calling_context(
         scheduling_repository=scheduling_repo,
         conversation_repository=conversation_repo,
         patient_repository=patient_repo,
+        agent_profile_repository=agent_profile_repo,
         id_generator=id_generator,
         clock=clock,
         scheduling_use_case=scheduling_use_case,
@@ -930,6 +933,125 @@ def test_webhook_select_proposed_slot_via_orchestrator() -> None:
     assert len(ctx.provider.sent_messages) == 1
     assert "perfecto" in ctx.provider.sent_messages[0]["text"].lower()
     assert len(ctx.llm_provider.calls) == 2
+
+
+def test_webhook_select_proposed_slot_auto_confirms_for_known_patient() -> None:
+    """Short-circuit: when known_patient covers everything and missing_fields
+    is empty, the orchestrator auto-calls confirm_selected_slot_and_create_event
+    after select_proposed_slot — without bouncing back to the LLM. The LLM was
+    asking the patient for data we already had ~30% of the time despite the
+    explicit prompt instructions."""
+    ctx = build_tool_calling_context(
+        id_values=[
+            "in-msg-1",
+            "conf-req-1",
+            "evt-1",
+            "out-msg-1",
+            "subsess-1",
+            "out-msg-2",
+        ],
+        calendar_timezone="UTC",
+    )
+    now_value = ctx.clock.now()
+    # AFTER_SESSION skips the payment step so select_proposed_slot lands the
+    # request straight in COLLECTING_CONFIRMATION_DATA — exactly the state
+    # where the short-circuit should fire when the patient is already known.
+    ctx.agent_profile_repository.save(
+        agent_profile_entity.AgentProfile(
+            tenant_id="tenant-1",
+            system_prompt="tenant custom prompt",
+            payment_timing="AFTER_SESSION",
+            updated_at=now_value,
+        )
+    )
+    ctx.conversation_repository.save_conversation(
+        conversation_entity.Conversation(
+            id="conversation-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            started_at=now_value,
+            updated_at=now_value,
+            last_message_preview=None,
+            message_ids=[],
+            control_mode="AI",
+        )
+    )
+    # Seed a known patient so the resolver short-circuits missing_fields to [].
+    ctx.patient_repository.save(
+        patient_entity.Patient(
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            first_name="Jhon",
+            last_name="Valderrama",
+            email="jhon@example.com",
+            age=33,
+            location="Cali",
+            phone="573127457050",
+            created_at=now_value,
+        )
+    )
+    ctx.scheduling_repository.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="req-1",
+            tenant_id="tenant-1",
+            conversation_id="conversation-1",
+            whatsapp_user_id="wa-user-1",
+            request_kind="INITIAL",
+            status="AWAITING_PATIENT_CHOICE",
+            round_number=1,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            slots=[
+                scheduling_slot_entity.SchedulingSlot(
+                    id="slot-1",
+                    start_at=datetime.datetime(2026, 3, 2, 8, 0, tzinfo=datetime.UTC),
+                    end_at=datetime.datetime(2026, 3, 2, 9, 0, tzinfo=datetime.UTC),
+                    timezone="UTC",
+                    status="PROPOSED",
+                ),
+            ],
+            slot_options_map={"1": "slot-1"},
+            selected_slot_id=None,
+            calendar_event_id=None,
+            consultation_reason="control",
+            appointment_modality="PRESENCIAL",
+            patient_first_name="Jhon",
+            patient_last_name="Valderrama",
+            patient_age=33,
+            created_at=now_value,
+            updated_at=now_value,
+        )
+    )
+    # The LLM only needs to call select_proposed_slot. The orchestrator should
+    # auto-call confirm_selected_slot_and_create_event right after. The LLM
+    # then gets a second turn to generate the booking confirmation message —
+    # by that point the state is POST_BOOKING_FOLLOWUP, no data-asking prompt.
+    ctx.llm_provider.queued_replies = [
+        llm_dto.AgentReplyDTO(
+            content="",
+            function_calls=[
+                llm_dto.FunctionCallDTO(
+                    name="select_proposed_slot",
+                    args={"slot_option_number": "1"},
+                    call_id="call-1",
+                )
+            ],
+        ),
+        llm_dto.AgentReplyDTO(content="¡Listo, Jhon! Tu cita queda agendada."),
+    ]
+    ctx.provider.events = [build_default_event("si ese me sirve")]
+
+    ctx.service.process_payload({})
+
+    saved_request = ctx.scheduling_repository.get_request_by_id("tenant-1", "req-1")
+    assert saved_request is not None
+    assert saved_request.selected_slot_id == "slot-1"
+    # Short-circuit should have auto-called confirm_selected_slot_and_create_event
+    # so the request ends up BOOKED with a calendar event, even though the LLM
+    # only ever called select_proposed_slot.
+    assert saved_request.status == "BOOKED"
+    assert saved_request.calendar_event_id is not None
 
 
 def test_webhook_patient_choice_allows_explicit_handoff_to_human() -> None:

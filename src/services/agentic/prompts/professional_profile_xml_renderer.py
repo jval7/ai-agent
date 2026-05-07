@@ -125,6 +125,10 @@ def _format_target_patients(target_patients: list[str]) -> str | None:
 def _render_services(services: list[agent_profile_entity.ServiceOffering]) -> str:
     service_blocks: list[str] = []
     for svc in services:
+        # Skip services the professional disabled in the UI — they stay in
+        # the tenant config but the bot must not mention or offer them.
+        if not svc.enabled:
+            continue
         if not svc.name and not svc.description and not svc.tariffs:
             continue
         lines: list[str] = []
@@ -234,8 +238,7 @@ _PAYMENT_TIMING_LABELS: dict[str, str] = {
     "AFTER_SESSION": (
         "AFTER_SESSION (el pago se cobra al finalizar la sesion, despues "
         "de la cita; el agendamiento NO incluye paso de pago ni se "
-        "solicita comprobante — la reserva se cierra recolectando los "
-        "datos finales del paciente)"
+        "solicita comprobante)"
     ),
 }
 

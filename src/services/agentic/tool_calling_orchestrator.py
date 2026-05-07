@@ -161,11 +161,73 @@ class ToolCallingOrchestrator:
                                 early_return=True,
                                 iterations_used=iteration_index + 1,
                             )
+                        if (
+                            function_call.name == "submit_reschedule_for_review"
+                            and function_response_payload.get("status")
+                            == "AWAITING_CONSULTATION_REVIEW"
+                        ):
+                            trace_run.set_outputs(
+                                {
+                                    "outcome": "submit_reschedule_ack",
+                                    "iteration": iteration_index + 1,
+                                }
+                            )
+                            return OrchestratorResult(
+                                response_text=_RESCHEDULE_REVIEW_ACK_MESSAGE,
+                                early_return=True,
+                                iterations_used=iteration_index + 1,
+                            )
                         if function_call.name == "confirm_selected_slot_and_create_event":
                             current_known_patient = self._patient_repository.get_by_whatsapp_user(
                                 tenant_id=tool_execution_context.tenant_id,
                                 whatsapp_user_id=tool_execution_context.whatsapp_user_id,
                             )
+                        # After select_proposed_slot succeeds, if the patient
+                        # is already known and nothing is missing, auto-call
+                        # confirm_selected_slot_and_create_event without
+                        # bouncing back to the LLM. The model otherwise tends
+                        # to ask the patient for data we already have, even
+                        # when the prompt explicitly forbids it.
+                        if (
+                            function_call.name == "select_proposed_slot"
+                            and function_response_payload.get("status") == "SLOT_SELECTED"
+                            and current_known_patient is not None
+                        ):
+                            next_runtime_ctx = runtime_context_resolver(
+                                tool_execution_context.tenant_id,
+                                tool_execution_context.conversation_id,
+                                current_known_patient,
+                            )
+                            if (
+                                next_runtime_ctx.state == "COLLECTING_CONFIRMATION_DATA"
+                                and not next_runtime_ctx.missing_confirmation_fields
+                                and next_runtime_ctx.request_kind != "RESCHEDULE"
+                            ):
+                                synthetic_call = llm_dto.FunctionCallDTO(
+                                    name="confirm_selected_slot_and_create_event",
+                                    args={},
+                                    call_id=None,
+                                )
+                                synthetic_response = self._tool_handler_registry.execute(
+                                    tool_execution_context,
+                                    synthetic_call,
+                                )
+                                iteration_results.append(
+                                    llm_dto.FunctionCallResultDTO(
+                                        function_call=synthetic_call,
+                                        function_response=llm_dto.FunctionResponseDTO(
+                                            name=synthetic_call.name,
+                                            response=synthetic_response,
+                                            call_id=None,
+                                        ),
+                                    )
+                                )
+                                current_known_patient = (
+                                    self._patient_repository.get_by_whatsapp_user(
+                                        tenant_id=tool_execution_context.tenant_id,
+                                        whatsapp_user_id=tool_execution_context.whatsapp_user_id,
+                                    )
+                                )
                     function_call_results.append(iteration_results)
                     continue
 
@@ -232,4 +294,8 @@ class ToolCallingOrchestrator:
 
 _REASON_REVIEW_ACK_MESSAGE = (
     "Gracias por compartir la información. Dame un momento y te ayudo a continuar."
+)
+
+_RESCHEDULE_REVIEW_ACK_MESSAGE = (
+    "Dame un momento y te comparto las opciones de horario para reagendar."
 )

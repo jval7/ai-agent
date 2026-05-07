@@ -45,6 +45,7 @@ export interface GoogleCalendarConnectionApiResponse {
 export interface OnboardingStatusApiResponse {
   whatsapp_connected: boolean;
   google_calendar_connected: boolean;
+  google_calendar_reauth_required: boolean;
   ready: boolean;
 }
 
@@ -423,6 +424,7 @@ export interface ServiceOfferingApiResponse {
   modalities: string[];
   target_patients: string[];
   tariffs: TariffOptionApiResponse[];
+  enabled: boolean;
 }
 
 export interface PaymentMethodApiResponse {
