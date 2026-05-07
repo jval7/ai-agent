@@ -215,12 +215,13 @@ def _instructions_for_state(
             'di solo "dame un momento" sin justificar la espera.',
             # Acks cortos NO son intent: son solo cortesia. No disparar
             # handoff ni intentar avanzar el flujo cuando el paciente
-            # responde con un mensaje positivo corto.
+            # responde con un mensaje positivo corto. SIEMPRE devuelve
+            # texto — el orchestrator interpreta una respuesta vacia como
+            # falla de Gemini y dispara el mensaje de fallback.
             'Si el paciente responde con un ack corto ("vale", "ok", "gracias", '
-            '"perfecto", "listo", "dale", "bueno"), respondele cortes una sola vez '
-            '(ej. "perfecto, te aviso apenas tengamos las opciones") SIN llamar '
-            "ninguna tool. Si ya respondiste y el paciente vuelve a mandar otro "
-            "ack, no respondas nada.",
+            '"perfecto", "listo", "dale", "bueno"), respondele cortes y breve '
+            '(ej. "Con gusto", "Listo, te aviso apenas tengamos las opciones", '
+            '"De nada"). NO llames ninguna tool. NUNCA respondas vacio.',
             "Puedes responder preguntas concretas del paciente usando solo la informacion que ya "
             "tienes: horarios, modalidades, direccion del consultorio o informacion general del "
             "profesional.",
