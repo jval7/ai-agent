@@ -89,6 +89,12 @@ class ServiceOffering(pydantic.BaseModel):
     # already registered (RETURNING) or completely new (NEW).
     target_patients: list[typing.Literal["NEW", "RETURNING"]] = ["NEW", "RETURNING"]
     tariffs: list[TariffOption] = []
+    # Soft-disable flag: when False the service is hidden from the bot's
+    # offering list (the system prompt renderer skips it) but kept in the
+    # tenant config so the professional can re-enable it without re-typing
+    # tariffs / modalities. Existing bookings that reference a disabled
+    # service stay untouched (consultation_reason is free text on the SR).
+    enabled: bool = True
 
     @pydantic.model_validator(mode="before")
     @classmethod

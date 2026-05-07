@@ -2306,7 +2306,10 @@ function mapServiceOffering(raw: httpTypes.ServiceOfferingApiResponse): agentMod
     description: raw.description,
     modalities: raw.modalities as agentModel.Modality[],
     targetPatients: rawTargetPatients as agentModel.TargetPatient[],
-    tariffs: raw.tariffs.map(mapTariffOption)
+    tariffs: raw.tariffs.map(mapTariffOption),
+    // Default to enabled when missing — pre-existing services were always
+    // visible and we don't want a backend rollout to hide them.
+    enabled: raw.enabled ?? true
   };
 }
 
@@ -2318,7 +2321,8 @@ function serviceOfferingToApi(
     description: item.description,
     modalities: item.modalities,
     target_patients: item.targetPatients,
-    tariffs: item.tariffs.map(tariffOptionToApi)
+    tariffs: item.tariffs.map(tariffOptionToApi),
+    enabled: item.enabled
   };
 }
 
