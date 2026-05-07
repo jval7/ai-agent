@@ -392,9 +392,21 @@ class GoogleCalendarOnboardingService:
 
         refresh_token = connection.refresh_token
         if refresh_token is None:
+            self._mark_reauth_required(connection, now_value)
             raise service_exceptions.InvalidStateError("google calendar refresh token is missing")
 
-        refreshed_tokens = self._google_calendar_provider.refresh_access_token(refresh_token)
+        try:
+            refreshed_tokens = self._google_calendar_provider.refresh_access_token(refresh_token)
+        except service_exceptions.ExternalProviderError as error:
+            # Google returned `invalid_grant`: the refresh token is no longer
+            # usable (revoked from the user's Google account, OAuth app in
+            # testing mode aged out the token, or the token was rotated by
+            # another sign-in). Mark the connection so the UI can prompt for
+            # reconnect instead of silently failing every Calendar call with
+            # a 502. Re-raise so the caller still sees the error this turn.
+            if "invalid_grant" in str(error):
+                self._mark_reauth_required(connection, now_value)
+            raise
         refreshed_connection = google_calendar_connection_entity.GoogleCalendarConnection(
             tenant_id=connection.tenant_id,
             professional_user_id=connection.professional_user_id,
@@ -414,6 +426,33 @@ class GoogleCalendarOnboardingService:
         )
         self._google_calendar_connection_repository.save(refreshed_connection)
         return refreshed_connection
+
+    def _mark_reauth_required(
+        self,
+        connection: google_calendar_connection_entity.GoogleCalendarConnection,
+        now_value: datetime.datetime,
+    ) -> None:
+        # Idempotent: if we already flagged this connection we don't keep
+        # writing to firestore on every refresh attempt.
+        if connection.status == "REAUTH_REQUIRED":
+            return
+        flagged = google_calendar_connection_entity.GoogleCalendarConnection(
+            tenant_id=connection.tenant_id,
+            professional_user_id=connection.professional_user_id,
+            status="REAUTH_REQUIRED",
+            calendar_id=connection.calendar_id,
+            timezone=connection.timezone,
+            # Wipe access_token so nothing else tries to use it; keep
+            # refresh_token as the audit trail of the now-defunct grant.
+            access_token=None,
+            refresh_token=connection.refresh_token,
+            token_expires_at=connection.token_expires_at,
+            oauth_state=connection.oauth_state,
+            scope=connection.scope,
+            updated_at=now_value,
+            connected_at=connection.connected_at,
+        )
+        self._google_calendar_connection_repository.save(flagged)
 
     def _has_overlap(
         self,

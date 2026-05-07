@@ -45,6 +45,7 @@ export interface GoogleCalendarConnectionApiResponse {
 export interface OnboardingStatusApiResponse {
   whatsapp_connected: boolean;
   google_calendar_connected: boolean;
+  google_calendar_reauth_required: boolean;
   ready: boolean;
 }
 

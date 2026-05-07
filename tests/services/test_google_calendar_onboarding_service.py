@@ -116,3 +116,51 @@ def test_get_availability_refreshes_expired_token() -> None:
     stored_after = repository.get_by_tenant_id("tenant-1")
     assert stored_after is not None
     assert stored_after.access_token == "access-2"
+
+
+def test_invalid_grant_on_refresh_marks_connection_as_reauth_required() -> None:
+    """When Google rejects the refresh with invalid_grant (revoked token,
+    OAuth app aged out the token, etc.), the connection must transition to
+    REAUTH_REQUIRED so the UI can prompt the user to reconnect — instead
+    of every Calendar call failing silently with a 502."""
+    service, repository, provider = build_service(["state-1"])
+    provider.tokens_by_code["code-1"] = google_calendar_dto.GoogleOauthTokensDTO(
+        access_token="access-1",
+        refresh_token="refresh-1",
+        expires_in_seconds=1,
+        scope="calendar",
+        token_type="Bearer",
+    )
+
+    # Force refresh_access_token to raise the same shape of error the real
+    # adapter raises when Google replies with invalid_grant.
+    def raise_invalid_grant(_refresh_token: str) -> google_calendar_dto.GoogleOauthTokensDTO:
+        raise service_exceptions.ExternalProviderError(
+            "google rejected request while refreshing google access token "
+            "(status=400, detail=invalid_grant)"
+        )
+
+    provider.refresh_access_token = raise_invalid_grant  # type: ignore[method-assign,assignment]
+
+    service.create_oauth_session(tenant_id="tenant-1", professional_user_id="user-1")
+    service.complete_oauth(
+        tenant_id="tenant-1",
+        professional_user_id="user-1",
+        complete_dto=google_calendar_dto.GoogleOauthCompleteDTO(code="code-1", state="state-1"),
+    )
+
+    with pytest.raises(service_exceptions.ExternalProviderError):
+        service.get_availability(
+            tenant_id="tenant-1",
+            from_at=datetime.datetime(2026, 1, 1, 10, 0, tzinfo=datetime.UTC),
+            to_at=datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.UTC),
+        )
+
+    # The connection record was flagged so the UI banner can fire.
+    stored = repository.get_by_tenant_id("tenant-1")
+    assert stored is not None
+    assert stored.status == "REAUTH_REQUIRED"
+    # Stale access_token wiped — keep refresh_token as audit of the
+    # now-defunct grant.
+    assert stored.access_token is None
+    assert stored.refresh_token == "refresh-1"

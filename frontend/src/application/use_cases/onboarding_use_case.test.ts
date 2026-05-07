@@ -33,6 +33,7 @@ vitestModule.describe("OnboardingUseCase", () => {
       getOnboardingStatus: vitestModule.vi.fn(async () => ({
         whatsappConnected: true,
         googleCalendarConnected: true,
+        googleCalendarReauthRequired: false,
         ready: true
       }))
     } as Partial<backendApiPort.BackendApiPort> as backendApiPort.BackendApiPort;

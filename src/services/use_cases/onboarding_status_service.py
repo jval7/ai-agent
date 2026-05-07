@@ -19,8 +19,10 @@ class OnboardingStatusService:
         google_status = self._google_calendar_onboarding_service.get_connection_status(tenant_id)
         whatsapp_connected = whatsapp_status.status == "CONNECTED"
         google_connected = google_status.status == "CONNECTED"
+        google_reauth_required = google_status.status == "REAUTH_REQUIRED"
         return onboarding_dto.OnboardingStatusResponseDTO(
             whatsapp_connected=whatsapp_connected,
             google_calendar_connected=google_connected,
+            google_calendar_reauth_required=google_reauth_required,
             ready=whatsapp_connected and google_connected,
         )
