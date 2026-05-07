@@ -88,6 +88,11 @@ export function useBookedAppointments({
 
     allRequests
       .filter((r) => FINALIZED_STATUSES.has(r.status))
+      // RESCHEDULE child SRs reach SESSION_CLOSED with a selected slot but no
+      // calendar event — the actual booking lives on the source SR. Filtering
+      // by calendarEventId hides those synthetic records so the calendar does
+      // not render duplicates.
+      .filter((r) => r.calendarEventId !== null)
       .forEach((request) => {
         const selectedSlot = resolveBookedSlot(request);
         if (selectedSlot === null) {
