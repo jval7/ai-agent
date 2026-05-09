@@ -45,6 +45,7 @@ export interface GoogleCalendarConnectionApiResponse {
 export interface OnboardingStatusApiResponse {
   whatsapp_connected: boolean;
   google_calendar_connected: boolean;
+  google_calendar_reauth_required: boolean;
   ready: boolean;
 }
 
@@ -230,7 +231,6 @@ export interface SchedulingRequestSummaryApiResponse {
     | "BOOKED"
     | "SESSION_CLOSED"
     | "HUMAN_HANDOFF";
-  audience_type: "ADULTS" | "CHILDREN" | null;
   round_number: number;
   patient_preference_note: string | null;
   rejection_summary: string | null;
@@ -424,6 +424,7 @@ export interface ServiceOfferingApiResponse {
   modalities: string[];
   target_patients: string[];
   tariffs: TariffOptionApiResponse[];
+  enabled: boolean;
 }
 
 export interface PaymentMethodApiResponse {

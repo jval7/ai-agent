@@ -11,11 +11,11 @@ import src.adapters.outbound.inmemory.patient_repository_adapter as patient_repo
 import src.adapters.outbound.inmemory.processed_webhook_event_repository_adapter as processed_webhook_event_repository_adapter
 import src.adapters.outbound.inmemory.store as in_memory_store
 import src.adapters.outbound.inmemory.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
+import src.adapters.outbound.noop_tracer_adapter as noop_tracer_adapter
 import src.domain.entities.agent_profile as agent_profile_entity
 import src.domain.entities.blacklist_entry as blacklist_entry_entity
 import src.domain.entities.patient as patient_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
-import src.infra.langsmith_tracer as langsmith_tracer
 import src.services.agentic.conversation_message_sender as conversation_message_sender_mod
 import src.services.agentic.prompt_builder as prompt_builder_mod
 import src.services.agentic.runtime_context_resolver as runtime_context_resolver_mod
@@ -42,6 +42,9 @@ class WebhookTestContext(typing.NamedTuple):
     )
     blacklist_repository: blacklist_repository_adapter.InMemoryBlacklistRepositoryAdapter
     agent_profile_repository: agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter
+    connection_repository: (
+        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter
+    )
 
 
 def build_webhook_service(
@@ -94,7 +97,7 @@ def build_webhook_service(
     id_generator = fake_adapters.SequenceIdGenerator(id_values)
     clock = fake_adapters.FixedClock(now_value)
 
-    tracer = langsmith_tracer.LangsmithTracer(enabled=False)
+    tracer = noop_tracer_adapter.NoopTracerAdapter()
     tool_def_registry = tool_definition_registry_mod.ToolDefinitionRegistry()
     handler_registry = tool_handler_registry_mod.ToolHandlerRegistry(
         handlers=[
@@ -138,6 +141,7 @@ def build_webhook_service(
         id_generator=id_generator,
         clock=clock,
         context_message_limit=8,
+        tracer=tracer,
         sleep_seconds=sleep_seconds,
         tool_calling_orchestrator=orchestrator,
         runtime_context_resolver=runtime_resolver,
@@ -152,6 +156,7 @@ def build_webhook_service(
         processed_repository=processed_repository,
         blacklist_repository=blacklist_repository,
         agent_profile_repository=agent_profile_repository,
+        connection_repository=connection_repository,
     )
 
 
@@ -561,3 +566,105 @@ def test_process_payload_logs_ai_failure(caplog: pytest.LogCaptureFixture) -> No
     ]
     assert "webhook.ai_reply_failed" in events
     assert "webhook.ai_reply_fallback_sent" in events
+
+
+# ---------------------------------------------------------------------------
+# Edge cases — _process_event guards and helpers
+# ---------------------------------------------------------------------------
+
+
+def test_process_payload_skips_event_when_phone_number_not_connected(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    ctx = build_webhook_service(["conversation-1", "in-msg-1"])
+    unknown_event = webhook_dto.IncomingMessageEventDTO(
+        provider_event_id="evt-unknown",
+        phone_number_id="phone-unknown",
+        whatsapp_user_id="wa-user-1",
+        whatsapp_user_name="Jane",
+        message_id="wamid-unknown",
+        message_type="text",
+        source="CUSTOMER",
+        message_text="hello",
+    )
+    ctx.provider.events = [unknown_event]
+    caplog.set_level(logging.WARNING, logger=LOGGER_NAME)
+
+    result = ctx.service.process_payload({})
+
+    assert result.status == "processed"
+    assert ctx.provider.sent_messages == []
+    skipped_events = [
+        record.__dict__.get("event_data", {}).get("event")
+        for record in caplog.records
+        if isinstance(record.__dict__.get("event_data"), dict)
+    ]
+    assert "webhook.event.skipped" in skipped_events
+
+
+def test_process_payload_raises_invalid_state_when_connection_missing_token() -> None:
+    ctx = build_webhook_service(["conversation-1", "in-msg-1"])
+    # save() upserts by tenant_id — push a CONNECTED record without the
+    # access_token so the lookup-by-phone succeeds but the credentials guard
+    # fires inside _process_event.
+    ctx.connection_repository.save(
+        whatsapp_connection_entity.WhatsappConnection(
+            tenant_id="tenant-1",
+            phone_number_id="phone-1",
+            business_account_id="business-1",
+            access_token=None,
+            status="CONNECTED",
+            embedded_signup_state=None,
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+    ctx.provider.events = [build_customer_text_event()]
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        ctx.service.process_payload({})
+
+
+def test_truncate_failure_reason_returns_default_for_blank_input() -> None:
+    ctx = build_webhook_service([])
+
+    assert ctx.service._truncate_failure_reason("") == "unknown webhook processing error"
+    assert ctx.service._truncate_failure_reason("   \n\t") == "unknown webhook processing error"
+
+
+def test_truncate_failure_reason_truncates_very_long_input() -> None:
+    ctx = build_webhook_service([])
+    very_long = "x" * 600
+
+    truncated = ctx.service._truncate_failure_reason(very_long)
+
+    assert len(truncated) == 280
+    assert truncated.endswith("...")
+
+
+def test_truncate_failure_reason_keeps_short_input_unchanged() -> None:
+    ctx = build_webhook_service([])
+
+    assert ctx.service._truncate_failure_reason("boom") == "boom"
+
+
+def test_mark_event_failed_by_phone_number_is_noop_when_phone_unknown() -> None:
+    ctx = build_webhook_service([])
+
+    # Should not raise even though the phone is not associated to any tenant.
+    ctx.service._mark_event_failed_by_phone_number(
+        phone_number_id="phone-unknown",
+        provider_event_id="evt-unknown",
+        failure_reason="boom",
+    )
+
+
+def test_mark_event_failed_by_phone_number_is_noop_when_event_not_claimed() -> None:
+    ctx = build_webhook_service([])
+
+    # Connection is known (seeded by build_webhook_service) but the event was
+    # never claimed, so the repo has no record to update.
+    ctx.service._mark_event_failed_by_phone_number(
+        phone_number_id="phone-1",
+        provider_event_id="evt-never-claimed",
+        failure_reason="boom",
+    )

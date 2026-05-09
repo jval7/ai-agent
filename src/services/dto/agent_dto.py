@@ -34,6 +34,7 @@ class ServiceOfferingDTO(pydantic.BaseModel):
     modalities: list[typing.Literal["PRESENCIAL", "VIRTUAL"]] = []
     target_patients: list[typing.Literal["NEW", "RETURNING"]] = ["NEW", "RETURNING"]
     tariffs: list[TariffOptionDTO] = []
+    enabled: bool = True
 
 
 class PaymentMethodDTO(pydantic.BaseModel):
@@ -59,19 +60,20 @@ class ProfessionalProfileResponseDTO(pydantic.BaseModel):
     payment_methods: list[PaymentMethodDTO] = []
 
 
-class UpdateProfessionalProfileDTO(pydantic.BaseModel):
-    identity: AssistantIdentityDTO | None = None
-    professional_context: ProfessionalContextDTO | None = None
-    services: list[ServiceOfferingDTO] = []
-    payment_methods: list[PaymentMethodDTO] = []
-
-
 # ---------------------------------------------------------------------------
 # Legacy system-prompt and settings DTOs
 # ---------------------------------------------------------------------------
 
 
 PaymentTimingLiteral = typing.Literal["BEFORE_SESSION", "AFTER_SESSION"]
+
+
+class UpdateProfessionalProfileDTO(pydantic.BaseModel):
+    identity: AssistantIdentityDTO | None = None
+    professional_context: ProfessionalContextDTO | None = None
+    services: list[ServiceOfferingDTO] = []
+    payment_methods: list[PaymentMethodDTO] = []
+    payment_timing: PaymentTimingLiteral | None = None
 
 
 class UpdateSystemPromptDTO(pydantic.BaseModel):

@@ -4,6 +4,13 @@ export interface AuthTokens {
   expiresInSeconds: number;
 }
 
+export interface UserProfile {
+  userId: string;
+  email: string;
+  role: "professional" | "admin";
+  tenantId: string;
+}
+
 export interface LoginInput {
   email: string;
   password: string;

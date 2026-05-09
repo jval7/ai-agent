@@ -121,6 +121,11 @@ def configure_logging(log_level: str) -> None:
                 "level": "WARNING",
                 "propagate": False,
             },
+            "admin_audit": {
+                "handlers": ["stdout"],
+                "level": "INFO",
+                "propagate": False,
+            },
         },
     }
     logging.config.dictConfig(config)

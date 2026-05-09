@@ -26,8 +26,14 @@ class OfficeContextSection(prompt_section.PromptSection):
         if agent_profile is not None and agent_profile.office_location is not None:
             office = agent_profile.office_location
             lines.append(f"- Dirección: {office.address}")
+            # Marker explicito cuando el campo opcional es None — sin esto el
+            # LLM lee la seccion como "datos faltantes" y se va por la valvula
+            # de escape "te contactara un asesor", quedando atorado en
+            # POST_BOOKING_FOLLOWUP sin llamar close_session.
             if office.arrival_instructions is not None:
                 lines.append(f"- Indicaciones de llegada: {office.arrival_instructions}")
+            else:
+                lines.append("- Indicaciones de llegada: (no provistas)")
 
         lines.append(
             f"- Instrucciones sesión virtual: {booking_constants.VIRTUAL_SESSION_BOT_INSTRUCTIONS}"

@@ -26,6 +26,7 @@ def build_auth_service(
     user_repository_adapter.InMemoryUserRepositoryAdapter,
     agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter,
     jwt_provider_adapter.Hs256JwtProviderAdapter,
+    refresh_token_repository_adapter.InMemoryRefreshTokenRepositoryAdapter,
 ]:
     store = in_memory_store.InMemoryStore()
     tenant_repository = tenant_repository_adapter.InMemoryTenantRepositoryAdapter(store)
@@ -55,11 +56,18 @@ def build_auth_service(
         access_ttl_seconds=600,
         refresh_ttl_seconds=3600,
     )
-    return service, tenant_repository, user_repository, agent_profile_repository, jwt_provider
+    return (
+        service,
+        tenant_repository,
+        user_repository,
+        agent_profile_repository,
+        jwt_provider,
+        refresh_token_repository,
+    )
 
 
 def test_register_creates_tenant_user_and_default_prompt() -> None:
-    service, tenant_repository, user_repository, agent_profile_repository, jwt_provider = (
+    service, tenant_repository, user_repository, agent_profile_repository, jwt_provider, _ = (
         build_auth_service(["tenant-1", "user-1", "access-jti-1", "refresh-jti-1"])
     )
 
@@ -86,7 +94,7 @@ def test_register_creates_tenant_user_and_default_prompt() -> None:
 
 
 def test_login_rejects_invalid_password() -> None:
-    service, _, _, _, _ = build_auth_service(
+    service, _, _, _, _, _ = build_auth_service(
         [
             "tenant-1",
             "user-1",
@@ -109,7 +117,7 @@ def test_login_rejects_invalid_password() -> None:
 
 
 def test_login_returns_tokens_for_valid_credentials() -> None:
-    service, _, _, _, jwt_provider = build_auth_service(
+    service, _, _, _, jwt_provider, _ = build_auth_service(
         [
             "tenant-1",
             "user-1",
@@ -136,7 +144,7 @@ def test_login_returns_tokens_for_valid_credentials() -> None:
 
 
 def test_refresh_rotates_refresh_token_and_revokes_previous() -> None:
-    service, _, _, _, _ = build_auth_service(
+    service, _, _, _, _, _ = build_auth_service(
         [
             "tenant-1",
             "user-1",
@@ -166,7 +174,7 @@ def test_refresh_rotates_refresh_token_and_revokes_previous() -> None:
 
 
 def test_logout_revokes_refresh_token() -> None:
-    service, _, _, _, _ = build_auth_service(
+    service, _, _, _, _, _ = build_auth_service(
         [
             "tenant-1",
             "user-1",
@@ -192,7 +200,7 @@ def test_logout_revokes_refresh_token() -> None:
 def test_register_emits_success_log_without_sensitive_fields(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    service, _, _, _, _ = build_auth_service(
+    service, _, _, _, _, _ = build_auth_service(
         ["tenant-1", "user-1", "access-jti-1", "refresh-jti-1"]
     )
     caplog.set_level(logging.INFO, logger=LOGGER_NAME)
@@ -222,7 +230,7 @@ def test_register_emits_success_log_without_sensitive_fields(
 
 
 def test_login_failure_emits_failed_log(caplog: pytest.LogCaptureFixture) -> None:
-    service, _, _, _, _ = build_auth_service(
+    service, _, _, _, _, _ = build_auth_service(
         [
             "tenant-1",
             "user-1",
@@ -250,3 +258,164 @@ def test_login_failure_emits_failed_log(caplog: pytest.LogCaptureFixture) -> Non
         if isinstance(record.__dict__.get("event_data"), dict)
     ]
     assert "auth.login.failed" in failure_events
+
+
+# ---------------------------------------------------------------------------
+# register / login / refresh / logout edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_register_rejects_duplicate_email() -> None:
+    service, _, _, _, _, _ = build_auth_service(
+        ["tenant-1", "user-1", "access-jti-1", "refresh-jti-1"]
+    )
+    service.register(
+        auth_dto.RegisterUserDTO(
+            tenant_name="Acme",
+            email="professional@acme.com",
+            password="supersecret",
+        )
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.register(
+            auth_dto.RegisterUserDTO(
+                tenant_name="Acme Two",
+                email="Professional@Acme.com",
+                password="anothersecret",
+            )
+        )
+
+
+def test_login_rejects_unknown_email() -> None:
+    service, _, _, _, _, _ = build_auth_service([])
+
+    with pytest.raises(service_exceptions.AuthenticationError):
+        service.login(auth_dto.LoginDTO(email="ghost@nowhere.com", password="anypass"))
+
+
+def test_login_rejects_inactive_user() -> None:
+    service, _, user_repository, _, _, _ = build_auth_service(
+        ["tenant-1", "user-1", "access-jti-1", "refresh-jti-1"]
+    )
+    service.register(
+        auth_dto.RegisterUserDTO(
+            tenant_name="Acme",
+            email="professional@acme.com",
+            password="supersecret",
+        )
+    )
+    user = user_repository.get_by_email("professional@acme.com")
+    assert user is not None
+    user.is_active = False
+    user_repository.save(user)
+
+    with pytest.raises(service_exceptions.AuthenticationError):
+        service.login(auth_dto.LoginDTO(email="professional@acme.com", password="supersecret"))
+
+
+def test_refresh_rejects_access_token_as_refresh() -> None:
+    service, _, _, _, _, _ = build_auth_service(
+        ["tenant-1", "user-1", "access-jti-1", "refresh-jti-1"]
+    )
+    register_result = service.register(
+        auth_dto.RegisterUserDTO(
+            tenant_name="Acme",
+            email="professional@acme.com",
+            password="supersecret",
+        )
+    )
+
+    with pytest.raises(service_exceptions.AuthenticationError):
+        service.refresh(auth_dto.RefreshTokenDTO(refresh_token=register_result.access_token))
+
+
+def test_refresh_rejects_when_user_not_found() -> None:
+    service, _, user_repository, _, _, _ = build_auth_service(
+        ["tenant-1", "user-1", "access-jti-1", "refresh-jti-1"]
+    )
+    register_result = service.register(
+        auth_dto.RegisterUserDTO(
+            tenant_name="Acme",
+            email="professional@acme.com",
+            password="supersecret",
+        )
+    )
+    deleted = user_repository.delete_by_id("user-1")
+    assert deleted is True
+
+    with pytest.raises(service_exceptions.AuthenticationError):
+        service.refresh(auth_dto.RefreshTokenDTO(refresh_token=register_result.refresh_token))
+
+
+def test_refresh_rejects_when_tenant_mismatch() -> None:
+    service, _, user_repository, _, _, _ = build_auth_service(
+        ["tenant-1", "user-1", "access-jti-1", "refresh-jti-1"]
+    )
+    register_result = service.register(
+        auth_dto.RegisterUserDTO(
+            tenant_name="Acme",
+            email="professional@acme.com",
+            password="supersecret",
+        )
+    )
+    user = user_repository.get_by_email("professional@acme.com")
+    assert user is not None
+    user.tenant_id = "different-tenant"
+    user_repository.save(user)
+
+    with pytest.raises(service_exceptions.AuthenticationError):
+        service.refresh(auth_dto.RefreshTokenDTO(refresh_token=register_result.refresh_token))
+
+
+def test_logout_rejects_access_token_as_refresh() -> None:
+    service, _, _, _, _, _ = build_auth_service(
+        ["tenant-1", "user-1", "access-jti-1", "refresh-jti-1"]
+    )
+    register_result = service.register(
+        auth_dto.RegisterUserDTO(
+            tenant_name="Acme",
+            email="professional@acme.com",
+            password="supersecret",
+        )
+    )
+
+    with pytest.raises(service_exceptions.AuthenticationError):
+        service.logout(auth_dto.LogoutDTO(refresh_token=register_result.access_token))
+
+
+def test_logout_creates_revoked_record_when_jti_unknown() -> None:
+    service, _, _, _, jwt_provider, refresh_token_repository = build_auth_service([])
+    # Build a refresh token with a jti that was never persisted by the repo
+    # (e.g. token from a previous deployment or rotated out of sync).
+    unknown_claims = auth_dto.TokenClaimsDTO(
+        sub="ghost-user",
+        tenant_id="ghost-tenant",
+        role="professional",
+        exp=int((datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC)).timestamp()),
+        jti="unknown-jti",
+        token_kind="refresh",
+    )
+    unknown_refresh_token = jwt_provider.encode(unknown_claims)
+
+    service.logout(auth_dto.LogoutDTO(refresh_token=unknown_refresh_token))
+
+    persisted = refresh_token_repository.get_by_jti("unknown-jti")
+    assert persisted is not None
+    assert persisted.revoked_at is not None
+
+
+def test_authenticate_access_token_rejects_refresh_kind() -> None:
+    service, _, _, _, _, _ = build_auth_service(
+        ["tenant-1", "user-1", "access-jti-1", "refresh-jti-1"]
+    )
+    register_result = service.register(
+        auth_dto.RegisterUserDTO(
+            tenant_name="Acme",
+            email="professional@acme.com",
+            password="supersecret",
+        )
+    )
+
+    with pytest.raises(service_exceptions.AuthenticationError):
+        service.authenticate_access_token(register_result.refresh_token)

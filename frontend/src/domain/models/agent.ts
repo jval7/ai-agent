@@ -30,6 +30,7 @@ export interface ServiceOffering {
   modalities: Modality[];
   targetPatients: TargetPatient[];
   tariffs: TariffOption[];
+  enabled: boolean;
 }
 
 export interface PaymentMethod {

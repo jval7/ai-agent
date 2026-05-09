@@ -118,10 +118,13 @@ class TestPromptAssemblerOutputParity:
             enabled_tool_names=["confirm_selected_slot_and_create_event"],
         )
         result = builder.build_runtime_system_prompt(ctx, known_patient=None)
-        # State instruction phrase was changed from "no faltan campos de perfil"
-        # to "no faltan datos de perfil" to keep "confirmar" out of the prompt.
-        assert "no faltan datos de perfil" in result
+        # The instruction must (a) say no data is missing, (b) name the tool
+        # to call, and (c) explicitly forbid asking the patient for personal
+        # data — Gemini 2.5 was asking for fields that the patient profile
+        # already has unless we make the prohibition concrete.
+        assert "no falta ningun dato del paciente" in result
         assert "confirm_selected_slot_and_create_event" in result
+        assert "NO pidas nombre" in result
 
     def test_awaiting_consultation_review(self) -> None:
         builder = _build_builder()
@@ -215,7 +218,8 @@ class TestPromptAssemblerOutputParity:
         assert "hora Colombia" in result
         assert "- nombre_paciente: Danery" in result
         assert "USA EXACTAMENTE el valor de `fecha_cita`" in result
-        assert "NUNCA inventes ni parafrasees" in result
+        assert "FUENTE UNICA DE VERDAD" in result
+        assert "NO inventes una direccion" in result
 
     def test_post_booking_followup_without_slot_data_warns_against_inventing(self) -> None:
         builder = _build_builder()

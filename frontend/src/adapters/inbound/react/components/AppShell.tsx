@@ -3,6 +3,7 @@ import * as reactRouterDomModule from "react-router-dom";
 
 import * as authContextModule from "@adapters/inbound/react/app/AuthContext";
 import * as useSidebarCollapsedModule from "@shared/hooks/useSidebarCollapsed";
+import * as envModule from "@infrastructure/config/env";
 
 function CalendarIcon() {
   return (
@@ -205,19 +206,26 @@ function BeakerIcon() {
   );
 }
 
-// Orden por frecuencia de uso día a día. Configuraciones al final (setup-once).
-const navLinks = [
+const professionalNavLinks = [
   { to: "/agenda", label: "Agenda", Icon: CalendarIcon },
   { to: "/inbox", label: "Conversaciones", Icon: InboxIcon },
   { to: "/clientes", label: "Clientes", Icon: UsersIcon },
   { to: "/finanzas", label: "Finanzas", Icon: WalletIcon },
   { to: "/recordatorios", label: "Recordatorios", Icon: BellIcon },
   { to: "/configuraciones", label: "Configuraciones", Icon: SettingsIcon },
-  ...(import.meta.env.DEV ? [{ to: "/evaluacion", label: "Evaluación", Icon: BeakerIcon }] : [])
+  ...(envModule.envConfig.showInternalTools
+    ? [{ to: "/evaluacion", label: "Evaluación", Icon: BeakerIcon }]
+    : [])
+];
+
+const adminNavLinks = [
+  { to: "/admin", label: "Inicio", Icon: UsersIcon },
+  { to: "/admin/dashboard", label: "Dashboard", Icon: WalletIcon }
 ];
 
 export function AppShell(props: { children: reactModule.ReactNode }) {
   const auth = authContextModule.useAuth();
+  const navLinks = auth.userProfile?.role === "admin" ? adminNavLinks : professionalNavLinks;
   const navigate = reactRouterDomModule.useNavigate();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = reactModule.useState(false);
   const [isCollapsed, toggleCollapsed] = useSidebarCollapsedModule.useSidebarCollapsed();

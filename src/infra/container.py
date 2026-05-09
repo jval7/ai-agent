@@ -10,6 +10,7 @@ import src.adapters.outbound.firestore.client_factory as firestore_client_factor
 import src.adapters.outbound.firestore.conversation_processing_lock_adapter as conversation_processing_lock_adapter
 import src.adapters.outbound.firestore.conversation_repository_adapter as conversation_repository_adapter
 import src.adapters.outbound.firestore.eval_run_repository_adapter as eval_run_repository_adapter
+import src.adapters.outbound.firestore.firestore_event_stream_adapter as firestore_event_stream_adapter
 import src.adapters.outbound.firestore.google_calendar_connection_repository_adapter as google_calendar_connection_repository_adapter
 import src.adapters.outbound.firestore.invitation_token_repository_adapter as invitation_token_repository_adapter
 import src.adapters.outbound.firestore.manual_appointment_repository_adapter as manual_appointment_repository_adapter
@@ -24,6 +25,7 @@ import src.adapters.outbound.firestore.tenant_repository_adapter as tenant_repos
 import src.adapters.outbound.firestore.user_repository_adapter as user_repository_adapter
 import src.adapters.outbound.firestore.whatsapp_connection_repository_adapter as whatsapp_connection_repository_adapter
 import src.adapters.outbound.google_calendar.google_calendar_provider_adapter as google_calendar_provider_adapter
+import src.adapters.outbound.langsmith.langsmith_tracer_adapter as langsmith_tracer_adapter
 import src.adapters.outbound.llm_gemini.gemini_llm_provider_adapter as gemini_llm_provider_adapter
 import src.adapters.outbound.noop_task_scheduler_adapter as noop_task_scheduler_adapter
 import src.adapters.outbound.noop_whatsapp_send_adapter as noop_whatsapp_send_adapter
@@ -31,7 +33,7 @@ import src.adapters.outbound.secret_manager.app_config_secret_loader_adapter as 
 import src.adapters.outbound.security.jwt_provider_adapter as jwt_provider_adapter
 import src.adapters.outbound.security.password_hasher_adapter as password_hasher_adapter
 import src.adapters.outbound.whatsapp_meta.meta_whatsapp_provider_adapter as meta_whatsapp_provider_adapter
-import src.infra.langsmith_tracer as langsmith_tracer
+import src.infra.logs as app_logs
 import src.infra.settings as app_settings
 import src.infra.system_adapters as system_adapters
 import src.ports.email_notifier_port as email_notifier_port
@@ -46,6 +48,7 @@ import src.services.agentic.tool_calling_orchestrator as tool_calling_orchestrat
 import src.services.agentic.tool_handlers.cancel_request_handler as cancel_request_handler
 import src.services.agentic.tool_handlers.close_session_handler as close_session_handler
 import src.services.agentic.tool_handlers.confirm_attendance_received_handler as confirm_attendance_received_handler
+import src.services.agentic.tool_handlers.confirm_rescheduled_slot_handler as confirm_rescheduled_slot_handler
 import src.services.agentic.tool_handlers.confirm_slot_handler as confirm_slot_handler
 import src.services.agentic.tool_handlers.handoff_handler as handoff_handler
 import src.services.agentic.tool_handlers.patient_profile_resolver as patient_profile_resolver
@@ -54,8 +57,10 @@ import src.services.agentic.tool_handlers.reject_proposed_slots_handler as rejec
 import src.services.agentic.tool_handlers.select_proposed_slot_handler as select_proposed_slot_handler
 import src.services.agentic.tool_handlers.set_contact_name_handler as set_contact_name_handler
 import src.services.agentic.tool_handlers.submit_consultation_reason_handler as submit_consultation_reason_handler
+import src.services.agentic.tool_handlers.submit_reschedule_for_review_handler as submit_reschedule_for_review_handler
 import src.services.agentic.tool_registry as tool_definition_registry_mod
 import src.services.agentic.workflow_engine as workflow_engine
+import src.services.use_cases.admin_dashboard_service as admin_dashboard_service
 import src.services.use_cases.agent_service as agent_service
 import src.services.use_cases.auth_service as auth_service
 import src.services.use_cases.blacklist_service as blacklist_service
@@ -81,6 +86,8 @@ import src.services.use_cases.webhook_service as webhook_service
 import src.services.use_cases.whatsapp_onboarding_service as whatsapp_onboarding_service
 import src.services.use_cases.whatsapp_template_service as whatsapp_template_service
 
+logger = app_logs.get_logger(__name__)
+
 
 class AppContainer:
     def __init__(self) -> None:
@@ -94,6 +101,7 @@ class AppContainer:
         )
         if not self.settings.google_cloud_project_id:
             raise ValueError("GOOGLE_CLOUD_PROJECT must be configured")
+        self._log_runtime_modes()
 
         self.clock_adapter = system_adapters.SystemClockAdapter()
         self.id_generator_adapter = system_adapters.UuidIdGeneratorAdapter()
@@ -191,7 +199,7 @@ class AppContainer:
                 settings=self.settings,
             )
         )
-        self.langsmith_tracer = langsmith_tracer.LangsmithTracer(
+        self.tracer = langsmith_tracer_adapter.LangsmithTracerAdapter(
             enabled=self.settings.langsmith_tracing_enabled,
             project_name=self.settings.langsmith_project,
             api_key=self.settings.langsmith_api_key,
@@ -205,7 +213,7 @@ class AppContainer:
             location=self.settings.gemini_location,
             model=self.settings.gemini_model,
             max_output_tokens=self.settings.gemini_max_output_tokens,
-            tracer=self.langsmith_tracer,
+            tracer=self.tracer,
         )
         self.agent_workflow_engine = workflow_engine.LangGraphAgentWorkflowEngine()
 
@@ -315,12 +323,6 @@ class AppContainer:
         self.event_description_builder = event_description_builder.EventDescriptionBuilder(
             agent_profile_repository=self.agent_profile_repository,
         )
-        self.event_description_builder = event_description_builder.EventDescriptionBuilder(
-            agent_profile_repository=self.agent_profile_repository,
-        )
-        self.event_description_builder = event_description_builder.EventDescriptionBuilder(
-            agent_profile_repository=self.agent_profile_repository,
-        )
         self.scheduling_service = scheduling_service.SchedulingService(
             scheduling_repository=self.scheduling_repository,
             conversation_repository=self.conversation_repository,
@@ -405,8 +407,14 @@ class AppContainer:
                 reject_proposed_slots_handler.RejectProposedSlotsHandler(
                     scheduling_svc=self.scheduling_service,
                 ),
+                submit_reschedule_for_review_handler.SubmitRescheduleForReviewHandler(
+                    scheduling_svc=self.scheduling_service,
+                ),
+                confirm_rescheduled_slot_handler.ConfirmRescheduledSlotHandler(
+                    scheduling_svc=self.scheduling_service,
+                ),
             ],
-            tracer=self.langsmith_tracer,
+            tracer=self.tracer,
         )
 
         self.tool_definition_registry = tool_definition_registry_mod.ToolDefinitionRegistry()
@@ -431,7 +439,7 @@ class AppContainer:
             prompt_builder_instance=self.prompt_builder,
             tool_definition_registry=self.tool_definition_registry,
             patient_repository=self.patient_repository,
-            tracer=self.langsmith_tracer,
+            tracer=self.tracer,
         )
 
         self.webhook_service = webhook_service.WebhookService(
@@ -447,7 +455,7 @@ class AppContainer:
             id_generator=self.id_generator_adapter,
             clock=self.clock_adapter,
             context_message_limit=self.settings.conversation_context_messages,
-            tracer=self.langsmith_tracer,
+            tracer=self.tracer,
             agent_workflow=self.agent_workflow_engine,
             professional_silent_guard=self.professional_silent_guard,
             tool_calling_orchestrator=self.tool_calling_orchestrator,
@@ -479,8 +487,13 @@ class AppContainer:
             whatsapp_onboarding_service=self.whatsapp_onboarding_service,
             google_calendar_onboarding_service=self.google_calendar_onboarding_service,
         )
+        self.firestore_event_stream_adapter = (
+            firestore_event_stream_adapter.FirestoreEventStreamAdapter(
+                firestore_client=self.firestore_client,
+            )
+        )
         self.event_stream_service = event_stream_service.EventStreamService(
-            firestore_client=self.firestore_client,
+            event_stream=self.firestore_event_stream_adapter,
         )
         self.patient_query_service = patient_query_service.PatientQueryService(
             patient_repository=self.patient_repository,
@@ -509,4 +522,37 @@ class AppContainer:
             eval_run_repository=self.eval_run_repository,
             tenant_repository=self.tenant_repository,
             eval_tenant_service=self.eval_tenant_service,
+        )
+        self.admin_dashboard_service = admin_dashboard_service.AdminDashboardService(
+            tenant_repository=self.tenant_repository,
+            user_repository=self.user_repository,
+            patient_repository=self.patient_repository,
+            conversation_repository=self.conversation_repository,
+            manual_appointment_repository=self.manual_appointment_repository,
+            scheduling_repository=self.scheduling_repository,
+            scheduled_reminder_repository=self.scheduled_reminder_repository,
+        )
+
+    def _log_runtime_modes(self) -> None:
+        degraded_modes: list[str] = []
+        if not self.settings.cloud_run_base_url:
+            degraded_modes.append("task_scheduler=noop (CLOUD_RUN_BASE_URL is empty)")
+        if not (self.settings.email_notifier_enabled and self.settings.resend_api_key):
+            degraded_modes.append(
+                "email_notifier=logging "
+                "(EMAIL_NOTIFIER_ENABLED is off or RESEND_API_KEY is missing)"
+            )
+        if self.settings.whatsapp_outbound_noop:
+            degraded_modes.append("whatsapp_outbound=noop (WHATSAPP_OUTBOUND_NOOP=true)")
+        if not degraded_modes:
+            return
+        logger.warning(
+            "container.degraded_runtime_modes",
+            extra={
+                "event_data": app_logs.build_log_event(
+                    event_name="container.degraded_runtime_modes",
+                    message="container booted with degraded adapters",
+                    data={"degraded_modes": degraded_modes},
+                )
+            },
         )

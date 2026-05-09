@@ -8,9 +8,15 @@ import src.services.agentic.state_models as agentic_state_models
 # Lives here (not in style_rules_template) because it references internal
 # runtime variable names that a professional would never see in the UI form.
 _NEVER_INVENT_INJECTED_DATA = (
-    "Si el contexto inyectado tiene `fecha_cita`, `nombre_paciente`, `modalidad_actual` u otro dato "
-    "del paciente o de la cita, usalos EXACTAMENTE como aparecen. "
-    "NUNCA inventes ni parafrasees fechas, horas, nombres ni datos del paciente."
+    "Datos inyectados en runtime context y en la seccion 'Datos del consultorio' "
+    "(`fecha_cita`, `nombre_paciente`, `modalidad_actual`, `Direccion`, "
+    "`Indicaciones de llegada`, `Instrucciones sesion virtual`, etc.) son la "
+    "FUENTE UNICA DE VERDAD. Usalos EXACTAMENTE, palabra por palabra, sin "
+    "parafrasear, sin agregar campos que no esten ahi, sin inventar detalles "
+    "complementarios. Si un campo no esta presente o aparece marcado como "
+    "'(no provistas)', NO lo menciones — NO inventes una direccion, una nota "
+    "de acceso, un piso, un punto de referencia, ni instrucciones que no "
+    "aparezcan textualmente en el prompt."
 )
 
 # Rule shared across states that may quote prices. Agnostico al estilo del
@@ -53,19 +59,36 @@ def _instructions_for_state(
                 "Flujo actual: inicio de conversacion con un paciente RECURRENTE "
                 "(ya tiene historia con el profesional — ver 'Known patient profile' "
                 "en este prompt).",
-                "Saluda al paciente por su nombre (de 'Known patient profile') y pregunta "
-                "para que necesita la conversacion. Tres flujos posibles:\n"
+                "EN EL PRIMER MENSAJE de bienvenida: (i) saluda al paciente por su nombre "
+                "(de 'Known patient profile'), y (ii) presenta los servicios disponibles "
+                "POR NOMBRE, SIN PRECIOS, en una sola lista. Filtrar: SOLO ofrece "
+                "servicios marcados con `<target_patients>` que incluya 'recurrentes' "
+                "(Pacientes nuevos y recurrentes O Solo pacientes recurrentes). Ignora "
+                "los servicios marcados solo para pacientes nuevos. NO partas el saludo "
+                "en dos turnos (uno para saludar y otro para listar servicios) — todo "
+                "junto en un unico OUTBOUND. Si el paciente menciona en ese mismo "
+                "mensaje un intent claro (reagendar, cancelar, o un servicio especifico), "
+                "atiende ese intent en lugar de listar servicios.",
+                "Tres flujos posibles tras la presentacion:\n"
                 "  (a) Cita de control / seguimiento — agendar una nueva cita.\n"
                 "  (b) Una consulta sobre su tratamiento o cuidados — responde con la "
                 "informacion disponible; si no puedes, ofrece pasar a humano.\n"
-                "  (c) Reprogramar o cancelar una cita previa — usa handoff_to_human "
-                "(el bot no gestiona cambios de citas pasadas).",
+                "  (c) Reagendar o cancelar una cita previa — ver reglas abajo.",
                 "Si el paciente quiere agendar (caso a):\n"
                 "  - SOLO ofrece servicios marcados con `<target_patients>` que incluya "
                 "'recurrentes' (Pacientes nuevos y recurrentes O Solo pacientes recurrentes). "
                 "Ignora los servicios marcados solo para pacientes nuevos.\n"
-                "  - Pregunta motivo (consultation_reason) y modalidad (si el servicio "
-                "soporta ambas; si soporta una sola, asumela).\n"
+                "  - Presenta servicios POR NOMBRE, SIN PRECIOS. Los precios se cotizan "
+                "solo cuando el paciente pregunta o cuando el flujo llega al paso de "
+                "pago (`<payment_timing>` BEFORE_SESSION).\n"
+                "  - Pregunta motivo (consultation_reason) SOLO si el servicio es "
+                "diagnostico/exploratorio (palabras clave en su nombre/descripcion: "
+                "'valoracion', 'primera consulta', 'evaluacion', 'diagnostico'). Si el "
+                "servicio es autoexplicativo (procedimiento concreto: blanqueamiento, "
+                "limpieza, control, extraccion, etc.) NO preguntes motivo — el servicio es "
+                "el motivo. Pregunta modalidad (si el servicio soporta ambas; si soporta "
+                "una sola, asumela). NO inventes modalidades que el servicio no liste en "
+                "`<modalities>` aunque el contexto del paciente lo sugiera.\n"
                 "  - Si la modalidad es VIRTUAL y no tienes patient_location del paciente "
                 "conocido, preguntala.\n"
                 "  - Cuando tengas los datos, llama submit_consultation_reason_for_review.",
@@ -73,8 +96,19 @@ def _instructions_for_state(
                 "del system prompt (precios, horarios, datos de pago, etc.). NO llames "
                 "submit_consultation_reason_for_review si solo es una consulta.",
                 _QUOTE_CURRENCY_PER_LOCATION,
-                "Si pide reprogramar/cancelar una cita previa (caso c), usa handoff_to_human "
-                "directamente — no intentes gestionar el cambio.",
+                "Si el paciente quiere reagendar o cancelar una cita previa (caso c), "
+                "decide segun la claridad del intent:\n"
+                "  • REAGENDAR EXPLICITO ('quiero reagendar', 'me ayudas a reagendar', "
+                "'necesito cambiar la fecha/hora', 'mover la cita') → si existe "
+                "`last_booked_request_id` en el runtime context, di 'Dame un momento' y "
+                "llama submit_reschedule_for_review(original_request_id=<last_booked_request_id>) "
+                "directamente, NO vuelvas a preguntar. Si NO existe last_booked_request_id "
+                "(no hay cita previa en esta conversacion) usa handoff_to_human.\n"
+                "  • CANCELAR EXPLICITO ('quiero cancelar', 'cancela mi cita', 'ya no "
+                "quiero ir') → usa handoff_to_human directamente.\n"
+                "  • AMBIGUO ('no puedo asistir', 'no podre ir', 'tengo un imprevisto') → "
+                "preguntale '¿Queres reagendar? Para cancelar te paso con un asesor.' y "
+                "espera respuesta.",
                 "No llames confirm_selected_slot_and_create_event en este estado.",
             ]
 
@@ -83,15 +117,31 @@ def _instructions_for_state(
             "Flujo actual: inicio de agendamiento con un paciente NUEVO "
             "(no esta registrado, primera vez).",
             "Sigue esta secuencia conversacional, agrupando preguntas relacionadas en un mismo mensaje:\n"
-            "  1. Si es el primer mensaje, presentate y pregunta el nombre del paciente.\n"
-            "  2. Presenta los servicios disponibles. SOLO ofrece servicios marcados con "
-            "`<target_patients>` que incluya 'nuevos' (Pacientes nuevos y recurrentes O "
-            "Solo pacientes nuevos). Ignora los servicios marcados solo para pacientes "
-            "recurrentes.\n"
-            "  3. Pregunta el motivo (consultation_reason). En el mismo mensaje, pregunta la "
-            "modalidad SOLO si el servicio elegido en el paso 2 soporta ambas (revisa "
-            "`<modalities>` del `<service>` correspondiente). Si el servicio solo soporta una "
-            "modalidad, asume esa automaticamente y no preguntes.\n"
+            "  1. EN EL MISMO MENSAJE de bienvenida: (i) presentate, (ii) pregunta el "
+            "nombre del paciente, y (iii) presenta los servicios disponibles POR NOMBRE, "
+            "SIN PRECIOS. NO partas el saludo en dos turnos (uno solo para el nombre y "
+            "otro para los servicios) — todo va junto en un unico OUTBOUND.\n"
+            "  2. Filtro de servicios al presentar: SOLO ofrece "
+            "servicios marcados con `<target_patients>` que incluya 'nuevos' (Pacientes "
+            "nuevos y recurrentes O Solo pacientes nuevos). Ignora los servicios marcados "
+            "solo para pacientes recurrentes. Los precios se cotizan UNICAMENTE cuando "
+            "el paciente los pregunta o cuando el flujo llega al paso de pago "
+            "(`<payment_timing>` BEFORE_SESSION); NO conviertas el saludo en un brochure "
+            "de tarifas.\n"
+            "  3. Pregunta el motivo (consultation_reason) SOLO si el servicio elegido es "
+            "DIAGNOSTICO/EXPLORATORIO — esto es, si su `<name>` o `<description>` indica que "
+            "es una valoracion, primera consulta, evaluacion o diagnostico (palabras clave: "
+            "'valoracion', 'primera consulta', 'consulta inicial', 'evaluacion', 'diagnostico', "
+            "'cita exploratoria'). En esos casos el motivo informa el plan terapeutico y "
+            "preguntarlo es necesario. Si el servicio elegido es AUTOEXPLICATIVO — su nombre "
+            "ya es un procedimiento concreto (ej. 'blanqueamiento dental', 'limpieza dental', "
+            "'control de ortodoncia', 'extraccion', 'endodoncia', 'brackets', 'sesion de "
+            "[tecnica]') — NO preguntes motivo: el servicio mismo es el motivo. Usa "
+            "consultation_reason='[nombre del servicio]' al llamar la tool. "
+            "Para la modalidad: aplica las reglas MODALIDAD del bloque <style_rules> "
+            "(no las repitas aqui). En particular: solo preguntas modalidad si "
+            "`<modalities>` del servicio tiene varios valores; si tiene uno solo, "
+            "asumelo y NO lo verbalices.\n"
             "  4. Si la modalidad resultante es VIRTUAL, pregunta ciudad o pais desde donde "
             "se conectara. Si es PRESENCIAL, omite este paso.",
             "Datos a recolectar antes de llamar submit_consultation_reason_for_review:\n"
@@ -131,6 +181,20 @@ def _instructions_for_state(
         # con un concepto que termina filtrandose al paciente como "confirmar
         # tu cita / asistencia" pre-pago. Vocabulario interno aqui: "finalizar
         # el agendamiento", "datos finales".
+        if runtime_context.request_kind == "RESCHEDULE":
+            # Reagendamiento: los datos del paciente se heredan del original.
+            # No pedir datos adicionales; solo confirmar el nuevo slot.
+            return [
+                "Flujo actual: reagendamiento — el paciente eligio un nuevo horario.",
+                "Llama confirm_rescheduled_slot(request_id=<valor literal de `request_id_activo` "
+                "del runtime context>) inmediatamente. NO uses el `slot_id` que devolvio "
+                "select_proposed_slot — esos son cosas distintas. NO pidas datos al paciente "
+                "(nombre, email, edad) — se heredan de la cita original.",
+                "Despues de reagendar, confirma con texto natural: 'Tu cita queda el [fecha] a las [hora]'. "
+                "NO uses la palabra 'confirmar' ni derivados para referirte al reagendamiento — "
+                "usa 'queda agendada', 'queda lista', 'queda para el'. "
+                "NO menciones modalidad a menos que el paciente lo pregunte.",
+            ]
         if runtime_context.missing_confirmation_fields:
             missing_fields_bullet = "\n• ".join(runtime_context.missing_confirmation_fields)
             return [
@@ -140,8 +204,10 @@ def _instructions_for_state(
                 "Cuando no falte ningun dato, llama confirm_selected_slot_and_create_event.",
             ]
         return [
-            "Flujo actual: ya hay slot seleccionado y no faltan datos de perfil.",
-            "Llama confirm_selected_slot_and_create_event para completar la reserva.",
+            "Flujo actual: el slot ya quedo seleccionado y no falta ningun dato del paciente.",
+            "Llama confirm_selected_slot_and_create_event INMEDIATAMENTE. NO pidas nombre, "
+            "correo, telefono ni edad — todos esos datos ya estan en 'Known patient profile' "
+            "o en el request. Pasa los args vacios y el backend reutiliza el perfil.",
         ]
     if runtime_context.state == "AWAITING_CONSULTATION_REVIEW":
         return [
@@ -156,14 +222,34 @@ def _instructions_for_state(
             f"compartio o esta siendo revisado nada por {ref} ni por nadie. "
             "La gestion interna es invisible. Si necesitas pedirle paciencia, "
             'di solo "dame un momento" sin justificar la espera.',
-            "Puedes responder preguntas del paciente usando solo la informacion que ya tienes: "
-            "horarios, modalidades, direccion del consultorio o informacion general del profesional.",
+            # Acks cortos NO son intent: son solo cortesia. No disparar
+            # handoff ni intentar avanzar el flujo cuando el paciente
+            # responde con un mensaje positivo corto. SIEMPRE devuelve
+            # texto — el orchestrator interpreta una respuesta vacia como
+            # falla de Gemini y dispara el mensaje de fallback.
+            'Si el paciente responde con un ack corto ("vale", "ok", "gracias", '
+            '"perfecto", "listo", "dale", "bueno"), respondele cortes y breve '
+            '(ej. "Con gusto", "Listo, te aviso apenas tengamos las opciones", '
+            '"De nada"). NO llames ninguna tool. NUNCA respondas vacio.',
+            "Puedes responder preguntas concretas del paciente usando solo la informacion que ya "
+            "tienes: horarios, modalidades, direccion del consultorio o informacion general del "
+            "profesional.",
             "No avances el flujo de agendamiento ni solicites datos adicionales.",
-            "Si el paciente hace una pregunta que va mas alla de lo que puedes responder "
-            "con la informacion disponible, usa handoff_to_human.",
+            "Solo usa handoff_to_human si el paciente pide explicitamente algo que el bot no puede "
+            "resolver y que claramente requiere intervencion humana (ej. queja formal, pregunta "
+            "fuera del alcance del agendamiento). NO uses handoff para mensajes ambiguos ni acks.",
         ]
     if runtime_context.state == "AWAITING_PAYMENT_CONFIRMATION":
         return [
+            # Defense-in-depth: this state should not be reached when
+            # <payment_timing> is AFTER_SESSION (the resolver in
+            # scheduling_service skips payment for that timing). If the
+            # resolver ever fails to gate, this guard tells the LLM to step
+            # back instead of asking for a payment that should not exist.
+            "GUARD: si `<payment_timing>` del system prompt es AFTER_SESSION, "
+            "este estado NO deberia activarse — el flujo NO incluye paso de "
+            "pago. Si llegas aca por error, NO pidas dinero ni comprobante; "
+            "responde 'dame un momento' y espera al siguiente turno.",
             # NOTA: el nombre del estado contiene "CONFIRMATION" por persistencia
             # pero las instrucciones visibles al LLM evitan la palabra "confirmar"
             # — el LLM la filtraba al paciente como "para confirmarte/confirmar
@@ -202,8 +288,16 @@ def _instructions_for_state(
             "Puedes responder preguntas generales del paciente: informacion del consultorio, "
             "horarios, direccion, preparacion para la cita u otros datos generales.",
             _NEVER_INVENT_INJECTED_DATA,
-            "Si el paciente dice que NO puede asistir o pide reagendar/cancelar su cita, "
-            "usa handoff_to_human — el bot no gestiona cambios de citas ya reservadas.",
+            "Si el paciente quiere reagendar o cancelar la cita, decide segun la claridad del intent:\n"
+            "  • REAGENDAR EXPLICITO ('quiero reagendar', 'me ayudas a reagendar', 'necesito "
+            "cambiar la fecha/hora', 'mover la cita') → di 'Dame un momento' y llama "
+            "submit_reschedule_for_review(original_request_id=<request_id_activo del runtime context>) "
+            "directamente. NO vuelvas a preguntar.\n"
+            "  • CANCELAR EXPLICITO ('quiero cancelar', 'cancela mi cita', 'ya no quiero ir') "
+            "→ usa handoff_to_human directamente. NO vuelvas a preguntar.\n"
+            "  • AMBIGUO ('no puedo asistir', 'no podre ir', 'tengo un imprevisto', 'tengo "
+            "problema') → preguntale '¿Queres reagendar? Para cancelar te paso con un asesor.' "
+            "y espera respuesta.",
             "No solicites confirmacion de nuevo si el paciente ya respondio.",
             "No avances ningun flujo de agendamiento en este estado.",
         ]
@@ -221,11 +315,22 @@ def _instructions_for_state(
         ]
         if modality == "PRESENCIAL":
             lines += [
-                "La cita es PRESENCIAL. Incluye en la confirmacion la direccion del consultorio, "
-                "las indicaciones de llegada y las notas de acceso tal como aparezcan en la seccion "
-                "'Datos del consultorio' del contexto inyectado.",
+                "La cita es PRESENCIAL. Incluye en la confirmacion la direccion EXACTA "
+                "del consultorio (campo `Direccion:` de la seccion 'Datos del consultorio') "
+                "y, si estan presentes, las indicaciones de llegada (campo "
+                "`Indicaciones de llegada:`). Reproduce el texto LITERALMENTE — no "
+                "parafrasees, no resumas, no inventes datos adicionales (notas de acceso, "
+                "contacto en recepcion, descripciones del edificio, pisos, referencias) "
+                "que no aparezcan textualmente en el prompt.",
                 "Si la seccion 'Datos del consultorio' no existe o no tiene direccion, "
                 "transfiere a humano en lugar de inventar datos.",
+                "PROHIBIDO en este estado: postergar la entrega de informacion ya "
+                "disponible en el prompt prometiendo que 'un asesor te contactara para "
+                "darte la direccion / detalles / indicaciones'. Si tienes la informacion "
+                "en 'Datos del consultorio', dasela ahora; no diferas. Solo se puede "
+                "mencionar 'asesor humano' como salida cuando el paciente quiera algo "
+                "que el bot NO puede resolver (ej. reagendar) — y en ese caso DEBES "
+                "llamar handoff_to_human, no solo decirlo en texto.",
             ]
         elif modality == "VIRTUAL":
             lines += [
@@ -241,7 +346,7 @@ def _instructions_for_state(
             "Menciona que el paciente tambien recibe una invitacion de Google Calendar al correo registrado.",
             "Para mensajes siguientes, responde preguntas generales del paciente usando los datos del contexto.",
             "NO inicies un nuevo proceso de agendamiento. Si el paciente quiere agendar otra cita, "
-            "usa handoff_to_human.",
+            "reagendar la actual o cancelar, usa handoff_to_human.",
             "Cuando el paciente se despida o confirme que no necesita nada mas, "
             "DEBES llamar close_session obligatoriamente. Reconoce como senales de cierre: "
             "agradecimientos finales ('gracias', 'muchas gracias'); "

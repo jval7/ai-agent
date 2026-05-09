@@ -43,6 +43,7 @@ export interface NewManualAppointmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreated: () => void;
+  tenantId?: string;
 }
 
 const inputClass =
@@ -54,7 +55,8 @@ const dividerClass = "border-t border-border-subtle";
 export function NewManualAppointmentModal({
   isOpen,
   onClose,
-  onCreated
+  onCreated,
+  tenantId
 }: NewManualAppointmentModalProps) {
   const appContainer = appContainerContextModule.useAppContainer();
   const queryClient = reactQueryModule.useQueryClient();
@@ -80,16 +82,37 @@ export function NewManualAppointmentModal({
   const slotPickerMonthFromIso = slotPickerMonthStart.toISO();
   const slotPickerMonthToIso = slotPickerMonthEnd.toISO();
 
+  const availabilityQueryKey =
+    tenantId !== undefined
+      ? [
+          "admin",
+          tenantId,
+          "google-calendar-availability",
+          "modal-manual",
+          slotPickerMonthFromIso,
+          slotPickerMonthToIso
+        ]
+      : [
+          "google-calendar-availability",
+          "modal-manual",
+          slotPickerMonthFromIso,
+          slotPickerMonthToIso
+        ];
+
   const availabilityQuery = reactQueryModule.useQuery({
-    queryKey: [
-      "google-calendar-availability",
-      "modal-manual",
-      slotPickerMonthFromIso,
-      slotPickerMonthToIso
-    ],
+    queryKey: availabilityQueryKey,
     enabled: isOpen && slotPickerMonthFromIso !== null && slotPickerMonthToIso !== null,
     queryFn: () =>
-      appContainer.schedulingUseCase.getAvailability(slotPickerMonthFromIso!, slotPickerMonthToIso!)
+      tenantId !== undefined
+        ? appContainer.api.adminGetGoogleCalendarAvailability(
+            tenantId,
+            slotPickerMonthFromIso!,
+            slotPickerMonthToIso!
+          )
+        : appContainer.schedulingUseCase.getAvailability(
+            slotPickerMonthFromIso!,
+            slotPickerMonthToIso!
+          )
   });
 
   const busyIntervals = reactModule.useMemo<calendarUtilsModule.BusyIntervalRange[]>(() => {
@@ -102,13 +125,20 @@ export function NewManualAppointmentModal({
     );
   }, [availabilityQuery.data]);
 
+  const manualAppointmentsKey =
+    tenantId !== undefined
+      ? ["admin", tenantId, "manual-appointments"]
+      : manualAppointmentsQueryKey;
+
   const createAppointmentMutation = reactQueryModule.useMutation({
     mutationFn: (input: manualAppointmentModel.CreateManualAppointmentInput) =>
-      appContainer.manualAppointmentUseCase.createAppointment(input),
+      tenantId !== undefined
+        ? appContainer.api.adminCreateManualAppointment(tenantId, input)
+        : appContainer.manualAppointmentUseCase.createAppointment(input),
     onSuccess: async () => {
       setSuccessMessage("Cita creada correctamente.");
       setErrorMessage(null);
-      await queryClient.invalidateQueries({ queryKey: manualAppointmentsQueryKey });
+      await queryClient.invalidateQueries({ queryKey: manualAppointmentsKey });
       onCreated();
       handleClose();
     },

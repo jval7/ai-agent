@@ -17,6 +17,7 @@ class RuntimePromptContext(pydantic.BaseModel):
     ]
     request_id: str | None = None
     request_status: str | None = None
+    request_kind: typing.Literal["INITIAL", "RETRY", "RESCHEDULE"] | None = None
     professional_note: str | None = None
     appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] | None = None
     patient_location: str | None = None
@@ -26,6 +27,10 @@ class RuntimePromptContext(pydantic.BaseModel):
     appointment_end_at: datetime.datetime | None = None
     patient_first_name: str | None = None
     missing_confirmation_fields: list[str] = pydantic.Field(default_factory=list)
+    # Last BOOKED or SESSION_CLOSED appointment in this conversation, exposed in
+    # NO_ACTIVE_REQUEST so the bot can offer the reschedule flow when the
+    # patient comes back asking to move a previously booked appointment.
+    last_booked_request_id: str | None = None
     enabled_tool_names: list[str] = pydantic.Field(default_factory=list)
 
 

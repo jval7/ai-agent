@@ -70,11 +70,14 @@ class TestOfficeContextSection:
         assert booking_constants.VIRTUAL_SESSION_BOT_INSTRUCTIONS in joined
 
     def test_renders_office_location_without_optional_fields(self) -> None:
+        # Optional arrival_instructions appears with "(no provistas)" marker so
+        # the LLM does not interpret the absent line as missing data and
+        # escape to "an advisor will contact you" in POST_BOOKING_FOLLOWUP.
         section = office_context_section.OfficeContextSection()
         ctx = _build_context()
         profile = _build_profile_with_office(arrival_instructions=None)
         result = section.render(ctx, known_patient=None, agent_profile=profile)
         joined = "\n".join(result)
         assert "Calle 5 # 38-25, Cali" in joined
-        assert "Indicaciones" not in joined
+        assert "Indicaciones de llegada: (no provistas)" in joined
         assert booking_constants.VIRTUAL_SESSION_BOT_INSTRUCTIONS in joined

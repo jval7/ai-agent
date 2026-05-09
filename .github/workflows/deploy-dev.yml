@@ -311,6 +311,9 @@ jobs:
       - name: Build frontend
         env:
           VITE_API_BASE_URL: ${{ steps.backend-url.outputs.url }}
+          # Show internal-only tools (Evaluation page, prompt-preview section) in dev.
+          # deploy-main.yml intentionally omits this so prod stays clean.
+          VITE_SHOW_INTERNAL_TOOLS: "true"
         run: |
           npm --prefix frontend ci
           npm --prefix frontend run build

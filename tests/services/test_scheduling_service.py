@@ -1,4 +1,5 @@
 import datetime
+import typing
 
 import pydantic
 import pytest
@@ -2139,3 +2140,353 @@ def test_change_modality_propagates_actual_payment_status_to_reminder() -> None:
     assert reloaded is not None
     assert reloaded.appointment_modality == "VIRTUAL"
     assert reloaded.payment_status == "PENDING"  # payment status unchanged
+
+
+# ---------------------------------------------------------------------------
+# Reschedule-by-bot flow
+# ---------------------------------------------------------------------------
+
+
+def _seed_booked_request(
+    repository: scheduling_repository_adapter.InMemorySchedulingRepositoryAdapter,
+    request_id: str = "original-req-1",
+    conversation_id: str = "conv-1",
+    consultation_reason: str = "Ansiedad",
+    appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] = "PRESENCIAL",
+    patient_first_name: str | None = "Ana",
+    patient_last_name: str | None = "Garcia",
+    patient_age: int | None = 30,
+    patient_location: str | None = None,
+    calendar_event_id: str = "cal-event-1",
+) -> None:
+    """Seed a BOOKED scheduling request in the in-memory repository."""
+    repository.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id=request_id,
+            tenant_id="tenant-1",
+            conversation_id=conversation_id,
+            whatsapp_user_id="wa-user-1",
+            request_kind="INITIAL",
+            status="BOOKED",
+            round_number=1,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            consultation_reason=consultation_reason,
+            appointment_modality=appointment_modality,
+            patient_location=patient_location,
+            patient_first_name=patient_first_name,
+            patient_last_name=patient_last_name,
+            patient_age=patient_age,
+            slots=[
+                scheduling_slot_entity.SchedulingSlot(
+                    id="slot-booked",
+                    start_at=datetime.datetime(2026, 3, 1, 10, 0, tzinfo=datetime.UTC),
+                    end_at=datetime.datetime(2026, 3, 1, 11, 0, tzinfo=datetime.UTC),
+                    timezone="America/Bogota",
+                    status="BOOKED",
+                )
+            ],
+            slot_options_map={},
+            selected_slot_id="slot-booked",
+            calendar_event_id=calendar_event_id,
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+
+def test_submit_reschedule_for_review_creates_child_request_inheriting_data() -> None:
+    """Given a BOOKED SR, submit_reschedule_for_review creates a RESCHEDULE child SR that
+    inherits consultation_reason, modality, location, and patient names from the original."""
+    service, repository, _provider, _ = build_service(["reschedule-req-1"])
+    _seed_booked_request(repository)
+
+    result = service.submit_reschedule_for_review(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        whatsapp_user_id="wa-user-1",
+        input_dto=scheduling_dto.SubmitRescheduleForReviewToolInputDTO(
+            original_request_id="original-req-1",
+            reason="Cambio de agenda",
+        ),
+    )
+
+    assert result.status == "AWAITING_CONSULTATION_REVIEW"
+    assert result.request_id == "reschedule-req-1"
+
+    child = repository.get_request_by_id("tenant-1", "reschedule-req-1")
+    assert child is not None
+    assert child.request_kind == "RESCHEDULE"
+    assert child.source_appointment_id == "original-req-1"
+    assert child.source_appointment_kind == "SCHEDULING_REQUEST"
+    assert child.consultation_reason == "Ansiedad"
+    assert child.appointment_modality == "PRESENCIAL"
+    assert child.patient_first_name == "Ana"
+    assert child.patient_last_name == "Garcia"
+    assert child.patient_age == 30
+    assert child.patient_preference_note == "Cambio de agenda"
+    assert child.status == "AWAITING_CONSULTATION_REVIEW"
+    assert child.calendar_event_id is None
+    assert child.selected_slot_id is None
+
+
+def test_submit_reschedule_for_review_rejects_non_booked() -> None:
+    """If the original SR is not BOOKED, submit raises InvalidStateError."""
+    service, repository, _provider, _ = build_service(["reschedule-req-1"])
+    # Seed a non-BOOKED request
+    repository.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="original-req-1",
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            request_kind="INITIAL",
+            status="AWAITING_CONSULTATION_REVIEW",
+            round_number=1,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            slots=[],
+            slot_options_map={},
+            selected_slot_id=None,
+            calendar_event_id=None,
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError) as exc_info:
+        service.submit_reschedule_for_review(
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            input_dto=scheduling_dto.SubmitRescheduleForReviewToolInputDTO(
+                original_request_id="original-req-1",
+            ),
+        )
+
+    assert "BOOKED" in str(exc_info.value)
+
+
+def test_submit_reschedule_for_review_rejects_when_active_reschedule_exists() -> None:
+    """If an active RESCHEDULE SR already exists for the original, raises InvalidStateError."""
+    service, repository, _provider, _ = build_service(["reschedule-req-2"])
+    _seed_booked_request(repository)
+    # Seed an existing active RESCHEDULE SR
+    repository.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="existing-reschedule-1",
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            request_kind="RESCHEDULE",
+            status="AWAITING_CONSULTATION_REVIEW",
+            round_number=2,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            source_appointment_id="original-req-1",
+            source_appointment_kind="SCHEDULING_REQUEST",
+            slots=[],
+            slot_options_map={},
+            selected_slot_id=None,
+            calendar_event_id=None,
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError) as exc_info:
+        service.submit_reschedule_for_review(
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            input_dto=scheduling_dto.SubmitRescheduleForReviewToolInputDTO(
+                original_request_id="original-req-1",
+            ),
+        )
+
+    assert "reagendamiento en curso" in str(exc_info.value)
+
+
+def test_select_proposed_slot_skips_payment_when_kind_is_reschedule() -> None:
+    """When request_kind=RESCHEDULE, select_slot_for_confirmation stays in
+    AWAITING_PATIENT_CHOICE (with slot selected) regardless of payment_timing.
+    This test uses the default BEFORE_SESSION timing (no agent profile repo wired)
+    to confirm the RESCHEDULE check overrides the payment step."""
+    service, repository, _provider, _ = build_service(["reschedule-req-1"])
+    # Seed a RESCHEDULE SR in AWAITING_PATIENT_CHOICE
+    repository.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="reschedule-req-1",
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            request_kind="RESCHEDULE",
+            status="AWAITING_PATIENT_CHOICE",
+            round_number=2,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            consultation_reason="Ansiedad",
+            appointment_modality="PRESENCIAL",
+            slots=[
+                scheduling_slot_entity.SchedulingSlot(
+                    id="new-slot-1",
+                    start_at=datetime.datetime(2026, 4, 1, 10, 0, tzinfo=datetime.UTC),
+                    end_at=datetime.datetime(2026, 4, 1, 11, 0, tzinfo=datetime.UTC),
+                    timezone="America/Bogota",
+                    status="PROPOSED",
+                )
+            ],
+            slot_options_map={"1": "new-slot-1"},
+            selected_slot_id=None,
+            calendar_event_id=None,
+            source_appointment_id="original-req-1",
+            source_appointment_kind="SCHEDULING_REQUEST",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    result = service.select_slot_for_confirmation(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        request_id="reschedule-req-1",
+        slot_id="new-slot-1",
+    )
+
+    # Must stay in AWAITING_PATIENT_CHOICE (not AWAITING_PAYMENT_CONFIRMATION)
+    assert result.status == "AWAITING_PATIENT_CHOICE"
+    assert result.selected_slot_id == "new-slot-1"
+
+    reloaded = repository.get_request_by_id("tenant-1", "reschedule-req-1")
+    assert reloaded is not None
+    assert reloaded.status == "AWAITING_PATIENT_CHOICE"
+    assert reloaded.selected_slot_id == "new-slot-1"
+
+
+def test_confirm_rescheduled_slot_moves_calendar_event_and_closes_child() -> None:
+    """End-to-end: given a RESCHEDULE SR with a selected slot, confirm_rescheduled_slot
+    moves the calendar event in place, promotes the RESCHEDULE child to BOOKED (so the
+    conversation lands in POST_BOOKING_FOLLOWUP), and detaches the calendar event from
+    the original SR so the agenda does not render duplicates."""
+    service, repository, provider, _ = build_service(["reschedule-req-1"])
+    _seed_booked_request(repository)
+
+    # Seed the RESCHEDULE SR in AWAITING_PATIENT_CHOICE with a selected slot.
+    new_start = datetime.datetime(2026, 5, 1, 15, 0, tzinfo=datetime.UTC)
+    new_end = datetime.datetime(2026, 5, 1, 16, 0, tzinfo=datetime.UTC)
+    repository.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="reschedule-req-1",
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            request_kind="RESCHEDULE",
+            status="AWAITING_PATIENT_CHOICE",
+            round_number=2,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            consultation_reason="Ansiedad",
+            appointment_modality="PRESENCIAL",
+            slots=[
+                scheduling_slot_entity.SchedulingSlot(
+                    id="new-slot-1",
+                    start_at=new_start,
+                    end_at=new_end,
+                    timezone="America/Bogota",
+                    status="SELECTED",
+                )
+            ],
+            slot_options_map={"1": "new-slot-1"},
+            selected_slot_id="new-slot-1",
+            calendar_event_id=None,
+            source_appointment_id="original-req-1",
+            source_appointment_kind="SCHEDULING_REQUEST",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    result = service.confirm_rescheduled_slot(
+        tenant_id="tenant-1",
+        conversation_id="conv-1",
+        input_dto=scheduling_dto.ConfirmRescheduledSlotInputDTO(
+            request_id="reschedule-req-1",
+        ),
+    )
+
+    # The RESCHEDULE child is now the active BOOKED appointment.
+    assert result.request_id == "reschedule-req-1"
+    assert result.status == "BOOKED"
+
+    # Calendar event must have been updated (update_event called once).
+    assert len(provider.updated_events) == 1
+    assert provider.updated_events[0].start_at == new_start
+    assert provider.updated_events[0].end_at == new_end
+
+    # RESCHEDULE child holds the calendar event and is BOOKED so the resolver
+    # treats the conversation as POST_BOOKING_FOLLOWUP.
+    reschedule_sr = repository.get_request_by_id("tenant-1", "reschedule-req-1")
+    assert reschedule_sr is not None
+    assert reschedule_sr.status == "BOOKED"
+    assert reschedule_sr.calendar_event_id is not None
+
+    # Original SR keeps history but lost the calendar event reference, so the
+    # agenda calendar does not render two appointments at the same time.
+    original_sr = repository.get_request_by_id("tenant-1", "original-req-1")
+    assert original_sr is not None
+    assert original_sr.calendar_event_id is None
+    assert original_sr.status == "SESSION_CLOSED"
+
+
+def test_confirm_rescheduled_slot_rejects_when_no_slot_selected() -> None:
+    """If the RESCHEDULE SR has no selected_slot_id, raises InvalidStateError."""
+    service, repository, _provider, _ = build_service(["reschedule-req-1"])
+    _seed_booked_request(repository)
+    repository.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="reschedule-req-1",
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            request_kind="RESCHEDULE",
+            status="AWAITING_PATIENT_CHOICE",
+            round_number=2,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            consultation_reason="Ansiedad",
+            appointment_modality="PRESENCIAL",
+            slots=[
+                scheduling_slot_entity.SchedulingSlot(
+                    id="new-slot-1",
+                    start_at=datetime.datetime(2026, 5, 1, 15, 0, tzinfo=datetime.UTC),
+                    end_at=datetime.datetime(2026, 5, 1, 16, 0, tzinfo=datetime.UTC),
+                    timezone="America/Bogota",
+                    status="PROPOSED",
+                )
+            ],
+            slot_options_map={"1": "new-slot-1"},
+            selected_slot_id=None,  # no slot selected yet
+            calendar_event_id=None,
+            source_appointment_id="original-req-1",
+            source_appointment_kind="SCHEDULING_REQUEST",
+            created_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+    )
+
+    with pytest.raises(service_exceptions.InvalidStateError) as exc_info:
+        service.confirm_rescheduled_slot(
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            input_dto=scheduling_dto.ConfirmRescheduledSlotInputDTO(
+                request_id="reschedule-req-1",
+            ),
+        )
+
+    assert "slot" in str(exc_info.value).lower()

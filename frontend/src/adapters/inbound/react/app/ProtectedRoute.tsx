@@ -1,5 +1,6 @@
 import * as reactRouterDomModule from "react-router-dom";
 
+import * as googleCalendarReauthBannerModule from "@adapters/inbound/react/components/GoogleCalendarReauthBanner";
 import * as authContextModule from "./AuthContext";
 
 export function ProtectedRoute(props: { children: JSX.Element }) {
@@ -17,5 +18,10 @@ export function ProtectedRoute(props: { children: JSX.Element }) {
     return <reactRouterDomModule.Navigate to="/login" replace />;
   }
 
-  return props.children;
+  return (
+    <>
+      <googleCalendarReauthBannerModule.GoogleCalendarReauthBanner />
+      {props.children}
+    </>
+  );
 }

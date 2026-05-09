@@ -318,6 +318,9 @@ jobs:
       - name: Build frontend
         env:
           VITE_API_BASE_URL: ${{ steps.backend-url.outputs.url }}
+          # Show internal-only tools (Evaluation page, prompt-preview section) only in dev.
+          # Prod stays clean.
+          VITE_SHOW_INTERNAL_TOOLS: ${{ needs.resolve-env.outputs.environment == 'dev' && 'true' || 'false' }}
         run: |
           npm --prefix frontend ci
           npm --prefix frontend run build

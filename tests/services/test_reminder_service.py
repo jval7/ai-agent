@@ -1123,3 +1123,306 @@ def test_execute_reminder_reselects_template_when_payment_timing_changed() -> No
     updated_reminder = reminder_repo.get_by_id("tenant-1", pending[0].id)
     assert updated_reminder is not None
     assert updated_reminder.template_name == _ATTENDANCE_CANONICAL_NAME
+
+
+# ---------------------------------------------------------------------------
+# Edge cases — maybe_schedule_reminder + execute_reminder guards
+# ---------------------------------------------------------------------------
+
+
+class _FailingTaskScheduler(task_scheduler_adapter.InMemoryTaskSchedulerAdapter):
+    def schedule_appointment_reminder(
+        self,
+        tenant_id: str,
+        reminder_id: str,
+        delay_seconds: int,
+    ) -> str:
+        del tenant_id, reminder_id, delay_seconds
+        raise service_exceptions.ExternalProviderError("simulated cloud tasks failure")
+
+
+def test_maybe_schedule_skips_when_reminder_falls_in_the_past() -> None:
+    profile = _make_profile(payment_name="appointment_reminder_payment", days_before=2)
+    service, _, reminder_repo, _, _ = _build_service(["rem-1"], profile)
+
+    # Appointment 1 hour from NOW with days_before=2 → reminder datetime is in
+    # the past → service must skip the schedule call.
+    appointment_too_close = _NOW + datetime.timedelta(hours=1)
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-too-close",
+        patient_whatsapp_user_id="wa-1",
+        patient_name="Jane",
+        appointment_start_at=appointment_too_close,
+        payment_status="PAID",
+    )
+
+    assert reminder_repo.list_by_tenant("tenant-1", status="PENDING") == []
+
+
+def test_maybe_schedule_does_not_persist_when_task_scheduler_raises() -> None:
+    profile = _make_profile()
+    store = in_memory_store.InMemoryStore()
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    agent_profile_repo.save(profile)
+    wa_connection_repo = (
+        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
+    )
+    wa_connection_repo.save(
+        whatsapp_connection_entity.WhatsappConnection(
+            tenant_id="tenant-1",
+            phone_number_id="phone-1",
+            business_account_id="business-1",
+            access_token="wa-token-1",
+            status="CONNECTED",
+            embedded_signup_state=None,
+            updated_at=_NOW,
+        )
+    )
+    reminder_repo = (
+        scheduled_reminder_repository_adapter.InMemoryScheduledReminderRepositoryAdapter()
+    )
+    failing_scheduler = _FailingTaskScheduler()
+    service = reminder_service_module.ReminderService(
+        scheduled_reminder_repository=reminder_repo,
+        agent_profile_repository=agent_profile_repo,
+        whatsapp_connection_repository=wa_connection_repo,
+        whatsapp_provider=fake_adapters.FakeWhatsappProvider(),
+        task_scheduler=failing_scheduler,
+        id_generator=fake_adapters.SequenceIdGenerator(["rem-fail"]),
+        clock=fake_adapters.FixedClock(_NOW),
+    )
+
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-1",
+        patient_name="Jane",
+        appointment_start_at=_APPOINTMENT_FAR,
+        payment_status="PAID",
+    )
+
+    # The reminder must NOT be saved when the cloud task could not be enqueued.
+    assert reminder_repo.list_by_tenant("tenant-1", status="PENDING") == []
+
+
+def test_execute_reminder_raises_when_reminder_missing() -> None:
+    profile = _make_profile()
+    service, _, _, _, _ = _build_service([], profile)
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        service.execute_reminder("tenant-1", "ghost-reminder-id")
+
+
+def _seed_pending_reminder(
+    reminder_repo: scheduled_reminder_repository_adapter.InMemoryScheduledReminderRepositoryAdapter,
+    *,
+    reminder_id: str = "rem-1",
+    template_name: str = "appointment_reminder_attendance",
+) -> None:
+    import src.domain.entities.scheduled_reminder as scheduled_reminder_entity
+
+    reminder_repo.save(
+        scheduled_reminder_entity.ScheduledReminder(
+            id=reminder_id,
+            tenant_id="tenant-1",
+            source_type="MANUAL_APPOINTMENT",
+            source_id="appt-1",
+            patient_whatsapp_user_id="wa-1",
+            patient_name="Jane",
+            appointment_start_at=_APPOINTMENT_FAR,
+            reminder_scheduled_for=_APPOINTMENT_FAR - datetime.timedelta(days=2),
+            template_name=template_name,
+            template_language="es",
+            appointment_modality="VIRTUAL",
+            meet_url=None,
+            status="PENDING",
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+    )
+
+
+def test_execute_reminder_skips_when_status_is_already_sent() -> None:
+    profile = _make_profile()
+    service, _, reminder_repo, _, wa_provider = _build_service([], profile)
+    _seed_pending_reminder(reminder_repo)
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    pending[0].status = "SENT"
+    reminder_repo.save(pending[0])
+
+    result = service.execute_reminder("tenant-1", "rem-1")
+
+    assert result["status"] == "skipped"
+    assert "status_is_sent" in result["reason"]
+    assert wa_provider.sent_messages == []
+
+
+def test_execute_reminder_cancels_reminder_when_disabled_at_execution_time() -> None:
+    profile = _make_profile(enabled=False)
+    service, _, reminder_repo, _, wa_provider = _build_service([], profile)
+    # Seed a reminder that was scheduled when reminders were enabled.
+    _seed_pending_reminder(reminder_repo)
+
+    result = service.execute_reminder("tenant-1", "rem-1")
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "reminder_disabled"
+    assert wa_provider.sent_messages == []
+    cancelled = reminder_repo.get_by_id("tenant-1", "rem-1")
+    assert cancelled is not None
+    assert cancelled.status == "CANCELLED"
+
+
+def _build_service_with_connection_status(
+    connection_status: str,
+    access_token: str | None = "wa-token-1",  # noqa: S107
+    phone_number_id: str | None = "phone-1",
+) -> tuple[
+    reminder_service_module.ReminderService,
+    scheduled_reminder_repository_adapter.InMemoryScheduledReminderRepositoryAdapter,
+    fake_adapters.FakeWhatsappProvider,
+]:
+    profile = _make_profile()
+    store = in_memory_store.InMemoryStore()
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    agent_profile_repo.save(profile)
+    wa_connection_repo = (
+        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
+    )
+    wa_connection_repo.save(
+        whatsapp_connection_entity.WhatsappConnection(
+            tenant_id="tenant-1",
+            phone_number_id=phone_number_id,
+            business_account_id="business-1",
+            access_token=access_token,
+            status=connection_status,  # type: ignore[arg-type]
+            embedded_signup_state=None,
+            updated_at=_NOW,
+        )
+    )
+    reminder_repo = (
+        scheduled_reminder_repository_adapter.InMemoryScheduledReminderRepositoryAdapter()
+    )
+    wa_provider = fake_adapters.FakeWhatsappProvider()
+    service = reminder_service_module.ReminderService(
+        scheduled_reminder_repository=reminder_repo,
+        agent_profile_repository=agent_profile_repo,
+        whatsapp_connection_repository=wa_connection_repo,
+        whatsapp_provider=wa_provider,
+        task_scheduler=task_scheduler_adapter.InMemoryTaskSchedulerAdapter(),
+        id_generator=fake_adapters.SequenceIdGenerator([]),
+        clock=fake_adapters.FixedClock(_NOW),
+    )
+    return service, reminder_repo, wa_provider
+
+
+def test_execute_reminder_marks_failed_when_connection_disconnected() -> None:
+    service, reminder_repo, wa_provider = _build_service_with_connection_status("DISCONNECTED")
+    _seed_pending_reminder(reminder_repo)
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.execute_reminder("tenant-1", "rem-1")
+
+    failed = reminder_repo.get_by_id("tenant-1", "rem-1")
+    assert failed is not None
+    assert failed.status == "FAILED"
+    assert wa_provider.sent_messages == []
+
+
+def test_execute_reminder_marks_failed_when_credentials_missing() -> None:
+    service, reminder_repo, wa_provider = _build_service_with_connection_status(
+        "CONNECTED",
+        access_token=None,
+    )
+    _seed_pending_reminder(reminder_repo)
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.execute_reminder("tenant-1", "rem-1")
+
+    failed = reminder_repo.get_by_id("tenant-1", "rem-1")
+    assert failed is not None
+    assert failed.status == "FAILED"
+    assert wa_provider.sent_messages == []
+
+
+def test_execute_reminder_uses_legacy_format_for_unknown_template_kind() -> None:
+    profile = _make_profile(attendance_name="custom_legacy_template")
+    service, _, reminder_repo, _, wa_provider = _build_service([], profile)
+    _seed_pending_reminder(reminder_repo, template_name="custom_legacy_template")
+
+    result = service.execute_reminder("tenant-1", "rem-1")
+
+    assert result["status"] == "sent"
+    assert len(wa_provider.sent_template_body_parameters) == 1
+    # Legacy fallback uses 2 params: patient_name + dd/mm/yyyy hh:mm
+    body_params = wa_provider.sent_template_body_parameters[0]
+    assert len(body_params) == 2
+    assert body_params[0] == "Jane"
+    assert "/" in body_params[1] and ":" in body_params[1]
+
+
+class _FailingSendTemplateProvider(fake_adapters.FakeWhatsappProvider):
+    def send_template_message(
+        self,
+        access_token: str,
+        phone_number_id: str,
+        whatsapp_user_id: str,
+        template_name: str,
+        language_code: str,
+        body_parameters: list[str],
+    ) -> str:
+        del access_token, phone_number_id, whatsapp_user_id
+        del template_name, language_code, body_parameters
+        raise service_exceptions.ExternalProviderError("simulated send template failure")
+
+
+def test_execute_reminder_marks_failed_and_raises_when_provider_fails() -> None:
+    profile = _make_profile()
+    store = in_memory_store.InMemoryStore()
+    agent_profile_repo = agent_profile_repository_adapter.InMemoryAgentProfileRepositoryAdapter(
+        store
+    )
+    agent_profile_repo.save(profile)
+    wa_connection_repo = (
+        whatsapp_connection_repository_adapter.InMemoryWhatsappConnectionRepositoryAdapter(store)
+    )
+    wa_connection_repo.save(
+        whatsapp_connection_entity.WhatsappConnection(
+            tenant_id="tenant-1",
+            phone_number_id="phone-1",
+            business_account_id="business-1",
+            access_token="wa-token-1",
+            status="CONNECTED",
+            embedded_signup_state=None,
+            updated_at=_NOW,
+        )
+    )
+    reminder_repo = (
+        scheduled_reminder_repository_adapter.InMemoryScheduledReminderRepositoryAdapter()
+    )
+    failing_provider = _FailingSendTemplateProvider()
+    service = reminder_service_module.ReminderService(
+        scheduled_reminder_repository=reminder_repo,
+        agent_profile_repository=agent_profile_repo,
+        whatsapp_connection_repository=wa_connection_repo,
+        whatsapp_provider=failing_provider,
+        task_scheduler=task_scheduler_adapter.InMemoryTaskSchedulerAdapter(),
+        id_generator=fake_adapters.SequenceIdGenerator([]),
+        clock=fake_adapters.FixedClock(_NOW),
+    )
+    _seed_pending_reminder(reminder_repo)
+
+    with pytest.raises(service_exceptions.ExternalProviderError):
+        service.execute_reminder("tenant-1", "rem-1")
+
+    failed = reminder_repo.get_by_id("tenant-1", "rem-1")
+    assert failed is not None
+    assert failed.status == "FAILED"

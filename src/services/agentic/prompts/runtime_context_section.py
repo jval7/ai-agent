@@ -21,7 +21,14 @@ _FALLBACK_TIMEZONE = "America/Bogota"
 # confirmacion (post-pago, recordatorio: el paciente confirma su asistencia).
 _LLM_VISIBLE_STATE_ALIASES: dict[str, str] = {
     "AWAITING_PAYMENT_CONFIRMATION": "AWAITING_PAYMENT_RECEIPT",
-    "COLLECTING_CONFIRMATION_DATA": "COLLECTING_FINAL_DATA",
+    # Project the canonical state COLLECTING_CONFIRMATION_DATA to a neutral
+    # alias that does NOT name the action. Earlier aliases ("FINAL_DATA",
+    # "CONFIRMATION_DATA") leaked into the LLM's choice and made it ask the
+    # patient for fields even when known_patient covers everything. Naming
+    # the state by what we're WAITING ON (the slot is selected, ready to
+    # finalize) is neutral and lets the state instructions decide whether
+    # to collect or skip.
+    "COLLECTING_CONFIRMATION_DATA": "SLOT_SELECTED_READY_TO_BOOK",
 }
 
 
@@ -54,6 +61,8 @@ class RuntimeContextSection(prompt_section.PromptSection):
         ]
         if runtime_context.request_id is not None:
             lines.append(f"- request_id_activo: {runtime_context.request_id}")
+        if runtime_context.last_booked_request_id is not None:
+            lines.append(f"- last_booked_request_id: {runtime_context.last_booked_request_id}")
         if runtime_context.request_status is not None:
             lines.append(
                 f"- request_status_activo: {_llm_visible_state_name(runtime_context.request_status)}"

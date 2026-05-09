@@ -23,15 +23,12 @@ export interface SchedulingSlot {
   status: SchedulingSlotStatus;
 }
 
-export type AudienceType = "ADULTS" | "CHILDREN";
-
 export interface SchedulingRequestSummary {
   requestId: string;
   conversationId: string;
   whatsappUserId: string;
   requestKind: SchedulingRequestKind;
   status: SchedulingRequestStatus;
-  audienceType: AudienceType | null;
   roundNumber: number;
   patientPreferenceNote: string | null;
   rejectionSummary: string | null;

@@ -23,7 +23,13 @@ class BlacklistService:
         self, claims: auth_dto.TokenClaimsDTO
     ) -> blacklist_dto.BlacklistListResponseDTO:
         self._ensure_professional(claims)
-        entries = self._blacklist_repository.list_by_tenant(claims.tenant_id)
+        return self._list_entries_by_tenant(claims.tenant_id)
+
+    def list_entries_for_tenant(self, tenant_id: str) -> blacklist_dto.BlacklistListResponseDTO:
+        return self._list_entries_by_tenant(tenant_id)
+
+    def _list_entries_by_tenant(self, tenant_id: str) -> blacklist_dto.BlacklistListResponseDTO:
+        entries = self._blacklist_repository.list_by_tenant(tenant_id)
         sorted_entries = sorted(entries, key=lambda item: item.created_at)
 
         items: list[blacklist_dto.BlacklistEntryDTO] = []
@@ -44,7 +50,21 @@ class BlacklistService:
         upsert_dto: blacklist_dto.UpsertBlacklistEntryDTO,
     ) -> blacklist_dto.BlacklistEntryDTO:
         self._ensure_professional(claims)
-        existing_entries = self._blacklist_repository.list_by_tenant(claims.tenant_id)
+        return self._upsert_entry_for_tenant(claims.tenant_id, upsert_dto)
+
+    def upsert_entry_for_tenant(
+        self,
+        tenant_id: str,
+        upsert_dto: blacklist_dto.UpsertBlacklistEntryDTO,
+    ) -> blacklist_dto.BlacklistEntryDTO:
+        return self._upsert_entry_for_tenant(tenant_id, upsert_dto)
+
+    def _upsert_entry_for_tenant(
+        self,
+        tenant_id: str,
+        upsert_dto: blacklist_dto.UpsertBlacklistEntryDTO,
+    ) -> blacklist_dto.BlacklistEntryDTO:
+        existing_entries = self._blacklist_repository.list_by_tenant(tenant_id)
         for existing_entry in existing_entries:
             if existing_entry.whatsapp_user_id == upsert_dto.whatsapp_user_id:
                 logger.info(
@@ -68,7 +88,7 @@ class BlacklistService:
                 )
 
         entry = blacklist_entry_entity.BlacklistEntry(
-            tenant_id=claims.tenant_id,
+            tenant_id=tenant_id,
             whatsapp_user_id=upsert_dto.whatsapp_user_id,
             created_at=self._clock.now(),
         )
@@ -95,7 +115,13 @@ class BlacklistService:
 
     def delete_entry(self, claims: auth_dto.TokenClaimsDTO, whatsapp_user_id: str) -> None:
         self._ensure_professional(claims)
-        self._blacklist_repository.delete(claims.tenant_id, whatsapp_user_id)
+        self._delete_entry_for_tenant(claims.tenant_id, whatsapp_user_id)
+
+    def delete_entry_for_tenant(self, tenant_id: str, whatsapp_user_id: str) -> None:
+        self._delete_entry_for_tenant(tenant_id, whatsapp_user_id)
+
+    def _delete_entry_for_tenant(self, tenant_id: str, whatsapp_user_id: str) -> None:
+        self._blacklist_repository.delete(tenant_id, whatsapp_user_id)
         logger.info(
             "blacklist.entry_deleted",
             extra={
@@ -103,7 +129,7 @@ class BlacklistService:
                     event_name="blacklist.entry_deleted",
                     message="blacklist entry deleted",
                     data={
-                        "tenant_id": claims.tenant_id,
+                        "tenant_id": tenant_id,
                         "whatsapp_user_id": whatsapp_user_id,
                     },
                 )

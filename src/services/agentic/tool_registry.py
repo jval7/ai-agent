@@ -121,10 +121,6 @@ class ToolDefinitionRegistry:
                             "enum": ["PRESENCIAL", "VIRTUAL"],
                         },
                         "patient_location": {"type": "string"},
-                        "audience_type": {
-                            "type": "string",
-                            "enum": ["ADULTS", "CHILDREN"],
-                        },
                     },
                     "required": ["consultation_reason", "appointment_modality"],
                     "additionalProperties": False,
@@ -225,6 +221,53 @@ class ToolDefinitionRegistry:
                     "type": "object",
                     "properties": {},
                     "required": [],
+                    "additionalProperties": False,
+                },
+            ),
+            llm_dto.FunctionDeclarationDTO(
+                name="submit_reschedule_for_review",
+                description=(
+                    "Inicia el flujo de REAGENDAMIENTO de una cita existente. "
+                    "Usa esta tool SOLO cuando el paciente confirma que quiere reagendar "
+                    "(NO para cancelar; cancelar va por handoff_to_human). "
+                    "El original_request_id sale del runtime context: usa "
+                    "`last_booked_request_id` si esta disponible (paciente que vuelve), "
+                    "o `request_id_activo` si estas en el flujo de recordatorio "
+                    "(estado AWAITING_ATTENDANCE_CONFIRMATION). "
+                    "Esta tool NO mueve la cita todavia; solo abre la solicitud para que el "
+                    "profesional proponga horarios alternativos. Despues el paciente elige slot "
+                    "(via select_proposed_slot existente) y tu llamas confirm_rescheduled_slot. "
+                    "El paciente NO necesita pagar de nuevo: la cita es la misma, solo cambia hora. "
+                    "El motivo de consulta se hereda del original; NO repitas la pregunta del motivo."
+                ),
+                parameters_json_schema={
+                    "type": "object",
+                    "properties": {
+                        "original_request_id": {"type": "string"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["original_request_id"],
+                    "additionalProperties": False,
+                },
+            ),
+            llm_dto.FunctionDeclarationDTO(
+                name="confirm_rescheduled_slot",
+                description=(
+                    "Confirma definitivamente el reagendamiento, moviendo la cita BOOKED al "
+                    "nuevo horario que el paciente eligio. Llamar SOLO cuando: "
+                    "(1) ya se llamo submit_reschedule_for_review antes, "
+                    "(2) el profesional propuso slots, "
+                    "(3) el paciente eligio uno via select_proposed_slot. "
+                    "El runtime context tiene el request_id del SR de RESCHEDULE (NO el del original). "
+                    "El backend toma el slot seleccionado y mueve la cita. NO pidas datos del paciente "
+                    "(nombre, email, edad) — se heredan del original."
+                ),
+                parameters_json_schema={
+                    "type": "object",
+                    "properties": {
+                        "request_id": {"type": "string"},
+                    },
+                    "required": ["request_id"],
                     "additionalProperties": False,
                 },
             ),

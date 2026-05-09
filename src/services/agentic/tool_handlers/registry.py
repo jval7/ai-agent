@@ -2,8 +2,8 @@ import typing
 
 import pydantic
 
-import src.infra.langsmith_tracer as langsmith_tracer
 import src.infra.logs as app_logs
+import src.ports.tracer_port as tracer_port
 import src.services.agentic.tool_handlers.base as base
 import src.services.dto.llm_dto as llm_dto
 import src.services.exceptions as service_exceptions
@@ -15,7 +15,7 @@ class ToolHandlerRegistry:
     def __init__(
         self,
         handlers: list[base.ToolHandler],
-        tracer: langsmith_tracer.LangsmithTracer,
+        tracer: tracer_port.TracerPort,
     ) -> None:
         self._handlers: dict[str, base.ToolHandler] = {}
         for handler in handlers:
@@ -101,6 +101,7 @@ class ToolHandlerRegistry:
                                 "tenant_id": context.tenant_id,
                                 "conversation_id": context.conversation_id,
                                 "function_name": function_call.name,
+                                "function_args": _sanitize_trace_object(function_call.args),
                                 "error_message": str(error),
                             },
                         )

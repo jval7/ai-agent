@@ -142,6 +142,22 @@ class TestRendererSectionOmission:
         assert "</professional_context>" not in result
 
 
+class TestRendererPaymentTiming:
+    def test_renders_before_session_label_by_default(self) -> None:
+        result = renderer.render_system_prompt_xml(_empty_profile())
+        assert "<payment_timing>BEFORE_SESSION" in result
+
+    def test_renders_after_session_label_when_set(self) -> None:
+        profile = agent_profile_entity.AgentProfile(
+            tenant_id="t-1",
+            payment_timing="AFTER_SESSION",
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+        result = renderer.render_system_prompt_xml(profile)
+        assert "<payment_timing>AFTER_SESSION" in result
+        assert "se cobra al finalizar la sesion" in result
+
+
 class TestRendererFullProfile:
     def test_full_profile_contains_all_section_tags(self) -> None:
         result = renderer.render_system_prompt_xml(_full_profile())
@@ -149,6 +165,7 @@ class TestRendererFullProfile:
         assert "<professional_context>" in result
         assert "<services>" in result
         assert "<payment_info>" in result
+        assert "<payment_timing>" in result
 
     def test_full_profile_contains_identity_fields(self) -> None:
         result = renderer.render_system_prompt_xml(_full_profile())
@@ -304,3 +321,49 @@ class TestRendererUnifiedTariffs:
         assert svc.name == "Adultos"
         # `audience` no longer exists on the model: not in serialized output.
         assert "audience" not in svc.model_dump()
+
+    def test_disabled_services_are_filtered_out_of_xml(self) -> None:
+        """Services flagged enabled=False stay in the tenant config but the
+        bot's <services> block must not list them — that is how the
+        professional toggles a service off without losing its tariffs."""
+        profile = agent_profile_entity.AgentProfile(
+            tenant_id="t-1",
+            services=[
+                agent_profile_entity.ServiceOffering(
+                    name="Activo",
+                    enabled=True,
+                    tariffs=[
+                        agent_profile_entity.TariffOption(
+                            label="Sesión",
+                            prices=[
+                                agent_profile_entity.TariffPrice(currency="COP", amount=120000)
+                            ],
+                        ),
+                    ],
+                ),
+                agent_profile_entity.ServiceOffering(
+                    name="Pausado",
+                    enabled=False,
+                    tariffs=[
+                        agent_profile_entity.TariffOption(
+                            label="Sesión vieja",
+                            prices=[agent_profile_entity.TariffPrice(currency="COP", amount=80000)],
+                        ),
+                    ],
+                ),
+            ],
+            updated_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        )
+        result = renderer.render_system_prompt_xml(profile)
+        assert "<name>Activo</name>" in result
+        assert "<name>Pausado</name>" not in result
+        # Tariff details of the disabled service must not leak either.
+        assert "Sesión vieja" not in result
+
+    def test_legacy_services_default_to_enabled(self) -> None:
+        """Pre-existing Firestore docs without `enabled` must keep behaving
+        as visible — otherwise a backend rollout would silently hide every
+        service for every tenant."""
+        legacy_dict = {"name": "Sin enabled"}
+        svc = agent_profile_entity.ServiceOffering.model_validate(legacy_dict)
+        assert svc.enabled is True

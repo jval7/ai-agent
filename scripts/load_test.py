@@ -108,6 +108,17 @@ _arg_parser.add_argument(
     action="store_true",
     help="No borrar tenants efimeros al finalizar (para inspeccion manual).",
 )
+_arg_parser.add_argument(
+    "--per-combo",
+    type=int,
+    default=1,
+    help=(
+        "Numero de personas a seleccionar por combo del shape (default 1). "
+        "Subir a 2+ para cubrir variantes de comportamiento (ej. paciente que "
+        "pregunta precio vs paciente que no) cuando varias personas cumplen el "
+        "mismo combo."
+    ),
+)
 _args, _ = _arg_parser.parse_known_args()
 
 # Validaciones de exclusividad mutua
@@ -468,6 +479,27 @@ async def _get_conversation_id(
         if conv.get("whatsapp_user_id") == whatsapp_user_id:
             conversation_id: str = conv["conversation_id"]
             return conversation_id
+    return None
+
+
+async def _get_conversation_control_mode(
+    client: httpx.AsyncClient,
+    access_token: str,
+    whatsapp_user_id: str,
+) -> str | None:
+    """Retorna control_mode (AI / HUMAN) de la conversacion del paciente.
+
+    Cuando el bot ejecuta handoff_to_human, control_mode flippea a HUMAN y el
+    bot deja de responder por diseno. El runner usa esta señal para distinguir
+    handoff temprano (terminacion legitima) de un timeout real.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = await client.get("/v1/conversations", headers=headers)
+    resp.raise_for_status()
+    for conv in resp.json().get("items", []):
+        if conv.get("whatsapp_user_id") == whatsapp_user_id:
+            mode = conv.get("control_mode")
+            return str(mode) if mode is not None else None
     return None
 
 
@@ -888,6 +920,20 @@ async def _run_patient(
                     max_wait=120.0,
                 )
                 if not got_response:
+                    # Detectar handoff temprano: si el bot ejecuto
+                    # handoff_to_human, control_mode flippeo a HUMAN y queda
+                    # silente por diseno. Es terminacion legitima.
+                    control_mode = await _get_conversation_control_mode(
+                        client, access_token, patient["whatsapp_user_id"]
+                    )
+                    if control_mode == "HUMAN":
+                        elapsed = time.monotonic() - start
+                        logger.info(
+                            "[%s] Bot silente — control_mode=HUMAN (handoff temprano) en %.1fs",
+                            tag,
+                            elapsed,
+                        )
+                        return elapsed
                     raise RuntimeError(f"AI no respondio tras 120s en turno {turn} (post-pending)")
             continue
 
@@ -915,6 +961,21 @@ async def _run_patient(
                         "[%s] Bot silente con status %s (near-terminal) — flujo completado en %.1fs",
                         tag,
                         near_terminal_status,
+                        elapsed,
+                    )
+                    return elapsed
+                # Handoff temprano: el bot ejecuto handoff_to_human ANTES de
+                # crear scheduling_request (ej. paciente pide modalidad
+                # incompatible y el bot honest-rechaza + escala). control_mode
+                # flippea a HUMAN y el bot queda silente por diseno.
+                control_mode = await _get_conversation_control_mode(
+                    client, access_token, patient["whatsapp_user_id"]
+                )
+                if control_mode == "HUMAN":
+                    elapsed = time.monotonic() - start
+                    logger.info(
+                        "[%s] Bot silente — control_mode=HUMAN (handoff temprano) en %.1fs",
+                        tag,
                         elapsed,
                     )
                     return elapsed
@@ -1110,6 +1171,22 @@ async def _capture_conversation_snapshot(
             "_capture_conversation_snapshot: no pudo obtener scheduling request: %s", exc
         )
 
+    # Handoff temprano: el bot escalo a humano antes de crear scheduling_request
+    # (ej. paciente pidio modalidad incompatible). Si NO hay sr pero la
+    # conversacion esta en control_mode=HUMAN, fue terminacion legitima por
+    # diseno — reportar EARLY_HANDOFF para distinguir del HUMAN_HANDOFF
+    # post-scheduling.
+    if scheduling_request_id is None and status != "skipped":
+        try:
+            control_mode = await _get_conversation_control_mode(
+                client, access_token, whatsapp_user_id_with_run
+            )
+            if control_mode == "HUMAN":
+                final_status = "EARLY_HANDOFF"
+                effective_status = "ok"
+        except httpx.HTTPStatusError as exc:
+            logger.warning("_capture_conversation_snapshot: no pudo obtener control_mode: %s", exc)
+
     snapshot = eval_run_entity.EvalRunConversationSnapshot(
         persona_id=persona.id,
         combos_satisfied=combos_satisfied,
@@ -1135,13 +1212,35 @@ async def _capture_conversation_snapshot(
         declared_caps_set |= {
             cap for cap in persona.capabilities if cap in personas_module.BOT_BEHAVIOR_CAPS
         }
+        # Filter caps whose preconditions the shape does not satisfy, so the
+        # judge does not receive caps that would fail by construction (e.g.
+        # quotes_currency_per_location on a mono-currency shape).
+        declared_caps_set = {
+            cap
+            for cap in declared_caps_set
+            if coverage.cap_applies_to_shape(typing.cast(personas_module.Capability, cap), shape)
+        }
         if declared_caps_set:
+            # Pass shape's payment_timing so conditional caps
+            # (skips_payment_when_after_session) know whether to apply or
+            # short-circuit to verified=true.
+            shape_payment_timing = shape.agent_profile.payment_timing
+            # Pass services + modalities so respects_service_modalities can
+            # contrast what the bot offers vs what the AgentProfile supports.
+            # str() on each modality drops the Literal for the judge's
+            # plain-string contract.
+            shape_services_modalities: list[tuple[str, list[str]]] = [
+                (svc.name or "(unnamed)", [str(m) for m in svc.modalities])
+                for svc in shape.agent_profile.services
+            ]
             snapshot.judge_verdict = await asyncio.to_thread(
                 llm_judge.judge_conversation,
                 persona_id=persona.id,
                 declared_capabilities=list(declared_caps_set),
                 transcript=snapshot.transcript,
                 gemini_client=_get_gemini_client(),
+                shape_payment_timing=shape_payment_timing,
+                shape_services_modalities=shape_services_modalities,
             )
 
     return snapshot
@@ -1351,7 +1450,11 @@ async def _run_eval_shape(
 
         # 4-6. Solo correr conversaciones si el profile se aplico OK.
         if not apply_profile_failed:
-            personas = coverage.select_personas_for_shape(shape, personas_module.ALL_PERSONAS)
+            personas = coverage.select_personas_for_shape(
+                shape,
+                personas_module.ALL_PERSONAS,
+                per_combo=_args.per_combo,
+            )
             logger.info(
                 "Shape %r: %d personas seleccionadas: %s",
                 shape_name,
@@ -1366,20 +1469,26 @@ async def _run_eval_shape(
         else:
             personas = []
 
-        # Correr conversaciones secuencialmente (cada shape es su propio tenant;
-        # no hay valor en paralelizarlas dentro de un mismo tenant efimero dado
-        # que el bot tiene estado compartido por conversacion).
-        for i, persona in enumerate(personas):
+        # Correr conversaciones EN PARALELO. Cada persona tiene un
+        # whatsapp_user_id distinto, por lo que el backend trata sus
+        # conversations como independientes. Lanzar N tasks con asyncio.gather
+        # baja el wall-clock del shape de O(N * conv_duration) a
+        # O(max(conv_duration)) — gana ~3x cuando per-combo=3.
+        shape_identity = shape.agent_profile.identity
+        shape_practice_type = (
+            shape_identity.professional_title
+            if shape_identity is not None and shape_identity.professional_title
+            else "consultorio"
+        )
+
+        async def _run_and_snapshot(
+            i: int,
+            persona: personas_module.Persona,
+        ) -> eval_run_entity.EvalRunConversationSnapshot:
             patient_dict = _persona_to_dict(persona)
             elapsed = 0.0
             snap_error: str | None = None
             snap_status: typing.Literal["ok", "fail", "skipped"] = "ok"
-            shape_identity = shape.agent_profile.identity
-            shape_practice_type = (
-                shape_identity.professional_title
-                if shape_identity is not None and shape_identity.professional_title
-                else "consultorio"
-            )
             try:
                 elapsed = await _run_patient(
                     client,
@@ -1393,11 +1502,13 @@ async def _run_eval_shape(
                 snap_error = f"{type(exc).__name__}: {exc}"
                 snap_status = "fail"
                 logger.error(
-                    "[Shape %r / %s] conversacion fallo: %s", shape_name, persona.id, snap_error
+                    "[Shape %r / %s] conversacion fallo: %s",
+                    shape_name,
+                    persona.id,
+                    snap_error,
                 )
 
-            # 7. Capturar transcript + estado final
-            snapshot = await _capture_conversation_snapshot(
+            return await _capture_conversation_snapshot(
                 client,
                 tenant_token,
                 persona,
@@ -1407,7 +1518,12 @@ async def _run_eval_shape(
                 status=snap_status,
                 error=snap_error,
             )
-            conversation_results.append(snapshot)
+
+        if personas:
+            snapshots = await asyncio.gather(
+                *(_run_and_snapshot(i, p) for i, p in enumerate(personas))
+            )
+            conversation_results.extend(snapshots)
 
     finally:
         finished_at = datetime.datetime.now(tz=datetime.UTC)
@@ -1501,18 +1617,25 @@ async def main_eval() -> int:
     had_skips = False
     shape_summaries: list[_ShapeSummary] = []
 
+    # Run shapes in parallel. Each shape spins up its own ephemeral tenant
+    # (independent backend state) and the httpx.AsyncClient pool handles the
+    # concurrent HTTP traffic. Wall-clock drops to O(max(shape_duration))
+    # instead of O(sum), typically ~3-4x speedup for the 4-shape full run.
     async with httpx.AsyncClient(base_url=eval_api_base, timeout=120.0) as client:
-        for shape in shapes:
-            summary = await _run_eval_shape(
-                client,
-                shape,
-                RUN_ID,
-                eval_admin_secret,
-                eval_api_base,
+        shape_results = await asyncio.gather(
+            *(
+                _run_eval_shape(
+                    client,
+                    shape,
+                    RUN_ID,
+                    eval_admin_secret,
+                    eval_api_base,
+                )
+                for shape in shapes
             )
-            shape_summaries.append(summary)
-            if summary["skipped"]:
-                had_skips = True
+        )
+        shape_summaries.extend(shape_results)
+        had_skips = any(s["skipped"] for s in shape_results)
 
     total_elapsed = time.monotonic() - total_start
     total_min = int(total_elapsed // 60)

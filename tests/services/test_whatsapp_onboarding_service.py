@@ -251,3 +251,145 @@ def test_complete_state_mismatch_logs_failure(caplog: pytest.LogCaptureFixture) 
         if isinstance(record.__dict__.get("event_data"), dict)
     ]
     assert "whatsapp.onboarding.failed" in events
+
+
+# ---------------------------------------------------------------------------
+# complete_embedded_signup error paths + verify_webhook + register tolerance
+# ---------------------------------------------------------------------------
+
+
+def test_complete_embedded_signup_raises_when_no_session_for_tenant() -> None:
+    service, _ = build_onboarding_service([])
+
+    with pytest.raises(service_exceptions.EntityNotFoundError):
+        service.complete_embedded_signup(
+            "tenant-without-session",
+            whatsapp_dto.EmbeddedSignupCompleteDTO(code="code-x", state="state-x"),
+        )
+
+
+def test_finalize_connection_tolerates_smb_register_error() -> None:
+    service, provider = build_onboarding_service(["state-1"])
+    provider.credential_by_code["code-1"] = whatsapp_dto.EmbeddedSignupCredentialsDTO(
+        phone_number_id="phone-1",
+        business_account_id="business-1",
+        access_token="token-1",
+    )
+
+    class _SmbProvider(fake_adapters.FakeWhatsappProvider):
+        def register_phone_number(
+            self, access_token: str, phone_number_id: str, registration_pin: str | None = None
+        ) -> None:
+            del access_token, phone_number_id, registration_pin
+            raise service_exceptions.ExternalProviderError(
+                "(#136025) Phone number registration not available for SMB accounts"
+            )
+
+    smb_provider = _SmbProvider()
+    smb_provider.credential_by_code["code-1"] = whatsapp_dto.EmbeddedSignupCredentialsDTO(
+        phone_number_id="phone-1",
+        business_account_id="business-1",
+        access_token="token-1",
+    )
+    service._whatsapp_provider = smb_provider
+    session_response = service.create_embedded_signup_session("tenant-1")
+    response = service.complete_embedded_signup(
+        "tenant-1",
+        whatsapp_dto.EmbeddedSignupCompleteDTO(code="code-1", state=session_response.state),
+    )
+
+    # Connection is still saved as CONNECTED — SMB error is tolerated.
+    assert response.status == "CONNECTED"
+
+
+def test_finalize_connection_tolerates_pin_required_register_error() -> None:
+    service, _ = build_onboarding_service(["state-1"])
+
+    class _PinRequiredProvider(fake_adapters.FakeWhatsappProvider):
+        def register_phone_number(
+            self, access_token: str, phone_number_id: str, registration_pin: str | None = None
+        ) -> None:
+            del access_token, phone_number_id, registration_pin
+            raise service_exceptions.ExternalProviderError(
+                "Two-step verification PIN is required for this number"
+            )
+
+    pin_provider = _PinRequiredProvider()
+    pin_provider.credential_by_code["code-1"] = whatsapp_dto.EmbeddedSignupCredentialsDTO(
+        phone_number_id="phone-1",
+        business_account_id="business-1",
+        access_token="token-1",
+    )
+    service._whatsapp_provider = pin_provider
+    session_response = service.create_embedded_signup_session("tenant-1")
+    response = service.complete_embedded_signup(
+        "tenant-1",
+        whatsapp_dto.EmbeddedSignupCompleteDTO(code="code-1", state=session_response.state),
+    )
+
+    assert response.status == "CONNECTED"
+
+
+def test_finalize_connection_propagates_other_register_errors() -> None:
+    service, _ = build_onboarding_service(["state-1"])
+
+    class _UnknownErrorProvider(fake_adapters.FakeWhatsappProvider):
+        def register_phone_number(
+            self, access_token: str, phone_number_id: str, registration_pin: str | None = None
+        ) -> None:
+            del access_token, phone_number_id, registration_pin
+            raise service_exceptions.ExternalProviderError("Some other registration error")
+
+    unknown_provider = _UnknownErrorProvider()
+    unknown_provider.credential_by_code["code-1"] = whatsapp_dto.EmbeddedSignupCredentialsDTO(
+        phone_number_id="phone-1",
+        business_account_id="business-1",
+        access_token="token-1",
+    )
+    service._whatsapp_provider = unknown_provider
+    session_response = service.create_embedded_signup_session("tenant-1")
+
+    with pytest.raises(service_exceptions.ExternalProviderError):
+        service.complete_embedded_signup(
+            "tenant-1",
+            whatsapp_dto.EmbeddedSignupCompleteDTO(code="code-1", state=session_response.state),
+        )
+
+
+def test_verify_webhook_rejects_invalid_mode() -> None:
+    service, _ = build_onboarding_service([], webhook_verify_token="verify-global")
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.verify_webhook(
+            webhook_dto.WebhookVerificationDTO(
+                mode="unsubscribe",
+                verify_token="verify-global",
+                challenge="ok-challenge",
+            )
+        )
+
+
+def test_verify_webhook_raises_when_verify_token_not_configured() -> None:
+    service, _ = build_onboarding_service([], webhook_verify_token="")
+
+    with pytest.raises(service_exceptions.InvalidStateError):
+        service.verify_webhook(
+            webhook_dto.WebhookVerificationDTO(
+                mode="subscribe",
+                verify_token="anything",
+                challenge="ok-challenge",
+            )
+        )
+
+
+def test_verify_webhook_rejects_invalid_verify_token() -> None:
+    service, _ = build_onboarding_service([], webhook_verify_token="verify-global")
+
+    with pytest.raises(service_exceptions.AuthorizationError):
+        service.verify_webhook(
+            webhook_dto.WebhookVerificationDTO(
+                mode="subscribe",
+                verify_token="wrong-token",
+                challenge="ok-challenge",
+            )
+        )

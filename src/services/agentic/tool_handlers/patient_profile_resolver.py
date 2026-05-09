@@ -549,9 +549,15 @@ class PatientProfileResolver:
         normalized_value = value.strip()
         if normalized_value == "":
             return None
-        if not normalized_value.isdigit():
+        if normalized_value.isdigit():
+            return int(normalized_value)
+        # Tolerate "33", "33 años", "tengo 33", "28yr", etc. — extract the
+        # first run of 1-3 digits. The downstream range check (1..120)
+        # rejects nonsensical values.
+        match = re.search(r"(\d{1,3})", normalized_value)
+        if match is None:
             return None
-        return int(normalized_value)
+        return int(match.group(1))
 
     def _resolve_patient_phone(
         self,

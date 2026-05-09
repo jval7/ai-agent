@@ -481,4 +481,100 @@ def test_resolve_post_booking_followup_includes_appointment_modality_and_locatio
 
     assert result.state == "POST_BOOKING_FOLLOWUP"
     assert result.appointment_modality == "PRESENCIAL"
-    assert result.patient_location == "Cali"
+
+
+# ---------------------------------------------------------------------------
+# Tests for new reschedule tools in enabled_tools_for_state
+# ---------------------------------------------------------------------------
+
+
+def test_enabled_tools_includes_submit_reschedule_for_awaiting_attendance() -> None:
+    """The reminder pre-position drops the conversation into
+    AWAITING_ATTENDANCE_CONFIRMATION. When the patient asks to reschedule from
+    that turn, the bot offers the reschedule flow (instead of handoff)."""
+    tools = runtime_context_resolver_mod.enabled_tools_for_state("AWAITING_ATTENDANCE_CONFIRMATION")
+    assert "submit_reschedule_for_review" in tools
+    assert "confirm_attendance_received" in tools
+    assert "handoff_to_human" in tools
+
+
+def test_enabled_tools_excludes_submit_reschedule_for_post_booking() -> None:
+    """POST_BOOKING_FOLLOWUP routes any reschedule/cancel intent to handoff;
+    the bot-driven reschedule lives in NO_ACTIVE_REQUEST and
+    AWAITING_ATTENDANCE_CONFIRMATION."""
+    tools = runtime_context_resolver_mod.enabled_tools_for_state("POST_BOOKING_FOLLOWUP")
+    assert "submit_reschedule_for_review" not in tools
+    assert "close_session" in tools
+    assert "handoff_to_human" in tools
+
+
+def test_enabled_tools_includes_submit_reschedule_for_no_active_request() -> None:
+    """One bot-driven reschedule entry point is NO_ACTIVE_REQUEST. The
+    state instructions gate the actual call on last_booked_request_id."""
+    tools = runtime_context_resolver_mod.enabled_tools_for_state("NO_ACTIVE_REQUEST")
+    assert "submit_reschedule_for_review" in tools
+    assert "submit_consultation_reason_for_review" in tools
+    assert "handoff_to_human" in tools
+
+
+def test_enabled_tools_includes_confirm_rescheduled_slot_for_collecting_data() -> None:
+    tools = runtime_context_resolver_mod.enabled_tools_for_state("COLLECTING_CONFIRMATION_DATA")
+    assert "confirm_rescheduled_slot" in tools
+    assert "confirm_selected_slot_and_create_event" in tools
+    assert "handoff_to_human" in tools
+    assert "cancel_active_scheduling_request" in tools
+
+
+def test_resolve_populates_request_kind_for_reschedule_sr_in_awaiting_patient_choice() -> None:
+    """When the active SR is a RESCHEDULE in AWAITING_PATIENT_CHOICE with slot selected,
+    the resolver must set request_kind='RESCHEDULE' in the RuntimePromptContext."""
+    resolver, scheduling_repo, conversation_repo, _ = _build_resolver_with_scheduling()
+    conversation_repo.save_conversation(
+        conversation_entity.Conversation(
+            id="conv-1",
+            tenant_id="tenant-1",
+            whatsapp_user_id="wa-user-1",
+            started_at=NOW,
+            updated_at=NOW,
+            last_message_preview=None,
+            message_ids=[],
+            control_mode="AI",
+        )
+    )
+    scheduling_repo.save_request(
+        scheduling_request_entity.SchedulingRequest(
+            id="reschedule-req-1",
+            tenant_id="tenant-1",
+            conversation_id="conv-1",
+            whatsapp_user_id="wa-user-1",
+            request_kind="RESCHEDULE",
+            status="AWAITING_PATIENT_CHOICE",
+            round_number=2,
+            patient_preference_note=None,
+            rejection_summary=None,
+            professional_note=None,
+            appointment_modality="PRESENCIAL",
+            slots=[
+                scheduling_slot_entity.SchedulingSlot(
+                    id="slot-new",
+                    start_at=datetime.datetime(2026, 5, 1, 10, 0, tzinfo=datetime.UTC),
+                    end_at=datetime.datetime(2026, 5, 1, 11, 0, tzinfo=datetime.UTC),
+                    timezone="America/Bogota",
+                    status="SELECTED",
+                )
+            ],
+            slot_options_map={"1": "slot-new"},
+            selected_slot_id="slot-new",
+            calendar_event_id=None,
+            source_appointment_id="original-req-1",
+            source_appointment_kind="SCHEDULING_REQUEST",
+            created_at=NOW,
+            updated_at=NOW,
+        )
+    )
+
+    result = resolver.resolve("tenant-1", "conv-1", None)
+
+    assert result.state == "COLLECTING_CONFIRMATION_DATA"
+    assert result.request_kind == "RESCHEDULE"
+    assert "confirm_rescheduled_slot" in result.enabled_tool_names

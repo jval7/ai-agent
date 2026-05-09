@@ -146,6 +146,123 @@ _CAPABILITIES_DOC: list[eval_dto.EvalCapabilityDocDTO] = [
         ),
         category="bot_behavior",
     ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="skips_redundant_motivo_question",
+        description=(
+            "regla conceptual: el bot solo pregunta el 'motivo de consulta' "
+            "cuando el servicio elegido es diagnóstico/exploratorio (palabras "
+            "clave: 'valoración', 'primera consulta', 'consulta inicial', "
+            "'evaluación', 'diagnóstico'). NO pregunta motivo cuando el "
+            "servicio es autoexplicativo (procedimiento concreto cuyo nombre "
+            "ya es el motivo: 'blanqueamiento dental', 'limpieza dental', "
+            "'control de ortodoncia', 'extracción', 'endodoncia', 'brackets')."
+        ),
+        implications=(
+            "EL BOT debe distinguir entre servicios diagnósticos (donde el "
+            "motivo informa el plan terapéutico) y autoexplicativos (donde el "
+            "servicio mismo es el motivo). Falla ante el patrón típico: "
+            "paciente dice 'Blanqueamiento' y el bot responde '¿cuál sería "
+            "el motivo de tu consulta para el blanqueamiento dental?'. "
+            "Excepción: si el paciente menciona un sub-motivo abierto ('lo "
+            "necesito para una boda'), el bot puede pedir más detalle."
+        ),
+        category="bot_behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="respects_service_modalities",
+        description=(
+            "regla conceptual: el bot solo ofrece modalidades (PRESENCIAL / "
+            "VIRTUAL) que estan listadas en `<modalities>` del `<service>` "
+            "elegido. Si un servicio solo tiene modalidad PRESENCIAL, el bot "
+            "NO debe ofrecer atender VIRTUAL aunque el contexto del paciente "
+            "(residencia en otra ciudad o pais) sugiera lo contrario; "
+            "viceversa. El AgentProfile es la fuente de verdad — el contexto "
+            "del paciente NO autoriza a inventar una modalidad inexistente."
+        ),
+        implications=(
+            "EL BOT debe respetar la configuracion del profesional. Si el "
+            "servicio no soporta la modalidad que el paciente necesita, debe "
+            "comunicarlo claramente y ofrecer alternativas (ej. otro "
+            "servicio que si la soporte, o handoff_to_human). Falla ante "
+            "casos como 'puedes tomar la consulta de forma virtual desde "
+            "Berlin' cuando el shape solo lista PRESENCIAL. La señal viaja "
+            "al juez como 'Shape services and modalities: ...' al inicio "
+            "del user prompt; el runner la inyecta desde el AgentProfile."
+        ),
+        category="bot_behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="quotes_price_on_demand",
+        description=(
+            "regla conceptual: el bot NO cotiza precios sin que el paciente "
+            "los pida. La rúbrica mira el ORDEN entre INBOUND y OUTBOUND. "
+            "Cada OUTBOUND donde el bot mencione un precio numérico+currency "
+            "debe tener al menos una justificación: (a) un INBOUND anterior "
+            "preguntó por precio/costo/cotización; (b) es el mensaje pre-pago "
+            "oficial donde el bot pide pago para reservar (solo aplica en "
+            "BEFORE_SESSION); (c) el paciente eligió un servicio y el bot "
+            "responde con info del mismo (precio incluido como dato esencial)."
+        ),
+        implications=(
+            "EL BOT debe esperar a que el paciente pregunte antes de cotizar. "
+            "Falla ante el patrón típico: paciente dice solo 'Hola' y el bot "
+            "lanza un brochure con precios de todos los servicios. Listar "
+            "servicios POR NOMBRE (sin tarifas) es válido; agregar precios "
+            "sin pregunta previa, no. Excepción transaccional: cuando el "
+            "flujo BEFORE_SESSION llega al paso de pago, mencionar el monto "
+            "como parte del CTA es legítimo."
+        ),
+        category="bot_behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="skips_payment_when_after_session",
+        description=(
+            "regla CONDICIONAL al shape: cuando el AgentProfile declara "
+            "`payment_timing=AFTER_SESSION`, el bot NO solicita pago ni "
+            "comprobante durante el agendamiento. El cobro sucede al finalizar "
+            "la sesión. Frases prohibidas en agendamiento: CTAs imperativos de "
+            "pago ('paga X', 'transfiere a Nequi', 'reserva con un pago de'), "
+            "solicitud de comprobante ('envíame el comprobante', 'manda el "
+            "voucher'). Permitido: respuestas informativas a preguntas del "
+            "paciente sobre cómo se paga ('el pago se hace al finalizar la "
+            "sesión'), recordatorios operativos en POST_BOOKING, o cotizar el "
+            "monto cuando preguntan precio (sin acompañar de CTA imperativo)."
+        ),
+        implications=(
+            "EL BOT debe respetar el modelo de cobro del profesional. Si el "
+            "shape es BEFORE_SESSION (default), la cap no aplica y emite "
+            "verified=true automático. Si es AFTER_SESSION, falla ante CTAs de "
+            "pago o solicitud de comprobante. La señal viaja al juez como "
+            "'Shape payment_timing: AFTER_SESSION' al inicio del user prompt; "
+            "el runner la inyecta desde el AgentProfile del shape."
+        ),
+        category="bot_behavior",
+    ),
+    eval_dto.EvalCapabilityDocDTO(
+        id="omits_obvious_metadata",
+        description=(
+            "cuando el bot presenta un servicio o responde algo no relacionado a "
+            "modalidad/cohort, omite metadata trivial. Específicamente: (a) NO "
+            "menciona la modalidad cuando el servicio tiene una sola modalidad; "
+            "(b) NO etiqueta el cohort cuando el servicio aplica a 'Pacientes "
+            "nuevos y recurrentes'; (c) NO incluye aclaraciones autoimplícitas "
+            "('para cualquier persona', 'aplica a todos')."
+        ),
+        implications=(
+            "EL BOT debe presentar servicios de forma concisa. EXCEPCIONES "
+            "(mencionar modalidad NO viola): (i) el servicio tiene varias "
+            "modalidades y el paciente debe elegir; (ii) el paciente preguntó "
+            "explícitamente; (iii) CONFIRMACIÓN DE RESERVA post-booking — la "
+            "modalidad es info operativa esencial (saber si viajar al consultorio "
+            "o conectarse a Meet) y debe aparecer SIEMPRE en el mensaje de "
+            "confirmación final; (iv) el bot está comunicando que el servicio NO "
+            "soporta cierta modalidad. Falla ante 'Blanqueamiento Dental: para "
+            "pacientes nuevos o recurrentes. Es presencial.' en presentación "
+            "casual cuando el servicio solo tiene PRESENCIAL y aplica a ambos "
+            "cohorts."
+        ),
+        category="bot_behavior",
+    ),
 ]
 
 

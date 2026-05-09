@@ -18,7 +18,6 @@ class SchedulingRequestSummaryDTO(pydantic.BaseModel):
     whatsapp_user_id: str
     request_kind: str
     status: str
-    audience_type: typing.Literal["ADULTS", "CHILDREN"] | None = None
     round_number: int
     patient_preference_note: str | None
     rejection_summary: str | None
@@ -86,7 +85,6 @@ class SubmitConsultationReasonForReviewToolInputDTO(pydantic.BaseModel):
     consultation_reason: str | None = None
     appointment_modality: typing.Literal["PRESENCIAL", "VIRTUAL"] | None = None
     patient_location: str | None = None
-    audience_type: typing.Literal["ADULTS", "CHILDREN"] | None = None
 
 
 class ConsultationReviewDecisionDTO(pydantic.BaseModel):
@@ -201,3 +199,12 @@ class UpdateBookedSlotPaymentInputDTO(pydantic.BaseModel):
 
 class ChangeBookedModalityInputDTO(pydantic.BaseModel):
     new_modality: typing.Literal["PRESENCIAL", "VIRTUAL"]
+
+
+class SubmitRescheduleForReviewToolInputDTO(pydantic.BaseModel):
+    original_request_id: str
+    reason: str | None = None
+
+
+class ConfirmRescheduledSlotInputDTO(pydantic.BaseModel):
+    request_id: str  # del SR de RESCHEDULE (NO del original)
