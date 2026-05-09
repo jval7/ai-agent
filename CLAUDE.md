@@ -10,15 +10,19 @@ Los detalles específicos de backend/frontend viven en archivos de contexto dedi
 
 | Dominio | Agente | Context doc |
 |---------|--------|-------------|
-| Backend (services, ports, adapters, domain, tests) | `backend` | `docs/BACKEND_CONTEXT.md` |
+| Backend (services, ports, adapters, domain) | `backend` | `docs/BACKEND_CONTEXT.md` |
 | Frontend (UI, pages, hooks, React) | `frontend` | `docs/FRONTEND_PLAN.md` |
 | Infra (Terraform, Docker, deploys, GCP) | `infra` | `docs/DEPLOYMENT.md` |
 | Prompts (sp.txt, instrucciones de estado, tool descriptions) | `prompts` | `docs/PROMPTS_CONTEXT.md` |
+| Tests (unit, integration, fakes en `tests/`) | `tests` | `docs/BACKEND_CONTEXT.md` (compartido con backend) |
+| Code review profundo de PRs | `pr-reviewer` | leer `docs/BACKEND_CONTEXT.md` + cuerpo del PR |
+| Análisis de evals (`make eval`) | `eval-analyzer` | `docs/PROMPTS_CONTEXT.md` |
 | Contratos/endpoints (referencia) | — | `docs/API_ENDPOINTS.md` |
 
 - Si una tarea cruza límites de dominio, coordinar desde la sesión principal.
 - Cada agente lee su context doc antes de actuar.
 - No duplicar reglas o detalles de backend/frontend en este archivo.
+- Definiciones completas de cada agente en `.claude/agents/<name>.md`.
 
 ## Stack
 - Backend: FastAPI + arquitectura hexagonal + Firestore + Gemini (Vertex AI).
@@ -71,3 +75,9 @@ Los detalles específicos de backend/frontend viven en archivos de contexto dedi
 - El código respeta reglas del contexto específico consultado (backend o frontend).
 - Pasan checks relevantes (`make static-checks` y tests objetivo).
 - Los cambios son consistentes con el archivo de contexto fuente de verdad correspondiente.
+
+## Convenciones de PR
+
+- Stack PRs (encadenados): cuando un PR depende de otro, abrir con `--base <branch-padre>` en lugar de `develop`. Documentar la dependencia en la descripción.
+- Cambios grandes o riesgosos: usar rama de integración descartable `release/<tema>-<periodo>` (ej. `release/tech-debt-2026-05`). Mergear PRs individuales allí, validar end-to-end, y abrir un meta-PR `release/* → develop` con merge commit (no squash) para preservar la historia.
+- Antes de mergear PRs grandes a `develop`/`main`, invocar el agente `pr-reviewer` para review automatizado de bugs reales.
