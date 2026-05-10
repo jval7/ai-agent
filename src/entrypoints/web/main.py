@@ -2,6 +2,7 @@ import fastapi
 import fastapi.middleware.cors as fastapi_cors
 
 import src.entrypoints.web.exceptions.http_exception_handlers as http_exception_handlers
+import src.entrypoints.web.lifespan as lifespan_module
 import src.entrypoints.web.middleware.request_context_middleware as request_context_middleware
 import src.entrypoints.web.rate_limiter as rate_limiter
 import src.entrypoints.web.routers.admin_router as admin_router
@@ -33,7 +34,11 @@ import src.infra.logs as app_logs
 
 
 def create_app() -> fastapi.FastAPI:
-    app = fastapi.FastAPI(title="AI Agent WhatsApp MVP", version="0.1.0")
+    app = fastapi.FastAPI(
+        title="AI Agent WhatsApp MVP",
+        version="0.1.0",
+        lifespan=lifespan_module.lifespan,
+    )
     app.state.container = app_container.AppContainer()
     app_logs.configure_logging(app.state.container.settings.log_level)
     app.add_middleware(
