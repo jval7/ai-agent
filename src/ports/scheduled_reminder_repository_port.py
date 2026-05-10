@@ -35,3 +35,9 @@ class ScheduledReminderRepositoryPort(abc.ABC):
         self, tenant_id: str, template_name: str
     ) -> list[scheduled_reminder_entity.ScheduledReminder]:
         raise NotImplementedError
+
+    @abc.abstractmethod
+    def find_by_provider_message_id(
+        self, tenant_id: str, provider_message_id: str
+    ) -> scheduled_reminder_entity.ScheduledReminder | None:
+        raise NotImplementedError

@@ -7,7 +7,7 @@ export interface ScheduledReminder {
   appointmentStartAt: string;
   reminderScheduledFor: string;
   templateName: string;
-  status: "PENDING" | "SENT" | "FAILED" | "CANCELLED";
+  status: "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED" | "CANCELLED";
   failureReason: string | null;
   createdAt: string;
 }

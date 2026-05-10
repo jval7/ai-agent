@@ -21,6 +21,7 @@ import src.ports.task_scheduler_port as task_scheduler_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
 import src.services.dto.scheduled_reminder_dto as scheduled_reminder_dto
+import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
 import src.services.reminder_date_formatter as reminder_date_formatter
 import src.services.use_cases.conversation_provisioning as conversation_provisioning
@@ -281,6 +282,7 @@ class ReminderService(reminder_service_port.ReminderServicePort):
         reminder.status = "SENT"
         reminder.sent_at = now_value
         reminder.updated_at = now_value
+        reminder.provider_message_id = message_id
         self._scheduled_reminder_repository.save(reminder)
         logger.info(
             "reminder.sent",
@@ -372,6 +374,97 @@ class ReminderService(reminder_service_port.ReminderServicePort):
                     "cancelled_count": len(pending_reminders),
                 },
             )
+
+    def apply_message_status_event(
+        self,
+        tenant_id: str,
+        event: webhook_dto.MessageStatusEventDTO,
+    ) -> None:
+        """Translate a Meta status callback into the reminder's real lifecycle.
+
+        Meta accepts the API call (returning a wamid) instantly, but actual
+        delivery is reported asynchronously through ``statuses[]`` callbacks.
+        Until those arrive, ``status == "SENT"`` only means "the provider
+        accepted the request" — not that the recipient received it. This use
+        case maps each callback to the reminder it belongs to and updates the
+        domain entity so the operator panel can show the real outcome.
+        """
+        reminder = self._scheduled_reminder_repository.find_by_provider_message_id(
+            tenant_id, event.provider_message_id
+        )
+        if reminder is None:
+            return
+        if reminder.status in ("CANCELLED", "FAILED"):
+            return
+
+        now_value = self._clock.now()
+        if event.status == "delivered":
+            if reminder.status == "READ":
+                # READ is strictly stronger than DELIVERED; never regress.
+                return
+            reminder.status = "DELIVERED"
+            reminder.delivered_at = now_value
+            reminder.updated_at = now_value
+            self._scheduled_reminder_repository.save(reminder)
+            logger.info(
+                "reminder.delivered",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="reminder.delivered",
+                        message="reminder delivered to recipient",
+                        data={
+                            "reminder_id": reminder.id,
+                            "provider_message_id": event.provider_message_id,
+                        },
+                    )
+                },
+            )
+            return
+        if event.status == "read":
+            reminder.status = "READ"
+            reminder.read_at = now_value
+            if reminder.delivered_at is None:
+                reminder.delivered_at = now_value
+            reminder.updated_at = now_value
+            self._scheduled_reminder_repository.save(reminder)
+            logger.info(
+                "reminder.read",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="reminder.read",
+                        message="reminder read by recipient",
+                        data={
+                            "reminder_id": reminder.id,
+                            "provider_message_id": event.provider_message_id,
+                        },
+                    )
+                },
+            )
+            return
+        if event.status == "failed":
+            failure_reason = _format_failure_reason(event)
+            reminder.status = "FAILED"
+            reminder.failure_reason = failure_reason
+            reminder.updated_at = now_value
+            self._scheduled_reminder_repository.save(reminder)
+            logger.warning(
+                "reminder.delivery_failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="reminder.delivery_failed",
+                        message="provider reported delivery failure for reminder",
+                        data={
+                            "reminder_id": reminder.id,
+                            "provider_message_id": event.provider_message_id,
+                            "error_code": event.error_code,
+                            "error_title": event.error_title,
+                        },
+                    )
+                },
+            )
+            return
+        # event.status == "sent" — informational only; SENT was already set
+        # synchronously when execute_reminder persisted the reminder.
 
     def swap_template_for_source(
         self,
@@ -726,6 +819,25 @@ def _render_template_body(body_parameters: list[str]) -> str:
     context when the patient replies to the reminder.
     """
     return " | ".join(body_parameters)
+
+
+def _format_failure_reason(event: webhook_dto.MessageStatusEventDTO) -> str:
+    """Compose a single human-readable string from the provider error fields.
+
+    Capped to 280 chars to match the existing Firestore-friendly length used
+    for ``failure_reason`` in webhook event records.
+    """
+    parts: list[str] = ["meta_delivery_failed"]
+    if event.error_code is not None:
+        parts.append(f"code={event.error_code}")
+    if event.error_title:
+        parts.append(event.error_title)
+    if event.error_message and event.error_message != event.error_title:
+        parts.append(event.error_message)
+    formatted = ": ".join(parts)
+    if len(formatted) <= 280:
+        return formatted
+    return f"{formatted[:277]}..."
 
 
 def _build_attendance_modality_text(

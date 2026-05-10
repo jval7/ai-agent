@@ -15,10 +15,15 @@ class ScheduledReminder(pydantic.BaseModel):
     reminder_scheduled_for: datetime.datetime
     template_name: str
     template_language: str
-    status: typing.Literal["PENDING", "SENT", "FAILED", "CANCELLED"] = "PENDING"
+    status: typing.Literal["PENDING", "SENT", "DELIVERED", "READ", "FAILED", "CANCELLED"] = (
+        "PENDING"
+    )
     cloud_task_name: str | None = None
     sent_at: datetime.datetime | None = None
+    delivered_at: datetime.datetime | None = None
+    read_at: datetime.datetime | None = None
     failure_reason: str | None = None
+    provider_message_id: str | None = None
     appointment_modality: typing.Literal["VIRTUAL", "PRESENCIAL"] | None = None
     meet_url: str | None = None
     created_at: datetime.datetime

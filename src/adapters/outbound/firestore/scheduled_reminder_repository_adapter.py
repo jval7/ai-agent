@@ -170,6 +170,43 @@ class FirestoreScheduledReminderRepositoryAdapter(
                 reminders.append(reminder)
         return reminders
 
+    def find_by_provider_message_id(
+        self,
+        tenant_id: str,
+        provider_message_id: str,
+    ) -> scheduled_reminder_entity.ScheduledReminder | None:
+        reminders_collection = firestore_paths.tenant_scheduled_reminders_collection(
+            self._client,
+            tenant_id,
+        )
+        query = reminders_collection.where("provider_message_id", "==", provider_message_id).limit(
+            1
+        )
+
+        try:
+            snapshots = list(query.stream())
+        except google_api_exceptions.GoogleAPICallError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to find scheduled reminder by provider_message_id"
+            ) from error
+        except google_api_exceptions.RetryError as error:
+            raise firestore_errors.FirestoreRepositoryError(
+                "failed to find scheduled reminder by provider_message_id"
+            ) from error
+
+        for snapshot in snapshots:
+            reminder_raw_data = snapshot.to_dict()
+            if reminder_raw_data is None:
+                continue
+            reminder = firestore_model_mapper.parse_document(
+                reminder_raw_data,
+                scheduled_reminder_entity.ScheduledReminder,
+                "scheduled reminder",
+            )
+            if reminder.tenant_id == tenant_id:
+                return reminder
+        return None
+
     def list_pending_by_template(
         self,
         tenant_id: str,
