@@ -461,6 +461,7 @@ class AppContainer:
             tool_calling_orchestrator=self.tool_calling_orchestrator,
             runtime_context_resolver=self.runtime_context_resolver,
             message_sender=self.message_sender,
+            reminder_service=self.reminder_service,
         )
 
         self.conversation_query_service = conversation_query_service.ConversationQueryService(

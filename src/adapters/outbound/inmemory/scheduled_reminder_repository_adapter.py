@@ -94,3 +94,16 @@ class InMemoryScheduledReminderRepositoryAdapter(
                 scheduled_reminder_entity.ScheduledReminder.model_validate(reminder.model_dump())
             )
         return result
+
+    def find_by_provider_message_id(
+        self,
+        tenant_id: str,
+        provider_message_id: str,
+    ) -> scheduled_reminder_entity.ScheduledReminder | None:
+        for reminder in self._reminders:
+            if reminder.tenant_id != tenant_id:
+                continue
+            if reminder.provider_message_id != provider_message_id:
+                continue
+            return scheduled_reminder_entity.ScheduledReminder.model_validate(reminder.model_dump())
+        return None

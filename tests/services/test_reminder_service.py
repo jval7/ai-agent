@@ -17,6 +17,7 @@ import src.domain.entities.conversation as conversation_entity
 import src.domain.entities.scheduling_request as scheduling_request_entity
 import src.domain.entities.whatsapp_connection as whatsapp_connection_entity
 import src.domain.official_reminder_templates as official_reminder_templates
+import src.services.dto.webhook_dto as webhook_dto
 import src.services.exceptions as service_exceptions
 import src.services.use_cases.reminder_service as reminder_service_module
 import tests.fakes.fake_adapters as fake_adapters
@@ -1426,3 +1427,196 @@ def test_execute_reminder_marks_failed_and_raises_when_provider_fails() -> None:
     failed = reminder_repo.get_by_id("tenant-1", "rem-1")
     assert failed is not None
     assert failed.status == "FAILED"
+
+
+# ---------------------------------------------------------------------------
+# apply_message_status_event — Meta delivery callbacks
+# ---------------------------------------------------------------------------
+
+
+def _build_basic_payment_profile() -> agent_profile_entity.AgentProfile:
+    return _make_profile(
+        attendance_name="appointment_reminder_attendance",
+        payment_name="appointment_reminder_payment",
+    )
+
+
+def _execute_one_reminder(
+    service: reminder_service_module.ReminderService,
+    reminder_repo: scheduled_reminder_repository_adapter.InMemoryScheduledReminderRepositoryAdapter,
+) -> str:
+    """Schedule + execute a single reminder. Returns its ``provider_message_id``."""
+    bogota = zoneinfo.ZoneInfo("America/Bogota")
+    appointment = datetime.datetime(2026, 1, 3, 10, 0, tzinfo=bogota)
+    service.maybe_schedule_reminder(
+        tenant_id="tenant-1",
+        source_type="MANUAL_APPOINTMENT",
+        source_id="appt-1",
+        patient_whatsapp_user_id="wa-user-1",
+        patient_name="Juan",
+        appointment_start_at=appointment,
+        payment_status="PAID",
+        appointment_modality="VIRTUAL",
+    )
+    pending = reminder_repo.list_by_tenant("tenant-1", status="PENDING")
+    assert len(pending) == 1
+    service.execute_reminder("tenant-1", pending[0].id)
+    sent = reminder_repo.get_by_id("tenant-1", pending[0].id)
+    assert sent is not None
+    assert sent.provider_message_id is not None
+    return sent.provider_message_id
+
+
+def test_execute_reminder_persists_provider_message_id() -> None:
+    profile = _build_basic_payment_profile()
+    service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
+
+    provider_message_id = _execute_one_reminder(service, reminder_repo)
+
+    assert provider_message_id == "outbound-template-1"
+    found = reminder_repo.find_by_provider_message_id("tenant-1", provider_message_id)
+    assert found is not None
+    assert found.id == "reminder-1"
+
+
+def test_apply_status_event_marks_reminder_failed_with_meta_error() -> None:
+    profile = _build_basic_payment_profile()
+    service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
+
+    provider_message_id = _execute_one_reminder(service, reminder_repo)
+
+    event = webhook_dto.MessageStatusEventDTO(
+        provider_event_id=f"{provider_message_id}:failed",
+        phone_number_id="phone-1",
+        provider_message_id=provider_message_id,
+        recipient_id="34645136263",
+        status="failed",
+        timestamp_epoch_seconds=1746810000,
+        error_code=131026,
+        error_title="Message undeliverable",
+        error_message="Receiver is incapable of receiving this message",
+    )
+    service.apply_message_status_event("tenant-1", event)
+
+    final = reminder_repo.get_by_id("tenant-1", "reminder-1")
+    assert final is not None
+    assert final.status == "FAILED"
+    assert final.failure_reason is not None
+    assert "131026" in final.failure_reason
+    assert "Message undeliverable" in final.failure_reason
+
+
+def test_apply_status_event_marks_reminder_delivered() -> None:
+    profile = _build_basic_payment_profile()
+    service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
+
+    provider_message_id = _execute_one_reminder(service, reminder_repo)
+
+    service.apply_message_status_event(
+        "tenant-1",
+        webhook_dto.MessageStatusEventDTO(
+            provider_event_id=f"{provider_message_id}:delivered",
+            phone_number_id="phone-1",
+            provider_message_id=provider_message_id,
+            recipient_id="34645136263",
+            status="delivered",
+        ),
+    )
+
+    delivered = reminder_repo.get_by_id("tenant-1", "reminder-1")
+    assert delivered is not None
+    assert delivered.status == "DELIVERED"
+    assert delivered.delivered_at is not None
+
+
+def test_apply_status_event_read_supersedes_delivered_and_does_not_regress() -> None:
+    profile = _build_basic_payment_profile()
+    service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
+
+    provider_message_id = _execute_one_reminder(service, reminder_repo)
+
+    service.apply_message_status_event(
+        "tenant-1",
+        webhook_dto.MessageStatusEventDTO(
+            provider_event_id=f"{provider_message_id}:read",
+            phone_number_id="phone-1",
+            provider_message_id=provider_message_id,
+            recipient_id="34645136263",
+            status="read",
+        ),
+    )
+    # A late "delivered" callback (Meta sometimes emits these out of order)
+    # must not regress the status.
+    service.apply_message_status_event(
+        "tenant-1",
+        webhook_dto.MessageStatusEventDTO(
+            provider_event_id=f"{provider_message_id}:delivered",
+            phone_number_id="phone-1",
+            provider_message_id=provider_message_id,
+            recipient_id="34645136263",
+            status="delivered",
+        ),
+    )
+
+    final = reminder_repo.get_by_id("tenant-1", "reminder-1")
+    assert final is not None
+    assert final.status == "READ"
+    assert final.read_at is not None
+
+
+def test_apply_status_event_failed_does_not_regress_already_failed_reminder() -> None:
+    """If a reminder was already marked FAILED (e.g. by execute_reminder when the
+    Meta call itself errored), a later status callback must not overwrite the
+    original failure_reason."""
+    profile = _build_basic_payment_profile()
+    service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
+    provider_message_id = _execute_one_reminder(service, reminder_repo)
+
+    reminder = reminder_repo.get_by_id("tenant-1", "reminder-1")
+    assert reminder is not None
+    reminder.status = "FAILED"
+    reminder.failure_reason = "earlier_failure"
+    reminder_repo.save(reminder)
+
+    service.apply_message_status_event(
+        "tenant-1",
+        webhook_dto.MessageStatusEventDTO(
+            provider_event_id=f"{provider_message_id}:failed",
+            phone_number_id="phone-1",
+            provider_message_id=provider_message_id,
+            recipient_id="34645136263",
+            status="failed",
+            error_code=131000,
+            error_title="late_meta_error",
+        ),
+    )
+
+    final = reminder_repo.get_by_id("tenant-1", "reminder-1")
+    assert final is not None
+    assert final.failure_reason == "earlier_failure"
+
+
+def test_apply_status_event_unknown_message_id_is_noop() -> None:
+    profile = _build_basic_payment_profile()
+    service, _, reminder_repo, _, _ = _build_service(["reminder-1"], agent_profile=profile)
+    _execute_one_reminder(service, reminder_repo)
+
+    # Status callback for a different wamid (e.g. a regular conversation
+    # message, not a reminder). Must not affect any reminder.
+    service.apply_message_status_event(
+        "tenant-1",
+        webhook_dto.MessageStatusEventDTO(
+            provider_event_id="wamid.SOMETHING_ELSE:failed",
+            phone_number_id="phone-1",
+            provider_message_id="wamid.SOMETHING_ELSE",
+            recipient_id="34645136263",
+            status="failed",
+            error_code=131000,
+            error_title="unrelated",
+        ),
+    )
+
+    untouched = reminder_repo.get_by_id("tenant-1", "reminder-1")
+    assert untouched is not None
+    assert untouched.status == "SENT"
+    assert untouched.failure_reason is None

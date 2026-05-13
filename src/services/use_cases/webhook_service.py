@@ -15,6 +15,7 @@ import src.ports.conversation_repository_port as conversation_repository_port
 import src.ports.id_generator_port as id_generator_port
 import src.ports.patient_repository_port as patient_repository_port
 import src.ports.processed_webhook_event_repository_port as processed_webhook_event_repository_port
+import src.ports.reminder_service_port as reminder_service_port
 import src.ports.tracer_port as tracer_port
 import src.ports.whatsapp_connection_repository_port as whatsapp_connection_repository_port
 import src.ports.whatsapp_provider_port as whatsapp_provider_port
@@ -62,6 +63,7 @@ class WebhookService:
         | None = None,
         professional_silent_guard: professional_silent_guard_mod.WaitingProfessionalSilentGuard
         | None = None,
+        reminder_service: reminder_service_port.ReminderServicePort | None = None,
     ) -> None:
         self._whatsapp_connection_repository = whatsapp_connection_repository
         self._conversation_repository = conversation_repository
@@ -93,6 +95,7 @@ class WebhookService:
         self._tool_calling_orchestrator = tool_calling_orchestrator
         self._runtime_context_resolver = runtime_context_resolver
         self._message_sender = message_sender
+        self._reminder_service = reminder_service
         if sleep_seconds is not None:
             self._sleep_seconds = sleep_seconds
         else:
@@ -100,13 +103,17 @@ class WebhookService:
 
     def process_payload(self, payload: dict[str, object]) -> webhook_dto.WebhookEventResponseDTO:
         events = self._whatsapp_provider.parse_incoming_message_events(payload)
+        status_events = self._whatsapp_provider.parse_message_status_events(payload)
         logger.info(
             "webhook.received",
             extra={
                 "event_data": app_logs.build_log_event(
                     event_name="webhook.received",
                     message="webhook payload parsed",
-                    data={"event_count": len(events)},
+                    data={
+                        "event_count": len(events),
+                        "status_event_count": len(status_events),
+                    },
                 )
             },
         )
@@ -120,7 +127,38 @@ class WebhookService:
                     failure_reason=str(error),
                 )
                 raise
+        for status_event in status_events:
+            self._process_status_event(status_event)
         return webhook_dto.WebhookEventResponseDTO(status="processed")
+
+    def _process_status_event(self, event: webhook_dto.MessageStatusEventDTO) -> None:
+        if self._reminder_service is None:
+            return
+        connection = self._whatsapp_connection_repository.get_by_phone_number_id(
+            event.phone_number_id
+        )
+        if connection is None:
+            return
+        try:
+            self._reminder_service.apply_message_status_event(connection.tenant_id, event)
+        except service_exceptions.ServiceError as error:
+            # Status callbacks must never break the webhook flow: Meta retries
+            # them aggressively and a failure here would only make noise.
+            logger.warning(
+                "webhook.reminder_status_apply_failed",
+                extra={
+                    "event_data": app_logs.build_log_event(
+                        event_name="webhook.reminder_status_apply_failed",
+                        message="failed to apply provider status event to reminder",
+                        data={
+                            "tenant_id": connection.tenant_id,
+                            "provider_message_id": event.provider_message_id,
+                            "status": event.status,
+                            "error": str(error),
+                        },
+                    )
+                },
+            )
 
     def _process_event(self, event: webhook_dto.IncomingMessageEventDTO) -> None:
         connection = self._whatsapp_connection_repository.get_by_phone_number_id(
