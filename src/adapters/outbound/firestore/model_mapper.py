@@ -23,5 +23,5 @@ def parse_document(
         return model_type.model_validate(data)
     except pydantic.ValidationError as error:
         raise firestore_errors.FirestoreRepositoryError(
-            f"invalid {entity_name} document format in firestore"
+            f"invalid {entity_name} document format in firestore: {error}"
         ) from error
