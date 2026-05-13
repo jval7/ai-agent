@@ -20,6 +20,8 @@ function getStatusBadgeProps(status: string): {
 } {
   if (status === "PENDING") return { tone: "warning", label: "PENDIENTE" };
   if (status === "SENT") return { tone: "success", label: "ENVIADO" };
+  if (status === "DELIVERED") return { tone: "success", label: "ENTREGADO" };
+  if (status === "READ") return { tone: "success", label: "LEÍDO" };
   if (status === "FAILED") return { tone: "danger", label: "ERROR" };
   if (status === "CANCELLED") return { tone: "neutral", label: "CANCELADO" };
   return { tone: "neutral", label: status };

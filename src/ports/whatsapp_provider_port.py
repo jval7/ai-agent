@@ -54,6 +54,12 @@ class WhatsappProviderPort(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
+    def parse_message_status_events(
+        self, payload: dict[str, typing.Any]
+    ) -> list[webhook_dto.MessageStatusEventDTO]:
+        raise NotImplementedError
+
+    @abc.abstractmethod
     def list_message_templates(
         self, access_token: str, waba_id: str
     ) -> list[whatsapp_template_dto.TemplateDTO]:

@@ -80,6 +80,7 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
         self.sent_messages: list[dict[str, str]] = []
         self.sent_template_body_parameters: list[list[str]] = []
         self.events: list[webhook_dto.IncomingMessageEventDTO] = []
+        self.status_events: list[webhook_dto.MessageStatusEventDTO] = []
         self.waba_subscriptions: list[dict[str, str]] = []
         self.phone_registrations: list[dict[str, str]] = []
         self.should_fail_subscription = False
@@ -151,6 +152,12 @@ class FakeWhatsappProvider(whatsapp_provider_port.WhatsappProviderPort):
     ) -> list[webhook_dto.IncomingMessageEventDTO]:
         del payload
         return list(self.events)
+
+    def parse_message_status_events(
+        self, payload: dict[str, typing.Any]
+    ) -> list[webhook_dto.MessageStatusEventDTO]:
+        del payload
+        return list(self.status_events)
 
     def list_message_templates(
         self, access_token: str, waba_id: str

@@ -333,6 +333,109 @@ class MetaWhatsappProviderAdapter(whatsapp_provider_port.WhatsappProviderPort):
 
         return events
 
+    def parse_message_status_events(
+        self, payload: dict[str, typing.Any]
+    ) -> list[webhook_dto.MessageStatusEventDTO]:
+        events: list[webhook_dto.MessageStatusEventDTO] = []
+
+        entries = payload.get("entry")
+        if not isinstance(entries, list):
+            return events
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            changes = entry.get("changes")
+            if not isinstance(changes, list):
+                continue
+
+            for change in changes:
+                if not isinstance(change, dict):
+                    continue
+
+                value = change.get("value")
+                if not isinstance(value, dict):
+                    continue
+
+                metadata = value.get("metadata")
+                if not isinstance(metadata, dict):
+                    continue
+
+                phone_number_id = metadata.get("phone_number_id")
+                if not isinstance(phone_number_id, str) or not phone_number_id:
+                    continue
+
+                statuses = value.get("statuses")
+                if not isinstance(statuses, list):
+                    continue
+
+                for status_payload in statuses:
+                    if not isinstance(status_payload, dict):
+                        continue
+
+                    provider_message_id = status_payload.get("id")
+                    if not isinstance(provider_message_id, str) or not provider_message_id:
+                        continue
+
+                    raw_status = status_payload.get("status")
+                    if raw_status not in ("sent", "delivered", "read", "failed"):
+                        continue
+
+                    recipient_id = status_payload.get("recipient_id")
+                    if not isinstance(recipient_id, str) or not recipient_id:
+                        continue
+
+                    timestamp_epoch_seconds: int | None = None
+                    raw_timestamp = status_payload.get("timestamp")
+                    if isinstance(raw_timestamp, str) and raw_timestamp.isdigit():
+                        timestamp_epoch_seconds = int(raw_timestamp)
+                    elif isinstance(raw_timestamp, int):
+                        timestamp_epoch_seconds = raw_timestamp
+
+                    error_code: int | None = None
+                    error_title: str | None = None
+                    error_message: str | None = None
+                    errors_payload = status_payload.get("errors")
+                    if isinstance(errors_payload, list) and errors_payload:
+                        first_error = errors_payload[0]
+                        if isinstance(first_error, dict):
+                            raw_code = first_error.get("code")
+                            if isinstance(raw_code, int):
+                                error_code = raw_code
+                            raw_title = first_error.get("title")
+                            if isinstance(raw_title, str) and raw_title.strip():
+                                error_title = raw_title.strip()
+                            error_data = first_error.get("error_data")
+                            if isinstance(error_data, dict):
+                                raw_details = error_data.get("details")
+                                if isinstance(raw_details, str) and raw_details.strip():
+                                    error_message = raw_details.strip()
+                            if error_message is None:
+                                raw_message = first_error.get("message")
+                                if isinstance(raw_message, str) and raw_message.strip():
+                                    error_message = raw_message.strip()
+
+                    # Use a composite key so the dedup check stays unique even
+                    # when the same wamid emits multiple lifecycle callbacks
+                    # (sent → delivered → read).
+                    provider_event_id = f"{provider_message_id}:{raw_status}"
+
+                    events.append(
+                        webhook_dto.MessageStatusEventDTO(
+                            provider_event_id=provider_event_id,
+                            phone_number_id=phone_number_id,
+                            provider_message_id=provider_message_id,
+                            recipient_id=recipient_id,
+                            status=raw_status,
+                            timestamp_epoch_seconds=timestamp_epoch_seconds,
+                            error_code=error_code,
+                            error_title=error_title,
+                            error_message=error_message,
+                        )
+                    )
+
+        return events
+
     def list_message_templates(
         self, access_token: str, waba_id: str
     ) -> list[whatsapp_template_dto.TemplateDTO]:

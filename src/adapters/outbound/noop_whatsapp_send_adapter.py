@@ -80,6 +80,11 @@ class NoopWhatsappSendAdapter(whatsapp_provider_port.WhatsappProviderPort):
     ) -> list[webhook_dto.IncomingMessageEventDTO]:
         return self._delegate.parse_incoming_message_events(payload)
 
+    def parse_message_status_events(
+        self, payload: dict[str, typing.Any]
+    ) -> list[webhook_dto.MessageStatusEventDTO]:
+        return self._delegate.parse_message_status_events(payload)
+
     def list_message_templates(
         self, access_token: str, waba_id: str
     ) -> list[whatsapp_template_dto.TemplateDTO]:
