@@ -327,6 +327,9 @@ chat-memory-reset:
 resubscribe-waba:
 	@uv run python scripts/resubscribe_waba.py $(ARGS)
 
+diagnose-whatsapp:
+	@uv run python scripts/diagnose_whatsapp_account.py $(ARGS)
+
 static-checks:
 	@uv run ruff check .
 	@uv run ruff format --check .
