@@ -151,7 +151,9 @@ export function AdminTenantDetailPage() {
                 : "text-slate-500 hover:text-slate-700"
             ].join(" ")}
             key={t.id}
-            onClick={() => navigate(`/admin/tenants/${tenantId}/${t.id}`)}
+            onClick={() => {
+              void navigate(`/admin/tenants/${tenantId}/${t.id}`);
+            }}
             type="button"
           >
             {t.label}

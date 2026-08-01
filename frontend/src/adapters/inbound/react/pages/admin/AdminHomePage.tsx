@@ -61,7 +61,7 @@ function TenantRow({ tenant }: { tenant: adminModel.TenantSummary }) {
     <tr
       className="cursor-pointer transition-colors hover:bg-slate-50"
       onClick={() => {
-        navigate(`/admin/tenants/${tenant.tenantId}`);
+        void navigate(`/admin/tenants/${tenant.tenantId}`);
       }}
     >
       <td className="px-4 py-3">

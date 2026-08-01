@@ -40,10 +40,10 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       infra-backend: ${{ steps.filter.outputs.infra-backend }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # frontend/** cuenta como backend: la SPA se compila dentro de la imagen
       # del backend y se publica en el mismo deploy de Cloud Run.
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -68,19 +68,19 @@ jobs:
     outputs:
       backend_url: ${{ steps.deploy.outputs.backend_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Authenticate to GCP
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
 
       - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
 

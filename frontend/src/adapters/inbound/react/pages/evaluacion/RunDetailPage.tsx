@@ -290,7 +290,7 @@ export function RunDetailPage() {
           <button
             className="text-xs font-semibold text-brand-teal hover:underline"
             onClick={() => {
-              navigate("/evaluacion");
+              void navigate("/evaluacion");
             }}
             type="button"
           >

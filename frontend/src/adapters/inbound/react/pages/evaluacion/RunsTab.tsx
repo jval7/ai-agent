@@ -316,7 +316,7 @@ function ShapeRow(props: { run: evaluationModel.EvalRunListItem }) {
     detailQuery.data !== undefined ? countFailedCapsFromDetail(detailQuery.data) : null;
 
   function handleRowClick(): void {
-    navigate(`/evaluacion/runs/${run.runDocId}`);
+    void navigate(`/evaluacion/runs/${run.runDocId}`);
   }
 
   function handleCapsToggle(e: reactModule.MouseEvent): void {
@@ -490,7 +490,7 @@ function FlatRunRow(props: { run: evaluationModel.EvalRunListItem }) {
     <tr
       className="cursor-pointer hover:bg-slate-50 transition-colors"
       onClick={() => {
-        navigate(`/evaluacion/runs/${run.runDocId}`);
+        void navigate(`/evaluacion/runs/${run.runDocId}`);
       }}
     >
       <td className="px-4 py-3 font-mono text-xs text-slate-700" colSpan={2}>

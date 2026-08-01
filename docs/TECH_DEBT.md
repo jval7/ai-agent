@@ -218,6 +218,14 @@ La entidad tiene el campo y lo usan `RuntimeContextSection` (formato de `fecha_c
 `agent_service._identity_dto_to_entity()` no lo copia. Guardar el formulario lo deja en `None` y todo
 cae al fallback `America/Bogota`. Impacta a cualquier tenant fuera de esa zona horaria.
 
+### 26. Excepcion de seguridad abierta en `react-router`
+
+`frontend/scripts/audit-check.mjs` acepta `GHSA-qwww-vcr4-c8h2` (high, CSRF en RSC Mode) porque no
+existe version de react-router libre de avisos: `<= 7.11.0` arrastra los open redirect y `7.18.x` (la
+ultima) reporta ese CSRF. La app es una SPA con `BrowserRouter`, sin SSR ni RSC, asi que el vector no
+aplica. Retirar la excepcion cuando se publique una version `> 8.2.0` y se actualice el paquete; el
+script ya avisa si la entrada queda obsoleta.
+
 ---
 
 ## Resuelto (historico breve)

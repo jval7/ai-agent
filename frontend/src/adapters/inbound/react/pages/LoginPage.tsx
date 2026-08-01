@@ -31,7 +31,7 @@ export function LoginPage() {
         email: email.trim(),
         password
       });
-      navigate("/configuraciones", { replace: true });
+      void navigate("/configuraciones", { replace: true });
     } catch (error: unknown) {
       const resolvedErrorMessage = uiErrorModule.resolveUiErrorMessage([error]);
       if (resolvedErrorMessage === null) {

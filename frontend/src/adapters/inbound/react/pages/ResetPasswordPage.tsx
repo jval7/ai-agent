@@ -59,7 +59,7 @@ export function ResetPasswordPage() {
 
     try {
       await auth.confirmPasswordReset({ token, password: newPassword });
-      navigate("/login?reset=success", { replace: true });
+      void navigate("/login?reset=success", { replace: true });
     } catch (error: unknown) {
       const resolvedErrorMessage = uiErrorModule.resolveUiErrorMessage([error]);
       if (resolvedErrorMessage === null) {

@@ -232,7 +232,7 @@ export function AppShell(props: { children: reactModule.ReactNode }) {
 
   const handleLogout = async () => {
     await auth.logout();
-    navigate("/login", { replace: true });
+    void navigate("/login", { replace: true });
   };
 
   return (

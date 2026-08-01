@@ -56,7 +56,7 @@ export function AcceptInvitePage() {
 
     try {
       await auth.acceptInvitation({ token, password: newPassword });
-      navigate("/configuraciones", { replace: true });
+      void navigate("/configuraciones", { replace: true });
     } catch (error: unknown) {
       const resolvedErrorMessage = uiErrorModule.resolveUiErrorMessage([error]);
       if (resolvedErrorMessage === null) {

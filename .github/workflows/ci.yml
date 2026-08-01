@@ -21,10 +21,10 @@ jobs:
     name: Backend (ruff, mypy, bandit, pytest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v9
         with:
           version: "0.8.17"
           enable-cache: true
@@ -58,10 +58,10 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -100,9 +100,9 @@ jobs:
             backend_prefix: dev/frontend-spa-cdn
     environment: dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -111,7 +111,7 @@ jobs:
 
       - name: Setup Terraform
         if: steps.filter.outputs.changed == 'true'
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           # Pinned to match the version used locally and in deploy workflows.
           # Newer terraform (1.10+) rejects empty `backend "gcs" {}` blocks
@@ -135,7 +135,7 @@ jobs:
       # ── plan (PRs only, always against dev state) ──────────────────
       - name: Authenticate to GCP
         if: steps.filter.outputs.changed == 'true' && github.event_name == 'pull_request'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
@@ -182,7 +182,7 @@ jobs:
 
       - name: Post plan as PR comment
         if: steps.filter.outputs.changed == 'true' && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           MODULE: ${{ matrix.module }}
         with:
