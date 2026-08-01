@@ -10,7 +10,11 @@ __pycache__
 *.pyd
 .env
 .make-flow
-frontend/
+# frontend/ entra al contexto: la primera etapa de Dockerfile.backend compila
+# la SPA. Solo se excluyen los artefactos locales, que se regeneran adentro.
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
 landing/
 tests/*
 # tests/fixtures es lectura runtime para el dashboard de eval (shapes JSON).

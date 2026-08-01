@@ -2,8 +2,10 @@
 
 Guia operativa para desplegar backend y frontend de `ai-agent` en GCP.
 
-> **La infraestructura esta hibernada desde 2026-05-26.** Antes de desplegar, leer
-> `docs/HIBERNATION.md`: describe que se destruyo, que se preservo y el orden de restauracion.
+> **dev esta activo desde 2026-08-01; prod sigue hibernado.** Estado por ambiente, integraciones
+> pendientes y orden de restauracion: `docs/HIBERNATION.md`.
+>
+> La SPA se sirve desde el mismo Cloud Run del backend. No hay load balancer ni dominio propio.
 
 ## Ambientes
 
@@ -37,7 +39,7 @@ Todos los targets de deploy y de secrets aceptan `ENV=dev|prod`. Cada modulo Ter
 |--------|--------------|
 | `project_bootstrap` | Proyecto, APIs, Firestore, secrets OAuth |
 | `runtime_deploy` | Cloud Run, Artifact Registry, Cloud Tasks, Secret Manager, IAM |
-| `frontend_spa_cdn` | Bucket GCS, HTTPS LB, Cloud CDN, certificados |
+| `frontend_spa_cdn` | Bucket GCS, HTTPS LB, Cloud CDN, certificados. **Fuera del flujo de deploy** desde 2026-08-01: la SPA se sirve desde Cloud Run. Se conserva por si vuelve a hacer falta un dominio propio |
 | `github_wif` | Workload Identity Federation para GitHub Actions |
 
 ### Flujo Terraform local
@@ -66,23 +68,22 @@ Que hace:
 Si `DEPLOY_PROJECT_ID` no se pasa, se lee del `project_id` del `envs/<ENV>.tfvars`; el bucket de state
 por defecto es `<project_id>-tf-state`.
 
-## Despliegue de frontend (SPA + CDN)
+## Despliegue de frontend
 
-```bash
-make deploy-front            # dev
-make deploy-front ENV=prod   # prod
-```
+No hay un deploy de frontend separado. La SPA se compila en la primera etapa de
+`Dockerfile.backend` (`node:22-alpine` → `npm ci` + `vite build`) y viaja dentro de la imagen; FastAPI
+la sirve desde `src/entrypoints/web/static_spa.py`. Un cambio en `frontend/**` se publica con
+`make deploy-back`.
 
-Que hace:
-- `deploy-front-infra`: crea/actualiza bucket + LB/CDN (`infra/terraform/frontend_spa_cdn`)
-- `deploy-front-upload`: build del frontend y upload de `frontend/dist`
-
-Alternativa por pasos:
-
-```bash
-make deploy-front-infra ENV=prod
-make deploy-front-upload ENV=prod
-```
+Implicaciones:
+- **Un solo origen**: la SPA y la API comparten dominio, asi que `VITE_API_BASE_URL` queda vacio en el
+  build (rutas relativas) y no hay CORS entre ambos.
+- **Sin costo fijo**: no hay load balancer, IP estatica, certificados ni bucket. HTTPS lo aporta el
+  dominio `*.run.app`.
+- **Sin dominio propio**: la app vive en la URL de Cloud Run. Para volver a un dominio propio esta el
+  modulo `infra/terraform/frontend_spa_cdn`, que sigue en el repo pero fuera del flujo de deploy.
+- Las herramientas internas (pagina de Evaluacion, prompt-preview) se controlan con el build arg
+  `VITE_SHOW_INTERNAL_TOOLS`: `true` en dev, `false` en prod.
 
 ## Desplegar todo
 
@@ -90,14 +91,14 @@ make deploy-front-upload ENV=prod
 make deploy-all ENV=prod
 ```
 
-Ejecuta: frontend infra → backend → frontend upload, todos con el mismo `ENV`.
+Alias de `deploy-back`: backend y SPA se publican juntos.
 
 ## CI/CD (GitHub Actions)
 
 | Workflow | Trigger | Que hace |
 |----------|---------|----------|
 | `.github/workflows/ci.yml` | PRs y push a `develop` | ruff, mypy, bandit, pytest, checks de frontend y `terraform plan` |
-| `.github/workflows/deploy-main.yml` | push a `develop` (→ dev) o `workflow_dispatch` con selector `dev`/`prod` | Deploy de backend y frontend con WIF (sin JSON keys) |
+| `.github/workflows/deploy-main.yml` | push a `develop` (→ dev) o `workflow_dispatch` con selector `dev`/`prod` | Deploy de backend + SPA con WIF (sin JSON keys). `frontend/**` dispara este job porque la SPA va en la imagen |
 | `.github/workflows/deploy-dev.yml` | `workflow_dispatch` con un `ref` arbitrario | Despliega una rama/tag/SHA a dev; usa `paths-filter` contra `develop` para saltarse lo que no cambio |
 
 Los secrets viven en GitHub Environments (`dev` y `prod`), no a nivel de repo. Detalle de setup y
@@ -164,10 +165,14 @@ Default actual: `calendar-json`, `secretmanager`, `stitch`. Firestore se habilit
 habilitan en el setup del proyecto — ver `docs/MANUAL_SETUP_DEV_ENV.md`, paso 2.
 
 ## Verificacion rapida post-deploy
+- Readiness (chequea Firestore): `https://<cloud-run-url>/readyz` — debe responder `{"status":"ok"}`
+- SPA: `https://<cloud-run-url>/` y un deep link como `/login` (valida el fallback a `index.html`)
 - Backend docs: `https://<cloud-run-url>/docs`
-- Liveness: `https://<cloud-run-url>/healthz`
-- Readiness (chequea Firestore): `https://<cloud-run-url>/readyz`
-- Frontend: URL en `.make-flow/deploy/front.env` (`DEPLOY_FRONTEND_URL=...`)
+
+> **`/healthz` no sirve como verificacion externa en Cloud Run.** Google Front End intercepta ese path
+> exacto y responde su propio 404 sin llegar al contenedor (se nota porque la respuesta no trae
+> `x-request-id` ni `server: Google Frontend`). El endpoint existe y funciona dentro del contenedor;
+> para chequear desde afuera usar `/readyz`.
 
 ## Regla de commits
 Ver "Principios de Trabajo" en `CLAUDE.md` (fuente canonica).

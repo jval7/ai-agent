@@ -45,7 +45,10 @@ async def _check_firestore(
         await asyncio.wait_for(
             loop.run_in_executor(
                 None,
-                lambda: container.firestore_client.collection("__health__").limit(1).get(),
+                # Firestore rechaza los ids que abren y cierran con "__": son
+                # reservados. Con "__health__" este check fallaba siempre y
+                # /readyz respondia 503 de forma permanente.
+                lambda: container.firestore_client.collection("health_check").limit(1).get(),
             ),
             timeout=_FIRESTORE_TIMEOUT_SECONDS,
         )

@@ -15,7 +15,7 @@ Los detalles específicos de backend/frontend viven en archivos de contexto dedi
 | Infra (Terraform, Docker, deploys, GCP) | `infra` | `docs/DEPLOYMENT.md` |
 | Prompts (sp.txt, instrucciones de estado, reglas de estilo, tool descriptions) | `prompts` | `docs/PROMPTS_CONTEXT.md` |
 | Contratos/endpoints (referencia) | — | `docs/API_ENDPOINTS.md` |
-| Estado de la infra pausada | — | `docs/HIBERNATION.md` |
+| Estado de la infra por ambiente | — | `docs/HIBERNATION.md` |
 | Deuda técnica priorizada | — | `docs/TECH_DEBT.md` |
 
 - Si una tarea cruza límites de dominio, coordinar desde la sesión principal.
@@ -66,9 +66,7 @@ Los detalles específicos de backend/frontend viven en archivos de contexto dedi
 - Frontend checks: `make fe-checks`
 - All checks: `make checks`
 - Evaluación del bot: `make eval` (filtro: `make eval SHAPES="shape_minimal"`)
-- Deploy backend: `make deploy-back ENV=dev|prod`
-- Deploy frontend: `make deploy-front ENV=dev|prod`
-- Deploy todo: `make deploy-all ENV=dev|prod`
+- Deploy backend + SPA: `make deploy-back ENV=dev|prod` (la SPA viaja dentro de la imagen; no hay deploy de frontend separado)
 
 `ENV` por defecto es `dev` en todos los targets de deploy y de secrets.
 

@@ -8,7 +8,7 @@ arquitectura hexagonal, panel web en React y orquestación agéntica con LangGra
 > alertas e integraciones de IAM/Secret Manager. **Agendachat es la marca pública** (dominio, copy de
 > UI, paquetes); `ai-agent` es la identidad técnica interna.
 
-> **Infraestructura hibernada desde 2026-05-26.** Ver `docs/HIBERNATION.md` antes de desplegar.
+> **dev activo desde 2026-08-01; prod hibernado.** Ver `docs/HIBERNATION.md` antes de desplegar.
 
 ## Documentación
 
@@ -38,7 +38,7 @@ arquitectura hexagonal, panel web en React y orquestación agéntica con LangGra
 
 - Backend: FastAPI + arquitectura hexagonal + Firestore + Gemini (Vertex AI) + LangGraph
 - Frontend: React + Vite + TypeScript estricto + Tailwind + TanStack Query
-- Infra: GCP (Cloud Run, Artifact Registry, Secret Manager, Cloud Tasks, Cloud CDN), Terraform
+- Infra: GCP (Cloud Run, Artifact Registry, Secret Manager, Cloud Tasks), Terraform
 - Tooling: `uv`, `ruff`, `mypy`, `bandit`, `pre-commit`
 
 ## Quick start
@@ -155,10 +155,11 @@ Ver `docs/DEPLOYMENT.md` para las variantes (valores tipados, upsert múltiple, 
 ## Deploy
 
 ```bash
-make deploy-back ENV=prod
-make deploy-front ENV=prod
-make deploy-all ENV=prod
+make deploy-back ENV=prod   # backend + SPA en la misma imagen
 ```
+
+La SPA se compila en la primera etapa de `Dockerfile.backend` y la sirve FastAPI, así que no hay
+deploy de frontend separado ni load balancer: la app vive en la URL de Cloud Run.
 
 El deploy automático a dev corre en `push` a `develop` vía GitHub OIDC + Workload Identity Federation
 (sin JSON keys). Detalles de workflows, secrets por ambiente y módulos Terraform en

@@ -29,6 +29,7 @@ import src.entrypoints.web.routers.tenant_router as tenant_router
 import src.entrypoints.web.routers.webhook_router as webhook_router
 import src.entrypoints.web.routers.whatsapp_router as whatsapp_router
 import src.entrypoints.web.routers.whatsapp_template_router as whatsapp_template_router
+import src.entrypoints.web.static_spa as static_spa
 import src.infra.container as app_container
 import src.infra.logs as app_logs
 
@@ -84,6 +85,10 @@ def create_app() -> fastapi.FastAPI:
         app.include_router(eval_router.router)
 
     http_exception_handlers.register_exception_handlers(app)
+
+    # Last: the SPA catch-all matches anything left over, so every API route
+    # must already be registered.
+    static_spa.register_spa_routes(app)
     return app
 
 
