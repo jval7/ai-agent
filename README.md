@@ -1,26 +1,45 @@
 # Agendachat
 
-Backend del agente conversacional WhatsApp multi-tenant para agendamiento de citas, construido con FastAPI y arquitectura hexagonal.
+Agente conversacional de WhatsApp multi-tenant para agendamiento de citas: backend FastAPI con
+arquitectura hexagonal, panel web en React y orquestación agéntica con LangGraph.
 
-> Nota: el repo, los servicios Cloud Run, los buckets de GCS y los secrets siguen llamándose `ai-agent`/`ai-agent-backend`/`ai-agent-frontend`/etc. para no romper logs históricos, dashboards, alertas e integraciones de IAM/Secret Manager. **Agendachat es la marca pública** (dominio, copy de UI, paquetes); `ai-agent` es la identidad técnica interna.
+> Nota: el repo, los servicios Cloud Run, los buckets de GCS y los secrets siguen llamándose
+> `ai-agent`/`ai-agent-backend`/`ai-agent-frontend`/etc. para no romper logs históricos, dashboards,
+> alertas e integraciones de IAM/Secret Manager. **Agendachat es la marca pública** (dominio, copy de
+> UI, paquetes); `ai-agent` es la identidad técnica interna.
 
-Meta onboarding and message lifecycle (E2E): `docs/archive/META_BACKEND_E2E_README.md`
+> **Infraestructura hibernada desde 2026-05-26.** Ver `docs/HIBERNATION.md` antes de desplegar.
 
-## Agent orchestration
+## Documentación
 
-- Agentic orchestration now runs with `LangGraph` (`src/services/agentic/`).
-- Domain persistence remains in Firestore repositories (`src/adapters/outbound/firestore/`).
-- LangGraph checkpoints are not used as source of truth in this iteration.
+| Documento | Contenido |
+|-----------|-----------|
+| `CLAUDE.md` | Guía global del repo: stack, capas, reglas de ingeniería, comandos |
+| `docs/BACKEND_CONTEXT.md` | Arquitectura backend, módulo agéntico, flujos, adapters |
+| `docs/API_ENDPOINTS.md` | Referencia de todos los endpoints con schemas |
+| `docs/PROMPTS_CONTEXT.md` | Sistema de prompts, estados, tools, reglas de estilo |
+| `docs/FRONTEND_PLAN.md` | Rutas, estructura hexagonal y realtime del panel web |
+| `docs/DEPLOYMENT.md` | Deploy de infra y código (dev/prod) |
+| `docs/HIBERNATION.md` | Qué se destruyó al pausar el proyecto y cómo restaurar |
+| `docs/MANUAL_SETUP_DEV_ENV.md` | Setup manual del ambiente dev en GCP |
+| `docs/TECH_DEBT.md` | Deuda técnica priorizada |
+| `docs/archive/META_BACKEND_E2E_README.md` | Onboarding de Meta y ciclo de vida del mensaje (E2E) |
 
-## Tooling
+## Qué hace
 
-- Dependency manager: `uv`
-- Linting/format: `ruff`
-- Type checking: `mypy`
-- Security scan: `bandit`
-- Git hooks: `pre-commit`
+- Atiende WhatsApp por tenant vía Meta Cloud API y responde con Gemini (Vertex AI) usando function calling.
+- Lleva el flujo de agendamiento completo: motivo de consulta → revisión del profesional → propuesta de
+  horarios → selección → pago → reserva en Google Calendar → recordatorio → confirmación de asistencia.
+- Permite reprogramar y cancelar, y pasar la conversación a modo humano cuando hace falta.
+- Panel web con inbox, agenda, clientes, finanzas, recordatorios y configuración del asistente.
+- Panel de administración multi-tenant y dashboard de evaluación automatizada del bot.
 
-Frontend lives in `frontend/` and uses React + TypeScript strict + hexagonal folders.
+## Stack
+
+- Backend: FastAPI + arquitectura hexagonal + Firestore + Gemini (Vertex AI) + LangGraph
+- Frontend: React + Vite + TypeScript estricto + Tailwind + TanStack Query
+- Infra: GCP (Cloud Run, Artifact Registry, Secret Manager, Cloud Tasks, Cloud CDN), Terraform
+- Tooling: `uv`, `ruff`, `mypy`, `bandit`, `pre-commit`
 
 ## Quick start
 
@@ -30,221 +49,134 @@ uv run pre-commit install
 uv run uvicorn src.entrypoints.web.main:app --reload
 ```
 
-Frontend (separate terminal):
+Frontend (otra terminal):
 
 ```bash
 make fe-install
 make fe-dev
 ```
 
-## Professional management
-
-Each professional is an independent tenant. Management is local-only through Make commands (requires GCP access):
-
-```bash
-make create-professional EMAIL=doc@acme.com TENANT_NAME=DrAcme
-make delete-professional EMAIL=doc@acme.com
-make oauth-flow
-```
-
-`create-professional` generates a random password and prints it. Credentials are saved to `.secrets/` for use by other commands.
-
-## Run with Docker
-
-```bash
-make docker-up-build
-```
-
-URLs:
-
-- Frontend: `http://localhost:5173`
-- Backend API: `http://localhost:8000`
-
-In local Docker runs, backend CORS can be overridden with:
-
-- `CORS_ALLOWED_ORIGINS_OVERRIDE` (comma-separated list)
-
-Stop containers:
-
-```bash
-make docker-down
-```
-
-Domain state is persisted in Firestore and all app runtime config is read from Secret Manager.
-Required local setup:
+El estado de dominio vive en Firestore y toda la configuración de runtime se lee de Secret Manager.
+Setup local requerido:
 
 ```bash
 gcloud auth application-default login
 gcloud config set project your_gcp_project_id
 ```
 
-If you run locally with ADC JSON credentials:
+Si corres local con credenciales ADC en JSON:
 
 ```bash
 GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/your/adc.json
 ```
 
-During embedded signup completion, backend now runs:
+## Gestión de profesionales
 
-- `POST /{WABA_ID}/subscribed_apps`
-- `POST /{PHONE_NUMBER_ID}/register`
-
-Config values like `JWT_SECRET`, `META_*`, `GEMINI_*`, CORS, URLs and limits must be stored in:
-- `AI_AGENT_APP_CONFIG_JSON`
-
-## GCP Project Bootstrap (Terraform)
-
-Si quieres crear un proyecto nuevo de GCP con Terraform (Firestore + secretos OAuth en el mismo stack):
-
-- Revisa: `infra/terraform/project_bootstrap/README.md`
-
-## CI/CD Deploy to GCP (WIF + Terraform)
-
-El deploy automatico en `push` a `main` usa GitHub OIDC + Workload Identity Federation (sin JSON keys).
-
-1. Bootstrap WIF + service accounts:
-   - `infra/terraform/github_wif/README.md`
-2. Stack runtime (Cloud Run + Artifact Registry):
-   - `infra/terraform/runtime_deploy/README.md`
-3. Stack frontend SPA (Cloud Storage + HTTPS LB + Cloud CDN):
-   - `infra/terraform/frontend_spa_cdn/README.md`
-4. Workflows:
-   - Backend: `.github/workflows/deploy-main.yml`
-   - Frontend SPA CDN: `.github/workflows/deploy-frontend-main.yml`
-
-Secrets/variables para backend workflow (`deploy-main.yml`):
-
-1. `GCP_WIF_PROVIDER` (secret)
-2. `GCP_WIF_SERVICE_ACCOUNT` (secret)
-3. `GCP_PROJECT_ID` (secret)
-4. `GCP_REGION` (secret)
-5. `GCP_ARTIFACT_REPOSITORY` (secret)
-6. `RUNTIME_SERVICE_ACCOUNT_EMAIL` (secret)
-7. `TF_STATE_BUCKET` (secret)
-8. `TF_STATE_PREFIX` (secret, opcional)
-9. `CLOUD_RUN_SERVICE_NAME` (secret, opcional)
-
-Secrets/variables para frontend workflow (`deploy-frontend-main.yml`):
-
-1. `GCP_WIF_PROVIDER` (secret)
-2. `GCP_WIF_SERVICE_ACCOUNT` (secret)
-3. `GCP_PROJECT_ID` (secret)
-4. `TF_STATE_BUCKET` (secret)
-5. `TF_STATE_PREFIX_FRONTEND` (secret, opcional)
-6. `TF_VAR_FRONTEND_DOMAINS_JSON` (variable, requerida; ejemplo `["app.tudominio.com"]`)
-7. `VITE_API_BASE_URL` (variable, requerida; URL publica del backend)
-8. `TF_VAR_FRONTEND_BUCKET_NAME` (variable, opcional)
-9. `TF_VAR_FRONTEND_BUCKET_LOCATION` (variable, opcional)
-10. `TF_VAR_FRONTEND_RESOURCE_NAME_PREFIX` (variable, opcional)
-
-## Single JSON Secret Config
-
-Backend supports a single JSON secret loaded directly from Secret Manager at startup.
-
-Use Terraform runtime stack to inject it, then upsert keys with Make:
+Cada profesional es un tenant independiente. La gestión es local, por comandos de Make (requiere acceso a GCP):
 
 ```bash
-make app-config-secret-upsert \
-  DEPLOY_PROJECT_ID=ai-agent-calendar-2603011621 \
-  APP_CONFIG_KEY=META_REDIRECT_URI \
-  APP_CONFIG_VALUE=https://your-domain/oauth/meta/callback
+make create-professional EMAIL=doc@acme.com TENANT_NAME=DrAcme
+make invite-professional EMAIL=doc@acme.com TENANT_NAME=DrAcme   # alta por email de invitación
+make list-professionals
+make reset-password EMAIL=doc@acme.com
+make delete-professional EMAIL=doc@acme.com
+make oauth-flow                                                   # conectar Google Calendar
 ```
 
-Single pair format (`LLAVE:VALOR`):
+`create-professional` genera una contraseña aleatoria y la imprime. Las credenciales quedan en
+`.secrets/` para uso de los demás comandos.
+
+## Correr con Docker
 
 ```bash
-make app-config-secret-upsert \
-  DEPLOY_PROJECT_ID=ai-agent-calendar-2603011621 \
-  APP_CONFIG_PAIR='META_REDIRECT_URI:https://your-domain/oauth/meta/callback'
+make docker-up-build
 ```
 
-Typed values (number, bool, array) using JSON:
+URLs:
+- Frontend: `http://localhost:5173`
+- Backend API: `http://localhost:8000`
+
+En Docker local, el CORS del backend se puede sobrescribir con `CORS_ALLOWED_ORIGINS_OVERRIDE`
+(lista separada por comas). Para detener: `make docker-down`.
+
+## Checks
 
 ```bash
-make app-config-secret-upsert \
-  DEPLOY_PROJECT_ID=ai-agent-calendar-2603011621 \
-  APP_CONFIG_KEY=CONTEXT_MESSAGE_LIMIT \
-  APP_CONFIG_VALUE_JSON=50
+make static-checks   # ruff + mypy + bandit
+make fe-checks       # lint + format + typecheck + test del frontend
+make checks          # todo
 ```
 
-Sync runtime keys from a local `.env` file into the JSON secret:
+Backend tests:
 
 ```bash
-make app-config-secret-sync-env \
-  DEPLOY_PROJECT_ID=ai-agent-calendar-2603011621 \
-  APP_CONFIG_ENV_FILE=.env
+uv run pytest tests/services -q   # suite objetivo del día a día
+uv run pytest                     # suite completa
 ```
 
-If you also want to remove synced runtime keys from `.env` after upload:
+## Simular un mensaje entrante de WhatsApp (dev)
 
 ```bash
-make app-config-secret-sync-env \
-  DEPLOY_PROJECT_ID=ai-agent-calendar-2603011621 \
-  APP_CONFIG_ENV_FILE=.env \
-  APP_CONFIG_PRUNE_ENV=true
+make simulate-whatsapp-message MESSAGE="Hola, necesito una cita"
 ```
+
+Variables opcionales: `SIM_WA_USER_ID` (default `573001234567`), `SIM_WA_USER_NAME`
+(default `Cliente Demo`), `SIM_PROVIDER_MESSAGE_ID` (default autogenerado).
+
+## Evaluación automatizada del bot
+
+```bash
+make eval-list                              # lista los shapes disponibles
+make eval                                   # corre todos los shapes
+make eval SHAPES="shape_minimal"            # filtra a uno o varios shapes
+make eval-no-cleanup                        # deja vivos los tenants efímeros para inspeccionar
+```
+
+Los targets de eval usan la variable `EVAL_ADC` del Makefile como
+`GOOGLE_APPLICATION_CREDENTIALS`; hoy apunta a una ruta local fija, así que hay que ajustarla al
+entorno propio antes de correrlos.
+
+Cada shape es un perfil profesional sintético (`tests/fixtures/profiles/*.json`). El runner crea un
+tenant efímero, corre conversaciones con personas simuladas y un juez LLM verifica las capabilities
+declaradas. Los resultados se ven en `/evaluacion` del panel. Detalle en `docs/BACKEND_CONTEXT.md`.
+
+## Configuración runtime (Secret Manager)
+
+El backend carga toda su configuración del secret `AI_AGENT_APP_CONFIG_JSON` al arrancar: `JWT_SECRET`,
+`META_*`, `GEMINI_*`, credenciales de Google OAuth, CORS, URLs, límites y toggles.
+
+```bash
+make app-config-secret-upsert ENV=prod APP_CONFIG_PAIR='META_REDIRECT_URI:https://tu-dominio/oauth/meta/callback'
+make app-config-secret-sync-env ENV=prod APP_CONFIG_ENV_FILE=.env
+```
+
+Ver `docs/DEPLOYMENT.md` para las variantes (valores tipados, upsert múltiple, prune del `.env`).
+
+## Deploy
+
+```bash
+make deploy-back ENV=prod
+make deploy-front ENV=prod
+make deploy-all ENV=prod
+```
+
+El deploy automático a dev corre en `push` a `develop` vía GitHub OIDC + Workload Identity Federation
+(sin JSON keys). Detalles de workflows, secrets por ambiente y módulos Terraform en
+`docs/DEPLOYMENT.md` y `docs/MANUAL_SETUP_DEV_ENV.md`.
 
 ## Logging
 
-Backend uses JSON logs to `stdout` with request correlation.
+Logs JSON estructurados a `stdout` con correlación por request:
+- Se reutiliza el `X-Request-ID` entrante; si no llega, se genera.
+- Toda respuesta HTTP incluye el header `X-Request-ID`.
+- Las excepciones no controladas devuelven `500` con
+  `{"detail":"internal server error","request_id":"<id>"}`; el traceback solo va al log del servidor.
 
-- Incoming `X-Request-ID` is reused; if absent, backend generates one.
-- Every HTTP response includes `X-Request-ID`.
-- Unhandled exceptions return:
-  - `500`
-  - `{"detail":"internal server error","request_id":"<id>"}`
-- Traceback is logged only on server side.
+Config (dentro de `AI_AGENT_APP_CONFIG_JSON`): `LOG_LEVEL` (default `INFO`),
+`LOG_INCLUDE_REQUEST_SUMMARY` (default `false`).
 
-Config keys (inside `AI_AGENT_APP_CONFIG_JSON`):
+## Landing para revisión de Meta (deploy aparte)
 
-```bash
-LOG_LEVEL=INFO
-LOG_INCLUDE_REQUEST_SUMMARY=false
-```
-
-## Landing for Meta review (separate deploy)
-
-Static landing files now live outside `src` in:
-
-- `landing/index.html`
-- `landing/privacy.html`
-- `landing/terms.html`
-- `landing/styles.css`
-
-Deploy that folder as a standalone static site under HTTPS and use:
-
-- `https://tu-dominio.com/`
-- `https://tu-dominio.com/privacy.html`
-- `https://tu-dominio.com/terms.html`
-
-in your Meta Business profile and review flow.
-
-## Run checks
-
-```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy src tests
-uv run bandit -c pyproject.toml -r src
-uv run pytest
-```
-
-Full repo checks:
-
-```bash
-make checks
-```
-
-## Simulate WhatsApp inbound message (dev)
-
-You can simulate an inbound customer message through webhook parsing and then inspect the resulting conversation:
-
-```bash
-make simulate-whatsapp-message MESSAGE="Hola, necesito ayuda con mi pedido"
-```
-
-Optional vars:
-
-- `SIM_WA_USER_ID` (default: `573001234567`)
-- `SIM_WA_USER_NAME` (default: `Cliente Demo`)
-- `SIM_PROVIDER_MESSAGE_ID` (default: auto-generated)
+Los estáticos viven en `landing/` (`index.html`, `privacy.html`, `terms.html`, `styles.css`). Se
+despliegan como sitio estático bajo HTTPS y esas URLs se usan en el perfil de Meta Business y el flujo
+de revisión.
