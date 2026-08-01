@@ -1,53 +1,91 @@
-# Frontend Plan (MVP, guiado por capturas)
+# Frontend Context
 
-## Objetivo
-Construir una UI operativa para el backend multi-tenant de WhatsApp, iterando diseño por screenshots y feedback textual (sin dependencia de Figma).
+Panel web de Agendachat: operación diaria del profesional (inbox, agenda, clientes, finanzas,
+recordatorios, configuración), panel de administración multi-tenant y dashboard de evaluación.
 
-## Stack cerrado
-- React + Vite
+## Stack
+- React 18 + Vite 6
 - TypeScript estricto
 - Arquitectura hexagonal
-- Tailwind + componentes headless
+- Tailwind + Radix (`@radix-ui/react-switch`)
 - TanStack Query
+- Luxon para fechas/timezones
+- `@microsoft/fetch-event-source` para el stream SSE (permite mandar el header `Authorization`)
 - Vitest + Testing Library + MSW
 - ESLint + Prettier
-- Seguridad frontend: `eslint-plugin-security` + `npm audit`
+- Seguridad: `eslint-plugin-security` + `npm audit`
 
-## Rutas
-- `/login` — LoginPage (registro deshabilitado, solo login)
-- `/configuraciones` — ConfiguracionesPage (onboarding WhatsApp + Google Calendar + prompt)
-- `/inbox` — InboxPage (conversaciones + mensajes)
-- `/agenda` — AgendaPage (calendario de citas)
-- `/clientes` — ClientsPage (gestión de pacientes)
-- Rutas legacy con redirect a `/configuraciones`: `/onboarding/whatsapp`, `/agent/prompt`
+## Rutas (`adapters/inbound/react/app/Router.tsx`)
 
-## Flujo de trabajo visual
-1. Tú compartes captura + cambio esperado.
-2. Se implementa en código la iteración.
-3. Se reportan paths editados y resultado esperado.
-4. Repetimos hasta cerrar pantalla.
+### Públicas (`PublicOnlyRoute`)
+- `/` — LandingPage
+- `/roadmap` — RoadmapPage
+- `/login` — LoginPage (registro deshabilitado)
+- `/accept-invite` — AcceptInvitePage (alta por invitación)
+- `/forgot-password` — ForgotPasswordPage
+- `/reset-password` — ResetPasswordPage
 
-## Orden de construcción
-1. Auth (login).
-2. Configuraciones (onboarding WhatsApp + Google Calendar + prompt + settings).
-3. Inbox (conversaciones + mensajes + control AI/HUMAN + blacklist).
-4. Agenda (calendario de citas manuales + scheduling requests).
-5. Clientes (listado + detalle + CRUD de pacientes).
+### Profesional (`ProtectedRoute`)
+- `/configuraciones` — ConfiguracionesPage (onboarding WhatsApp + Google Calendar + perfil profesional + settings + recordatorios)
+- `/evaluacion` — EvaluacionPage (tabs: Shapes, Personas, Capabilities, Runs)
+- `/evaluacion/runs/:runDocId` — RunDetailPage (transcripts + veredicto del juez)
 
-## Estructura hexagonal de frontend
-- `frontend/src/domain`
-- `frontend/src/application`
-- `frontend/src/ports`
-- `frontend/src/adapters/inbound/react`
-- `frontend/src/adapters/outbound/http`
-- `frontend/src/adapters/outbound/storage`
-- `frontend/src/infrastructure`
-- `frontend/src/shared`
+### Profesional con onboarding completo (`ProtectedRoute` + `OnboardingReadyRoute`)
+- `/inbox` — InboxPage
+- `/agenda` — AgendaPage
+- `/clientes` — ClientsPage
+- `/finanzas` — FinanzasPage
+- `/recordatorios` — RecordatoriosPage
+
+### Admin (`AdminRoute`)
+- `/admin` — AdminHomePage
+- `/admin/dashboard` — AdminGlobalDashboardPage
+- `/admin/tenants/:tenantId` y `/admin/tenants/:tenantId/:tab` — AdminTenantDetailPage
+
+### Redirects legacy
+- `/onboarding`, `/onboarding/whatsapp`, `/agent/prompt` → `/configuraciones`
+- `/plantillas` → `/configuraciones?tab=recordatorios`
+- `*` → `/configuraciones`
+
+## Estructura hexagonal
+
+```
+frontend/src/
+├── domain/models          # tipos de dominio
+├── application/use_cases  # casos de uso (agent, auth, blacklist, conversation, evaluation,
+│                          # manual_appointment, onboarding, patient, reminder, scheduling,
+│                          # tenant, whatsapp_onboarding, whatsapp_template)
+├── ports                  # backend_api_port, event_stream_port, token_session_port
+├── adapters/
+│   ├── inbound/react/     # app (Router + guards), pages, views, components, hooks, styles
+│   └── outbound/
+│       ├── http/          # backend_api_adapter, backend_event_stream_adapter
+│       └── storage/       # browser_token_session_adapter
+├── infrastructure/        # config + di
+└── shared/                # facebook (SDK Embedded Signup), hooks, http, testing, utils
+```
+
+Convención de páginas: `pages/*Page.tsx` resuelve routing/estado de alto nivel y delega el render a
+`pages/views/*View.tsx` (`AgendaView`, `InboxView`, `ClientsView`, `FinanzasView`,
+`RecordatoriosView`, `ConfiguracionesView`). Las páginas grandes se apoyan en hooks dedicados
+(`useAgendaQuery`, `useAgendaActions`, `useInboxQuery`, `useFinanzasQuery`, `useRemindersQuery`,
+`usePatientsQuery`, `useBookedAppointments`, `useReschedule`, `useAgentSettingsQuery`).
+
+## Realtime
+
+- `useEventStream` se conecta a `GET /v1/events` vía `BackendEventStreamAdapter`.
+- Eventos manejados: `connected`, `conversation.updated`, `scheduling_request.updated`, `reminder.updated`.
+- Al recibir un evento se invalidan las queries de TanStack Query correspondientes.
+- El polling queda como red de seguridad (~30s), no como mecanismo principal.
+- Si el stream responde `401`/`403`, se corta sin reintentar (error fatal de auth).
 
 ## Sesión y seguridad
 - `access_token` en memoria.
-- `refresh_token` en `localStorage` (`AI_AGENT_REFRESH_TOKEN`).
-- Renovación automática de access token al recibir 401.
+- `refresh_token` en `localStorage` bajo la clave `AI_AGENT_REFRESH_TOKEN`.
+- Renovación automática del access token al recibir `401`.
+- El rol se resuelve con `GET /v1/auth/me`; `AdminRoute` exige rol `admin`.
+- `OnboardingReadyRoute` bloquea las vistas operativas hasta que `GET /v1/onboarding/status` devuelve `ready`.
 
 ## Comandos
-Ver sección "Comandos útiles" en `CLAUDE.md` (fuente canónica). Comando adicional: `make fe-install`.
+Ver "Comandos útiles" en `CLAUDE.md` (fuente canónica). Adicionales: `make fe-install`,
+`make fe-lint`, `make fe-typecheck`, `make fe-test`, `make fe-format`, `make fe-security`.

@@ -26,6 +26,28 @@ variable "artifact_repository_id" {
   default     = "ai-agent-backend"
 }
 
+variable "artifact_keep_recent_count" {
+  description = "Number of most recent backend images kept regardless of age (rollback window)."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.artifact_keep_recent_count >= 1
+    error_message = "artifact_keep_recent_count must be at least 1."
+  }
+}
+
+variable "artifact_delete_older_than_days" {
+  description = "Age in days after which backend images are deleted, unless kept by the recent-versions policy."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.artifact_delete_older_than_days >= 1
+    error_message = "artifact_delete_older_than_days must be at least 1."
+  }
+}
+
 variable "cloud_run_service_name" {
   description = "Cloud Run service name for backend API."
   type        = string

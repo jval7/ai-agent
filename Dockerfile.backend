@@ -1,3 +1,23 @@
+# ── Stage 1: build the SPA ───────────────────────────────────────────
+# The frontend ships inside this image and is served by FastAPI, so there is
+# no load balancer, CDN or GCS bucket to pay for. VITE_API_BASE_URL is left
+# empty on purpose: same origin means relative requests and no CORS.
+FROM node:22-alpine AS frontend-build
+
+WORKDIR /build
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend ./
+
+# Pagina de Evaluacion y prompt-preview: fuera del bundle salvo pedido explicito.
+ARG VITE_SHOW_INTERNAL_TOOLS=false
+ENV VITE_SHOW_INTERNAL_TOOLS=${VITE_SHOW_INTERNAL_TOOLS}
+
+RUN npm run build
+
+# ── Stage 2: backend runtime ─────────────────────────────────────────
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -24,6 +44,9 @@ COPY src ./src
 # EVAL_ENDPOINTS_ENABLED).
 COPY scripts ./scripts
 COPY tests/fixtures ./tests/fixtures
+
+# Path expected by src/entrypoints/web/static_spa.py (repo root + frontend/dist).
+COPY --from=frontend-build /build/dist ./frontend/dist
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONPATH=/app

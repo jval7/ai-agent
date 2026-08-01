@@ -2,6 +2,7 @@ import fastapi
 import fastapi.middleware.cors as fastapi_cors
 
 import src.entrypoints.web.exceptions.http_exception_handlers as http_exception_handlers
+import src.entrypoints.web.lifespan as lifespan_module
 import src.entrypoints.web.middleware.request_context_middleware as request_context_middleware
 import src.entrypoints.web.rate_limiter as rate_limiter
 import src.entrypoints.web.routers.admin_router as admin_router
@@ -28,12 +29,17 @@ import src.entrypoints.web.routers.tenant_router as tenant_router
 import src.entrypoints.web.routers.webhook_router as webhook_router
 import src.entrypoints.web.routers.whatsapp_router as whatsapp_router
 import src.entrypoints.web.routers.whatsapp_template_router as whatsapp_template_router
+import src.entrypoints.web.static_spa as static_spa
 import src.infra.container as app_container
 import src.infra.logs as app_logs
 
 
 def create_app() -> fastapi.FastAPI:
-    app = fastapi.FastAPI(title="AI Agent WhatsApp MVP", version="0.1.0")
+    app = fastapi.FastAPI(
+        title="AI Agent WhatsApp MVP",
+        version="0.1.0",
+        lifespan=lifespan_module.lifespan,
+    )
     app.state.container = app_container.AppContainer()
     app_logs.configure_logging(app.state.container.settings.log_level)
     app.add_middleware(
@@ -79,6 +85,10 @@ def create_app() -> fastapi.FastAPI:
         app.include_router(eval_router.router)
 
     http_exception_handlers.register_exception_handlers(app)
+
+    # Last: the SPA catch-all matches anything left over, so every API route
+    # must already be registered.
+    static_spa.register_spa_routes(app)
     return app
 
 

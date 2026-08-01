@@ -46,19 +46,18 @@ DEPLOY_CLOUD_RUN_SERVICE_NAME ?= ai-agent-backend
 DEPLOY_RUNTIME_SERVICE_ACCOUNT_EMAIL ?=
 DEPLOY_BACKEND_IMAGE_TAG ?=
 DEPLOY_BACKEND_URL ?=
-DEPLOY_FRONTEND_BUCKET_NAME ?=
 DEPLOY_APP_CONFIG_SECRET_ID ?= AI_AGENT_APP_CONFIG_JSON
 DEPLOY_BASE_DIR ?= $(FLOW_DIR)/deploy
-DEPLOY_FRONT_TF_DIR ?= $(DEPLOY_BASE_DIR)/terraform/frontend_spa_cdn_local
 DEPLOY_BACK_TF_DIR ?= $(DEPLOY_BASE_DIR)/terraform/runtime_deploy_local
-DEPLOY_FRONT_ENV_FILE ?= $(DEPLOY_BASE_DIR)/$(ENV)-front.env
 DEPLOY_BACK_ENV_FILE ?= $(DEPLOY_BASE_DIR)/$(ENV)-back.env
+# Herramientas internas (pagina de Evaluacion, prompt-preview) en el bundle:
+# visibles en dev, ocultas en prod.
+DEPLOY_SHOW_INTERNAL_TOOLS ?= $(if $(filter prod,$(ENV)),false,true)
 TF_STATE_BUCKET ?=
 DEPLOY_BACK_ENVS_DIR ?= infra/terraform/runtime_deploy/envs
 
 # Resolve GCP project from ENV-specific tfvars for local CLI commands
 CLI_PROJECT_ID = $(shell grep '^project_id' "$(DEPLOY_BACK_ENVS_DIR)/$(ENV).tfvars" 2>/dev/null | sed 's/.*= *"\(.*\)"/\1/')
-DEPLOY_FRONT_ENVS_DIR ?= infra/terraform/frontend_spa_cdn/envs
 APP_CONFIG_KEY ?=
 APP_CONFIG_VALUE ?=
 APP_CONFIG_VALUE_JSON ?=
@@ -92,9 +91,6 @@ APP_CONFIG_SYNC_KEYS ?= JWT_SECRET JWT_ACCESS_TTL_SECONDS JWT_REFRESH_TTL_SECOND
 	docker-up-build \
 	docker-down \
 	docker-logs \
-	deploy-front-infra \
-	deploy-front-upload \
-	deploy-front \
 	deploy-back \
 	deploy-all \
 	app-config-secret-upsert \
@@ -122,10 +118,8 @@ help:
 	@echo "  docker-down            Bajar servicios"
 	@echo ""
 	@echo "=== Deploy (ENV=dev|prod, default: dev) ==="
-	@echo "  deploy-back            Deploy backend a Cloud Run"
-	@echo "  deploy-front           Deploy frontend infra + upload"
-	@echo "  deploy-front-upload    Solo subir assets al bucket"
-	@echo "  deploy-all             Deploy backend + frontend"
+	@echo "  deploy-back            Deploy backend + SPA a Cloud Run"
+	@echo "  deploy-all             Alias de deploy-back (la SPA va en la imagen)"
 	@echo ""
 	@echo "=== Secrets (ENV=dev|prod, default: dev) ==="
 	@echo "  app-config-secret-upsert        Actualizar 1 key (APP_CONFIG_PAIR='KEY:VAL')"
@@ -373,84 +367,6 @@ docker-down:
 docker-logs:
 	@docker compose logs -f --tail=200
 
-deploy-front-infra:
-	@command -v terraform >/dev/null 2>&1 || { echo "terraform is required."; exit 1; }
-	@if [[ ! -f "$(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars" ]]; then \
-		echo "Environment file not found: $(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars"; \
-		exit 1; \
-	fi
-	@echo "Deploying frontend infra [env=$(ENV)]"
-	@mkdir -p "$(DEPLOY_FRONT_TF_DIR)"
-	@rsync -a \
-		--exclude='.terraform' \
-		--exclude='terraform.tfstate' \
-		--exclude='terraform.tfstate.backup' \
-		infra/terraform/frontend_spa_cdn/ \
-		"$(DEPLOY_FRONT_TF_DIR)/"
-	@cp "$(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars" "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"
-	@if [[ -n "$(DEPLOY_FRONTEND_BUCKET_NAME)" ]]; then \
-		printf '\nbucket_name = "%s"\n' "$(DEPLOY_FRONTEND_BUCKET_NAME)" >> "$(DEPLOY_FRONT_TF_DIR)/terraform.tfvars"; \
-	fi
-	@tf_state_bucket="$(TF_STATE_BUCKET)"; \
-	if [[ -z "$$tf_state_bucket" ]]; then \
-		proj=$$(grep '^project_id' "$(DEPLOY_FRONT_ENVS_DIR)/$(ENV).tfvars" | sed 's/.*= *"\(.*\)"/\1/'); \
-		tf_state_bucket="$$proj-tf-state"; \
-	fi; \
-	terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" init -reconfigure \
-		-backend-config="bucket=$$tf_state_bucket" \
-		-backend-config="prefix=$(ENV)/frontend-spa-cdn"
-	@terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" apply -auto-approve -var-file=terraform.tfvars
-	@frontend_url=$$(terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" output -raw frontend_http_url 2>/dev/null || true); \
-	if [[ -z "$$frontend_url" || "$$frontend_url" == "null" ]]; then \
-		frontend_url=$$(terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" output -raw frontend_https_url); \
-	fi; \
-	frontend_bucket=$$(terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" output -raw frontend_bucket_name); \
-	mkdir -p "$(DEPLOY_BASE_DIR)"; \
-	printf "DEPLOY_FRONTEND_URL=%s\nDEPLOY_FRONTEND_BUCKET=%s\n" "$$frontend_url" "$$frontend_bucket" > "$(DEPLOY_FRONT_ENV_FILE)"; \
-	echo "Frontend infra ready [$(ENV)]: $$frontend_url (bucket=$$frontend_bucket)"
-
-deploy-front-upload:
-	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
-	@command -v npm >/dev/null 2>&1 || { echo "npm is required."; exit 1; }
-	@backend_url="$(DEPLOY_BACKEND_URL)"; \
-	if [[ -z "$$backend_url" && -f "$(DEPLOY_BACK_ENV_FILE)" ]]; then \
-		backend_url=$$(grep '^DEPLOY_BACKEND_URL=' "$(DEPLOY_BACK_ENV_FILE)" | head -n 1 | cut -d '=' -f 2-); \
-	fi; \
-	if [[ -z "$$backend_url" ]]; then \
-		echo "Set DEPLOY_BACKEND_URL or run make deploy-back first."; \
-		exit 1; \
-	fi; \
-	frontend_bucket="$(DEPLOY_FRONTEND_BUCKET_NAME)"; \
-	if [[ -z "$$frontend_bucket" && -f "$(DEPLOY_FRONT_ENV_FILE)" ]]; then \
-		frontend_bucket=$$(grep '^DEPLOY_FRONTEND_BUCKET=' "$(DEPLOY_FRONT_ENV_FILE)" | head -n 1 | cut -d '=' -f 2-); \
-	fi; \
-	if [[ -z "$$frontend_bucket" ]]; then \
-		frontend_bucket=$$(terraform -chdir="$(DEPLOY_FRONT_TF_DIR)" output -raw frontend_bucket_name 2>/dev/null || true); \
-	fi; \
-	if [[ -z "$$frontend_bucket" ]]; then \
-		echo "Frontend bucket not found. Run make deploy-front-infra first."; \
-		exit 1; \
-	fi; \
-	show_internal_tools="false"; \
-	if [[ "$(ENV)" == "dev" ]]; then show_internal_tools="true"; fi; \
-	VITE_API_BASE_URL="$$backend_url" VITE_SHOW_INTERNAL_TOOLS="$$show_internal_tools" npm --prefix "$(FRONTEND_DIR)" run build; \
-	gcloud storage rsync --recursive --delete-unmatched-destination-objects \
-		"$(FRONTEND_DIR)/dist" \
-		"gs://$$frontend_bucket"; \
-	gcloud storage objects update "gs://$$frontend_bucket/index.html" \
-		--cache-control="no-cache,max-age=0,must-revalidate"; \
-	asset_objects=$$(gcloud storage ls "gs://$$frontend_bucket/assets/**" || true); \
-	if [[ -n "$$asset_objects" ]]; then \
-		while IFS= read -r object_uri; do \
-			[[ "$$object_uri" == */ ]] && continue; \
-			gcloud storage objects update "$$object_uri" \
-				--cache-control="public,max-age=31536000,immutable"; \
-		done <<< "$$asset_objects"; \
-	fi; \
-	echo "Frontend assets uploaded to gs://$$frontend_bucket using backend $$backend_url"
-
-deploy-front: deploy-front-infra deploy-front-upload
-
 deploy-back:
 	@command -v terraform >/dev/null 2>&1 || { echo "terraform is required."; exit 1; }
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
@@ -524,17 +440,18 @@ deploy-back:
 		-target=google_project_service.apis \
 		-target=google_artifact_registry_repository.backend; \
 	gcloud auth configure-docker "$$region-docker.pkg.dev" --quiet; \
-	docker buildx build --platform linux/amd64 -f Dockerfile.backend -t "$$image_uri" --push .; \
+	docker buildx build --platform linux/amd64 -f Dockerfile.backend \
+		--build-arg VITE_SHOW_INTERNAL_TOOLS="$(DEPLOY_SHOW_INTERNAL_TOOLS)" \
+		-t "$$image_uri" --push .; \
 	terraform -chdir="$(DEPLOY_BACK_TF_DIR)" apply -auto-approve -var-file=terraform.tfvars; \
 	backend_url=$$(terraform -chdir="$(DEPLOY_BACK_TF_DIR)" output -raw cloud_run_service_url); \
 	mkdir -p "$(DEPLOY_BASE_DIR)"; \
 	printf "DEPLOY_BACKEND_URL=%s\nDEPLOY_BACKEND_IMAGE_URI=%s\nDEPLOY_RUNTIME_SERVICE_ACCOUNT_EMAIL=%s\n" "$$backend_url" "$$image_uri" "$$runtime_sa_email" > "$(DEPLOY_BACK_ENV_FILE)"; \
 	echo "Backend deployed [$(ENV)]: $$backend_url"
 
-deploy-all:
-	@$(MAKE) deploy-front-infra ENV=$(ENV)
-	@$(MAKE) deploy-back ENV=$(ENV)
-	@$(MAKE) deploy-front-upload ENV=$(ENV)
+# La SPA viaja dentro de la imagen del backend (ver Dockerfile.backend), asi
+# que no hay un deploy de frontend separado: `deploy-back` publica ambos.
+deploy-all: deploy-back
 
 app-config-secret-upsert:
 	@command -v gcloud >/dev/null 2>&1 || { echo "gcloud is required."; exit 1; }
